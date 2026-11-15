@@ -135,6 +135,70 @@ export async function safariReplace(field: Locator, syllables: readonly string[]
   );
 }
 
+/** A key an on-screen Korean keyboard ends a syllable with, and what it writes into the field when left to it. */
+export interface EndingKey {
+  readonly key: " " | "Enter";
+  readonly keyCode: 32 | 13;
+  readonly inserts: " " | "\n";
+  readonly inputType: "insertText" | "insertLineBreak";
+}
+
+export const SPACE: EndingKey = { key: " ", keyCode: 32, inserts: " ", inputType: "insertText" };
+export const RETURN: EndingKey = { key: "Enter", keyCode: 13, inserts: "\n", inputType: "insertLineBreak" };
+
+/** The syllable typed after an ending key: its first jamo, its vowel, and the result with and without the join. */
+export interface NextSyllable {
+  readonly jamo: string;
+  readonly vowel: string;
+  /** The syllable on its own, as the keyboard writes it once its previous syllable has ended. */
+  readonly alone: string;
+  /** The previous syllable with the jamo joined to it, as the keyboard writes it when that syllable is still open. */
+  readonly joined: string;
+  /** The two syllables the vowel then makes out of the joined one (the final consonant moves on). */
+  readonly split: string;
+}
+
+/**
+ * A MODEL of the on-screen keyboard, not a recording: its syllable ends only when a key of its own reaches the field.
+ * The ending key's keydown, then the field's edit when the key was left to it; then the next syllable. When the key
+ * landed, the keyboard starts that syllable fresh. When the page cancelled the key, the keyboard still holds the previous
+ * syllable: its jamo joins it (the syllable is taken back and the joined one put in its place), and the vowel then splits
+ * the joined one into two syllables, so the previous syllable comes back on the screen a second time (#1508).
+ * Returns whether the ending key's keydown was left to the field.
+ */
+export async function keyThenSyllable(
+  field: Locator,
+  keyboard: Keyboard,
+  ending: EndingKey,
+  next: NextSyllable,
+): Promise<boolean> {
+  const landed = await field.evaluate((element, key) => {
+    if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
+    const box = element;
+    const down = box.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: key.key, keyCode: key.keyCode }),
+    );
+    if (down) {
+      box.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: key.inputType, data: key.inserts }));
+      box.setRangeText(key.inserts, box.selectionStart, box.selectionEnd, "end");
+      box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: key.inputType, data: key.inserts }));
+    }
+    box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: key.key, keyCode: key.keyCode }));
+    return down;
+  }, ending);
+  if (landed) {
+    await hangulKey(field, keyboard, next.jamo, [["insert", next.jamo]]);
+    await hangulKey(field, keyboard, next.vowel, [["delete"], ["insert", next.alone]]);
+  } else {
+    await hangulKey(field, keyboard, next.jamo, [["delete"], ["insert", next.joined]]);
+    await hangulKey(field, keyboard, next.vowel, [["delete"], ["insert", next.split]]);
+  }
+  return landed;
+}
+
+/** 가 typed after 가: ㄱ joins an open 가 as 각, and ㅏ then splits 각 into 가가. */
+export const GA_AFTER_GA: NextSyllable = { jamo: "ㄱ", vowel: "ㅏ", alone: "가", joined: "각", split: "가가" };
+
 /** The steps of 한글 on a 2-set keyboard. */
 export const HANGEUL: readonly (readonly [string, string])[] = [
   ["ㅎ", "ㅎ"],
@@ -144,36 +208,3 @@ export const HANGEUL: readonly (readonly [string, string])[] = [
   ["ㅡ", "한그"],
   ["ㄹ", "한글"],
 ];
-
-/**
- * One key of a Korean keyboard whose syllable state follows the field (a MODEL of the on-screen keyboard, not a recording):
- * the keyboard ends its syllable only when a key it sends reaches the field. A space whose keydown the page cancels never
- * reached it, so the keyboard's next jamo still joins the syllable before it: it takes that syllable back and puts the joined
- * one in its place. Returns whether the key's keydown was left to the field.
- */
-export async function spaceThenJamo(
-  field: Locator,
-  keyboard: Keyboard,
-  joined: { readonly jamo: string; readonly alone: string; readonly withPrevious: string },
-): Promise<boolean> {
-  const spaceDown = await field.evaluate((element) => {
-    if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
-    const down = element.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " ", keyCode: 32 }),
-    );
-    if (down) {
-      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: " " }));
-      element.setRangeText(" ", element.selectionStart, element.selectionEnd, "end");
-      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: " " }));
-    }
-    element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: " ", keyCode: 32 }));
-    return down;
-  });
-  await hangulKey(
-    field,
-    keyboard,
-    joined.jamo,
-    spaceDown ? [["insert", joined.alone]] : [["delete"], ["insert", joined.withPrevious]],
-  );
-  return spaceDown;
-}
