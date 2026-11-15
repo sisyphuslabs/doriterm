@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+## v0.1.20 - 2026-11-15
+
+### Terminal
+
+- "Reconnecting to <machine>. Your typing will be sent." shows in the status bar, or on a phone in the line under the
+  header, instead of over the terminal's top row. In a split, each pane's header says when its own machine reconnects.
+  (#2505)
+- When the connection to your host stays down past a few seconds, the status bar (or, on a phone, a line under the
+  header) says why in plain words, with Try again beside it, while your terminals stay on screen. The same shows after
+  a few seconds when the machine of the terminal in view drops, while it keeps reconnecting. (#2505)
+- While the terminal in view is on a machine that is offline, the status bar says that machine is offline instead of
+  Connected. (#2505)
+- On a Mac, Ctrl+C (and Ctrl+Shift+C) reaches the program and stops it even while text is selected in the terminal;
+  Cmd+C copies, as in every macOS terminal. (#2626)
+
+### Workspace
+
+- An agent another agent started (an `hc run` from inside a terminal, often on another machine) now gets its own tab
+  in its labelled space a few seconds after it starts, without a click, like every other row of the Agents list. (#2624)
+- The tabs always follow the terminals herdr-core has, as Herdr's own app does: a tab whose program exited or was
+  killed, or whose terminal was removed (`hc rm`), now goes by itself even while it is on screen, instead of staying
+  behind saying the session ended. A program that ended any other way still shows that it ended. (#2628)
+- A tab the host refused to save for a new terminal is tried again after a short wait, instead of only after a
+  reconnect. (#2628)
+
+### Machine mesh
+
+- When the machine you are looking at drops, even for a moment, the view stays on it and says it is reconnecting
+  instead of moving you to another machine. (#2505)
+- A machine that is only reconnecting no longer shows a warning with Try again under its name; the header reads
+  reconnecting, and the warning with why and Try again appears once it has been offline past the reconnect grace. (#2505)
+- A machine whose relay connection drops for a second now always gets its 2 s and 5 s retries before it is called
+  offline, also when the relay had rate limited this host just before or two dials were refused at once; a machine that
+  refuses this host as removed is no longer retried within those seconds. (#2517)
+- A removed machine that refuses this host's handshake gets its owed revoke at the host's next try after it takes the
+  host again, within 6 hours, not as soon as it comes back as v0.1.19's notes said. (#2517)
+- While New tab is offered disabled (the tab in view is on a machine that cannot take it), its key does nothing either,
+  instead of trying and then reporting that it could not open a new tab.
+- A machine past its reconnect grace now reads offline in Close, Rename and New tab reasons, matching its sidebar and pane notice. Reconnecting is reserved for the grace shown in its row. (#2590)
+- Layout reasons name the machine and use its row's state for offline, needs login and connecting. A connected machine still waiting for its document keeps layout restoration pending until that document answers. The pane, notice and Settings titles follow the same words: "<name> is connecting" (was "Connecting to <name>") and "<name> needs login" (was "<name> needs a login"). (#2595)
+- On a phone, once a dropped machine's reason shows, it takes the reconnect line's place instead of stacking under it,
+  so the terminal keeps its rows with the keyboard up. (#2601)
+
+### Settings
+
+- On a phone, a settings row with nothing to do, such as this machine in Settings, Machines, no longer leaves an empty
+  line under its text. (#2520)
+
+### Terminal workspace
+
+- A session menu that finishes closing no longer pulls the keyboard back from another menu you opened in the meantime.
+  (#2547)
+
 ## v0.1.19 - 2026-11-14
 
 ### Terminal
