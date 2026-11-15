@@ -1,7 +1,7 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
 import { END_LABEL } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { ADOPT_GRACE_MS, type Look, looseTerminals, shownIn, stepAdoption } from "./adoption.ts";
+import { ADOPT_GRACE_MS, type Look, looseTerminals, MAX_RETRY_MS, refused, shownIn, stepAdoption } from "./adoption.ts";
 
 const terminal = (address: string, fields: Partial<Terminal> = {}): Terminal => ({
   address,
@@ -122,12 +122,30 @@ describe("stepAdoption (#2122)", () => {
 
   test("a new connection forgets what was written, so a refused adoption is tried again; one that left its tab waits the grace anew", () => {
     const written = stepAdoption(undefined, ["t1"], T0);
-    const forgotten: Look = { since: written.look.since, tried: new Set() };
+    const forgotten: Look = { since: written.look.since, tried: new Set(), refusals: new Map() };
     expect(stepAdoption(forgotten, ["t1"], T0 + 1).adopt).toEqual(["t1"]);
     const shown = stepAdoption(written.look, [], T0 + 1);
     const back = stepAdoption(shown.look, ["t1"], T0 + 2);
     expect(back.adopt).toEqual([]);
     expect(back.wake).toBe(T0 + 2 + ADOPT_GRACE_MS);
+  });
+
+  test("a refused adoption is tried again on a later look, each refusal waiting twice as long, up to a minute (#2467)", () => {
+    const written = stepAdoption(undefined, ["t1"], T0);
+    const once = refused(written.look, ["t1"], T0 + 10);
+    const waiting = stepAdoption(once, ["t1"], T0 + 10);
+    expect(waiting.adopt).toEqual([]);
+    expect(waiting.wake).toBe(T0 + 10 + ADOPT_GRACE_MS);
+    const retried = stepAdoption(waiting.look, ["t1"], T0 + 10 + ADOPT_GRACE_MS);
+    expect(retried.adopt).toEqual(["t1"]);
+    const twice = stepAdoption(refused(retried.look, ["t1"], T0 + 20_000), ["t1"], T0 + 20_000);
+    expect(twice.wake).toBe(T0 + 20_000 + 2 * ADOPT_GRACE_MS);
+    let look = twice.look;
+    for (let n = 0; n < 10; n += 1) look = refused(look, ["t1"], T0 + 100_000);
+    expect(stepAdoption(look, ["t1"], T0 + 100_000).wake).toBe(T0 + 100_000 + MAX_RETRY_MS);
+    // Once it has a tab, its refusals are forgotten: a later stay in no tab starts from the grace again.
+    const shown = stepAdoption(look, [], T0 + 200_000);
+    expect([...shown.look.refusals]).toEqual([]);
   });
 
   test("the next look is due when the earliest waiting terminal's grace ends", () => {

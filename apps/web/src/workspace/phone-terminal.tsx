@@ -21,6 +21,7 @@ import { KEYS_BAR_HEIGHT, keysBottom, PhoneKeys, ROUND_BUTTON_CLEARANCE } from "
 import { keysPlacement } from "./phone-keys-placement.ts";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
+import { afterGrace } from "./use-dead-panes.ts";
 import { useQuietKeyboard } from "./use-quiet-keyboard.ts";
 import { useStickyKeys } from "./use-sticky-keys.ts";
 
@@ -183,8 +184,13 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               typesComposition={sticky.latched.size > 0}
               browsing={browsing}
               onPort={onPort}
-              // An End of this session leaves the screen only once it has removed the terminal (see afterEnd).
-              onEnd={(address, end) => (closesTab(end) ? afterEnd(address, () => onEnded(address)) : undefined)}
+              // An End of this session leaves the screen only once it has removed the terminal (see afterEnd), and a
+              // program that ended in its first seconds stays for the just-born grace, so its failure shows (afterGrace).
+              onEnd={(address, end) =>
+                closesTab(end)
+                  ? afterGrace(terminal.created_ms, () => afterEnd(address, () => onEnded(address)))
+                  : undefined
+              }
               // The header already has Back; this one closes the ended session.
               closeLabel="Close"
               {...(keysControls === null ? {} : { jumpClearance: keysControls })}
