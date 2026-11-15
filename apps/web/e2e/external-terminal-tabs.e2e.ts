@@ -82,6 +82,27 @@ test("an agent another agent started (hc records its parent) gets its own tab in
   await expect(count).toHaveText("2");
 });
 
+test("a child agent that dies with its parent takes both tabs with it when the parent ends", async ({ page }) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  const lead = startOutside("host", "lead-lane", "lanes");
+  await expect.poll(() => spacesShowing(lead), { timeout: 20_000 }).toEqual(["lanes"]);
+  const worker = startOutside("host", "worker-lane", "lanes", lead);
+  await expect.poll(() => spacesShowing(worker), { timeout: 20_000 }).toEqual(["lanes"]);
+  const count = spaceRow(page, "lanes").getByLabel(/^\d+ tabs$/);
+  await expect(count).toHaveText("2");
+
+  endAgent("host", lead);
+  for (const address of [lead, worker]) {
+    const at = started.findIndex((entry) => entry.address === address);
+    if (at >= 0) started.splice(at, 1);
+  }
+
+  await expect.poll(() => spacesShowing(worker), { timeout: 30_000 }).toEqual([]);
+  await expect.poll(() => spacesShowing(lead), { timeout: 30_000 }).toEqual([]);
+  await expect(tabs(page)).toHaveCount(1, { timeout: 30_000 });
+});
+
 test("an agent opened from the Agents list before it has a tab goes to the space its label names", async ({ page }) => {
   const link = await routeHcSocket(page);
   await page.goto("/");
