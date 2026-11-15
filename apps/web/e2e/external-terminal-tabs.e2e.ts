@@ -18,8 +18,8 @@ test.afterEach(() => {
   for (const { core, address } of started.splice(0)) endAgent(core, address);
 });
 
-function startOutside(core: "host" | "machine", name: string, space: string): string {
-  const address = startAgent(core, name, "working", space);
+function startOutside(core: "host" | "machine", name: string, space: string, parent?: string): string {
+  const address = startAgent(core, name, "working", space, parent);
   started.push({ core, address });
   return address;
 }
@@ -65,6 +65,17 @@ test("an agent started outside the app on an added machine gets one tab in its l
   await expect(page.getByText(MACHINE_NAME).first()).toBeVisible({ timeout: STATE_BOUND_MS });
   const address = startOutside("machine", "remote-lane", "lanes");
   await expect.poll(() => spacesShowing(address, MACHINE_NAME), { timeout: 30_000 }).toEqual(["lanes"]);
+});
+
+test("an agent another agent started (hc records its parent) gets its own tab in its labelled space without a click", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  const lead = startOutside("host", "lead-lane", "lanes");
+  await expect.poll(() => spacesShowing(lead), { timeout: 20_000 }).toEqual(["lanes"]);
+  const worker = startOutside("host", "worker-lane", "lanes", lead);
+  await expect.poll(() => spacesShowing(worker), { timeout: 20_000 }).toEqual(["lanes"]);
 });
 
 test("an agent opened from the Agents list before it has a tab goes to the space its label names", async ({ page }) => {

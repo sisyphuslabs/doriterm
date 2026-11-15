@@ -27,9 +27,11 @@ export function shownIn(
 }
 
 /**
- * The terminals of one machine that get a tab of their own and have none in its document (#404): live, started by no
- * other terminal (`parent`), and shown by no pane. One that End is ending is not among them (#2122): its tab was closed
- * on purpose and its program is on its way out, so adopting it would bring the closed tab back until the kill lands.
+ * The terminals of one machine that get a tab of their own and have none in its document (#404): live and shown by no
+ * pane, as the Agents list shows every live terminal as a row. One another terminal started (`parent`: an agent's
+ * worker, often from another machine) is among them like any (#2467). One that End is ending is not (#2122): its tab
+ * was closed on purpose and its program is on its way out, so adopting it would bring the closed tab back until the kill
+ * lands.
  * They come in the order they started, not the feed's: hc lists them by address as text, so `t10` came before `t9`
  * (#1269).
  */
@@ -44,10 +46,7 @@ export function looseTerminals(doc: JsonObject | null, terminals: readonly Termi
   return terminals
     .filter(
       (terminal) =>
-        terminal.state === "live" &&
-        (terminal.parent ?? null) === null &&
-        (terminal.labels[END_LABEL] ?? "") === "" &&
-        !shown.has(local(terminal.address)),
+        terminal.state === "live" && (terminal.labels[END_LABEL] ?? "") === "" && !shown.has(local(terminal.address)),
     )
     .toSorted((a, b) => a.created_ms - b.created_ms || BY_ADDRESS.compare(a.address, b.address));
 }
