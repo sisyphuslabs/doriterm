@@ -138,7 +138,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     machineReads > 0,
   );
   // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
-  const { dropEnded, closing: closingSessions, kept, dropped } = useDropOnce(terminals, layout.dropPane);
+  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
@@ -150,38 +150,10 @@ export function Workspace({ connection }: WorkspaceProps) {
   const { open: phoneOpen, show: showOnPhone } = phone;
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
   const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
-  // The panes on screen: the open tab's on a phone, the selected tab's on a desktop. A terminal that ended in one of
-  // them is its view's to say ("This session ended"); every other pane goes once its terminal is over (#2122).
-  const onScreen = narrow
-    ? phonePanes
-    : (layout.active?.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? []);
   // As a view's end does: an End of the session drops its pane only once it has removed the terminal (see afterEnd).
   const dropDead = useCallback((address: string) => afterEnd(address, () => dropEnded(address)), [dropEnded]);
-  // An ended pane this screen showed went from its tab with no drop of its own while its document stayed: another
-  // device, which had it out of view, took it (#2146, #2231). The person looking at it is told why, here only.
-  const endedElsewhere = useCallback(
-    (address: string): void => {
-      if (dropped(address)) return;
-      toasts.add({
-        type: "info",
-        title: "This session ended",
-        description: "Another device removed its pane once its program had finished.",
-      });
-    },
-    [dropped, toasts],
-  );
   // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
-  useDeadPanes(
-    connection,
-    layout.tabs,
-    fed.loaded ? terminals : null,
-    heardMachines,
-    machineReads,
-    dropDead,
-    onScreen,
-    endedElsewhere,
-    layouts,
-  );
+  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropDead);
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);

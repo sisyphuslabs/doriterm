@@ -157,7 +157,7 @@ test("a dictation under way ends when its terminal's machine drops: the recogniz
   }
 });
 
-test("the desktop's ended view offers no dictation: no mic, no strip, and a bound Dictate key starts nothing (#258)", async ({
+test("an ended program's tab offers no dictation: its tab goes, no mic, no strip, and a bound Dictate key starts nothing (#258)", async ({
   page,
 }) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
@@ -186,12 +186,12 @@ test("the desktop's ended view offers no dictation: no mic, no strip, and a boun
     hcOn("machine", ["kill", remote]);
     await expect.poll(() => stateOn("machine", remote), { timeout: 15_000 }).toBe("finished");
     reconnect();
-    await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: STATE_BOUND_MS });
+    // An ended program's tab goes once the machine is back (the tabs follow the core): nothing is left to dictate into.
+    await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
 
     await expect(page.getByRole("button", { name: /^Dictate into/ })).toHaveCount(0);
     await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
     await page.keyboard.press("Control+Alt+Shift+D");
-    await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible();
     await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
     expect(await speech.started()).toEqual([]);
   } finally {
@@ -200,9 +200,7 @@ test("the desktop's ended view offers no dictation: no mic, no strip, and a boun
   }
 });
 
-test("a tab whose program ended while the page was closed offers no Dictate in the tab bar (#269)", async ({
-  page,
-}) => {
+test("a program that ended while the page was closed leaves no Dictate in the tab bar (#269)", async ({ page }) => {
   const speech = await stubSpeech(page);
   const ended = startShell("host", "dictate-gone");
   try {
@@ -216,7 +214,8 @@ test("a tab whose program ended while the page was closed offers no Dictate in t
     hcOn("host", ["kill", ended]);
     await expect.poll(() => stateOn("host", ended), { timeout: 15_000 }).toBe("finished");
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: 30_000 });
+    // Its tab goes after the reload (the tabs follow the core), so the tab bar offers no Dictate for it.
+    await expect(page.locator(`[data-terminal="${ended}"]`)).toHaveCount(0, { timeout: 30_000 });
 
     await expect(page.getByRole("button", { name: /^Dictate into/ })).toHaveCount(0);
     await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
