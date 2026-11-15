@@ -30,9 +30,9 @@ const savedPane = (terminal: string, on?: string) =>
 /**
  * The program is started through hc, not typed: a wait-for line names this test's output path, and typed key by key on a
  * loaded runner it alone took most of a 60 s budget before the test reached what it checks (#1739). Each wait below has
- * its own bound; if every one ran to its limit they would add up to about 155 s, so 120 s is not their sum. It is a test
- * budget with room for a slow runner in a passing run, while a hang still fails here rather than at the default. The
- * reload's steps (ENDED_BOUNDS) add up to 100 s on their own, so the budget is 180 s.
+ * its own bound; if every one ran to its limit they would add up to about 260 s (the reload's steps, ENDED_BOUNDS, are
+ * 125 s of that), so 180 s is not their sum. It is a test budget with room for a slow runner in a passing run, while a
+ * step that hangs still fails by its own name rather than at the test's timeout (#2416).
  */
 const ENDED_TEST_TIMEOUT_MS = 180_000;
 
@@ -40,14 +40,40 @@ const ENDED_TEST_TIMEOUT_MS = 180_000;
 const frameText = (payload: string | Buffer): string =>
   typeof payload === "string" ? payload : payload.toString("latin1");
 
-/** The page's hc frames as text, in order, watched as they pass: routing them through the test is too slow on a loaded runner (#2396). */
-function watchHcFrames(page: Page): { readonly sent: string[]; readonly received: string[] } {
-  const frames = { sent: [] as string[], received: [] as string[] };
+/** One hc frame the page sent (">") or received ("<"), as text. */
+interface HcFrame {
+  readonly way: ">" | "<";
+  readonly text: string;
+}
+
+/**
+ * The page's hc frames in the order they passed, both ways in one list, watched as they pass: routing them through the
+ * test is too slow on a loaded runner (#2396).
+ */
+function watchHcFrames(page: Page): {
+  readonly all: HcFrame[];
+  readonly sent: () => string[];
+  readonly received: () => string[];
+} {
+  const all: HcFrame[] = [];
   page.on("websocket", (socket) => {
-    socket.on("framesent", ({ payload }) => frames.sent.push(frameText(payload)));
-    socket.on("framereceived", ({ payload }) => frames.received.push(frameText(payload)));
+    socket.on("framesent", ({ payload }) => all.push({ way: ">", text: frameText(payload) }));
+    socket.on("framereceived", ({ payload }) => all.push({ way: "<", text: frameText(payload) }));
   });
-  return frames;
+  const of = (way: HcFrame["way"]) => () => all.flatMap((frame) => (frame.way === way ? [frame.text] : []));
+  return { all, sent: of(">"), received: of("<") };
+}
+
+/** A frame's JSON-RPC message: the text from its first "{" (an hc frame starts with a length prefix), or null. */
+function messageOf(text: string): Record<string, unknown> | null {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  try {
+    const parsed: unknown = JSON.parse(text.slice(start));
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The RPC ids of the page's `method` requests for this terminal, in the order it sent them. */
@@ -59,17 +85,20 @@ function requestIds(sent: readonly string[], method: string, address: string): n
   return sent.flatMap((text) => [...text.matchAll(request)].map((match) => Number(match[1])));
 }
 
-/** Whether hc has answered the request with this RPC id: a JSON-RPC response (a result or an error) carrying that id. */
+/** Whether hc has answered the request with this RPC id: a JSON-RPC response whose own id it is, not a nested one. */
 function answered(received: readonly string[], id: number): boolean {
-  const ofId = new RegExp(`"id":${id}[,}]`);
-  return received.some((text) => text.includes('"jsonrpc":"2.0"') && /"(result|error)":/.test(text) && ofId.test(text));
+  return received.some((text) => {
+    const message = messageOf(text);
+    return message !== null && message["id"] === id && ("result" in message || "error" in message);
+  });
 }
 
 /**
  * After the reload the view must mount and fit before it attaches, which a starved renderer can spend most of a wait
  * on; hc refuses the attach (the program is over), and the view asks hc what is left (terminal.get) before it says the
  * session ended. Each step waits on its own bound and fails by name; one 20 s wait from the reload counted the time
- * before the attach was even sent. The answers need no more than the page's own call deadline (20 s).
+ * before the attach was even sent. The answers need no more than the page's own call deadline (20 s), and terminal.get
+ * goes out as soon as the refusal is in, so it waits as long as an answer does. 125 s in all.
  */
 const ENDED_BOUNDS = { tab: 20_000, attach: 30_000, answer: 20_000, show: 15_000 } as const;
 
@@ -85,21 +114,21 @@ async function endedAfterReload(
   ).toHaveCount(tabsBefore, { timeout: ENDED_BOUNDS.tab });
   const step = async (method: string, sentBound: number): Promise<void> => {
     await expect
-      .poll(() => requestIds(frames.sent, method, address).length, {
+      .poll(() => requestIds(frames.sent(), method, address).length, {
         message: `the page sends ${method} after the reload`,
         timeout: sentBound,
       })
       .toBeGreaterThan(0);
-    const id = requestIds(frames.sent, method, address)[0] ?? -1;
+    const id = requestIds(frames.sent(), method, address)[0] ?? -1;
     await expect
-      .poll(() => answered(frames.received, id), {
+      .poll(() => answered(frames.received(), id), {
         message: `hc answers ${method} #${id}`,
         timeout: ENDED_BOUNDS.answer,
       })
       .toBe(true);
   };
   await step("terminal.attach", ENDED_BOUNDS.attach);
-  await step("terminal.get", ENDED_BOUNDS.attach);
+  await step("terminal.get", ENDED_BOUNDS.answer);
   await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: ENDED_BOUNDS.show });
 }
 
@@ -131,15 +160,19 @@ test("a terminal whose program ends while the page is closed shows as ended afte
       // Which side lost the pane (#2412): the core's layout as it is now, and what the page sent and heard since the
       // reload. Written as files, so they land in test-results, which CI uploads; a body attachment the line reporter
       // shows only cut short.
-      const doc = test.info().outputPath("core-herdr-app.json");
-      writeFileSync(doc, JSON.stringify(await getCoreDoc(LAYOUT_DOC), null, 2));
-      await test.info().attach("core herdr-app after the reload", { path: doc, contentType: "application/json" });
+      // The frames first: they cost nothing, and the document read below goes to hc, which may not answer (#2416).
       const log = test.info().outputPath("page-hc-frames.txt");
-      writeFileSync(
-        log,
-        [...frames.sent.map((text) => `> ${text}`), ...frames.received.map((text) => `< ${text}`)].join("\n"),
-      );
+      writeFileSync(log, frames.all.map((frame) => `${frame.way} ${frame.text}`).join("\n"));
       await test.info().attach("page hc frames since the reload", { path: log, contentType: "text/plain" });
+      const doc = test.info().outputPath("core-herdr-app.json");
+      let read: string;
+      try {
+        read = JSON.stringify(await getCoreDoc(LAYOUT_DOC), null, 2);
+      } catch (cause) {
+        read = JSON.stringify({ unread: String(cause) }, null, 2);
+      }
+      writeFileSync(doc, read);
+      await test.info().attach("core herdr-app after the reload", { path: doc, contentType: "application/json" });
       throw error;
     }
     await expect(page.getByText("This terminal didn't open")).toHaveCount(0);
