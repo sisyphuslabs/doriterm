@@ -145,4 +145,28 @@ test.describe("on a Mac", () => {
       await expect(terminal).toContainText("GOT-INT-42", { timeout: 15_000 });
     });
   }
+
+  test("Ctrl+Shift+C on a held selection interrupts the program, as Ctrl+C does", async ({ page }) => {
+    const terminal = await terminalOn(page, "local");
+    await trapping(page, terminal, "INT");
+    await select(page, terminal, "READY-42");
+    await page.keyboard.press("Control+Shift+KeyC");
+    await expect(terminal).toContainText("GOT-INT-42", { timeout: 15_000 });
+  });
+});
+
+// A Mac browser can report an empty navigator.platform; the app and wterm then both read the user agent.
+test.describe("on a Mac known only by its user agent", () => {
+  test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/537.36 Chrome/140.0 Safari/537.36" });
+
+  test("Ctrl+C on a held selection interrupts the program", async ({ page }) => {
+    await page.addInitScript(() =>
+      Object.defineProperty(Navigator.prototype, "platform", { get: () => "", configurable: true }),
+    );
+    const terminal = await terminalOn(page, "local");
+    await trapping(page, terminal, "INT");
+    await select(page, terminal, "READY-42");
+    await page.keyboard.press("Control+c");
+    await expect(terminal).toContainText("GOT-INT-42", { timeout: 15_000 });
+  });
 });
