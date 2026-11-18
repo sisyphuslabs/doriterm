@@ -47,6 +47,66 @@ export function movedOrder(ids: readonly string[], id: string, to: number): read
   return [...rest.slice(0, at), id, ...rest.slice(at)];
 }
 
+const STAMP_FIELD = "order_stamp";
+
+/**
+ * Which write of the shared machine order a copy holds (#2531). The order is kept on every machine's core, and each write
+ * carries a stamp: `n` counts writes (one more than the copy it was made on, so a write made on the newest copy always
+ * wins whatever the clocks say), `at` is the writer's clock and `by` the writing device, the tie-breaks for two writes
+ * made on the same copy while they could not see each other.
+ */
+export interface OrderRank {
+  readonly n: number;
+  readonly at: number;
+  readonly by: string;
+}
+
+/** Whether `a` is a later write than `b`; no stamp at all is older than any stamp. */
+export function laterRank(a: OrderRank | null, b: OrderRank | null): boolean {
+  if (a === null) return false;
+  if (b === null) return true;
+  if (a.n !== b.n) return a.n > b.n;
+  if (a.at !== b.at) return a.at > b.at;
+  return a.by > b.by;
+}
+
+const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((id, index) => id === b[index]);
+
+/** The `by` of a rank a copy has when an older client moved it: what follows is the order it holds. */
+export const MOVED = "moved:";
+
+/**
+ * The rank of the write a copy holds, or null for a copy no stamped write reached. The stamp records the order it was
+ * written with: a copy whose order differs was moved since by a client that keeps the stamp it found without writing its
+ * own (a version before the shared order), and ranks just above the write it was made on and below any later one.
+ */
+export function orderRank(doc: JsonObject | null): OrderRank | null {
+  const stamp = doc?.[STAMP_FIELD];
+  if (!isJsonObject(stamp)) return null;
+  const { n, at, by, order } = stamp;
+  if (typeof n !== "number" || typeof at !== "number" || typeof by !== "string" || !Array.isArray(order)) return null;
+  const written = order.filter((id): id is string => typeof id === "string");
+  if (sameIds(written, storedOrder(doc) ?? [])) return { n, at, by };
+  // Two copies moved this way on top of the same write tie on n and at; the order itself breaks the tie, so every
+  // device picks the same one whichever copy it reads first (#2534 review).
+  return { n: n + 1, at: 0, by: `${MOVED}${(storedOrder(doc) ?? []).join(",")}` };
+}
+
+/** `doc` as the write `rank` makes it: its order, stamped with the rank and the order it was written with. */
+export function stampOrder(doc: JsonObject, rank: OrderRank): JsonObject {
+  return { ...doc, [STAMP_FIELD]: { ...rank, order: [...(storedOrder(doc) ?? [])] } };
+}
+
+/**
+ * One order from copies no stamped write reached yet, the per-machine orders kept before the order was shared: the first
+ * copy's order (the routing core's), then each id a later copy names that is not placed yet, in that copy's order.
+ */
+export function mergedOrders(copies: readonly (JsonObject | null)[]): readonly string[] | null {
+  const orders = copies.flatMap((doc) => storedOrder(doc) ?? []);
+  return copies.some((doc) => storedOrder(doc) !== null) ? [...new Set(orders)] : null;
+}
+
 /**
  * The edit that moves one machine among `live` (in default order), made on whatever document is current when it is
  * written: after a refused compare-and-set it runs again on the other device's order. Every other field is kept.

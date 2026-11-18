@@ -57,7 +57,8 @@ test("on a phone every palette row does what it says", async ({ page }) => {
   await backToAgents(page);
 
   await openPalette(page);
-  await page.getByRole("group", { name: "Hosts" }).getByRole("option").click();
+  // Every machine is a host row now (#2531); the e2e host's own row opens Settings like any other.
+  await page.getByRole("group", { name: "Hosts" }).getByRole("option").first().click();
   await expect(page).toHaveURL(/\/settings$/);
   await page.getByRole("button", { name: "Close settings" }).first().click();
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });

@@ -101,12 +101,7 @@ test.describe("on a phone", () => {
     const spaces = page.getByRole("region", { name: "Spaces" });
     const space = rows(spaces).filter({ hasText: "phone2122" });
     await expect(space.getByLabel(/^\d+ tabs$/)).toHaveText("1", { timeout: 20_000 });
-    await expect(
-      spaces
-        .locator("[data-machine-header]")
-        .first()
-        .getByLabel(/^\d+ tabs$/),
-    ).toHaveText("1");
+    await expect(spaces.locator('[data-machine-header="studio"]').getByLabel(/^\d+ tabs$/)).toHaveText("1");
     // The space's own screen lists that one tab, as its count said.
     await space.click();
     const listed = page.getByRole("region", { name: "Tabs" }).getByRole("button");

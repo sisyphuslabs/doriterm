@@ -5,21 +5,14 @@ import { rowAction } from "./members-section.tsx";
 const member = (hostId: string, phase: MemberEntry["state"]["phase"]): MemberEntry =>
   ({ target: { hostId }, state: { phase } }) as unknown as MemberEntry;
 
-describe("what a machine's row offers when two are paired (#1296)", () => {
-  test("a machine other than the attached one offers Switch to this machine", () => {
-    expect(rowAction(member("a", "open"), "b")).toBe("switch");
+describe("what a machine's row offers when two are paired (#1296, #2531)", () => {
+  test("a machine that is up offers nothing: no row switches which machine carries the traffic", () => {
+    expect(rowAction(member("a", "open"))).toBeNull();
+    expect(rowAction(member("b", "connecting"))).toBeNull();
   });
 
-  test("the attached machine offers nothing", () => {
-    expect(rowAction(member("b", "open"), "b")).toBeNull();
-  });
-
-  test("a stopped machine offers Retry, which is what brings it back, not Switch", () => {
-    expect(rowAction(member("a", "failed"), "b")).toBe("retry");
-    expect(rowAction(member("a", "host-failed"), "b")).toBe("retry");
-  });
-
-  test("Retry wins on the attached machine too, when it is the one in trouble", () => {
-    expect(rowAction(member("b", "failed"), "b")).toBe("retry");
+  test("a stopped machine offers Retry, which is what brings it back", () => {
+    expect(rowAction(member("a", "failed"))).toBe("retry");
+    expect(rowAction(member("a", "host-failed"))).toBe("retry");
   });
 });

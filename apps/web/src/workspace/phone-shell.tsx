@@ -158,15 +158,15 @@ export function PhoneShell(props: PhoneShellProps) {
           </ScrollArea>
         </main>
         {/*
-          The machines' list carries how this device reaches them: the core, the path (Relay or Direct) and a reconnect in
-          progress. The agents list leaves that to the connection line under its header.
+          The machines' list carries how this device reaches them: the path (Relay or Direct) and a reconnect in progress. The agents list leaves that to the connection line under its header.
         */}
         {section === "spaces" ? (
           <StatusBar
             start={
               <>
+                {/* How this device reaches the machines, never which machine carries it (#2531). */}
                 <StatusBarItem icon={<Monitor aria-hidden />}>
-                  {`${connection.hello.core.name} · ${connectionStore.settings.mode === "relay" ? "relay" : "loopback"}`}
+                  {connectionStore.settings.mode === "relay" ? "Relay" : "Loopback"}
                 </StatusBarItem>
                 <ConnectionPathItem />
                 <ReconnectStatus compact />

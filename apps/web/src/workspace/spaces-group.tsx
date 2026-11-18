@@ -165,7 +165,7 @@ function SpacesLists({
   // The icon rail has no room for a drag handle or a menu; the full sidebar reorders.
   const list = useRef<HTMLDivElement>(null);
   const { reorderOf, overlay } = useMachineReorder(list, machines.entries, !rail && !filtering);
-  const [collapsed, toggle] = useCollapsed();
+  const [collapsed, toggle] = useCollapsed(machines.entries);
   const local = machines.entries.find((machine) => machine.local);
   const newSpaceOn = (machine: MachineEntry): void =>
     machine.local ? machines.start({}) : machines.newTerminalOn(machine.name);
@@ -188,9 +188,9 @@ function SpacesLists({
       tabs={tabs}
       connected={linkDown === null && machine.state === "connected"}
       rail={rail}
-      collapsed={collapsed.includes(machine.id) && !filtering}
+      collapsed={collapsed.includes(machine.core) && !filtering}
       // A filter opens every machine to show its matches, so a fold toggle there would change a state nothing shows (#850).
-      {...(filtering ? {} : { onToggle: () => toggle(machine.id) })}
+      {...(filtering ? {} : { onToggle: () => toggle(machine.core) })}
       onNewSpace={() => newSpaceOn(machine)}
       {...(machine.first === undefined ? {} : { onOpen: () => onOpen(machine.first ?? "") })}
     />
@@ -236,7 +236,7 @@ function SpacesLists({
                   : undefined
               }
             >
-              {collapsed.includes(machine.id) && !filtering ? null : (
+              {collapsed.includes(machine.core) && !filtering ? null : (
                 <>
                   {listOf(own, true)}
                   {own.length > 0 || rail || filtering ? null : (

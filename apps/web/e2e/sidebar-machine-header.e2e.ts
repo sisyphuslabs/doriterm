@@ -11,11 +11,8 @@ test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
 const spaces = (page: Page) =>
   page.getByRole("complementary", { name: "Workspace" }).getByRole("region", { name: "Spaces", exact: true });
-/** This machine's group comes first; an added machine's is named after it. */
-const group = (page: Page, name?: string) =>
-  name === undefined
-    ? spaces(page).getByRole("region").first()
-    : spaces(page).getByRole("region", { name, exact: true });
+/** A machine's group, named after it; this core's (host.ts names it `studio`) when none is named. */
+const group = (page: Page, name = "studio") => spaces(page).getByRole("region", { name, exact: true });
 
 let address = "";
 test.beforeAll(() => {

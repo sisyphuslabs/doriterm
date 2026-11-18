@@ -25,14 +25,17 @@ const status = (page: Page) =>
 const order = (page: Page) =>
   rows(page).evaluateAll((els) => els.map((el) => el.querySelector("span[title]")?.getAttribute("title")));
 
+/** Opens the workspace and returns this core's name: by name, the added machine (`build-box`) is listed above it (#2531). */
 async function openWorkspace(page: Page): Promise<string> {
   await page.goto("/");
   await expect(machineRow(page)).toContainText("connected", { timeout: 30_000 });
-  const local = await rows(page).first().locator("span[title]").getAttribute("title");
+  const local = await rows(page).nth(1).locator("span[title]").getAttribute("title");
   if (local === null) throw new Error("no local machine row");
-  await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
+  await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
   return local;
 }
+
+const rowButton = (page: Page, name: string) => page.getByRole("button", { name: new RegExp(`^${name}\\b`) });
 
 /** How far up `name`'s group must go for its centre to pass `above`'s: a group lands past a neighbour once it does. */
 async function pastCentre(page: Page, name: string, above: string): Promise<number> {
@@ -56,23 +59,27 @@ async function dragRow(page: Page, name: string, dy: number, drop = true): Promi
 }
 
 test.use({ serviceWorkers: "block" });
-test.beforeEach(() => setCoreDoc(ORDER_DOC, null));
-// The order is the core's, shared by every spec on this worker: leave none behind for the next one.
-test.afterEach(() => setCoreDoc(ORDER_DOC, null));
+/** The order is kept on both cores (#2531), shared by every spec on this worker: none is left for the next one. */
+function clearOrders(): void {
+  setCoreDoc(ORDER_DOC, null);
+  setCoreDoc(ORDER_DOC, null, undefined, "machine");
+}
+test.beforeEach(clearOrders);
+test.afterEach(clearOrders);
 
 test.describe("machine order", () => {
   test("a row dragged above another lands there, is announced, and keeps its place after a reload", async ({
     page,
   }) => {
     const local = await openWorkspace(page);
-    await dragRow(page, MACHINE_NAME, await pastCentre(page, MACHINE_NAME, local));
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
-    await expect(status(page)).toHaveText(new RegExp(`^Moved ${MACHINE_NAME} to position 1 of 2`));
+    await dragRow(page, local, await pastCentre(page, local, MACHINE_NAME));
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
+    await expect(status(page)).toHaveText(new RegExp(`^Moved ${local} to position 1 of 2`));
     await expect(page.locator("[data-drag-id][data-dragging]")).toHaveCount(0);
     await expect.poll(() => getCoreDoc(ORDER_DOC)).toMatchObject({ machine_order: expect.any(Array) });
     await page.reload();
-    await expect(machineRow(page)).toContainText("connected", { timeout: 30_000 });
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect(rowButton(page, local)).toContainText("connected", { timeout: 30_000 });
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
   });
 
   test("under reduced motion the neighbours stay put and the landing line is drawn over the lifted row", async ({
@@ -80,11 +87,11 @@ test.describe("machine order", () => {
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     const local = await openWorkspace(page);
-    const before = await rowOf(page, local).boundingBox();
-    await dragRow(page, MACHINE_NAME, await pastCentre(page, MACHINE_NAME, local), false);
+    const before = await rowOf(page, MACHINE_NAME).boundingBox();
+    await dragRow(page, local, await pastCentre(page, local, MACHINE_NAME), false);
     const caret = page.locator("[data-row-drop-caret]");
     await expect(caret).toBeVisible();
-    expect(await rowOf(page, local).boundingBox()).toEqual(before);
+    expect(await rowOf(page, MACHINE_NAME).boundingBox()).toEqual(before);
     // The row is lifted past the top of the list, over the line: the line must still be the topmost thing there.
     // Hit testing follows paint order but skips `pointer-events: none`, so the line takes hits only for this probe.
     const topmost = await caret.evaluate((line) => {
@@ -96,36 +103,39 @@ test.describe("machine order", () => {
     });
     expect(topmost).toBe(true);
     await page.mouse.up();
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
   });
 
   test("a drag that Escape cancels leaves the order as it was and writes nothing", async ({ page }) => {
     const local = await openWorkspace(page);
-    await dragRow(page, MACHINE_NAME, -40, false);
+    // The default order is saved once every copy is read (#2534 review): the drag must leave that write as it was.
+    await expect.poll(() => getCoreDoc(ORDER_DOC)).toMatchObject({ machine_order: expect.any(Array) });
+    const before = getCoreDoc(ORDER_DOC);
+    await dragRow(page, local, -40, false);
     await page.keyboard.press("Escape");
     await page.mouse.up();
     await expect(page.locator("[data-drag-id][data-dragging]")).toHaveCount(0);
-    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
-    expect(getCoreDoc(ORDER_DOC)).toBeNull();
+    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    expect(getCoreDoc(ORDER_DOC)).toEqual(before);
   });
 
   test("the move keys move the focused row, focus stays on it, and the order survives a reload", async ({ page }) => {
     const local = await openWorkspace(page);
     const [up, down] = await moveKeys(page);
-    const button = machineRow(page);
+    const button = rowButton(page, local);
     await button.focus();
     await page.keyboard.press(up);
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
-    await expect(button).toBeFocused();
-    await expect(status(page)).toHaveText(new RegExp(`^Moved ${MACHINE_NAME} to position 1 of 2`));
-    await page.keyboard.press(down);
     await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
     await expect(button).toBeFocused();
+    await expect(status(page)).toHaveText(new RegExp(`^Moved ${local} to position 1 of 2`));
+    await page.keyboard.press(down);
+    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect(button).toBeFocused();
     await page.keyboard.press(up);
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
     await page.reload();
-    await expect(machineRow(page)).toContainText("connected", { timeout: 30_000 });
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect(rowButton(page, local)).toContainText("connected", { timeout: 30_000 });
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
   });
 
   test("with tabs that could move, the move keys on a focused row move the machine, never a tab", async ({ page }) => {
@@ -135,33 +145,33 @@ test.describe("machine order", () => {
     if ((await tabs(page).count()) < 2) await openNewTerminal(page);
     expect(await selectedIndex(page)).toBeGreaterThan(0);
     const strip = await domOrder(page);
-    const button = machineRow(page);
+    const button = rowButton(page, local);
     await button.focus();
     await pressShortcut(page, "tab.move:left");
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
     await expect(button).toBeFocused();
     expect(await domOrder(page)).toEqual(strip);
   });
 
   test("the row menu moves a machine down and up, and offers no move past either end", async ({ page }) => {
     const local = await openWorkspace(page);
-    await rowOf(page, local).click({ button: "right" });
+    await rowOf(page, MACHINE_NAME).click({ button: "right" });
     await expect(page.getByRole("menuitem", { name: "Move up" })).toHaveAttribute("aria-disabled", "true");
     await page.getByRole("menuitem", { name: "Move down" }).click();
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
-    await rowOf(page, local).click({ button: "right" });
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
+    await rowOf(page, MACHINE_NAME).click({ button: "right" });
     await expect(page.getByRole("menuitem", { name: "Move down" })).toHaveAttribute("aria-disabled", "true");
     await page.getByRole("menuitem", { name: "Move up" }).click();
-    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
+    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
   });
 
   test("an order another client writes reaches the open page live, and never pulls focus back to a moved row", async ({
     page,
   }) => {
     const local = await openWorkspace(page);
-    await rowOf(page, local).click({ button: "right" });
+    await rowOf(page, MACHINE_NAME).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Move down" }).click();
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
     // A closing menu hands focus back to its row once its exit ends; focus is moved away only after that.
     await expect(page.getByRole("menu")).toHaveCount(0);
     const written = getCoreDoc(ORDER_DOC);
@@ -171,8 +181,8 @@ test.describe("machine order", () => {
     const elsewhere = page.getByRole("button", { name: "Add machine" });
     await elsewhere.focus();
     await expect(elsewhere).toBeFocused();
-    setCoreDoc(ORDER_DOC, { machine_order: ids.toReversed(), kept: { by: "another client" } });
-    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
+    setCoreDoc(ORDER_DOC, { ...anotherClientsOrder(ids.toReversed()), kept: { by: "another client" } });
+    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
     await expect(elsewhere).toBeFocused();
   });
 });
@@ -180,6 +190,17 @@ test.describe("machine order", () => {
 /** The chords that move a focused row up and down on the page's platform: the tab move keys (#123). */
 async function moveKeys(page: Page): Promise<readonly [string, string]> {
   return [await shortcut(page, "tab.move:left"), await shortcut(page, "tab.move:right")];
+}
+
+/**
+ * An order another client writes on top of the one this page wrote: stamped one write later, as every client of the
+ * shared order stamps its writes (#2531), so it is the newest copy whichever core holds it.
+ */
+function anotherClientsOrder(ids: readonly string[]): Record<string, unknown> {
+  const written = getCoreDoc(ORDER_DOC);
+  const stamp = typeof written === "object" && written !== null ? Reflect.get(written, "order_stamp") : undefined;
+  const n = typeof stamp === "object" && stamp !== null ? Number(Reflect.get(stamp, "n")) : 0;
+  return { machine_order: [...ids], order_stamp: { n: n + 1, at: Date.now(), by: "another client", order: [...ids] } };
 }
 
 /** The ids the order document holds, after a move this page made. */
@@ -204,10 +225,10 @@ test.describe("machine order follow-ups (#205, #161)", () => {
     await page.keyboard.press("Control+Alt+J");
     await expect(page.getByText("Changed")).toBeVisible();
     const local = await openWorkspace(page);
-    const button = page.getByRole("button", { name: new RegExp(`^${local}\\b`) });
+    const button = page.getByRole("button", { name: new RegExp(`^${MACHINE_NAME}\\b`) });
     await button.focus();
     await page.keyboard.press("Control+Alt+J");
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
     await expect(button).toBeFocused();
   });
 
@@ -216,12 +237,12 @@ test.describe("machine order follow-ups (#205, #161)", () => {
   }) => {
     const local = await openWorkspace(page);
     const [up] = await moveKeys(page);
-    await machineRow(page).focus();
+    await rowButton(page, local).focus();
     await page.keyboard.press(up);
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
-    await expect(status(page)).toHaveText(new RegExp(`^Moved ${MACHINE_NAME} to position 1 of 2`));
-    setCoreDoc(ORDER_DOC, { machine_order: writtenOrder().toReversed() });
     await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
+    await expect(status(page)).toHaveText(new RegExp(`^Moved ${local} to position 1 of 2`));
+    setCoreDoc(ORDER_DOC, anotherClientsOrder(writtenOrder().toReversed()));
+    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
     await expect(status(page)).toHaveText("");
   });
 
@@ -230,7 +251,7 @@ test.describe("machine order follow-ups (#205, #161)", () => {
   }) => {
     setCoreDoc(ORDER_DOC, { machine_order: "not a list" });
     const local = await openWorkspace(page);
-    await rowOf(page, local).click({ button: "right" });
+    await rowOf(page, MACHINE_NAME).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Move down" }).click();
     const toasts = page.getByRole("region", { name: "Notifications" });
     await expect(toasts.getByText("The machine order was not saved")).toBeVisible();
@@ -238,10 +259,10 @@ test.describe("machine order follow-ups (#205, #161)", () => {
       toasts.getByText("The machine order cannot be changed now: a machine order that is not a list of machine ids."),
     ).toBeVisible();
     await expect(toasts.getByText(/layout/i)).toHaveCount(0);
-    expect(await order(page)).toEqual([local, MACHINE_NAME]);
+    expect(await order(page)).toEqual([MACHINE_NAME, local]);
     setCoreDoc(ORDER_DOC, null);
     await toasts.getByRole("button", { name: "Retry" }).click();
-    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local]);
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME]);
   });
 });
 
@@ -288,12 +309,16 @@ test.describe("machine order with a third machine (#161)", () => {
     await page.goto("/");
     await expect(machineRow(page)).toContainText("connected", { timeout: 30_000 });
     await expect(rowOf(page, THIRD)).toBeVisible({ timeout: 30_000 });
-    const local = await rows(page).first().locator("span[title]").getAttribute("title");
+    // By name (#2531): build-box, this core, third-box.
+    const local = await rows(page).nth(1).locator("span[title]").getAttribute("title");
     if (local === null) throw new Error("no local machine row");
-    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME, THIRD]);
-    const [, down] = await moveKeys(page);
+    await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local, THIRD]);
+    const [up, down] = await moveKeys(page);
     const button = page.getByRole("button", { name: new RegExp(`^${local}\\b`) });
     await button.focus();
+    await page.keyboard.press(up);
+    await expect.poll(() => order(page)).toEqual([local, MACHINE_NAME, THIRD]);
+    await expect(button).toBeFocused();
     await page.keyboard.press(down);
     await expect.poll(() => order(page)).toEqual([MACHINE_NAME, local, THIRD]);
     await expect(button).toBeFocused();

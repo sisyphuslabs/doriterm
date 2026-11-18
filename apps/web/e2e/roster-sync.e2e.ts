@@ -22,7 +22,9 @@ const THROUGH_THE_FEED_MS = 5_000;
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Workspace" });
 /** The space rows of this core's own group in Spaces: one per space its layout holds, apart from the group's header and its empty-state row. */
 const ownSpaceRows = (page: Page) =>
-  rows(sidebar(page).getByRole("region", { name: "Spaces" }).getByRole("region").first()).filter({
+  rows(
+    sidebar(page).getByRole("region", { name: "Spaces" }).getByRole("region", { name: "studio", exact: true }),
+  ).filter({
     hasNotText: /connected|New space there/,
   });
 const machineRow = (page: Page, name: string) => page.getByRole("button", { name: new RegExp(`^${name}\\b`) });
