@@ -23,7 +23,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..94a54526419c7e3383f93779e77f42a29b8b37b2 100644
+index 78a86ff..6fa7805 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -67,9 +67,48 @@ const FIXED_KEYS = {
@@ -428,15 +428,26 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..94a54526419c7e3383f93779e77f42a2
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
          if (this.touchPrimary)
-@@ -556,6 +780,7 @@ export class InputHandler {
+@@ -556,6 +780,18 @@ export class InputHandler {
      }
      handleInput(event) {
          this.tabExitArmed = false;
 +        this.clearUnkeyedLetter();
++        // A commit of the previous syllable that arrives while the next composition is already live is ordinary
++        // inserted text, not a preedit change (#2640): it goes to the program, and the live composition keeps the field.
++        if (this.composing && event.inputType === "insertText" && event.data) {
++            const repeats = this.recentCompositionCommit;
++            if (repeats === null || event.data !== repeats.text || performance.now() - repeats.at >= COMPOSITION_INPUT_DEDUP_MS) {
++                this.selectionActions?.clearSelection();
++                this.onData(event.data);
++                this.recentCompositionCommit = { text: event.data, at: performance.now() };
++            }
++            return;
++        }
          if (this.composing) {
              this.sizeComposition();
              return;
-@@ -565,6 +790,36 @@ export class InputHandler {
+@@ -565,6 +801,36 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -473,7 +484,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..94a54526419c7e3383f93779e77f42a2
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1076,7 @@ export class InputHandler {
+@@ -821,7 +1087,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -482,7 +493,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..94a54526419c7e3383f93779e77f42a2
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1110,24 @@ export class InputHandler {
+@@ -855,6 +1121,24 @@ export class InputHandler {
          return null;
      }
  }
