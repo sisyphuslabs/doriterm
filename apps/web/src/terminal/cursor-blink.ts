@@ -52,8 +52,8 @@ export type CursorPhase = "on" | "off";
  * animation started over whenever the cursor's span was rebuilt or the animation's name changed (a new
  * {@link CursorKind}), showing the cursor on at once; {@link restart} and a change of kind are those moments. Each
  * phase reads the state again, so an event that never came (a press whose release went to a context menu) is put
- * right within one phase; nothing is read while the cursor does not blink, but on each frame of a held press until it
- * does (a touch's `:active` comes after its pointerdown, with no event).
+ * right within one phase; nothing is read while the cursor does not blink, but on each frame of a held press that
+ * could still make it blink, until it does (a touch's `:active` comes after its pointerdown, with no event).
  */
 export class CursorBlink {
   readonly #read: () => CursorState;
@@ -65,6 +65,8 @@ export class CursorBlink {
   #kind: CursorKind = "block";
   #cancel: (() => void) | null = null;
   #held: (() => void) | null = null;
+  /** A press is held: between {@link press} and {@link release}, a change of state can start the frames again. */
+  #pressed = false;
 
   /**
    * `read` takes the state now; `draw` marks the phase (null: not blinking); `watch` is told when blinking starts and
@@ -90,7 +92,9 @@ export class CursorBlink {
 
   /** Takes the state again: starts or stops blinking, or starts the phase over for a new kind. */
   decide(): void {
-    this.#settle(this.#read(), false);
+    // During a held press that no frame follows, the change may be what lets the press make the cursor blink.
+    if (this.#pressed && this.#held === null) this.#follow();
+    else this.#settle(this.#read(), false);
   }
 
   /** The cursor's span was rebuilt: a blinking cursor shows on at once, with a whole on phase. */
@@ -104,6 +108,7 @@ export class CursorBlink {
    */
   press(): void {
     this.#held?.();
+    this.#pressed = true;
     this.#follow();
   }
 
@@ -111,6 +116,7 @@ export class CursorBlink {
   release(): void {
     this.#held?.();
     this.#held = null;
+    this.#pressed = false;
     this.decide();
   }
 
@@ -118,6 +124,7 @@ export class CursorBlink {
   stop(): void {
     this.#held?.();
     this.#held = null;
+    this.#pressed = false;
     this.#halt();
   }
 
