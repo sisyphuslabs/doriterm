@@ -69,7 +69,7 @@ async function joinPage(): Promise<Page> {
 test("a page script with no click before it is refused, and the clipboard is not read", async () => {
   const page = await joinPage();
   await setClipboard(INVITE);
-  const answer = await page.evaluate(() => Reflect.get(Reflect.get(window, "doriface"), "pasteInvite")());
+  const answer = await page.evaluate(() => window.doriface?.pasteInvite());
   expect(answer).toEqual({ refused: "gesture" });
   expect(await clipboardText()).toBe(INVITE);
 });
