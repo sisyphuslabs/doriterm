@@ -1,9 +1,18 @@
 import type { Terminal } from "./__generated__/hc-api.ts";
 
+/**
+ * The hc label that names a terminal's space. A loose terminal carrying it is adopted into the space of that name, and a
+ * rename writes it on the space's live terminals too, so hc and the layout document agree (#395, #404).
+ */
+export const SPACE_LABEL = "space";
+
 /** A path's parts on either separator, so a Windows path splits as a POSIX one does. */
-const partsOf = (path: string): readonly string[] => path.split(/[\\/]/).filter((part) => part !== "");
+export const pathParts = (path: string): readonly string[] => path.split(/[\\/]/).filter((part) => part !== "");
 
 const DRIVE = /^[A-Za-z]:$/;
+const LETTER = /^[A-Za-z]$/;
+/** Win32's verbatim and device prefixes: `\\?\C:\...`, `\\.\C:\...`, NT's `\??\C:\...`. */
+const VERBATIM = /^(?:\\\\[?.]\\|\\\?\?\\)/;
 
 /**
  * Directories a shell starts in when nobody chose one: the root, and the system's own directories (the ones a service,
@@ -39,6 +48,11 @@ const POSIX_SYSTEM: ReadonlySet<string> = new Set([
   "private",
   "private/var",
   "private/etc",
+  "root",
+  "var/root",
+  "usr/libexec",
+  "srv",
+  "opt/homebrew",
 ]);
 
 /** Below these every directory is the system's own: Windows' install directory, macOS's sealed system volume. */
@@ -53,21 +67,38 @@ const WINDOWS_SYSTEM: ReadonlySet<string> = new Set([
   "users",
 ]);
 
+/**
+ * The parts below a Windows volume's root, lower-cased; undefined for a POSIX path. A volume is a drive (`C:`, after any
+ * verbatim prefix), a share (`\\\\server\\share`, `\\\\?\\UNC\\server\\share`), or a drive as WSL (`/mnt/c`), Cygwin
+ * (`/cygdrive/c`) and Git Bash (`/c`) mount it.
+ */
+function windowsRest(dir: string): readonly string[] | undefined {
+  const verbatim = VERBATIM.exec(dir);
+  const bare = verbatim === null ? dir : dir.slice(verbatim[0].length);
+  const parts = pathParts(bare);
+  const [first = "", second = ""] = parts;
+  const below = (depth: number): readonly string[] => parts.slice(depth).map((part) => part.toLowerCase());
+  if (DRIVE.test(first)) return below(1);
+  if (verbatim !== null && first.toLowerCase() === "unc") return below(3);
+  if (bare.startsWith("\\\\")) return below(2);
+  if (bare.includes("\\")) return below(0);
+  if ((first === "mnt" || first === "cygdrive") && LETTER.test(second)) return below(2);
+  if (LETTER.test(first)) return below(1);
+  return undefined;
+}
+
 /** Whether a directory is the root or one of the system's own, on Windows (any case) and on POSIX systems. */
 export function isSystemDirectory(dir: string): boolean {
-  const parts = partsOf(dir);
-  const drive = parts[0] !== undefined && DRIVE.test(parts[0]);
-  if (drive || dir.includes("\\")) {
-    const rest = (drive ? parts.slice(1) : parts).map((part) => part.toLowerCase());
-    return rest[0] === WINDOWS_SYSTEM_TREE || WINDOWS_SYSTEM.has(rest.join("/"));
-  }
+  const windows = windowsRest(dir);
+  if (windows !== undefined) return windows[0] === WINDOWS_SYSTEM_TREE || WINDOWS_SYSTEM.has(windows.join("/"));
+  const parts = pathParts(dir);
   return parts[0] === MAC_SYSTEM_TREE || POSIX_SYSTEM.has(parts.join("/"));
 }
 
 /** A directory's last segment as a space's name; none for an empty path or a system directory (#2658). */
 export function folderSpaceName(dir: string): string | undefined {
   if (dir === "" || isSystemDirectory(dir)) return undefined;
-  return partsOf(dir).at(-1);
+  return pathParts(dir).at(-1);
 }
 
 /** The shells by the name their users call them. */
@@ -103,7 +134,7 @@ type Placed = Pick<Terminal, "labels" | "cwd" | "foreground" | "argv">;
  */
 export function terminalSpaceName(terminal: Placed): string {
   return (
-    terminal.labels["space"] ??
+    terminal.labels[SPACE_LABEL] ??
     folderSpaceName(terminal.foreground?.cwd ?? terminal.cwd) ??
     programSpaceName(terminal.argv[0])
   );

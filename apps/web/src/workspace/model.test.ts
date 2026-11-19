@@ -119,7 +119,7 @@ describe("spaces from the layout documents (#404)", () => {
     const spaces = layoutSpaces(
       [
         here(docOf([{ id: "s", tabs: [["t1", "t2"], ["t3"]] }])),
-        on("box", docOf([{ id: "r", folder: "/srv", tabs: [["t9"]] }])),
+        on("box", docOf([{ id: "r", folder: "/data", tabs: [["t9"]] }])),
       ],
       [
         terminal({ address: "t1", cwd: "/w/web", status: working }),
@@ -129,7 +129,7 @@ describe("spaces from the layout documents (#404)", () => {
     );
     expect(spaces.map((space) => [space.name, space.tabs, space.attention, space.addresses])).toEqual([
       ["web", 2, "working", ["t1", "t2", "t3"]],
-      ["srv", 1, undefined, ["box/t9"]],
+      ["data", 1, undefined, ["box/t9"]],
     ]);
   });
 

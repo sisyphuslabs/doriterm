@@ -28,6 +28,19 @@ describe("system directories (#2658)", () => {
       "c:/windows/syswow64",
       "C:\\Program Files",
       "D:",
+      "\\\\?\\C:\\Windows\\System32",
+      "\\\\.\\C:\\Windows",
+      "\\??\\C:\\Windows\\System32",
+      "\\\\?\\UNC\\server\\share\\Windows\\System32",
+      "\\\\server\\share",
+      "/mnt/c/Windows/System32",
+      "/cygdrive/c/Windows",
+      "/c/Windows/System32",
+      "/root",
+      "/var/root",
+      "/usr/libexec",
+      "/srv",
+      "/opt/homebrew",
     ];
     expect(system.filter((dir) => !isSystemDirectory(dir))).toEqual([]);
   });
@@ -40,6 +53,11 @@ describe("system directories (#2658)", () => {
       "/etc/nginx",
       "C:\\Users\\me\\src\\web",
       "C:\\Program Files\\App",
+      "\\\\?\\C:\\src\\web",
+      "/mnt/c/Users/me/web",
+      "/c/src/web",
+      "/mnt/data",
+      "/srv/docs",
     ];
     expect(own.filter(isSystemDirectory)).toEqual([]);
   });
@@ -47,13 +65,18 @@ describe("system directories (#2658)", () => {
 
 describe("a space's name", () => {
   test("is a folder's last segment on either separator, and none for a system directory", () => {
-    expect(["/home/me/api/", "C:\\Users\\me\\web", "C:\\Windows\\System32", "/", ""].map(folderSpaceName)).toEqual([
-      "api",
-      "web",
-      undefined,
-      undefined,
-      undefined,
-    ]);
+    expect(
+      [
+        "/home/me/api/",
+        "C:\\Users\\me\\web",
+        "C:\\Windows\\System32",
+        "/",
+        "",
+        "\\\\?\\C:\\Windows\\System32",
+        "/mnt/c/Windows/System32",
+        "\\\\?\\C:\\src\\web",
+      ].map(folderSpaceName),
+    ).toEqual(["api", "web", undefined, undefined, undefined, undefined, undefined, "web"]);
   });
 
   test("names a shell as its users do and keeps another program's own name", () => {

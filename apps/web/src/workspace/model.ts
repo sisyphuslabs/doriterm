@@ -1,6 +1,7 @@
 import {
   folderSpaceName,
   type JsonObject,
+  pathParts,
   programName,
   programSpaceName,
   type Terminal,
@@ -103,17 +104,13 @@ export const idOfMachine = (name: string | undefined): string => (name === undef
 /** The id of the machine an address is on: this one for a bare `t7`, the named machine for `machine/t7`. */
 export const machineId = (address: string): string => idOfMachine(machineOf(address));
 
-/**
- * The hc label that names a terminal's space. A loose terminal carrying it is adopted into the space of that name, and a
- * rename writes it on the space's live terminals too, so hc and the layout document agree (#395, #404).
- */
-export const SPACE_LABEL = "space";
+export { SPACE_LABEL } from "@doriface/protocol";
 
 const spaceDir = (terminal: Terminal): string => terminal.foreground?.cwd ?? terminal.cwd;
 
 /** The parent directory's name, to tell apart two spaces whose directories end the same way; the whole path at the root. */
 function parentName(path: string): string {
-  const parts = path.split(/[\\/]/).filter((part) => part !== "");
+  const parts = pathParts(path);
   return parts.length >= 2 ? (parts.at(-2) ?? path) : path;
 }
 
@@ -199,8 +196,8 @@ export type ListedSpace = Space & {
  * The spaces as herdr-app lists them (#404): every space of every machine's layout document, this machine's first, then
  * each machine's in name order, each machine's in its document's order. A space is keyed by `spaceKey` and counts its
  * tabs; it is named as saved, else after its folder, else after where its first live terminal is, else (that directory
- * being the root or a system one, #2658) after the program that terminal started, and two of one machine
- * that would read the same are told apart by the parent directory, as toSpaces does (#397).
+ * being the root or a system one, #2658) after the program that terminal started; two of one machine whose folder
+ * names read the same are told apart by the parent directory (#397).
  */
 export function layoutSpaces(
   sources: readonly SpacesSource[],
