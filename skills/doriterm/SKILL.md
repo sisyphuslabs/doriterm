@@ -20,7 +20,7 @@ If `$HC_TERMINAL_ID` is set, you are running inside hc and that is your address.
 | Start more than one agent, or one whose work outlives your turn                                         | `references/orchestration.md` |
 | Install or update the host, read the relay state, add or remove a mesh machine, pair a phone or browser | `references/host.md`          |
 
-The installed binaries are the authority on their own flags: `hc --skill` prints the manual of the installed hc, and `doriface-host --help` and `doriface-host <command> --help` describe the host. When they disagree with a reference here, follow the binary.
+The installed binaries are the authority on their own flags: `hc --skill` prints the manual of the installed hc, and `doriface-host --help` lists every host command with its options. When they disagree with a reference here, follow the binary.
 
 ## The agent to run: OmO
 

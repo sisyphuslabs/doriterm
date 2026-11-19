@@ -44,12 +44,13 @@ On a member, `mesh pair --auto` opens a single-use offer for 10 minutes and admi
 ```sh
 umask 077
 doriface-host mesh pair --auto --no-qr | grep -E '^(doriface|https?)://[^ ]*pair#' > ~/doriterm-invite
+test -s ~/doriterm-invite || echo 'no invite: is a host running here?'
 ```
 
 The joining machine already runs a host:
 
 ```sh
-hc exec -i --on new-box -- sh -c 'f=$(mktemp); cat > "$f"; doriface-host mesh join --yes --from-file "$f"; s=$?; rm -f "$f"; exit $s' < ~/doriterm-invite
+hc exec -i --on new-box --timeout 180 -- sh -c 'f=$(mktemp); cat > "$f"; doriface-host mesh join --yes --from-file "$f"; s=$?; rm -f "$f"; exit $s' < ~/doriterm-invite
 ```
 
 It has no host yet (the installer joins when `DORIFACE_JOIN` holds the link):
@@ -60,7 +61,7 @@ hc exec -i --on new-box --timeout 600 -- sh -c 'DORIFACE_JOIN="$(cat)" sh -c "cu
 
 Then `rm -f ~/doriterm-invite`, and check `doriface-host mesh status` on any member until the new machine reads `connected`.
 
-- `new-box` must be reachable by hc first: `hc machine add me@new-box --name new-box`, with key login that needs no prompt. Without ssh between the two machines, move the invite file any private way and run `doriface-host mesh join --yes --from-file <file>` on the new machine.
+- `new-box` must be reachable by hc first: `hc machine add --install me@new-box --name new-box`, with key login that needs no prompt. Without ssh between the two machines, move the invite file any private way and run `doriface-host mesh join --yes --from-file <file>` on the new machine.
 - Join one machine at a time.
 - A machine in another mesh must leave it first (`doriface-host mesh leave` there). A host running as root hands every member a root shell; install as a normal user.
 - A Linux machine needs a systemd user manager, which a real ssh login or console session provides and most containers lack.
@@ -74,7 +75,7 @@ doriface-host mesh revoke --compromised <member>   # also removes every member i
 doriface-host mesh leave                           # take this machine out
 ```
 
-A revoke or leave is permanent for every member, and the machine must join again to come back. Show the user the member from `mesh status` and get their yes first.
+A revoke or leave is permanent for every member, and the machine must join again to come back. Show the user the member from `mesh status` and get their yes first. Some revokes and every leave ask for confirmation on the terminal; after the user's yes, pass `--yes` so the command does not wait on a prompt nobody sees.
 
 ## Phones and browsers
 

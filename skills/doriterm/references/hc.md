@@ -5,8 +5,8 @@
 ## Start an agent
 
 ```sh
-hc templates                                   # ready-made roles (reviewer, implementers); use one that fits
-hc run --bg --name review --cwd ~/repo reviewer "Review src/x.ts only. Read-only. Report with hc send $HC_TERMINAL_ID when done or stuck."
+hc templates                                   # roles installed here, if any; `hc run <template> "<task>"` starts one
+hc run --bg --name review --cwd ~/repo omo "Review src/x.ts only. Read-only. Report with hc send $HC_TERMINAL_ID when done or stuck."
 hc run --bg --name fix --cwd ~/repo omo "Fix the failing test in x.test.ts; edit no other file."
 ```
 
@@ -59,7 +59,7 @@ Your own file tools reach only the machine you run on. Use hc for the others.
 
 ```sh
 hc machine ls                                       # machines this core reaches: added ones and mesh members
-hc machine add me@build-box --name build-box        # over ssh; key login must work without a prompt
+hc machine add --install me@build-box --name build-box   # over ssh; copies hc there when missing
 hc run --on build-box --cwd ~/app cargo test        # its address is build-box/t3
 hc exec --on build-box --cwd ~/app -- git diff      # short command, exact output, no terminal
 hc file read --on build-box ~/app/src/x.rs --offset 200 --limit 100
@@ -69,6 +69,7 @@ hc file write --on build-box ~/app/src/y.rs < y.rs
 
 - `exec` runs its argv without a shell, for 60 seconds by default (`--timeout`, at most 600); use `sh -c '...'` when you need one. `-i` feeds it what is piped into hc.
 - `file edit` needs the old text exactly once; repeat `--old`/`--new` pairs for several changes, which apply all or none. `file write` replaces the whole file and creates folders.
+- `machine add` needs key login that asks nothing; without `--install` it asks before copying hc to a machine that lacks it.
 - Remote paths start at that machine's home unless you pass `--cwd`.
 - A machine whose ssh login fails reads `needs_login`; `hc machine login <name>` reconnects now.
 - On Linux, programs end at logout unless lingering is on. `hc machine ls` marks that case; `sudo loginctl enable-linger <user>` on that machine fixes it once.
