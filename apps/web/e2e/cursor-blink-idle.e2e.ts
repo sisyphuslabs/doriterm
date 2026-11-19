@@ -105,13 +105,15 @@ function observeBlink(terminal: Locator): Promise<Blink> {
 }
 
 const TRANSPARENT = "rgba(0, 0, 0, 0)";
+/** A bar or underline's off phase: cursor-line-blink's none, as Chromium computed it, matched to the line's inset. */
+const NO_LINE = "rgba(0, 0, 0, 0) 0px 0px 0px 0px inset";
 
 /** The off phase draws the cell as it is, in every shape: no block, no bar or underline, no outline. */
 function expectOffIsTheCell(blink: Blink): void {
   expect(blink.animations).toEqual([]);
   expect(blink.off.background).toBe(blink.cell.background);
   expect(blink.off.color).toBe(blink.cell.color);
-  expect(blink.off.boxShadow).toBe("none");
+  expect(["none", NO_LINE]).toContain(blink.off.boxShadow);
   expect(blink.off.outlineStyle === "none" || blink.off.outlineColor === TRANSPARENT).toBe(true);
 }
 
@@ -225,7 +227,7 @@ async function expectLineKeepsCursorText(
   expect(blink.on.color, shape).toBe(still.color);
   expect(blink.off.color, shape).toBe(still.color);
   expect(blink.on.boxShadow, shape).toBe(still.boxShadow);
-  expect(blink.off.boxShadow, shape).toBe("none");
+  expect(blink.off.boxShadow, shape).toBe(NO_LINE);
   expect(blink.off.background, shape).toBe(blink.cell.background);
 }
 
