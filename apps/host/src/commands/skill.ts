@@ -1,8 +1,18 @@
-import type { SkillStatus } from "@doriface/protocol";
+import type { SkillState, SkillStatus } from "@doriface/protocol";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { requestControl } from "../control.ts";
-import { installSkill, NoBundledSkill, skillStatus, type SkillBundle, uninstallSkill } from "../skill/agent-skill.ts";
+import {
+  type DirResult,
+  installSkill,
+  NoBundledSkill,
+  skillStatus,
+  type SkillBundle,
+  uninstallSkill,
+} from "../skill/agent-skill.ts";
+// The one module that imports the bundle: Bun 1.4.4 leaves a macro call unreplaced in a module two others import.
+import { BUNDLED_SKILL } from "../skill/bundled.ts";
+import { type AgentSkill, agentSkill } from "../skill/skill-host.ts";
 import { skillTargets } from "../skill/skill-targets.ts";
 import { defaultStateDir } from "../state/files.ts";
 
@@ -18,15 +28,20 @@ export const SKILL_USAGE = `usage: doriface-host skill install [--dir <skills di
   --json               status: print the status as JSON
   --state-dir <dir>    the running host to tell, so the app shows the change (default $DORIFACE_HOST_STATE_DIR)`;
 
+export { BUNDLED_SKILL };
+
+/** The agent skill a running host manages: the bundled one, in the directories found under this user's home. */
+export const hostAgentSkill = (): AgentSkill => agentSkill(BUNDLED_SKILL, () => skillTargets(homedir()));
+
 export interface SkillCommandEnv {
-  readonly bundle: SkillBundle;
+  readonly bundle?: SkillBundle;
   readonly home?: string;
   readonly now?: () => Date;
   /** Tells a running host the skill changed; resolves undefined when none runs. */
   readonly notify?: (stateDir: string) => Promise<unknown>;
 }
 
-const STATE_WORDS: Readonly<Record<string, string>> = {
+const STATE_WORDS: Readonly<Record<SkillState, string>> = {
   installed: "installed",
   outdated: "outdated (written by an older host)",
   missing: "not installed",
@@ -36,10 +51,22 @@ const STATE_WORDS: Readonly<Record<string, string>> = {
 function statusLines(status: SkillStatus): string {
   const head = status.bundled === null ? "this host build carries no agent skill" : `bundled skill v${status.bundled}`;
   const dirs = status.dirs.map(({ dir, state, version }) => {
-    const word = STATE_WORDS[state] ?? state;
+    const word = STATE_WORDS[state];
     return `  ${dir}/doriterm: ${word}${version === undefined || state === "foreign" ? "" : ` (v${version})`}`;
   });
   return `${[head, ...dirs].join("\n")}\n`;
+}
+
+/** One line per directory; answers the exit code: 1 when any directory failed. */
+function report<A extends string>(
+  results: readonly DirResult<A | "failed">[],
+  words: Readonly<Record<A, string>>,
+  out: (text: string) => void,
+): number {
+  for (const { dir, action, error } of results) {
+    out(`${dir}/doriterm: ${action === "failed" ? `failed: ${error ?? "unknown error"}` : words[action as A]}\n`);
+  }
+  return results.some((result) => result.action === "failed") ? 1 : 0;
 }
 
 const notifyHost = (stateDir: string): Promise<unknown> =>
@@ -62,49 +89,47 @@ export async function skillCommand(
       "state-dir": { type: "string" },
     },
   });
+  const bundle = env.bundle ?? BUNDLED_SKILL;
   const targets = skillTargets(env.home ?? homedir(), values.dir);
   const now = env.now ?? (() => new Date());
   const notify = (): Promise<unknown> => (env.notify ?? notifyHost)(values["state-dir"] ?? defaultStateDir());
   switch (action) {
     case "status": {
-      const status = await skillStatus(env.bundle, targets);
+      const status = await skillStatus(bundle, targets);
       out(values.json ? `${JSON.stringify(status, null, 2)}\n` : statusLines(status));
       return 0;
     }
     case "install": {
-      let results;
       try {
-        results = await installSkill(env.bundle, targets, now);
+        const results = await installSkill(bundle, targets, now);
+        return report(
+          results,
+          {
+            written: `installed v${bundle.version}`,
+            updated: `updated to v${bundle.version}`,
+            unchanged: "already current",
+            foreign: "left alone: a doriterm skill this host did not write is there",
+          },
+          out,
+        );
       } catch (error) {
         if (!(error instanceof NoBundledSkill)) throw error;
         out(`${error.message}; nothing was installed\n`);
         return 1;
+      } finally {
+        await notify();
       }
-      await notify();
-      for (const { dir, action: done } of results) {
-        const word = {
-          written: `installed v${env.bundle.version}`,
-          updated: `updated to v${env.bundle.version}`,
-          unchanged: "already current",
-          foreign: "left alone: a doriterm skill this host did not write is there",
-        }[done];
-        out(`${dir}/doriterm: ${word}\n`);
-      }
-      return 0;
     }
-    case "uninstall": {
-      const results = await uninstallSkill(env.bundle, targets);
-      await notify();
-      for (const { dir, action: done } of results) {
-        const word = {
-          removed: "removed",
-          missing: "not installed",
-          foreign: "left alone: this host did not write it",
-        }[done];
-        out(`${dir}/doriterm: ${word}\n`);
+    case "uninstall":
+      try {
+        return report(
+          await uninstallSkill(bundle, targets),
+          { removed: "removed", missing: "not installed", foreign: "left alone: this host did not write it" },
+          out,
+        );
+      } finally {
+        await notify();
       }
-      return 0;
-    }
     default:
       throw new Error(action === undefined ? "skill wants install, status or uninstall" : `unknown skill ${action}`);
   }

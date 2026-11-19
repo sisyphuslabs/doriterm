@@ -20,15 +20,16 @@ function walk(root: string, dir: string, into: SkillFile[]): void {
 /**
  * Every file under `skills/doriterm`, read when the host is built: imported `with { type: "macro" }`, so a compiled
  * host (the release binaries and the desktop app's) carries the files it was built with, and a checkout run reads the
- * checkout's. A checkout without the directory carries none.
+ * checkout's. A source without SKILL.md fails the build.
  */
 export function readSkillSource(source: string = SOURCE): SkillFile[] {
   const files: SkillFile[] = [];
   try {
     walk(source, source, files);
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
-    throw error;
+    // A build without the skill would ship a host that cannot install it: refuse to build instead.
+    throw new Error(`the agent skill the host carries is missing: no skills/doriterm at ${source}`, { cause: error });
   }
+  if (!files.some((file) => file.path === "SKILL.md")) throw new Error(`skills/doriterm at ${source} has no SKILL.md`);
   return files;
 }

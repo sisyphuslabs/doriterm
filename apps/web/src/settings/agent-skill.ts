@@ -25,7 +25,7 @@ const versioned = (word: string, version: string | undefined): string =>
  * directories and never touches a foreign one, so a mix of foreign and missing still offers it.
  */
 export function skillLine(skill: SkillStatus | undefined): SkillLine | null {
-  if (skill === undefined) return { text: "Agent skill not reported · Update Doriterm on this machine", action: null };
+  if (skill === undefined) return { text: "Agent skill not reported (its host is older than the skill)", action: null };
   if (skill.bundled === null) return { text: "This host build has no agent skill", action: null };
   const outdated = skill.dirs.find((dir) => dir.state === "outdated");
   if (outdated !== undefined) {
@@ -99,6 +99,7 @@ export function requestSkill(
 ): Promise<SkillStatus> {
   return new Promise((resolve, reject) => {
     let open = true;
+    let written = false;
     const finish = (settle: () => void): void => {
       if (!open) return;
       open = false;
@@ -112,7 +113,8 @@ export function requestSkill(
       try {
         const doc = await link.call("doc.get", { name: SKILL_REQUEST_DOC, ...where(machine) });
         const answer = doc.value === null ? undefined : parseSkillRequestDoc(doc.value);
-        if (answer === undefined || answer.request !== request) return;
+        // A request another client wrote over ours is answered by the same install, so its answer is ours too.
+        if (answer === undefined || !written) return;
         if ("error" in answer) {
           fail(answer.error);
           return;
@@ -128,6 +130,9 @@ export function requestSkill(
       link.onGap(() => void check()),
     ];
     const timer = setTimeout(() => fail("The host did not answer. Try again."), timeoutMs);
-    writeRequest(link, machine, request).then(() => check(), fail);
+    writeRequest(link, machine, request).then(() => {
+      written = true;
+      return check();
+    }, fail);
   });
 }

@@ -39,7 +39,11 @@ async function listeningUrl(stderr: ReadableStream<Uint8Array>): Promise<string>
   }
 }
 
-/** Starts the host on the second core's session and opens one pipe, which starts its writers; resolves with its stop. */
+/**
+ * Starts the host on the second core's session and opens one pipe, which starts its writers; resolves with its stop.
+ * The pipe stands in for the connection the app keeps to each mesh member: a host starts its writers once its core is up
+ * (a pipe, or a mesh), and joining two hosts into a mesh needs the private relay, which this suite runs without.
+ */
 export async function startMachineHost(
   hc: string,
   env: Record<string, string | undefined>,

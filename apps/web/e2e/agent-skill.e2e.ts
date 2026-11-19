@@ -2,14 +2,19 @@
 // (#2653). The e2e hosts run with their own temporary HOME, so no real skill directory is touched. With CAPTURE=1 it also
 // saves the rows before and after Install at 1440 and 390 (day) under $SHOTS_DIR (default $TMPDIR/shots), never into docs/.
 import type { Locator, Page } from "@playwright/test";
+import { execFile } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { expect, test } from "./fixtures.ts";
-import { MACHINE_NAME } from "./machine.ts";
+import { E2E_HOST_ENV } from "./config.ts";
+import { MACHINE_ENV, MACHINE_NAME } from "./machine.ts";
+import { readSavedEnv } from "./saved-env.ts";
 import { STATE_BOUND_MS } from "./machine-switch.ts";
 
 const THIS_COMPUTER = "studio";
+const run = promisify(execFile);
 const CAPTURE = process.env["CAPTURE"] === "1";
 const SHOTS = process.env["SHOTS_DIR"] || join(tmpdir(), "shots");
 const INSTALL_BOUND_MS = 30_000;
@@ -43,7 +48,22 @@ async function shoot(page: Page, row: Locator, name: string): Promise<void> {
   await page.setViewportSize(WIDTHS[0]);
 }
 
-async function installOn(page: Page, name: string, slug: string): Promise<void> {
+/**
+ * Takes the skill off a host with `doriface-host skill uninstall` under that host's HOME, which tells the running host,
+ * so each test starts from "not installed" whatever ran before it (a retry, or another spec).
+ */
+async function uninstallOn(savedFile: string): Promise<void> {
+  const { env } = readSavedEnv(savedFile);
+  const state = env["XDG_STATE_HOME"];
+  if (state === undefined) throw new Error(`${savedFile} names no state dir`);
+  const cli = join(import.meta.dirname, "..", "..", "host", "src", "cli.ts");
+  await run("bun", [cli, "skill", "uninstall"], {
+    env: { ...process.env, ...env, HOME: join(dirname(state), "home") },
+  });
+}
+
+async function installOn(page: Page, name: string, slug: string, savedFile: string): Promise<void> {
+  await uninstallOn(savedFile);
   const row = await rowOf(page, name);
   await expect(row).toContainText("Agent skill not installed", { timeout: STATE_BOUND_MS });
   await shoot(page, row, `agent-skill-${slug}-before`);
@@ -58,11 +78,11 @@ test.describe("Settings, agent skill", () => {
 
   test("this computer's row offers Install and then names the installed version", async ({ page }) => {
     test.setTimeout(INSTALL_BOUND_MS * 2);
-    await installOn(page, THIS_COMPUTER, "this-computer");
+    await installOn(page, THIS_COMPUTER, "this-computer", E2E_HOST_ENV);
   });
 
   test("the added machine's row offers Install and then names the installed version", async ({ page }) => {
     test.setTimeout(INSTALL_BOUND_MS * 2);
-    await installOn(page, MACHINE_NAME, "machine");
+    await installOn(page, MACHINE_NAME, "machine", MACHINE_ENV);
   });
 });

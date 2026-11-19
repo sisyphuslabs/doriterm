@@ -12,6 +12,8 @@ export function openControl(
   push: HostPush | undefined,
   /** Writes the host's facts again after `skill install` or `skill uninstall` changed the skill on this machine. */
   skillChanged?: () => void,
+  /** Starts the host's writers on its core once it is in a mesh, whose reconciler brings the core up. */
+  meshJoined?: () => void,
 ) {
   return listenControl(stateDir, async (request, closed, confirm) => {
     switch (request.op) {
@@ -21,6 +23,7 @@ export function openControl(
         return e2ee.sessions.closeRevoked();
       case "mesh-changed":
         e2ee.sync.changed();
+        meshJoined?.();
         push?.prune();
         return e2ee.sessions.closeRevoked();
       case "pair":
@@ -31,8 +34,11 @@ export function openControl(
         return e2ee.hostMesh.pending.next(closed);
       case "mesh-approve":
         return { decided: e2ee.hostMesh.pending.decide(request.nonce, request.approve, request.code) };
-      case "mesh-join":
-        return e2ee.hostMesh.join(request, confirm);
+      case "mesh-join": {
+        const joined = await e2ee.hostMesh.join(request, confirm);
+        meshJoined?.();
+        return joined;
+      }
       case "mesh-status":
         return (await meshStatus?.()) ?? null;
       case "mesh-revoke":

@@ -92,8 +92,8 @@ export function useAgentSkill(connection: HcConnection | null, machine: string |
     setError(undefined);
     void (async () => {
       try {
-        await requestSkill(link, machine);
-        setRead(await readSkill(link, machine));
+        // The host's own answer is the status after the install; its document is written again only after it.
+        setRead({ skill: await requestSkill(link, machine) });
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {

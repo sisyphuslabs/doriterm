@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listenControl } from "../control.ts";
@@ -51,6 +51,18 @@ describe("doriface-host skill", () => {
     expect((await run(["uninstall"])).text).toBe(
       "~/.agents/skills/doriterm: removed\n~/.claude/skills/doriterm: left alone: this host did not write it\n",
     );
+  });
+
+  test("a directory that cannot be written is named, the others are written, the host is told, and it exits 1", async () => {
+    mkdirSync(join(home, ".claude"));
+    writeFileSync(join(home, ".claude", "skills"), "not a directory");
+    const notified: string[] = [];
+    const install = await run(["install"], notified);
+    expect(install.code).toBe(1);
+    expect(install.text).toStartWith(
+      "~/.agents/skills/doriterm: installed v0.1.22\n~/.claude/skills/doriterm: failed: ",
+    );
+    expect(notified).toHaveLength(1);
   });
 
   test("an unknown action is refused", async () => {

@@ -12,10 +12,7 @@ import { FINGERPRINT_USAGE, fingerprintCommand } from "./commands/fingerprint.ts
 import { MESH_JOIN_USAGE, meshJoinCommand } from "./commands/mesh-join.ts";
 import { MESH_USAGE, meshCommand } from "./commands/mesh.ts";
 import { PAIR_USAGE, pairCommand } from "./commands/pair.ts";
-import { SKILL_USAGE, skillCommand } from "./commands/skill.ts";
-import { BUNDLED_SKILL } from "./skill/bundled.ts";
-import { agentSkill } from "./skill/skill-host.ts";
-import { skillTargets } from "./skill/skill-targets.ts";
+import { hostAgentSkill, SKILL_USAGE, skillCommand } from "./commands/skill.ts";
 import { HcInstallError, installHc } from "./hc-install.ts";
 import { HOST_VERSION, startHost } from "./host.ts";
 import {
@@ -79,24 +76,17 @@ async function main(args: readonly string[]): Promise<void> {
     await meshJoinCommand(rest, out, log);
     process.exit(0);
   }
-  if (command === "devices") {
-    process.exitCode = await devicesCommand(rest, out);
-    return;
-  }
-  if (command === "mesh") {
-    process.exitCode = await meshCommand(rest, out);
-    return;
-  }
-  if (command === "update") {
-    process.exitCode = await updateCommand(rest, out);
-    return;
-  }
-  if (command === "skill") {
-    process.exitCode = await skillCommand(rest, out, { bundle: BUNDLED_SKILL });
-    return;
-  }
-  if (command === "verify-release") {
-    process.exitCode = await verifyReleaseCommand(rest, out);
+  // The commands that answer an exit code and leave nothing running.
+  const coded: Readonly<Record<string, (args: readonly string[]) => Promise<number>>> = {
+    devices: (given) => devicesCommand(given, out),
+    mesh: (given) => meshCommand(given, out),
+    update: (given) => updateCommand(given, out),
+    skill: (given) => skillCommand(given, out, {}),
+    "verify-release": (given) => verifyReleaseCommand(given, out),
+  };
+  const run = command === undefined ? undefined : coded[command];
+  if (run !== undefined) {
+    process.exitCode = await run(rest);
     return;
   }
   return serve(args);
@@ -191,7 +181,7 @@ async function serve(args: readonly string[]): Promise<void> {
     stateDir: values["state-dir"] ?? defaultStateDir(),
     relay: values["no-relay"] ? undefined : { url: values.relay },
     pushTestOrigins: values["push-test-origin"]?.map(pushOrigin),
-    skill: agentSkill(BUNDLED_SKILL, () => skillTargets(homedir())),
+    skill: hostAgentSkill(),
     log,
   }).catch((error: unknown) => {
     throw asStartupError(error);

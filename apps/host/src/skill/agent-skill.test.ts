@@ -1,7 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import {
   installSkill,
   MARKER_FILE,
@@ -13,6 +24,7 @@ import {
   uninstallSkill,
 } from "./agent-skill.ts";
 import { readSkillSource } from "./bundle-macro.ts";
+import { BUNDLED_SKILL } from "../commands/skill.ts";
 
 const FILES = [
   { path: "SKILL.md", text: "---\nname: doriterm\n---\nuse hc\n" },
@@ -138,8 +150,55 @@ describe("skill install", () => {
     await installSkill(bundle("0.1.21"), [agents], clock);
     // A path that escapes into a file where a directory must go makes the staging write fail.
     const broken = bundle("0.1.22", [...FILES, { path: "SKILL.md/inner.md", text: "x" }]);
-    await expect(installSkill(broken, [agents], clock)).rejects.toThrow();
+    const [result] = await installSkill(broken, [agents], clock);
+    expect(result?.action).toBe("failed");
     expect((await skillStatus(bundle("0.1.21"), [agents])).dirs[0]?.state).toBe("installed");
+    expect(readdirSync(agents.path)).toEqual([SKILL_NAME]);
+  });
+
+  test("a directory that cannot be written is reported failed, and the next one is still written", async () => {
+    mkdirSync(join(root, ".agents"));
+    writeFileSync(agents.path, "a file where the skills directory should be");
+    const results = await installSkill(bundle("0.1.22"), [agents, claude], clock);
+    expect(results.map((result) => result.action)).toEqual(["failed", "written"]);
+    expect(results[0]?.error).toBeString();
+    expect((await skillStatus(bundle("0.1.22"), [claude])).dirs[0]?.state).toBe("installed");
+  });
+
+  test("a doriterm symlink is foreign, even one to a copy a host wrote, and is left as it is", async () => {
+    await installSkill(bundle("0.1.21"), [claude], clock);
+    mkdirSync(agents.path, { recursive: true });
+    symlinkSync(join(claude.path, SKILL_NAME), join(agents.path, SKILL_NAME));
+    symlinkSync(join(root, "nowhere"), join(root, "dangling"));
+    const dangling = { path: root, shown: "~" };
+    renameSync(join(root, "dangling"), join(root, SKILL_NAME));
+    expect((await skillStatus(bundle("0.1.22"), [agents, dangling])).dirs.map((dir) => dir.state)).toEqual([
+      "foreign",
+      "foreign",
+    ]);
+    expect((await installSkill(bundle("0.1.22"), [agents], clock))[0]?.action).toBe("foreign");
+    expect(lstatSync(join(agents.path, SKILL_NAME)).isSymbolicLink()).toBe(true);
+  });
+
+  test("the skill is readable by everyone, as a skill directory is, and a crashed install's staging is swept", async () => {
+    mkdirSync(join(agents.path, `.${SKILL_NAME}.new-crashed`), { recursive: true });
+    await installSkill(bundle("0.1.22"), [agents], clock);
+    expect(statSync(join(agents.path, SKILL_NAME)).mode & 0o777).toBe(0o755);
+    expect(readdirSync(agents.path)).toEqual([SKILL_NAME]);
+  });
+
+  test("a live writer's lock refuses a second install at once; a lock its writer left behind is taken over", async () => {
+    mkdirSync(agents.path, { recursive: true });
+    const lockFile = join(agents.path, `.${SKILL_NAME}.lock`);
+    writeFileSync(lockFile, String(process.pid));
+    const [held] = await installSkill(bundle("0.1.22"), [agents], clock);
+    expect([held?.action, held?.error]).toEqual([
+      "failed",
+      `another install of the doriterm skill is running in ${agents.path}`,
+    ]);
+    // No process has pid 2^22 + 1 on Linux or macOS: the writer that held it is gone.
+    writeFileSync(lockFile, String(4_194_305));
+    expect((await installSkill(bundle("0.1.22"), [agents], clock))[0]?.action).toBe("written");
     expect(readdirSync(agents.path)).toEqual([SKILL_NAME]);
   });
 });
@@ -160,7 +219,7 @@ describe("skill uninstall", () => {
 });
 
 describe("the bundle", () => {
-  test("reads every file under the source, nested ones with / paths, and nothing for a missing source", () => {
+  test("reads every file under the source, nested ones with / paths, and refuses a missing source", () => {
     mkdirSync(join(root, "src", "references"), { recursive: true });
     writeFileSync(join(root, "src", "SKILL.md"), "a");
     writeFileSync(join(root, "src", "references", "b.md"), "b");
@@ -168,6 +227,16 @@ describe("the bundle", () => {
       { path: "SKILL.md", text: "a" },
       { path: "references/b.md", text: "b" },
     ]);
-    expect(readSkillSource(join(root, "none"))).toEqual([]);
+    expect(() => readSkillSource(join(root, "none"))).toThrow("skills/doriterm");
+  });
+
+  test("the host carries every file under the repository's skills/doriterm, SKILL.md among them", () => {
+    const source = join(import.meta.dir, "..", "..", "..", "..", "skills", "doriterm");
+    const onDisk = readdirSync(source, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(source, join(entry.parentPath, entry.name)).split(sep).join("/"))
+      .toSorted();
+    expect(BUNDLED_SKILL.files.map((file) => file.path).toSorted()).toEqual(onDisk);
+    expect(onDisk).toContain("SKILL.md");
   });
 });

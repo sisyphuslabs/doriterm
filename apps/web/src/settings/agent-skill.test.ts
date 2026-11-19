@@ -47,7 +47,7 @@ describe("the agent skill line a machine's row shows (#2653)", () => {
 
   test("a build without a skill, and a host too old to report one, offer nothing", () => {
     expect(skillLine({ bundled: null, dirs: [dir("missing")] })?.action).toBeNull();
-    expect(skillLine(undefined)?.text).toContain("Update Doriterm on this machine");
+    expect(skillLine(undefined)?.action).toBeNull();
   });
 });
 
@@ -88,8 +88,19 @@ describe("asking a host to install the skill (#2653)", () => {
     const asked = heardRequest(core, roster, null);
     const answer = requestSkill(link, undefined, 2_000, "r-1");
     expect(await asked).toBe("r-1");
-    core.setDoc(SKILL_REQUEST_DOC, { request: "r-0", done: json(status(dir("missing"))) });
     core.setDoc(SKILL_REQUEST_DOC, { request: "r-1", done: json(status(dir("installed", "1.2.0"))) });
+    expect(await answer).toEqual(status(dir("installed", "1.2.0")));
+    stop();
+  });
+
+  test("another client's request written over ours is answered by the same install, so its answer settles ours", async () => {
+    const core = new FakeCore();
+    const { link, roster, stop } = linkTo(core);
+    const asked = heardRequest(core, roster, null);
+    const answer = requestSkill(link, undefined, 2_000, "r-5");
+    await asked;
+    core.setDoc(SKILL_REQUEST_DOC, { request: "r-6" });
+    core.setDoc(SKILL_REQUEST_DOC, { request: "r-6", done: json(status(dir("installed", "1.2.0"))) });
     expect(await answer).toEqual(status(dir("installed", "1.2.0")));
     stop();
   });

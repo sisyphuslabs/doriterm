@@ -1,10 +1,11 @@
 import type { SkillDirStatus, SkillState, SkillStatus } from "@doriface/protocol";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { lstat, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { compareVersions } from "../self-update/manifest.ts";
 import { isRecord } from "../state/files.ts";
 import type { SkillFile } from "./bundle-macro.ts";
+import { writeSkillDir } from "./skill-write.ts";
 
 /** The skill's directory name in every agent skill directory, which is also its `name` in SKILL.md. */
 export const SKILL_NAME = "doriterm";
@@ -25,12 +26,14 @@ export interface SkillTarget {
   readonly shown: string;
 }
 
-export type InstallAction = "written" | "updated" | "unchanged" | "foreign";
-export type UninstallAction = "removed" | "missing" | "foreign";
+export type InstallAction = "written" | "updated" | "unchanged" | "foreign" | "failed";
+export type UninstallAction = "removed" | "missing" | "foreign" | "failed";
 
 export interface DirResult<A> {
   readonly dir: string;
   readonly action: A;
+  /** Why it failed, for `failed`. */
+  readonly error?: string;
 }
 
 interface Marker {
@@ -45,11 +48,16 @@ export function bundleDigest(files: readonly SkillFile[]): string {
   return hash.digest("hex");
 }
 
-const exists = (path: string): Promise<boolean> =>
-  stat(path).then(
-    () => true,
-    () => false,
-  );
+/** What is at `<dir>/doriterm`: nothing, a real directory, or something else (a symlink or a file), which is foreign. */
+async function entryKind(path: string): Promise<"none" | "dir" | "other"> {
+  try {
+    const entry = await lstat(path);
+    return entry.isDirectory() ? "dir" : "other";
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return "none";
+    throw error;
+  }
+}
 
 async function readMarker(skillDir: string): Promise<Marker | undefined> {
   let value: unknown;
@@ -70,8 +78,9 @@ interface Found {
 
 async function find(bundle: SkillBundle, target: SkillTarget): Promise<Found> {
   const skillDir = join(target.path, SKILL_NAME);
-  if (!(await exists(skillDir))) return { state: "missing" };
-  const marker = await readMarker(skillDir);
+  const kind = await entryKind(skillDir);
+  if (kind === "none") return { state: "missing" };
+  const marker = kind === "dir" ? await readMarker(skillDir) : undefined;
   if (marker === undefined) return { state: "foreign" };
   const order = compareVersions(marker.version, bundle.version);
   // A newer host's copy is left as it is: a host never takes the skill back to an older version.
@@ -90,42 +99,25 @@ export async function skillStatus(bundle: SkillBundle, targets: readonly SkillTa
   return { bundled: bundle.files.length === 0 ? null : bundle.version, dirs };
 }
 
-/**
- * Writes the bundle into a temporary directory beside the skill and renames it into place, so an agent reading the
- * skill sees the old copy or the new one, never half of one. An old copy is moved aside first and removed after.
- */
-async function writeAtomically(bundle: SkillBundle, target: SkillTarget, installedAt: Date): Promise<void> {
-  await mkdir(target.path, { recursive: true });
-  const staging = await mkdtemp(join(target.path, `.${SKILL_NAME}.new-`));
-  const skillDir = join(target.path, SKILL_NAME);
-  let aside: string | undefined;
-  try {
-    for (const file of bundle.files) {
-      const path = join(staging, ...file.path.split("/"));
-      // oxlint-disable-next-line no-await-in-loop -- a handful of small files, each directory made before its file
-      await mkdir(dirname(path), { recursive: true });
-      // oxlint-disable-next-line no-await-in-loop -- as above
-      await writeFile(path, file.text);
-    }
-    const marker = {
+const markerOf = (bundle: SkillBundle, installedAt: Date) => ({
+  file: MARKER_FILE,
+  text: `${JSON.stringify(
+    {
       writer: WRITER,
       version: bundle.version,
       digest: bundleDigest(bundle.files),
       installedAt: installedAt.toISOString(),
-    };
-    await writeFile(join(staging, MARKER_FILE), `${JSON.stringify(marker, null, 2)}\n`);
-    if (await exists(skillDir)) {
-      aside = `${staging}.old`;
-      await rename(skillDir, aside);
-    }
-    await rename(staging, skillDir);
-  } catch (error) {
-    await rm(staging, { recursive: true, force: true });
-    if (aside !== undefined && !(await exists(skillDir))) await rename(aside, skillDir);
-    throw error;
-  }
-  if (aside !== undefined) await rm(aside, { recursive: true, force: true });
-}
+    },
+    null,
+    2,
+  )}\n`,
+});
+
+const failed = <A>(dir: string, error: unknown): DirResult<A | "failed"> => ({
+  dir,
+  action: "failed",
+  error: error instanceof Error ? error.message : String(error),
+});
 
 export class NoBundledSkill extends Error {
   override readonly name = "NoBundledSkill";
@@ -134,9 +126,24 @@ export class NoBundledSkill extends Error {
   }
 }
 
+async function installOne(
+  bundle: SkillBundle,
+  target: SkillTarget,
+  now: () => Date,
+  outdatedOnly: boolean,
+): Promise<DirResult<InstallAction>> {
+  const { state } = await find(bundle, target);
+  if (state === "foreign") return { dir: target.shown, action: "foreign" };
+  const write = state === "outdated" || (state === "missing" && !outdatedOnly);
+  if (!write) return { dir: target.shown, action: "unchanged" };
+  await writeSkillDir(target.path, SKILL_NAME, bundle.files, markerOf(bundle, now()), state === "outdated");
+  return { dir: target.shown, action: state === "outdated" ? "updated" : "written" };
+}
+
 /**
  * Installs the bundled skill where it is missing and updates a copy an older host wrote; `outdatedOnly` updates and
- * writes nothing new (what a host does after it updated itself). A foreign copy is never touched.
+ * writes nothing new (what a host does after it updated itself). A foreign copy is never touched. Each directory is
+ * tried on its own: one that fails is reported `failed` and the others still are written.
  */
 export async function installSkill(
   bundle: SkillBundle,
@@ -147,14 +154,9 @@ export async function installSkill(
   if (bundle.files.length === 0) throw new NoBundledSkill();
   const results: DirResult<InstallAction>[] = [];
   for (const target of targets) {
-    // oxlint-disable-next-line no-await-in-loop -- one directory after another, so a failure names where it stopped
-    const { state } = await find(bundle, target);
-    const write = state === "outdated" || (state === "missing" && !outdatedOnly);
-    // oxlint-disable-next-line no-await-in-loop -- as above
-    if (write) await writeAtomically(bundle, target, now());
-    const action: InstallAction =
-      state === "foreign" ? "foreign" : !write ? "unchanged" : state === "outdated" ? "updated" : "written";
-    results.push({ dir: target.shown, action });
+    const attempt = installOne(bundle, target, now, outdatedOnly);
+    // oxlint-disable-next-line no-await-in-loop -- one directory after another, in the order they are reported
+    results.push(await attempt.catch((error: unknown) => failed(target.shown, error)));
   }
   return results;
 }
@@ -166,10 +168,14 @@ export async function uninstallSkill(
 ): Promise<readonly DirResult<UninstallAction>[]> {
   return Promise.all(
     targets.map(async (target): Promise<DirResult<UninstallAction>> => {
-      const { state } = await find(bundle, target);
-      if (state === "missing" || state === "foreign") return { dir: target.shown, action: state };
-      await rm(join(target.path, SKILL_NAME), { recursive: true, force: true });
-      return { dir: target.shown, action: "removed" };
+      try {
+        const { state } = await find(bundle, target);
+        if (state === "missing" || state === "foreign") return { dir: target.shown, action: state };
+        await rm(join(target.path, SKILL_NAME), { recursive: true, force: true });
+        return { dir: target.shown, action: "removed" };
+      } catch (error) {
+        return failed(target.shown, error);
+      }
     }),
   );
 }
