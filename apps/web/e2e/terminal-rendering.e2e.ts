@@ -11,71 +11,84 @@ interface Fiber {
   readonly tag: number;
 }
 
+/**
+ * Counts, in the page, the React components that run in each commit from the moment a message carrying a
+ * `render-proof-N` marker arrives until `frames` animation frames later, and notes whether an element matching
+ * `shownIn` then reads the marker. A bailed-out subtree keeps its fibers and their old flags, so only fibers new in a
+ * commit count as having run.
+ */
+function countRenders([frames, shownIn]: readonly [frames: number, shownIn: string]): void {
+  const counts: number[] = [];
+  const freshCounts: number[] = [];
+  const painted: boolean[] = [];
+  Reflect.set(window, "__terminalRuns", counts);
+  Reflect.set(window, "__terminalFreshRuns", freshCounts);
+  Reflect.set(window, "__terminalPainted", painted);
+  let armed = false;
+  // A bailed-out subtree keeps its fibers and old PerformedWork flags; those functions did not run again.
+  let previous = new WeakSet<Fiber>();
+  let current = new WeakSet<Fiber>();
+  let fresh = 0;
+  const walk = (fiber: Fiber | null): number => {
+    let count = 0;
+    for (let f = fiber; f !== null; f = f.sibling) {
+      current.add(f);
+      if ([0, 11, 14, 15].includes(f.tag) && (f.flags & 1) !== 0) {
+        count += 1;
+        if (!previous.has(f)) fresh += 1;
+      }
+      count += walk(f.child);
+    }
+    return count;
+  };
+  Reflect.set(window, "__REACT_DEVTOOLS_GLOBAL_HOOK__", {
+    supportsFiber: true,
+    renderers: new Map(),
+    inject: () => 1,
+    onCommitFiberRoot: (_id: number, root: { current: Fiber }) => {
+      current = new WeakSet<Fiber>();
+      fresh = 0;
+      const ran = walk(root.current.child);
+      previous = current;
+      if (armed) {
+        counts.push(ran);
+        freshCounts.push(fresh);
+      }
+    },
+    onCommitFiberUnmount: () => undefined,
+    onPostCommitFiberRoot: () => undefined,
+    checkDCE: () => undefined,
+  });
+  const data = Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data")?.get;
+  if (data === undefined) throw new Error("MessageEvent.data is unavailable");
+  const heard = new WeakSet<MessageEvent>();
+  // A marker opens its window once, with the first message that carries it.
+  const marked = new Set<string>();
+  Object.defineProperty(MessageEvent.prototype, "data", {
+    configurable: true,
+    get(this: MessageEvent): unknown {
+      const value: unknown = data.call(this);
+      if (!(value instanceof ArrayBuffer) || heard.has(this)) return value;
+      heard.add(this);
+      const marker = /render-proof-\d+/.exec(new TextDecoder().decode(value))?.[0];
+      if (marker !== undefined && !marked.has(marker)) {
+        marked.add(marker);
+        armed = true;
+        const close = (left: number): void => {
+          if (left > 0) return void requestAnimationFrame(() => close(left - 1));
+          painted.push([...document.querySelectorAll(shownIn)].some((node) => node.textContent?.trim() === marker));
+          armed = false;
+        };
+        close(frames);
+      }
+      return value;
+    },
+  });
+}
+
 for (const type of ["foreground", "title"] as const) {
   test(`${type} in one of three panes paints next frame without rendering the shell (#2607)`, async ({ page }) => {
-    await page.addInitScript(() => {
-      const counts: number[] = [];
-      const freshCounts: number[] = [];
-      const painted: boolean[] = [];
-      Reflect.set(window, "__terminalRuns", counts);
-      Reflect.set(window, "__terminalFreshRuns", freshCounts);
-      Reflect.set(window, "__terminalPainted", painted);
-      let armed = false;
-      // A bailed-out subtree keeps its fibers and old PerformedWork flags; those functions did not run again.
-      let previous = new WeakSet<Fiber>();
-      let current = new WeakSet<Fiber>();
-      let fresh = 0;
-      const walk = (fiber: Fiber | null): number => {
-        let count = 0;
-        for (let f = fiber; f !== null; f = f.sibling) {
-          current.add(f);
-          if ([0, 11, 14, 15].includes(f.tag) && (f.flags & 1) !== 0) {
-            count += 1;
-            if (!previous.has(f)) fresh += 1;
-          }
-          count += walk(f.child);
-        }
-        return count;
-      };
-      Reflect.set(window, "__REACT_DEVTOOLS_GLOBAL_HOOK__", {
-        supportsFiber: true,
-        renderers: new Map(),
-        inject: () => 1,
-        onCommitFiberRoot: (_id: number, root: { current: Fiber }) => {
-          current = new WeakSet<Fiber>();
-          fresh = 0;
-          const ran = walk(root.current.child);
-          previous = current;
-          if (armed) {
-            counts.push(ran);
-            freshCounts.push(fresh);
-          }
-        },
-        onCommitFiberUnmount: () => undefined,
-        onPostCommitFiberRoot: () => undefined,
-        checkDCE: () => undefined,
-      });
-      const data = Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data")?.get;
-      if (data === undefined) throw new Error("MessageEvent.data is unavailable");
-      const heard = new WeakSet<MessageEvent>();
-      Object.defineProperty(MessageEvent.prototype, "data", {
-        configurable: true,
-        get(this: MessageEvent): unknown {
-          const value: unknown = data.call(this);
-          if (!(value instanceof ArrayBuffer) || heard.has(this)) return value;
-          heard.add(this);
-          const marker = /render-proof-\d+/.exec(new TextDecoder().decode(value))?.[0];
-          if (marker !== undefined) {
-            armed = true;
-            requestAnimationFrame(() => {
-              painted.push([...document.querySelectorAll("h2")].some((node) => node.textContent === marker));
-              armed = false;
-            });
-          }
-          return value;
-        },
-      });
-    });
+    await page.addInitScript(countRenders, [1, "h2"] as const);
     const socket = await routeHcSocket(page);
     await page.goto("/");
     const first = await openNewTerminal(page);
@@ -151,3 +164,33 @@ for (const type of ["foreground", "title"] as const) {
     expect(Math.max(...evidence.runs)).toBeLessThanOrEqual(80);
   });
 }
+
+// A terminal's output is written and drawn by wterm outside React. What React draws of it is the scrollbar and the
+// jump-to-bottom button; the terminal's own view, with its dialogs and menus, has nothing to draw again (#2607).
+test("a terminal's output runs only the components that read its scroll position (#2607)", async ({ page }) => {
+  // Output is drawn the frame after it is written, and the scroll position is read the frame after that.
+  await page.addInitScript(countRenders, [4, ".term-row"] as const);
+  const socket = await routeHcSocket(page);
+  await page.goto("/");
+  const terminal = await openNewTerminal(page);
+  await terminal.getByRole("textbox").focus();
+  // No process, title or status event reaches the page meanwhile, and the roster's ten-second machine read, which
+  // draws the workspace again, is not sent: only the terminal's own output arrives.
+  socket.holdFromHost('"method":"event"');
+  const release = socket.hold("machine.list");
+  const LINES = 6;
+  await page.keyboard.type(`for i in $(seq 1 ${LINES}); do sleep 0.3; echo render-proof-$i; done`);
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, "__terminalPainted").length), { timeout: 20_000 })
+    .toBe(LINES);
+  const evidence = await page.evaluate(() => ({
+    painted: Reflect.get(window, "__terminalPainted"),
+    runs: Reflect.get(window, "__terminalFreshRuns"),
+  }));
+  release();
+  console.log(`output render evidence ${JSON.stringify(evidence)}`);
+  expect(evidence.painted).toEqual(Array.from({ length: LINES }, () => true));
+  // The scrollbar and the jump button run, each a component or two; the view around them ran twelve (#2607).
+  expect(Math.max(0, ...evidence.runs)).toBeLessThanOrEqual(4);
+});
