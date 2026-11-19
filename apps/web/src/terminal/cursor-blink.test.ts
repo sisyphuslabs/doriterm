@@ -364,14 +364,14 @@ describe("CursorBlink: a held press takes the state again each frame until the c
     expect(frames.booked()).toBe(0);
   });
 
-  test("a release ends the frames, and a press on a steady cursor reads only while it is held", () => {
+  test("a release ends the frames, and nothing is read after it", () => {
     const timers = manualTimers();
     const frames = manualFrames();
     let reads = 0;
     const cursor = new CursorBlink(
       () => {
         reads++;
-        return { ...idle, programBlinks: false, kind: "block" };
+        return { ...idle, focused: false, kind: "block" };
       },
       () => {},
       () => {},
@@ -389,6 +389,22 @@ describe("CursorBlink: a held press takes the state again each frame until the c
     timers.advance(10 * BLINK_PHASE_MS);
     expect(reads).toBe(released);
     expect(cursor.blinking).toBe(false);
+  });
+
+  // A press can only bring :active, so a cursor that would not blink even focused is not followed: a click or a
+  // drag in a terminal whose cursor is steady, hidden, or in a hidden window costs one read and no frame.
+  test.each<[string, Partial<CursorState>]>([
+    ["the program's cursor is steady", { programBlinks: false }],
+    ["the config asks for a steady cursor", { steadyAsked: true }],
+    ["a composition or a prediction hides the cursor", { hidden: true }],
+    ["the window is hidden", { visible: false }],
+  ])("a press where %s books no frame", (_, state) => {
+    for (const focused of [true, false]) {
+      const { cursor, frames, phase } = blink({ ...state, focused });
+      cursor.press();
+      expect(frames.booked()).toBe(0);
+      expect(phase()).toBe(null);
+    }
   });
 
   test("stop ends a held press's frames too", () => {
