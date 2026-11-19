@@ -62,7 +62,7 @@ export function SlashList({ id, list, matches, typed, active, onActive, onPick }
               `No OmO command matches ${typed}.`
             ) : (
               <>
-                <DelayedSpinner className="size-4" />
+                <DelayedSpinner />
                 Reading OmO's commands…
               </>
             )}
