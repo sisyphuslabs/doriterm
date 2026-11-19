@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseSkillRequestDoc } from "./agent-skill.ts";
+import { parseSkillRequestDoc, type SkillStatus } from "./agent-skill.ts";
 import { hostInfoFor, parseHostInfo } from "./host-info.ts";
 
 describe("parseHostInfo", () => {
@@ -23,7 +23,7 @@ describe("parseHostInfo", () => {
 });
 
 describe("the agent skill in the document", () => {
-  const skill = {
+  const skill: SkillStatus = {
     bundled: "0.1.22",
     dirs: [
       { dir: "~/.agents/skills", state: "installed", version: "0.1.22" },

@@ -27,10 +27,14 @@ test.beforeAll(async () => {
       (entry): entry is [string, string] => entry[1] !== undefined,
     ),
   );
-  const added = spawn("bun", [join(import.meta.dirname, "added-machine.ts"), join(root, "machine")], {
-    env,
-    stdio: ["ignore", "pipe", "inherit"],
-  });
+  const added = spawn(
+    "bun",
+    [join(import.meta.dirname, "..", "..", "web", "e2e", "added-machine.ts"), join(root, "machine")],
+    {
+      env,
+      stdio: ["ignore", "pipe", "inherit"],
+    },
+  );
   machine = added;
   await new Promise<void>((resolve, reject) => {
     added.stdout?.on("data", (chunk: Buffer) => (chunk.toString().includes("READY") ? resolve() : undefined));
