@@ -1,4 +1,4 @@
-import { after, type Timer } from "./output-pacer.ts";
+import { after, type FrameTimer, nextFrame, type Timer } from "./output-pacer.ts";
 
 /** How long each phase of a blinking cursor lasts: on for half a second, off for half a second, as wterm's CSS did. */
 export const BLINK_PHASE_MS = 500;
@@ -15,11 +15,16 @@ export interface BlinkState {
   readonly programBlinks: boolean;
   /** The window can be seen; a hidden window's cursor stays drawn and nothing is flipped. */
   readonly visible: boolean;
+  /**
+   * A composition or a prediction hides the cursor (the root's `data-preedit` or `data-predicting`), whose rule in
+   * styles.css stopped wterm's animation; its removal started a fresh one.
+   */
+  readonly hidden: boolean;
 }
 
-/** wterm's own rule for a blinking cursor (terminal.css), and only while the window can be seen. */
+/** wterm's own rule for a blinking cursor (terminal.css), while the window can be seen and nothing hides the cursor. */
 export function cursorBlinks(state: BlinkState): boolean {
-  if (!state.focused || !state.visible) return false;
+  if (!state.focused || !state.visible || state.hidden) return false;
   return state.blinkAsked || (!state.steadyAsked && state.programBlinks);
 }
 
@@ -47,16 +52,19 @@ export type CursorPhase = "on" | "off";
  * animation started over whenever the cursor's span was rebuilt or the animation's name changed (a new
  * {@link CursorKind}), showing the cursor on at once; {@link restart} and a change of kind are those moments. Each
  * phase reads the state again, so an event that never came (a press whose release went to a context menu) is put
- * right within one phase; nothing is read while the cursor does not blink.
+ * right within one phase; nothing is read while the cursor does not blink, but on each frame of a held press until it
+ * does (a touch's `:active` comes after its pointerdown, with no event).
  */
 export class CursorBlink {
   readonly #read: () => CursorState;
   readonly #draw: (phase: CursorPhase | null) => void;
   readonly #watch: (blinking: boolean) => void;
   readonly #timer: Timer;
+  readonly #frame: FrameTimer;
   #phase: CursorPhase | null = null;
   #kind: CursorKind = "block";
   #cancel: (() => void) | null = null;
+  #held: (() => void) | null = null;
 
   /**
    * `read` takes the state now; `draw` marks the phase (null: not blinking); `watch` is told when blinking starts and
@@ -67,11 +75,13 @@ export class CursorBlink {
     draw: (phase: CursorPhase | null) => void,
     watch: (blinking: boolean) => void,
     timer: Timer = after,
+    frame: FrameTimer = nextFrame,
   ) {
     this.#read = read;
     this.#draw = draw;
     this.#watch = watch;
     this.#timer = timer;
+    this.#frame = frame;
   }
 
   get blinking(): boolean {
@@ -88,8 +98,32 @@ export class CursorBlink {
     if (this.blinking) this.#start();
   }
 
-  /** Stops blinking and leaves the cursor unmarked. */
+  /** A press began: the state is taken now and again on each frame until the cursor blinks or {@link release}. */
+  press(): void {
+    this.#held?.();
+    this.#follow();
+  }
+
+  /** The press ended: no more frames, and the state is taken once more. */
+  release(): void {
+    this.#held?.();
+    this.#held = null;
+    this.decide();
+  }
+
+  /** Stops blinking and following a press, and leaves the cursor unmarked. */
   stop(): void {
+    this.#held?.();
+    this.#held = null;
+    this.#halt();
+  }
+
+  #follow(): void {
+    this.decide();
+    this.#held = this.blinking ? null : this.#frame(() => this.#follow());
+  }
+
+  #halt(): void {
     if (this.#cancel === null) return;
     this.#cancel();
     this.#cancel = null;
@@ -99,7 +133,7 @@ export class CursorBlink {
 
   /** `tick`: the phase is over, so it flips unless the state now says otherwise. */
   #settle(state: CursorState, tick: boolean): void {
-    if (!cursorBlinks(state)) return this.stop();
+    if (!cursorBlinks(state)) return this.#halt();
     const fresh = !this.blinking;
     if (fresh || state.kind !== this.#kind) {
       this.#kind = state.kind;
@@ -150,14 +184,17 @@ export function blinkCursor(element: HTMLElement, timer: Timer = after): () => v
     blink.restart();
   });
   const blink = new CursorBlink(
-    // The browser's `:active` is the press, as wterm's CSS reads it: set already inside pointerdown, cleared by the
-    // release wherever it lands, and never stuck on a release that went elsewhere.
+    // The browser's `:active` is the press, as wterm's CSS reads it: set inside a mouse's pointerdown, a touch's
+    // later (so a held press is followed by frame), cleared by the release wherever it lands, and never stuck on a
+    // release that went elsewhere.
     () => ({
       focused: element.classList.contains("focused") || element.matches(":active"),
       blinkAsked: element.classList.contains("cursor-blink"),
       steadyAsked: element.classList.contains("cursor-steady"),
       programBlinks: grid.dataset["cursorBlink"] === "true",
       visible: document.visibilityState === "visible",
+      // The hide rule's own selectors: the cursor is inside the grid, so data-predicting applies to it as data-preedit.
+      hidden: element.hasAttribute("data-preedit") || element.hasAttribute("data-predicting"),
       kind: cursorKind(grid.dataset["cursorShape"], element.classList.contains("cursor-hollow")),
     }),
     (phase) => {
@@ -173,25 +210,28 @@ export function blinkCursor(element: HTMLElement, timer: Timer = after): () => v
     timer,
   );
   const decide = (): void => blink.decide();
+  const press = (): void => blink.press();
+  const release = (): void => blink.release();
 
+  // Never data-cursor-on or data-cursor-off: drawing a phase must not wake this.
   const settings = new MutationObserver(decide);
-  settings.observe(element, { attributes: true, attributeFilter: ["class"] });
+  settings.observe(element, { attributes: true, attributeFilter: ["class", "data-preedit", "data-predicting"] });
   settings.observe(grid, { attributes: true, attributeFilter: ["data-cursor-blink", "data-cursor-shape"] });
   document.addEventListener("visibilitychange", decide);
   view?.addEventListener("blur", decide);
-  element.addEventListener("pointerdown", decide);
+  element.addEventListener("pointerdown", press);
   element.addEventListener("contextmenu", decide);
-  document.addEventListener("pointerup", decide);
-  document.addEventListener("pointercancel", decide);
+  document.addEventListener("pointerup", release);
+  document.addEventListener("pointercancel", release);
   decide();
   return () => {
     settings.disconnect();
     document.removeEventListener("visibilitychange", decide);
     view?.removeEventListener("blur", decide);
-    element.removeEventListener("pointerdown", decide);
+    element.removeEventListener("pointerdown", press);
     element.removeEventListener("contextmenu", decide);
-    document.removeEventListener("pointerup", decide);
-    document.removeEventListener("pointercancel", decide);
+    document.removeEventListener("pointerup", release);
+    document.removeEventListener("pointercancel", release);
     blink.stop();
   };
 }
