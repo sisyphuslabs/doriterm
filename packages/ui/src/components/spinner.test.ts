@@ -19,7 +19,7 @@ function fakeAnimation(startTime: number, playState: AnimationPlayState = "runni
 }
 
 const glyph = (animations: readonly ReturnType<typeof fakeAnimation>[]) =>
-  ({ getAnimations: () => animations }) as unknown as SVGSVGElement;
+  ({ getAnimations: () => animations }) as unknown as Element;
 
 describe("putting a spinner in step", () => {
   test("moves an animation that started late onto the shared clock", () => {
