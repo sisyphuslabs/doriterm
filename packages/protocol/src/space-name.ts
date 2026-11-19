@@ -51,7 +51,6 @@ const POSIX_SYSTEM: ReadonlySet<string> = new Set([
   "root",
   "var/root",
   "usr/libexec",
-  "srv",
   "opt/homebrew",
 ]);
 
@@ -68,30 +67,46 @@ const WINDOWS_SYSTEM: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The parts below a Windows volume's root, lower-cased; undefined for a POSIX path. A volume is a drive (`C:`, after any
- * verbatim prefix), a share (`\\\\server\\share`, `\\\\?\\UNC\\server\\share`), or a drive as WSL (`/mnt/c`), Cygwin
- * (`/cygdrive/c`) and Git Bash (`/c`) mount it.
+ * The parts below a Windows volume's root, lower-cased; undefined for a path that is not a Windows one. A volume is a
+ * drive (`C:`, after any verbatim prefix) or a share (`\\\\server\\share`, `\\\\?\\UNC\\server\\share`).
  */
 function windowsRest(dir: string): readonly string[] | undefined {
   const verbatim = VERBATIM.exec(dir);
   const bare = verbatim === null ? dir : dir.slice(verbatim[0].length);
   const parts = pathParts(bare);
-  const [first = "", second = ""] = parts;
   const below = (depth: number): readonly string[] => parts.slice(depth).map((part) => part.toLowerCase());
-  if (DRIVE.test(first)) return below(1);
-  if (verbatim !== null && first.toLowerCase() === "unc") return below(3);
+  if (DRIVE.test(parts[0] ?? "")) return below(1);
+  if (verbatim !== null && parts[0]?.toLowerCase() === "unc") return below(3);
   if (bare.startsWith("\\\\")) return below(2);
   if (bare.includes("\\")) return below(0);
-  if ((first === "mnt" || first === "cygdrive") && LETTER.test(second)) return below(2);
-  if (LETTER.test(first)) return below(1);
   return undefined;
 }
+
+/**
+ * A Windows drive as WSL (`/mnt/c`), Cygwin (`/cygdrive/c`) and Git Bash (`/c`) mount it: the first part below the
+ * letter, lower-cased. A real POSIX directory can have the same shape (`/w`, a disk at `/mnt/d`), so only Windows' own
+ * trees below it count as system ones.
+ */
+function mountedTop(parts: readonly string[]): string | undefined {
+  const [first = "", second = "", third = ""] = parts;
+  if ((first === "mnt" || first === "cygdrive") && LETTER.test(second)) return third.toLowerCase();
+  return LETTER.test(first) ? second.toLowerCase() : undefined;
+}
+
+const MOUNTED_SYSTEM: ReadonlySet<string> = new Set([
+  WINDOWS_SYSTEM_TREE,
+  "program files",
+  "program files (x86)",
+  "programdata",
+]);
 
 /** Whether a directory is the root or one of the system's own, on Windows (any case) and on POSIX systems. */
 export function isSystemDirectory(dir: string): boolean {
   const windows = windowsRest(dir);
   if (windows !== undefined) return windows[0] === WINDOWS_SYSTEM_TREE || WINDOWS_SYSTEM.has(windows.join("/"));
   const parts = pathParts(dir);
+  const mounted = mountedTop(parts);
+  if (mounted !== undefined && MOUNTED_SYSTEM.has(mounted)) return true;
   return parts[0] === MAC_SYSTEM_TREE || POSIX_SYSTEM.has(parts.join("/"));
 }
 

@@ -39,7 +39,6 @@ describe("system directories (#2658)", () => {
       "/root",
       "/var/root",
       "/usr/libexec",
-      "/srv",
       "/opt/homebrew",
     ];
     expect(system.filter((dir) => !isSystemDirectory(dir))).toEqual([]);
@@ -57,7 +56,13 @@ describe("system directories (#2658)", () => {
       "/mnt/c/Users/me/web",
       "/c/src/web",
       "/mnt/data",
+      "/srv",
       "/srv/docs",
+      "/w",
+      "/w/web",
+      "/mnt/d",
+      "/mnt/d/photos",
+      "/c/Users",
     ];
     expect(own.filter(isSystemDirectory)).toEqual([]);
   });
@@ -75,8 +80,10 @@ describe("a space's name", () => {
         "\\\\?\\C:\\Windows\\System32",
         "/mnt/c/Windows/System32",
         "\\\\?\\C:\\src\\web",
+        "/w",
+        "/mnt/d",
       ].map(folderSpaceName),
-    ).toEqual(["api", "web", undefined, undefined, undefined, undefined, undefined, "web"]);
+    ).toEqual(["api", "web", undefined, undefined, undefined, undefined, undefined, "web", "w", "d"]);
   });
 
   test("names a shell as its users do and keeps another program's own name", () => {

@@ -104,8 +104,6 @@ export const idOfMachine = (name: string | undefined): string => (name === undef
 /** The id of the machine an address is on: this one for a bare `t7`, the named machine for `machine/t7`. */
 export const machineId = (address: string): string => idOfMachine(machineOf(address));
 
-export { SPACE_LABEL } from "@doriface/protocol";
-
 const spaceDir = (terminal: Terminal): string => terminal.foreground?.cwd ?? terminal.cwd;
 
 /** The parent directory's name, to tell apart two spaces whose directories end the same way; the whole path at the root. */
