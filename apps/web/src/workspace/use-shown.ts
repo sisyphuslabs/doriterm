@@ -17,7 +17,9 @@ interface Shown<T> {
   readonly shown: readonly T[];
 }
 
-/** A session with the title and foreground its terminal has now; the workspace's list keeps them as of its last shape. */
+/**
+ * A session with the title and foreground its terminal has now; the workspace's list keeps them as of its last shape.
+ */
 function asItStands<T extends Terminal>(session: T, now: Terminal | undefined): T {
   if (now === undefined || now === session) return session;
   if (now.title === session.title && now.foreground === session.foreground) return session;

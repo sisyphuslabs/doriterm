@@ -121,7 +121,11 @@ for (const type of ["foreground", "title"] as const) {
               channel,
               FrameKind.Data,
               new TextEncoder().encode(
-                `${JSON.stringify({ jsonrpc: "2.0", method: "event", params: { seq: 1_000_000 + i, type, terminal: address, data } })}\n`,
+                `${JSON.stringify({
+                  jsonrpc: "2.0",
+                  method: "event",
+                  params: { seq: 1_000_000 + i, type, terminal: address, data },
+                })}\n`,
               ),
             ),
           ),

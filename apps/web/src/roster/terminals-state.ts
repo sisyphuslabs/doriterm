@@ -3,7 +3,9 @@ import type { ListResult, Terminal } from "@doriface/protocol";
 /** What a terminal shows rather than what it is: its title, and what runs in front of it short of where (#2607). */
 const SHOWN: ReadonlySet<string> = new Set(["title", "foreground"]);
 
-/** Whether two entries of one terminal differ only in what it shows; its foreground's directory places it in a space. */
+/**
+ * Whether two entries of one terminal differ only in what it shows; its foreground's directory places it in a space.
+ */
 function sameTerminalShape(a: Terminal, b: Terminal): boolean {
   if (a === b) return true;
   if (((a.foreground ?? null) === null) !== ((b.foreground ?? null) === null)) return false;

@@ -42,7 +42,9 @@ export interface PaneProps {
   readonly onGrab?: ((event: ReactPointerEvent<HTMLElement>) => void) | undefined;
 }
 
-/** herdr-app's pane header buttons, each with its shortcut in the tooltip; a title change leaves them as drawn (#2607). */
+/**
+ * herdr-app's pane header buttons, each with its shortcut in the tooltip; a title change leaves them as drawn (#2607).
+ */
 const PaneButtons = memo(function PaneButtons({
   zoomed,
   onSplit,
