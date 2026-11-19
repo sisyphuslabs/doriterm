@@ -407,6 +407,30 @@ describe("CursorBlink: a held press takes the state again each frame until the c
     }
   });
 
+  // The press is remembered until its release: a cursor asked to blink while it is held (the program's DECSCUSR, a
+  // composition ending) is followed from then on, as the CSS would have blinked it once :active came.
+  test("a held press on a steady cursor is followed once the cursor is asked to blink", () => {
+    const { cursor, frames, set, phase } = blink({ focused: false, programBlinks: false });
+    cursor.press();
+    expect(frames.booked()).toBe(0);
+    set({ programBlinks: true });
+    cursor.decide();
+    expect(frames.booked()).toBe(1);
+    set({ focused: true });
+    frames.run();
+    expect(phase()).toBe("on");
+    expect(frames.booked()).toBe(0);
+  });
+
+  test("after the release a change of state books no frame", () => {
+    const { cursor, frames, set } = blink({ focused: false, programBlinks: false });
+    cursor.press();
+    cursor.release();
+    set({ programBlinks: true });
+    cursor.decide();
+    expect(frames.booked()).toBe(0);
+  });
+
   test("stop ends a held press's frames too", () => {
     const { cursor, frames } = blink({ focused: false });
     cursor.press();
