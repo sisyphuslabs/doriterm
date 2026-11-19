@@ -10,7 +10,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -b",
-    "lint": "oxlint --deny-warnings",
+    "lint": "oxlint --deny-warnings && bun .github/scripts/lint-ratchet.ts",
+    "lint:ratchet:update": "bun .github/scripts/lint-ratchet.ts --update",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "gen:api:check": "bun run --cwd packages/protocol gen:api:check",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
+    "oxc-parser": "0.148.0",
     "oxfmt": "0.75.0",
     "oxlint": "1.90.0",
     "typescript": "7.0.2"
