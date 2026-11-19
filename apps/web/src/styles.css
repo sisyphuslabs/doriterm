@@ -107,9 +107,10 @@
   animation: none !important;
 }
 
-/* The cursor blinks by data-cursor-off, flipped twice a second (cursor-blink.ts), never by wterm's CSS animation: a running
-   animation makes Chromium recalculate style and paint every frame, so an idle terminal cost its renderer 60 frames a
-   second. The off phase draws what wterm's keyframes drew at 50%: the cell as it is, no bar, underline or outline. */
+/* The cursor blinks by data-cursor-off, flipped twice a second (cursor-blink.ts), never by wterm's CSS animation: a
+   running animation makes Chromium recalculate style and paint every frame, so an idle terminal cost its renderer 60
+   frames a second. The off phase draws what wterm's keyframes drew at 50%: the cell as it is, no bar, underline or
+   outline. */
 .wterm .term-cursor {
   animation: none !important;
 }
