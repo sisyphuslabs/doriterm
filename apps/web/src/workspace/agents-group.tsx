@@ -126,12 +126,29 @@ interface AgentItemProps {
   readonly compactBlocked: boolean;
   readonly onOpen: (address: string) => void;
   readonly rail: boolean;
+  /** A double-click asks for a new name, as a space row's does (#2658); not on the phone, where a tap opens the agent. */
+  readonly doubleClickRenames: boolean;
 }
 
 /** One agent's row with its actions; it draws again only when that agent, its selection or the rail changed (#2086). */
-const AgentItem = memo(function AgentItem({ agent, selected, compactBlocked, onOpen, rail }: AgentItemProps) {
+const AgentItem = memo(function AgentItem({
+  agent,
+  selected,
+  compactBlocked,
+  onOpen,
+  rail,
+  doubleClickRenames,
+}: AgentItemProps) {
+  const ask = useAskSession();
   const row = (
-    <AgentRow agent={agent} selected={selected} compactBlocked={compactBlocked} onSelect={onOpen} rail={rail} />
+    <AgentRow
+      agent={agent}
+      selected={selected}
+      compactBlocked={compactBlocked}
+      onSelect={onOpen}
+      rail={rail}
+      {...(doubleClickRenames ? { onDoubleClick: () => ask({ kind: "rename", address: agent.id }) } : {})}
+    />
   );
   // The rail has no room for the hover actions, but its right-click opens the same menu (#699).
   return rail ? (
@@ -238,6 +255,7 @@ export function AgentsGroup({
               compactBlocked={group.compactBlocked}
               onOpen={open}
               rail={rail}
+              doubleClickRenames={heading}
             />
           ))}
         </SidebarSection>

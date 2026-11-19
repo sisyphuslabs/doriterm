@@ -128,14 +128,14 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
       }
     });
 
-    test("a space's Rename and Close are in its screen's header, and its row in Spaces holds no menu", async ({
+    test("a space's Rename and Close are in its screen's header, as they are in its row's own More in Spaces", async ({
       page,
     }) => {
       const seeded = seed();
       try {
         await page.goto("/?v=spaces");
         await expect(spaceRow(page, "website").first()).toBeVisible({ timeout: 20_000 });
-        await expect(page.getByRole("main").getByRole("button", { name: /^More for / })).toHaveCount(0);
+        await expect(page.getByRole("main").getByRole("button", { name: "More for website" })).toBeVisible();
 
         await spaceRow(page, "website").first().click();
         await expect(heading(page, "website")).toBeVisible();
