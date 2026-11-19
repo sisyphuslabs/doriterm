@@ -1,0 +1,359 @@
+{
+  "apps/desktop/test/preload-update-status.test.ts": {
+    "doriterm-testing/no-module-mock": 1
+  },
+  "apps/desktop/test/updater.test.ts": {
+    "doriterm-testing/no-fixed-sleep": 1
+  },
+  "apps/host/install/install.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/e2ee/first-line-hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/e2ee/resumes.test.ts": {
+    "doriterm-testing/no-fixed-sleep": 1
+  },
+  "apps/host/src/e2ee/revoked-streams.test.ts": {
+    "doriterm-testing/no-module-mock": 2
+  },
+  "apps/host/src/end-sweeper.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 4
+  },
+  "apps/host/src/hc-version-check.test.ts": {
+    "doriterm-testing/no-fixed-sleep": 1,
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/host-info.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/mesh/auto-admission.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/auto-machines.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/claim-endings.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/commands-revoke.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/convergence.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "apps/host/src/mesh/fold-ack-count.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/handshake-reach.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "apps/host/src/mesh/host-offers.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/host-stop-launch.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/join.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/merge-caps.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/mesh/offer-doc-browser.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/offer-doc.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 6
+  },
+  "apps/host/src/mesh/offline-member.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/mesh/reconciler-processes.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/reconciler.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 8
+  },
+  "apps/host/src/mesh/revoke-plan-lineage.test.ts": {
+    "doriterm-testing/no-flake-masking": 6
+  },
+  "apps/host/src/mesh/revoke-plan.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/status-publisher.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 6
+  },
+  "apps/host/src/mesh/sync-host.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/mesh/two-member.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/push/client-members.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/push/core-feed.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/relay/final-close.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/relay/relay.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/revoke-host.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/state/ack-cover.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/state/known-hosts.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/state/lock.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/state/mesh-transact.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/state/pairing-store.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/testing/bridge-teardown.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/testing/core-attribution.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/testing/fake-relay-multiple.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/testing/hc-session.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/testing/mesh-session-deadline.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/testing/mesh-session-ready.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 4,
+    "doriterm-testing/no-module-mock": 1
+  },
+  "apps/host/src/testing/mesh-session.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/testing/mesh-session.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/host/src/testing/run-cores.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 4
+  },
+  "apps/host/src/testing/run-dir.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/testing/silent-hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/host/src/testing/test-run.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "apps/host/src/ws-link.test.ts": {
+    "doriterm-testing/no-fixed-sleep": 1
+  },
+  "apps/web/e2e/core-processes.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/web/e2e/layout-host-stop.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/web/e2e/layout-stop.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "apps/web/e2e/machine.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "apps/web/e2e/parent-death.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/web/e2e/relay-route.test.ts": {
+    "doriterm-testing/no-flake-masking": 5
+  },
+  "apps/web/e2e/unreachable-machine-fast.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/web/e2e/worker-host.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/web/src/connection/direct-budget.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "apps/web/src/connection/direct-path.test.ts": {
+    "doriterm-testing/no-flake-masking": 8
+  },
+  "apps/web/src/connection/relay-only.test.ts": {
+    "doriterm-testing/no-flake-masking": 4
+  },
+  "apps/web/src/connection/relay-path.test.ts": {
+    "doriterm-testing/no-flake-masking": 4
+  },
+  "apps/web/src/push/push-route.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "apps/web/src/terminal/hangul-width-parity.hc.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "apps/web/src/workspace/join-command.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "packages/client/src/event-feed.test.ts": {
+    "doriterm-testing/no-fixed-sleep": 1
+  },
+  "packages/client/src/hc.integration.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "packages/client/src/rtt.test.ts": {
+    "doriterm-testing/no-fixed-sleep": 1
+  },
+  "packages/ghostty-wasm/src/webview.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "packages/mesh/test/door-perf.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "packages/mesh/test/properties.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "packages/mesh/test/sweep.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "packages/mesh/test/view-differential-context.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "packages/mesh/test/view-differential-permutation.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "packages/mesh/test/view-differential.test.ts": {
+    "doriterm-testing/no-flake-masking": 5
+  },
+  "packages/mesh/test/view-memory.test.ts": {
+    "doriterm-testing/no-flake-masking": 5
+  },
+  "packages/mesh/test/view-perf-backdated.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "packages/mesh/test/view-perf.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "packages/mesh/test/view-permutation.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "packages/relay-client/src/uplink-session-cap.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "packages/relay-client/src/uplink-sessions.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/ci/web-build-version.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "tests/relay-fetch/isolation.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay-fetch/private-relay.test.ts": {
+    "doriterm-testing/no-flake-masking": 6
+  },
+  "tests/relay/browser-first-member.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "tests/relay/browser-join.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "tests/relay/connect-backpressure.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/connect.test.ts": {
+    "doriterm-testing/no-flake-masking": 13
+  },
+  "tests/relay/e2e.test.ts": {
+    "doriterm-testing/no-flake-masking": 4
+  },
+  "tests/relay/fixtures/relay-left-running.fixture.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/fixtures/relay-stop-escalates.fixture.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/fixtures/relayed-stop-escalates.fixture.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/hc-bulk.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "tests/relay/hc-methods.test.ts": {
+    "doriterm-testing/no-flake-masking": 12
+  },
+  "tests/relay/layout-sync.test.ts": {
+    "doriterm-testing/no-flake-masking": 4
+  },
+  "tests/relay/link-lifetime.test.ts": {
+    "doriterm-testing/no-flake-masking": 5
+  },
+  "tests/relay/machine-add.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "tests/relay/machine-order-sync.test.ts": {
+    "doriterm-testing/no-flake-masking": 4
+  },
+  "tests/relay/mesh-backdate.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/mesh-compromised.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/mesh-echo.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "tests/relay/mesh-forge.test.ts": {
+    "doriterm-testing/no-flake-masking": 5
+  },
+  "tests/relay/mesh-harness.test.ts": {
+    "doriterm-testing/no-flake-masking": 4
+  },
+  "tests/relay/mesh-ip.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "tests/relay/mesh-machines.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "tests/relay/mesh-partition.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/mesh-relay-port.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/mesh-revoke.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "tests/relay/pairing.test.ts": {
+    "doriterm-testing/no-fixed-sleep": 1,
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/push.test.ts": {
+    "doriterm-testing/no-flake-masking": 1
+  },
+  "tests/relay/relay-dev.test.ts": {
+    "doriterm-testing/no-flake-masking": 7
+  },
+  "tests/relay/relayed-host.test.ts": {
+    "doriterm-testing/no-flake-masking": 5
+  },
+  "tests/relay/sessions.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
+  "tests/relay/set-up-once.test.ts": {
+    "doriterm-testing/no-flake-masking": 3
+  },
+  "tests/relay/uplink-burst.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  }
+}
