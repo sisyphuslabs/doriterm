@@ -3,7 +3,7 @@
 // every frame of every spinner on screen, for as long as an agent works (#2607). A browser test cannot see it: an
 // emulated scale leaves the engine's own at 1. The app can be started at a scale of 2 anywhere, and Chromium's trace
 // records each animation it could not composite, with the reason.
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,11 +29,13 @@ test("a working agent's spinner is turned by the compositor at a display scale o
     ),
   );
   const hc = (args: readonly string[]): string => execFileSync(env["HC_BIN"] ?? "hc", args, { env, encoding: "utf8" });
-  const app = await electron.launch({
-    ...launchOptions([`--user-data-dir=${profile}`, "--force-device-scale-factor=2"]),
-    env,
-  });
+  // Launched inside the try: a launch that fails still stops the scratch session and removes the profile.
+  let app: ElectronApplication | undefined;
   try {
+    app = await electron.launch({
+      ...launchOptions([`--user-data-dir=${profile}`, "--force-device-scale-factor=2"]),
+      env,
+    });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Use this computer" }).click();
     await expect(page.getByRole("region", { name: "Agents", exact: true })).toBeVisible({ timeout: 30_000 });
@@ -78,7 +80,7 @@ test("a working agent's spinner is turned by the compositor at a display scale o
     expect(refused.map((event) => event.args?.data?.compositeFailed)).toEqual([]);
   } finally {
     try {
-      await app.close();
+      await app?.close();
     } finally {
       await session.dispose();
       rmSync(profile, { recursive: true, force: true });
