@@ -111,6 +111,9 @@ for (const type of ["foreground", "title"] as const) {
     expect(channels.size).toBe(1);
     expect(cwd).toBeDefined();
     socket.holdFromHost('"method":"event"');
+    // The roster's ten-second machine read draws the workspace again whether or not anything changed; one landing in a
+    // frame this test counts would be charged to the event. It is not sent until the events are counted.
+    const release = socket.hold("machine.list");
     for (let i = 0; i < 6; i += 1) {
       const marker = `render-proof-${i}`;
       const data = type === "title" ? { title: marker } : { pid: 123 + i, name: marker, argv: [marker], cwd };
@@ -139,6 +142,7 @@ for (const type of ["foreground", "title"] as const) {
       retainedFlags: Reflect.get(window, "__terminalRuns"),
       runs: Reflect.get(window, "__terminalFreshRuns"),
     }));
+    release();
     console.log(`${type} render evidence ${JSON.stringify(evidence)}`);
     expect(evidence.painted).toEqual(Array.from({ length: 6 }, () => true));
     expect(evidence.runs.length).toBeGreaterThanOrEqual(6);
