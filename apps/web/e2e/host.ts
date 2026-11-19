@@ -43,6 +43,9 @@ const env = {
   // A plain shell and a neutral core name keep captures free of this machine's identity.
   ...shellEnv(dir),
 };
+// The host installs the agent skill under a HOME of its own, so a run never touches the account's skill directories.
+const hostHome = join(dir, "home");
+mkdirSync(hostHome, { recursive: true });
 const coreDir = join(dir, "state", "herdr-core", session);
 mkdirSync(coreDir, { recursive: true });
 writeFileSync(
@@ -78,7 +81,7 @@ const host = Bun.spawn(
     "--push-test-origin",
     E2E_PUSH_ORIGIN,
   ],
-  { env, stdout: "inherit", stderr: "inherit" },
+  { env: { ...env, HOME: hostHome }, stdout: "inherit", stderr: "inherit" },
 );
 
 async function stopCore(): Promise<void> {
@@ -146,7 +149,7 @@ try {
     if (capture) await seed(hc, env, join(dir, "work"));
     await seedMeshDoc(hc, session, env);
     if (process.env["E2E_SKIP_MACHINE"] !== "1") {
-      stopMachine = await addMachine(hc, env, join(dir, "machine"), capture);
+      stopMachine = await addMachine(hc, env, join(dir, "machine"), capture, undefined, true);
     }
     writeSavedEnv(E2E_HOST_ENV, { ...saved, ready: true });
   }

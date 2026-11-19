@@ -3,6 +3,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { E2E_MACHINE_DIR } from "./config.ts";
+import { startMachineHost } from "./machine-host.ts";
 
 export const MACHINE_NAME = "build-box";
 /** Holds `off` or `login`, or `slow` for a dial that answers late; absent means the machine answers. */
@@ -182,13 +183,17 @@ async function gone(pid: number, withinMs: number): Promise<boolean> {
   return true;
 }
 
-/** Starts the second core (with its demo terminals when `withSeeds`) and adds it; resolves with its stop. */
+/**
+ * Starts the second core (with its demo terminals when `withSeeds`, and a doriface-host beside it when `withHost`) and
+ * adds it; resolves with its stop.
+ */
 export async function addMachine(
   hc: string,
   env: Record<string, string | undefined>,
   root: string,
   withSeeds: boolean,
   spec: MachineSpec = DEMO_MACHINE,
+  withHost = false,
 ): Promise<() => Promise<void>> {
   const session = `web-e2e-b-${crypto.randomUUID().slice(0, 8)}`;
   const own = {
@@ -207,7 +212,9 @@ export async function addMachine(
   rmSync(spec.dir, { recursive: true, force: true });
   mkdirSync(spec.dir, { recursive: true });
   const there = { ...env, ...own };
+  let stopHost: (() => Promise<void>) | undefined;
   const stop = async (): Promise<void> => {
+    await stopHost?.();
     rmSync(spec.dir, { recursive: true, force: true });
     const control = Bun.spawn([hc, "connect", "--session", session], { env: there, stdin: "pipe", stdout: "pipe" });
     // Read while it runs, so a stopping core can never wait on a full pipe; the status reply names the core's pid.
@@ -242,6 +249,7 @@ export async function addMachine(
     const why = await said;
     if (code !== 0) throw new Error(`hc machine add for the second core failed (exit ${code}): ${why}`);
     if (withSeeds) await seedsListed(hc, env, spec);
+    if (withHost) stopHost = await startMachineHost(hc, there, session, root);
   } catch (error) {
     try {
       await stop();
