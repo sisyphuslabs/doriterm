@@ -165,6 +165,9 @@ logouts and reboots, follow [docs/install.md](docs/install.md), or hand the
 writes the service, installs herdr-core if needed, waits for the relay and is safe to re-run. The service keeps its own state
 dir (`~/.local/state/doriface-host-mesh`), so it never shares keys or devices with the desktop app's own host.
 
+The [doriterm skill](skills/doriterm/SKILL.md) teaches a coding agent to use all of this: running and steering agents and
+long commands with `hc`, here and on other machines, and the host's relay, mesh and pairing commands.
+
 ## Pairing, and how the relay fits
 
 A client reaches another machine's host through the relay, in a Noise session the relay cannot read:
