@@ -39,6 +39,16 @@ async function lock(dir: string, name: string): Promise<() => Promise<void>> {
   throw new Error("unreachable");
 }
 
+/** Runs `run` holding the lock on `<dir>/<name>`, so an install and an uninstall never meet halfway. */
+export async function withSkillLock<T>(dir: string, name: string, run: () => Promise<T>): Promise<T> {
+  const unlock = await lock(dir, name);
+  try {
+    return await run();
+  } finally {
+    await unlock();
+  }
+}
+
 /** Staging directories an install that crashed left beside the skill; only swept while the lock is held. */
 async function sweepStaging(dir: string, name: string): Promise<void> {
   const prefix = `.${name}.new-`;
@@ -58,8 +68,7 @@ export async function writeSkillDir(
   hasCopy: boolean,
 ): Promise<void> {
   await mkdir(dir, { recursive: true });
-  const unlock = await lock(dir, name);
-  try {
+  await withSkillLock(dir, name, async () => {
     await sweepStaging(dir, name);
     const staging = await mkdtemp(join(dir, `.${name}.new-`));
     await chmod(staging, 0o755);
@@ -86,7 +95,5 @@ export async function writeSkillDir(
       throw error;
     }
     if (moved) await rm(aside, { recursive: true, force: true });
-  } finally {
-    await unlock();
-  }
+  });
 }

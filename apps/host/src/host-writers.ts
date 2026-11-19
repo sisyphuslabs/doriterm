@@ -4,6 +4,7 @@ import type { e2eeDeps } from "./host-e2ee.ts";
 import type { HostOptions } from "./host-types.ts";
 import { type GitFactsPublisher, publishGitFacts } from "./git-facts.ts";
 import { type HostInfoPublisher, publishHostInfo } from "./host-info.ts";
+import { type Clock, monotonicClock } from "./mesh/clock.ts";
 import { HC_STOP_GRACE_MS, type HcTarget } from "./mesh/hc-machines.ts";
 import { type MeshOfferService, serveMeshOffers } from "./mesh/offer-doc.ts";
 import { publishMeshStatusOnCore, type MeshStatusPublisher } from "./mesh/status-publisher.ts";
@@ -21,7 +22,7 @@ export interface WriterParts {
   readonly started: (name: string, stop: () => unknown, kill?: () => readonly string[]) => void;
 }
 
-interface Writer {
+export interface Writer {
   stop(): Promise<unknown>;
   kill(): readonly number[];
 }
@@ -30,13 +31,16 @@ interface Writer {
  * Stops a writer, and kills its `hc connect` child if closing it has not ended it within the grace: a launch a busy
  * machine still holds when the host stops would otherwise start the core after the host is gone (#441).
  */
-async function stopWriter(writer: Writer | undefined): Promise<void> {
+export async function stopWriter(
+  writer: Writer | undefined,
+  clock: Pick<Clock, "after"> = monotonicClock,
+): Promise<void> {
   if (writer === undefined) return;
-  const grace = setTimeout(() => writer.kill(), HC_STOP_GRACE_MS);
+  const cancel = clock.after(HC_STOP_GRACE_MS, () => writer.kill());
   try {
     await writer.stop();
   } finally {
-    clearTimeout(grace);
+    cancel();
   }
 }
 

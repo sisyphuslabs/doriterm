@@ -2,14 +2,7 @@ import type { SkillState, SkillStatus } from "@doriface/protocol";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { requestControl } from "../control.ts";
-import {
-  type DirResult,
-  installSkill,
-  NoBundledSkill,
-  skillStatus,
-  type SkillBundle,
-  uninstallSkill,
-} from "../skill/agent-skill.ts";
+import { installSkill, NoBundledSkill, skillStatus, type SkillBundle, uninstallSkill } from "../skill/agent-skill.ts";
 // The one module that imports the bundle: Bun 1.4.4 leaves a macro call unreplaced in a module two others import.
 import { BUNDLED_SKILL } from "../skill/bundled.ts";
 import { type AgentSkill, agentSkill } from "../skill/skill-host.ts";
@@ -57,17 +50,23 @@ function statusLines(status: SkillStatus): string {
   return `${[head, ...dirs].join("\n")}\n`;
 }
 
-/** One line per directory; answers the exit code: 1 when any directory failed. */
-function report<A extends string>(
-  results: readonly DirResult<A | "failed">[],
-  words: Readonly<Record<A, string>>,
-  out: (text: string) => void,
-): number {
-  for (const { dir, action, error } of results) {
-    out(`${dir}/doriterm: ${action === "failed" ? `failed: ${error ?? "unknown error"}` : words[action as A]}\n`);
-  }
-  return results.some((result) => result.action === "failed") ? 1 : 0;
+interface Line {
+  readonly dir: string;
+  readonly text: string;
+  readonly failed: boolean;
 }
+
+/** One line per directory; answers the exit code: 1 when any directory failed. */
+function report(lines: readonly Line[], out: (text: string) => void): number {
+  for (const { dir, text } of lines) out(`${dir}/doriterm: ${text}\n`);
+  return lines.some((line) => line.failed) ? 1 : 0;
+}
+
+const failedLine = (dir: string, error: string | undefined): Line => ({
+  dir,
+  text: `failed: ${error ?? "unknown error"}`,
+  failed: true,
+});
 
 const notifyHost = (stateDir: string): Promise<unknown> =>
   requestControl(stateDir, { op: "skill-changed" }).catch(() => undefined);
@@ -101,15 +100,17 @@ export async function skillCommand(
     }
     case "install": {
       try {
+        const words = {
+          written: `installed v${bundle.version}`,
+          updated: `updated to v${bundle.version}`,
+          unchanged: "already current",
+          foreign: "left alone: a doriterm skill this host did not write is there",
+        };
         const results = await installSkill(bundle, targets, now);
         return report(
-          results,
-          {
-            written: `installed v${bundle.version}`,
-            updated: `updated to v${bundle.version}`,
-            unchanged: "already current",
-            foreign: "left alone: a doriterm skill this host did not write is there",
-          },
+          results.map(({ dir, action, error }) =>
+            action === "failed" ? failedLine(dir, error) : { dir, text: words[action], failed: false },
+          ),
           out,
         );
       } catch (error) {
@@ -122,9 +123,16 @@ export async function skillCommand(
     }
     case "uninstall":
       try {
+        const words = {
+          removed: "removed",
+          missing: "not installed",
+          foreign: "left alone: this host did not write it",
+        };
+        const results = await uninstallSkill(bundle, targets);
         return report(
-          await uninstallSkill(bundle, targets),
-          { removed: "removed", missing: "not installed", foreign: "left alone: this host did not write it" },
+          results.map(({ dir, action, error }) =>
+            action === "failed" ? failedLine(dir, error) : { dir, text: words[action], failed: false },
+          ),
           out,
         );
       } finally {

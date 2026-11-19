@@ -3,9 +3,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { removeRigs, stub, launchd, rig, install } from "./install-rig.ts";
 
-// Each case runs the real installer, about 50 stub processes (counted with strace: the lingering cases spawn 50 and 46).
-// A loaded macOS runner spent about 100 ms per spawn, so one case took 5.1 s and passed bun's 5 s default by nothing
-// it did wrong (#2487). 15 s is three times that measured worst case; the two ~340-spawn cases keep their 30 s (#2006).
 setDefaultTimeout(15_000);
 afterEach(removeRigs);
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { compareVersions } from "../self-update/manifest.ts";
 import { isRecord } from "../state/files.ts";
 import type { SkillFile } from "./bundle-macro.ts";
-import { writeSkillDir } from "./skill-write.ts";
+import { withSkillLock, writeSkillDir } from "./skill-write.ts";
 
 /** The skill's directory name in every agent skill directory, which is also its `name` in SKILL.md. */
 export const SKILL_NAME = "doriterm";
@@ -161,7 +161,7 @@ export async function installSkill(
   return results;
 }
 
-/** Removes the copies a host wrote; a foreign `doriterm` directory stays. */
+/** Removes the copies a host wrote, under the install lock; a foreign `doriterm` directory stays. */
 export async function uninstallSkill(
   bundle: SkillBundle,
   targets: readonly SkillTarget[],
@@ -169,10 +169,13 @@ export async function uninstallSkill(
   return Promise.all(
     targets.map(async (target): Promise<DirResult<UninstallAction>> => {
       try {
-        const { state } = await find(bundle, target);
-        if (state === "missing" || state === "foreign") return { dir: target.shown, action: state };
-        await rm(join(target.path, SKILL_NAME), { recursive: true, force: true });
-        return { dir: target.shown, action: "removed" };
+        if ((await entryKind(target.path)) === "none") return { dir: target.shown, action: "missing" };
+        return await withSkillLock(target.path, SKILL_NAME, async (): Promise<DirResult<UninstallAction>> => {
+          const { state } = await find(bundle, target);
+          if (state === "missing" || state === "foreign") return { dir: target.shown, action: state };
+          await rm(join(target.path, SKILL_NAME), { recursive: true, force: true });
+          return { dir: target.shown, action: "removed" };
+        });
       } catch (error) {
         return failed(target.shown, error);
       }

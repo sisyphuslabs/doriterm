@@ -53,3 +53,30 @@ export function openControl(
     }
   });
 }
+
+/**
+ * The control socket of a host that keeps state, or none for a host without one. Its mesh status is read after the
+ * mesh lines are refreshed, as the published one is (#754); a socket that cannot open stops the start.
+ */
+export function openHostControl(
+  stateDir: string | undefined,
+  e2ee: ReturnType<typeof e2eeDeps> | undefined,
+  meshStatus: (() => MeshStatus | undefined) | undefined,
+  refreshMeshLines: () => Promise<void>,
+  push: HostPush | undefined,
+  writers: { readonly skillChanged?: (() => void) | undefined; readonly startIfInMesh: () => void },
+): ReturnType<typeof openControl> | undefined {
+  if (stateDir === undefined || e2ee === undefined) return undefined;
+  const status =
+    meshStatus === undefined
+      ? undefined
+      : async () => {
+          await refreshMeshLines();
+          return meshStatus();
+        };
+  try {
+    return openControl(stateDir, e2ee, status, push, writers.skillChanged, writers.startIfInMesh);
+  } catch (error) {
+    throw new Error(`cannot open the control socket that devices revoke uses: ${String(error)}`, { cause: error });
+  }
+}

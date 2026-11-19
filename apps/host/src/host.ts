@@ -7,7 +7,7 @@ import { HC_VERSION_FLOOR, meetsHcFloor } from "./hc-install.ts";
 import { watchRevocations } from "./e2ee/revocation-watch.ts";
 import { SpeculativeHello } from "./e2ee/speculative-hello.ts";
 import { HcPipe, readHcVersion } from "./hc-pipe.ts";
-import { openControl } from "./host-control.ts";
+import { openHostControl } from "./host-control.ts";
 import { e2eeDeps } from "./host-e2ee.ts";
 import { PairOffers } from "./pair-surface.ts";
 import { DeviceSurface } from "./device-surface.ts";
@@ -219,27 +219,7 @@ async function serve(
   if (lan !== undefined && lanServer !== undefined) {
     e2ee?.lanUrls.push(...lanUrlsFor(lan.hostname, lanServer.port ?? lan.port));
   }
-  let control: ReturnType<typeof openControl> | undefined;
-  try {
-    control =
-      options.stateDir === undefined || e2ee === undefined
-        ? undefined
-        : openControl(
-            options.stateDir,
-            e2ee,
-            meshStatus === undefined
-              ? undefined
-              : async () => {
-                  await refreshMeshLines();
-                  return meshStatus();
-                },
-            push,
-            writers.skillChanged,
-            writers.startIfInMesh,
-          );
-  } catch (error) {
-    throw new Error(`cannot open the control socket that devices revoke uses: ${String(error)}`, { cause: error });
-  }
+  const control = openHostControl(options.stateDir, e2ee, meshStatus, refreshMeshLines, push, writers);
   e2ee?.slots.start();
   writers.startIfInMesh();
   const boundPort = server.port ?? port;

@@ -262,12 +262,8 @@ cp "${work}/${asset}" "${host_bin}.new"
 mv -f "${host_bin}.new" "$host_bin"
 say "installed doriface-host at ${host_bin}"
 
-hc_path=""
-if have hc; then
-  hc_path="$(command -v hc)"
-elif [ -x "${HOME}/.local/bin/hc" ]; then
-  hc_path="${HOME}/.local/bin/hc"
-fi
+hc_path="$(command -v hc 2>/dev/null || true)"
+if [ -z "$hc_path" ] && [ -x "${HOME}/.local/bin/hc" ]; then hc_path="${HOME}/.local/bin/hc"; fi
 if [ -z "$hc_path" ]; then
   say "herdr-core (hc) is missing; installing it"
   "$host_bin" --install-hc
