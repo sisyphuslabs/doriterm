@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { beforeAll, expect, it } from "bun:test";
 
@@ -9,7 +9,6 @@ import {
   compare,
   countByFile,
   countSuppressions,
-  type Counts,
   lint,
   ratchetedFiles,
   SUPPRESSION,
@@ -100,31 +99,49 @@ it("skips generated sources by path, so only hand-written files are ratcheted", 
   ).toEqual(["packages/protocol/src/generated-names.ts", "apps/landing/main.js"]);
 });
 
-// The ratchet's own lint run, on a scratch repo whose .eslintignore lists a violating test: oxlint
-// honours that file unless told not to, which would drop the test's counts without any rise.
-let ignoredRepoCounts: Counts = {};
+// The ratchet's own lint run in a scratch git repo that reuses this repo's oxlint and plugin, with a
+// violating test beside a copy of the ratchet config (a config's ignorePatterns resolve in its own
+// directory). Listed in .eslintignore, the test is still counted; hidden by the config's
+// ignorePatterns, which --no-ignore does not reach, it is reported as skipped instead of as zero.
+let listedInEslintignore: ReturnType<typeof lint> | undefined;
+let hiddenByIgnorePatterns: ReturnType<typeof lint> | undefined;
 beforeAll(() => {
-  const dir = mkdtempSync(join(tmpdir(), "doriterm-lint-ratchet-ignore-"));
+  const repo = join(import.meta.dir, "../..");
+  const scratch = mkdtempSync(join(tmpdir(), "doriterm-lint-ratchet-ignore-"));
   try {
-    for (const entry of ["node_modules", ".github"])
-      symlinkSync(join(import.meta.dir, "../..", entry), join(dir, entry));
-    const source = 'import { mock } from "bun:test";\nmock.module("./dep", () => ({}));\n';
-    for (const file of ["hidden.test.ts", "visible.test.ts"]) writeFileSync(join(dir, file), source);
-    writeFileSync(join(dir, ".eslintignore"), "hidden.test.ts\n");
+    const config = join(scratch, ".github/scripts/lint-ratchet.oxlintrc.json");
+    const shipped = JSON.parse(readFileSync(join(repo, ".github/scripts/lint-ratchet.oxlintrc.json"), "utf8"));
+    mkdirSync(dirname(config), { recursive: true });
+    for (const entry of ["node_modules", ".github/scripts/oxlint"])
+      symlinkSync(join(repo, entry), join(scratch, entry));
+    writeFileSync(config, JSON.stringify(shipped));
+    writeFileSync(
+      join(scratch, ".github/scripts/hidden.test.ts"),
+      'import { mock } from "bun:test";\nmock.module("./dep", () => ({}));\n',
+    );
+    writeFileSync(join(scratch, "clean.ts"), "export const clean = 1;\n");
+    writeFileSync(join(scratch, ".eslintignore"), ".github/scripts/hidden.test.ts\n");
     for (const args of [
       ["init", "-q"],
       ["add", "--", "."],
     ])
-      expect(spawnSync("git", args, { cwd: dir }).status).toBe(0);
-    ignoredRepoCounts = lint(dir).counts;
+      expect(spawnSync("git", args, { cwd: scratch }).status).toBe(0);
+    listedInEslintignore = lint(scratch);
+    writeFileSync(config, JSON.stringify({ ...shipped, ignorePatterns: ["hidden.test.ts"] }));
+    hiddenByIgnorePatterns = lint(scratch);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true });
   }
 }, 60_000);
 
-it("still counts a file that an ignore file lists", () => {
-  expect(ignoredRepoCounts).toEqual({
-    "hidden.test.ts": { "doriterm-testing/no-module-mock": 1 },
-    "visible.test.ts": { "doriterm-testing/no-module-mock": 1 },
+it("still counts a violating file that .eslintignore lists", () => {
+  expect(listedInEslintignore).toEqual({
+    counts: { ".github/scripts/hidden.test.ts": { "doriterm-testing/no-module-mock": 1 } },
+    unparsed: [],
+    skipped: 0,
   });
+});
+
+it("reports a file hidden by the ratchet config's ignorePatterns as skipped, not as zero findings", () => {
+  expect(hiddenByIgnorePatterns).toEqual({ counts: {}, unparsed: [], skipped: 1 });
 });
