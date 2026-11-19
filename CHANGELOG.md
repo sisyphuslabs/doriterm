@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v0.1.21 - 2026-11-19
+
+### Terminal
+
+- A focused terminal sitting idle no longer keeps the app redrawing 60 times a second for its blinking cursor: the
+  cursor blinks by switching twice a second, and it stops blinking while the window is hidden. (#2607)
+- Typing Korean on a Mac no longer drops the syllable before the next one: a syllable the input method commits while
+  the next one is already composing reaches the program. (#2640)
+
+### Terminal workspace
+
+- A program starting, ending or renaming its window in one terminal now redraws only the places that show that terminal,
+  not the whole window, so busy terminals use far less CPU. (#2620)
+- The spinner beside a working agent no longer keeps the app busy on a Retina display: it turns as smoothly as before
+  while the app does no work for it, where each working agent used to cost a few percent of a processor core. (#2643)
+- Output in a terminal now redraws only its scrollbar and jump-to-bottom button instead of the whole terminal view, so a
+  busy terminal does a little less work for every write. (#2649)
+
 ## v0.1.20 - 2026-11-15
 
 ### Terminal
