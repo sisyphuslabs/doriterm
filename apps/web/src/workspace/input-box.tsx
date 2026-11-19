@@ -1,7 +1,7 @@
 import { SendHorizontal } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button, cn } from "@doriface/ui";
-import { matchCommands, namingCommand } from "./omo-commands.ts";
+import { matchCommands, namingCommand, retriesAfterFailure } from "./omo-commands.ts";
 import { optionId, SlashList } from "./slash-list.tsx";
 import type { OmoCommands } from "./use-omo-commands.ts";
 
@@ -48,6 +48,8 @@ export function InputBox({ onSend, draftKey, className, style, slash = null }: I
   const matches = listing && slash.list.kind === "ready" ? matchCommands(slash.list.commands, text) : [];
   const chosen = matches[Math.min(pick, matches.length - 1)];
   const type = (next: string): void => {
+    // A read that failed (OmO slow to start, a machine that dropped) is tried again at the next `/`.
+    if (slash !== null && retriesAfterFailure(slash.list.kind === "failed", text, next)) slash.want();
     setText(next);
     setPick(0);
     setDismissed(null);
@@ -139,7 +141,7 @@ export function InputBox({ onSend, draftKey, className, style, slash = null }: I
               role: "combobox",
               "aria-autocomplete": "list" as const,
               "aria-expanded": listing,
-              "aria-controls": listId,
+              "aria-controls": matches.length > 0 ? listId : undefined,
               "aria-activedescendant": chosen === undefined ? undefined : optionId(listId, matches.indexOf(chosen)),
             })}
         onChange={(event) => type(event.target.value)}

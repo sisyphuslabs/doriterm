@@ -26,14 +26,14 @@ export function SlashList({ id, list, matches, typed, active, onActive, onPick }
       <p id={`${id}-label`} className="border-b border-border px-3 py-1.5 text-xs font-medium text-muted-foreground">
         OmO commands
       </p>
-      <div
-        id={id}
-        role="listbox"
-        aria-labelledby={`${id}-label`}
-        className="max-h-[min(18rem,40dvh)] overflow-y-auto p-1"
-      >
-        {list.kind === "ready" && matches.length > 0 ? (
-          matches.map((command, index) => (
+      {list.kind === "ready" && matches.length > 0 ? (
+        <div
+          id={id}
+          role="listbox"
+          aria-labelledby={`${id}-label`}
+          className="max-h-[min(18rem,40dvh)] overflow-y-auto p-1"
+        >
+          {matches.map((command, index) => (
             <div
               key={command.name}
               id={optionId(id, index)}
@@ -53,22 +53,23 @@ export function SlashList({ id, list, matches, typed, active, onActive, onPick }
                 <span className="line-clamp-1 text-sm text-muted-foreground">{command.description}</span>
               )}
             </div>
-          ))
-        ) : (
-          <p role="status" className="flex min-h-11 items-center gap-2 px-2.5 text-sm text-muted-foreground">
-            {list.kind === "failed" ? (
-              "OmO's commands could not be read."
-            ) : list.kind === "ready" ? (
-              `No OmO command matches ${typed}.`
-            ) : (
-              <>
-                <DelayedSpinner />
-                Reading OmO's commands…
-              </>
-            )}
-          </p>
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        // The state of the read is a status beside the list, never an entry inside it.
+        <p role="status" className="flex min-h-11 items-center gap-2 px-2.5 text-sm text-muted-foreground">
+          {list.kind === "failed" ? (
+            "OmO's commands could not be read."
+          ) : list.kind === "ready" ? (
+            `No OmO command matches ${typed}.`
+          ) : (
+            <>
+              <DelayedSpinner />
+              Reading OmO's commands…
+            </>
+          )}
+        </p>
+      )}
     </div>
   );
 }

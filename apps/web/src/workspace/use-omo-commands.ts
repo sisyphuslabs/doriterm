@@ -12,7 +12,7 @@ export type CommandList =
 
 export interface OmoCommands {
   readonly list: CommandList;
-  /** Reads the list once it is wanted (a `/` typed); a list already read or being read is left alone. */
+  /** Reads the list once it is wanted (a `/` typed), or again after a failed read; one read or being read stays. */
   readonly want: () => void;
 }
 
