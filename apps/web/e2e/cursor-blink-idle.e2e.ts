@@ -341,6 +341,69 @@ test("typing while the cursor is off draws it on as soon as it moves", async ({ 
   expect(rebuilt, "the cursor is drawn on the moment its span is rebuilt").toMatchObject({ off: false });
 });
 
+// The hide rule (styles.css) stopped wterm's animation while a composition hid the cursor, and its removal started a
+// fresh one: a composition cancelled with nothing typed showed the cursor on at once, for a whole on phase, never off for
+// what was left of a phase. Nothing blinks meanwhile, as no animation ran.
+test("a composition cancelled while the cursor is off shows it on at once, for a whole on phase", async ({ page }) => {
+  await page.goto("/");
+  const terminal = await focusedTerminal(page);
+  const cdp = await page.context().newCDPSession(page);
+  // Armed at the start of an off phase, so the composition starts and is cancelled within it. The app's own observers
+  // were made first, so within each batch they have already run: what is read is what they did about it.
+  await terminal.evaluate(
+    (element, within) =>
+      new Promise<void>((resolve, reject) => {
+        const watchComposition = (): void => {
+          let hidden = false;
+          let marked = false;
+          let shown: { at: number; on: boolean } | null = null;
+          const result = new Promise<object>((settle, fail) => {
+            const give = setTimeout(() => fail(new Error(`no off phase after the composition`)), 3 * within);
+            const watch = new MutationObserver(() => {
+              const on = element.hasAttribute("data-cursor-on");
+              const off = element.hasAttribute("data-cursor-off");
+              if (element.hasAttribute("data-preedit")) {
+                hidden = true;
+                marked ||= on || off;
+              } else if (hidden && shown === null) shown = { at: performance.now(), on: on && !off };
+              else if (shown !== null && off) {
+                watch.disconnect();
+                clearTimeout(give);
+                const nextOffMs = Math.round(performance.now() - shown.at);
+                settle({ markedWhileHidden: marked, onWhenShown: shown.on, wholeOnPhase: nextOffMs >= 480 });
+              }
+            });
+            watch.observe(element, {
+              attributes: true,
+              attributeFilter: ["data-preedit", "data-cursor-on", "data-cursor-off"],
+            });
+          });
+          Reflect.set(element, "afterComposition", result);
+          resolve();
+        };
+        const give = setTimeout(() => reject(new Error(`no off phase within ${within} ms`)), within);
+        const off = new MutationObserver(() => {
+          if (!element.hasAttribute("data-cursor-off")) return;
+          off.disconnect();
+          clearTimeout(give);
+          watchComposition();
+        });
+        off.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
+      }),
+    FLIP_WITHIN_MS,
+  );
+  await cdp.send("Input.imeSetComposition", { text: "\u{AC01}", selectionStart: 1, selectionEnd: 1 });
+  await expect(terminal).toHaveAttribute("data-preedit", "");
+  await cdp.send("Input.imeSetComposition", { text: "", selectionStart: 0, selectionEnd: 0 });
+  await expect(terminal).not.toHaveAttribute("data-preedit");
+  const after: unknown = await terminal.evaluate((element) => Reflect.get(element, "afterComposition"));
+  expect(after, "no blink while hidden, then on at once for a whole phase").toEqual({
+    markedWhileHidden: false,
+    onWhenShown: true,
+    wholeOnPhase: true,
+  });
+});
+
 /** Counts each time the terminal is drawn off from now on, for {@link offFlips} to read. */
 function watchOff(terminal: Locator): Promise<void> {
   return terminal.evaluate((element) => {

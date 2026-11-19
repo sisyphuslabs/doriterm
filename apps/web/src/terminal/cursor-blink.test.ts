@@ -8,9 +8,16 @@ import {
   cursorBlinks,
   cursorKind,
 } from "./cursor-blink.ts";
-import type { Timer } from "./output-pacer.ts";
+import type { FrameTimer, Timer } from "./output-pacer.ts";
 
-const idle: BlinkState = { focused: true, blinkAsked: false, steadyAsked: false, programBlinks: true, visible: true };
+const idle: BlinkState = {
+  focused: true,
+  blinkAsked: false,
+  steadyAsked: false,
+  programBlinks: true,
+  visible: true,
+  hidden: false,
+};
 
 describe("cursorBlinks: wterm's rule for a blinking cursor, and only while the window can be seen", () => {
   test("a focused terminal whose program asks for a blinking cursor blinks", () => {
@@ -22,6 +29,7 @@ describe("cursorBlinks: wterm's rule for a blinking cursor, and only while the w
     ["the window is hidden", { visible: false }],
     ["the config asks for a steady cursor", { steadyAsked: true }],
     ["the program's cursor is steady", { programBlinks: false }],
+    ["a composition or a prediction hides the cursor", { hidden: true }],
   ])("%s: no blink", (_, change) => {
     expect(cursorBlinks({ ...idle, ...change })).toBe(false);
   });
@@ -74,12 +82,30 @@ function manualTimers() {
   return { timer, advance, booked: () => due.length };
 }
 
+/** Animation frames that come only when the test runs them: each run takes the frames booked so far. */
+function manualFrames() {
+  let due: (() => void)[] = [];
+  const frame: FrameTimer = (run) => {
+    due.push(run);
+    return () => {
+      due = due.filter((entry) => entry !== run);
+    };
+  };
+  const run = (): void => {
+    const now = due;
+    due = [];
+    for (const entry of now) entry();
+  };
+  return { frame, run, booked: () => due.length };
+}
+
 /**
  * A blink over a terminal whose state the test sets in `state`, the way the DOM would read it; `phase()` is what
  * data-cursor-phase says now (null: not blinking), `watching` whether the grid is watched for a rebuilt cursor.
  */
 function blink(initial: Partial<CursorState> = {}) {
   const timers = manualTimers();
+  const frames = manualFrames();
   const state: { current: CursorState } = { current: { ...idle, kind: "block", ...initial } };
   let phase: CursorPhase | null = null;
   const shown: (CursorPhase | null)[] = [];
@@ -94,11 +120,12 @@ function blink(initial: Partial<CursorState> = {}) {
       watching = on;
     },
     timers.timer,
+    frames.frame,
   );
   const set = (change: Partial<CursorState>): void => {
     state.current = { ...state.current, ...change };
   };
-  return { cursor, timers, set, phase: () => phase, shown, watching: () => watching };
+  return { cursor, timers, frames, set, phase: () => phase, shown, watching: () => watching };
 }
 
 describe("CursorBlink: on half a second, off half a second, started over whenever the cursor is drawn anew", () => {
@@ -273,5 +300,101 @@ describe("CursorBlink: each phase takes the answer again, so a missed event heal
     const settled = reads;
     timers.advance(10 * BLINK_PHASE_MS);
     expect(reads).toBe(settled);
+  });
+});
+
+// The hide rule (styles.css) stopped wterm's animation while a composition or a prediction hid the cursor, and its
+// removal started a fresh one: the cursor showed on at once, for a whole on phase.
+describe("CursorBlink: a cursor hidden by a composition or a prediction does not blink, and shows on when shown", () => {
+  test("a hidden cursor books no timer, is never marked and the grid is not watched", () => {
+    const { cursor, timers, shown, watching } = blink({ hidden: true });
+    cursor.decide();
+    expect(timers.booked()).toBe(0);
+    timers.advance(10 * BLINK_PHASE_MS);
+    expect(shown).toEqual([]);
+    expect(cursor.blinking).toBe(false);
+    expect(watching()).toBe(false);
+  });
+
+  test("hidden in the off phase, then shown: drawn on at once with a whole on phase", () => {
+    const { cursor, timers, set, phase, watching } = blink();
+    cursor.decide();
+    timers.advance(BLINK_PHASE_MS + 200);
+    expect(phase()).toBe("off");
+    set({ hidden: true });
+    cursor.decide();
+    expect(phase()).toBe(null);
+    expect(timers.booked()).toBe(0);
+    expect(watching()).toBe(false);
+    timers.advance(BLINK_PHASE_MS + 300);
+    set({ hidden: false });
+    cursor.decide();
+    expect(phase()).toBe("on");
+    expect(timers.booked()).toBe(1);
+    timers.advance(BLINK_PHASE_MS - 1);
+    expect(phase()).toBe("on");
+    timers.advance(1);
+    expect(phase()).toBe("off");
+  });
+});
+
+// On touch, Chromium sets :active after pointerdown (at the gesture's show-press), with no event of its own; wterm's
+// CSS blinked a held, unfocused terminal from then on. So a held press takes the state again on each frame until the
+// cursor blinks or the press ends, and only then.
+describe("CursorBlink: a held press takes the state again each frame until the cursor blinks", () => {
+  test("a press that is not :active yet blinks on the first frame after it is", () => {
+    const { cursor, timers, frames, set, phase } = blink({ focused: false });
+    cursor.press();
+    expect(phase()).toBe(null);
+    expect(frames.booked()).toBe(1);
+    frames.run();
+    expect(phase()).toBe(null);
+    expect(frames.booked()).toBe(1);
+    set({ focused: true });
+    frames.run();
+    expect(phase()).toBe("on");
+    expect(frames.booked()).toBe(0);
+    expect(timers.booked()).toBe(1);
+  });
+
+  test("a press on a cursor that blinks already books no frame", () => {
+    const { cursor, frames, phase } = blink();
+    cursor.press();
+    expect(phase()).toBe("on");
+    expect(frames.booked()).toBe(0);
+  });
+
+  test("a release ends the frames, and a press on a steady cursor reads only while it is held", () => {
+    const timers = manualTimers();
+    const frames = manualFrames();
+    let reads = 0;
+    const cursor = new CursorBlink(
+      () => {
+        reads++;
+        return { ...idle, programBlinks: false, kind: "block" };
+      },
+      () => {},
+      () => {},
+      timers.timer,
+      frames.frame,
+    );
+    cursor.press();
+    frames.run();
+    frames.run();
+    expect(reads).toBe(3);
+    cursor.release();
+    expect(frames.booked()).toBe(0);
+    const released = reads;
+    frames.run();
+    timers.advance(10 * BLINK_PHASE_MS);
+    expect(reads).toBe(released);
+    expect(cursor.blinking).toBe(false);
+  });
+
+  test("stop ends a held press's frames too", () => {
+    const { cursor, frames } = blink({ focused: false });
+    cursor.press();
+    cursor.stop();
+    expect(frames.booked()).toBe(0);
   });
 });
