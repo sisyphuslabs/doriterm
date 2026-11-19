@@ -56,7 +56,8 @@ export function omoProgram(terminal: Terminal): string | null {
   if (isOmo(first)) return first;
   // OmO as a script runs under its interpreter (`sh /path/omo`, `node /path/omo`); any later argument is a file the
   // program works on (`vim omo`, `less ./omo`), never OmO.
-  if (INTERPRETERS.has(programName(first)) && isOmo(second)) return second;
+  // A bare name there is a file in the terminal's directory, where the probe runs, not a program to find on the PATH.
+  if (INTERPRETERS.has(programName(first)) && isOmo(second)) return /[/\\]/.test(second) ? second : `./${second}`;
   return isOmo(front.name) && !INTERPRETERS.has(programName(first)) ? "omo" : null;
 }
 
@@ -153,6 +154,5 @@ export function matchCommands(commands: readonly SlashCommand[], typed: string):
 /** Whether a line in the field is a command still being named: a `/` and a word, nothing after. */
 export const namingCommand = (line: string): boolean => /^\/\S*$/.test(line);
 
-/** Whether a change of the field's line asks again for a list whose read failed: a fresh `/`, not each letter after it. */
-export const retriesAfterFailure = (failed: boolean, before: string, next: string): boolean =>
-  failed && namingCommand(next) && !namingCommand(before);
+/** Whether a change of the field's line starts naming a command afresh: a new `/`, not each letter after it. */
+export const freshSlash = (before: string, next: string): boolean => namingCommand(next) && !namingCommand(before);

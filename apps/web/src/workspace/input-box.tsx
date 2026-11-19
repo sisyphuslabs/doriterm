@@ -1,7 +1,7 @@
 import { SendHorizontal } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button, cn } from "@doriface/ui";
-import { matchCommands, namingCommand, retriesAfterFailure } from "./omo-commands.ts";
+import { freshSlash, matchCommands, namingCommand } from "./omo-commands.ts";
 import { optionId, SlashList } from "./slash-list.tsx";
 import type { OmoCommands } from "./use-omo-commands.ts";
 
@@ -48,8 +48,9 @@ export function InputBox({ onSend, draftKey, className, style, slash = null }: I
   const matches = listing && slash.list.kind === "ready" ? matchCommands(slash.list.commands, text) : [];
   const chosen = matches[Math.min(pick, matches.length - 1)];
   const type = (next: string): void => {
-    // A read that failed (OmO slow to start, a machine that dropped) is tried again at the next `/`.
-    if (slash !== null && retriesAfterFailure(slash.list.kind === "failed", text, next)) slash.want();
+    // Each new `/` asks for the list: one that failed (OmO slow to start, a machine that dropped) or has grown stale is
+    // read again, a fresh one is kept.
+    if (slash !== null && freshSlash(text, next)) slash.want();
     setText(next);
     setPick(0);
     setDismissed(null);

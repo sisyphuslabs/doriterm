@@ -10,9 +10,9 @@ import {
   matchCommands,
   namingCommand,
   omoProgram,
+  freshSlash,
   parseCommands,
   PROBE,
-  retriesAfterFailure,
 } from "./omo-commands.ts";
 
 const running = (argv: readonly string[], name = argv[0] ?? ""): Terminal =>
@@ -30,6 +30,9 @@ describe("omoProgram", () => {
     expect(omoProgram(running(["/opt/bin/omo", "--resume"]))).toBe("/opt/bin/omo");
     expect(omoProgram(running(["/bin/sh", "/opt/fake/omo"], "omo"))).toBe("/opt/fake/omo");
     expect(omoProgram(running(["node", "/opt/omo/omo", "--resume"], "node"))).toBe("/opt/omo/omo");
+    // A bare name run by an interpreter is the file in the terminal's directory, never one found on the PATH.
+    expect(omoProgram(running(["bash", "omo"], "bash"))).toBe("./omo");
+    expect(omoProgram(running(["node", "bin/omo"], "node"))).toBe("bin/omo");
   });
 
   test("a file named omo that another program opens is not OmO", () => {
@@ -122,12 +125,16 @@ test("a probe ended by a timeout's TERM leaves no directory behind", async () =>
   const scratch = join(dir, "scratch");
   mkdirSync(scratch);
   try {
-    // A stand-in that takes the request and never answers, so only the TERM ends the probe.
-    writeFileSync(join(dir, "omo"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\n");
+    // A stand-in that takes the request, says so, and never answers, so only the TERM ends the probe. The TERM is sent
+    // once the request has arrived: before that the probe may still be opening its FIFOs, where no shell runs a trap.
+    writeFileSync(
+      join(dir, "omo"),
+      `#!/bin/sh\nIFS= read -r request\n: > "${join(dir, "asked")}"\nwhile IFS= read -r line; do :; done\n`,
+    );
     chmodSync(join(dir, "omo"), 0o755);
-    const fifos = new Promise<void>((done) => {
-      const watch = fsWatch(scratch, { recursive: true }, (_event, name) => {
-        if (String(name).endsWith("out")) {
+    const asked = new Promise<void>((done) => {
+      const watch = fsWatch(dir, (_event, name) => {
+        if (String(name) === "asked") {
           watch.close();
           done();
         }
@@ -142,7 +149,7 @@ test("a probe ended by a timeout's TERM leaves no directory behind", async () =>
       },
       stdout: "ignore",
     });
-    await fifos;
+    await asked;
     run.kill("SIGTERM");
     await run.exited;
     expect(readdirSync(scratch)).toEqual([]);
@@ -215,9 +222,9 @@ test("a line is a command being named while it is a / and one word", () => {
   expect(namingCommand("go")).toBe(false);
 });
 
-test("a failed read is asked again at a fresh /, not at each letter after it", () => {
-  expect(retriesAfterFailure(true, "", "/")).toBe(true);
-  expect(retriesAfterFailure(true, "/", "/g")).toBe(false);
-  expect(retriesAfterFailure(true, "/goal x", "/goal")).toBe(true);
-  expect(retriesAfterFailure(false, "", "/")).toBe(false);
+test("a new / starts naming a command; letters after it do not", () => {
+  expect(freshSlash("", "/")).toBe(true);
+  expect(freshSlash("/", "/g")).toBe(false);
+  expect(freshSlash("/goal x", "/goal")).toBe(true);
+  expect(freshSlash("", "go")).toBe(false);
 });
