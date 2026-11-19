@@ -1,6 +1,7 @@
 import { EmptyState, cn } from "@doriface/ui";
 import { Unplug } from "lucide-react";
 import { machineCause } from "./machine-cause.ts";
+import { offlineReason } from "./machine-state.ts";
 import { RemoveMachineButton, removable } from "./remove-machine.tsx";
 import { RetryButton } from "./retry-button.tsx";
 import { useMachinesContext } from "./use-machines.ts";
@@ -22,7 +23,7 @@ export function MachineOffline({ machine, className }: MachineOfflineProps) {
     <div className={cn("flex min-h-0 flex-1 flex-col justify-center bg-card", className)}>
       <EmptyState
         icon={<Unplug aria-hidden />}
-        title={cause?.title ?? `${machine} is offline`}
+        title={cause?.title ?? offlineReason(machine)}
         description={cause?.detail ?? `${machine} can't be reached right now.`}
         actions={
           <>

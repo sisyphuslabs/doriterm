@@ -36,3 +36,14 @@ export function placeOf(doc: JsonObject | null, terminal: Terminal, makeId: (pre
   const home = spaces.find((space) => space.name === HOME_SPACE && space.folder === "");
   return { id: home?.id ?? makeId("spc"), folder: "", name: HOME_SPACE };
 }
+
+/**
+ * The space a placed tab is guessed to land in before its write: an existing space keeps its id, and a space the write
+ * would make gets the empty id, which no real space has, so the guess never matches a space the write itself makes.
+ */
+export function guessedSpace(
+  placed: ((doc: JsonObject | null, makeId: (prefix: "spc") => string) => NewSpace) | undefined,
+  doc: JsonObject | null,
+): NewSpace | undefined {
+  return placed?.(doc, () => "");
+}

@@ -14,10 +14,7 @@ export interface MachineEntry {
   readonly first: string | undefined;
 }
 
-/** hc's states in the sidebar's words; "offline" is what the Machines screen and an offline pane say. */
-const LABELS: Readonly<Record<string, string>> = { needs_login: "needs login", unreachable: "offline" };
-
-export const stateLabel = (state: string): string => LABELS[state] ?? state;
+export { stateLabel } from "./machine-state.ts";
 
 /** Only this machine is listed: the section ends in an Add a machine row instead of a header action. */
 export const onlyThisMachine = (entries: readonly MachineEntry[]): boolean => entries.every((machine) => machine.local);

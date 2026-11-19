@@ -15,12 +15,18 @@ import { type LayoutTab, localOf } from "./layout-model.ts";
 import type { View } from "../layout/view.ts";
 import { shownIn } from "./adoption.ts";
 
+/** A tab root holding one terminal: a row `id` with the terminal `local` in pane `pane`. */
+export const terminalRow = (id: string, pane: string, local: string): Node => ({
+  children: [terminalBlock(pane, local)],
+  id,
+  type: "row",
+});
+
 /** The transient tab's terminal as a tab for the document, with fresh ids; both the new-tab and the split write use it. */
 export function written(tab: LayoutTab): { id: string; pane: string; root: Node } {
   const id = freshId("tb");
   const pane = freshId("p");
-  const address = tab.panes[0]?.address ?? "";
-  return { id, pane, root: { children: [terminalBlock(pane, localOf(address))], id, type: "row" } };
+  return { id, pane, root: terminalRow(id, pane, localOf(tab.panes[0]?.address ?? "")) };
 }
 
 /** A pane of a machine's document: its tab's id and its own. */

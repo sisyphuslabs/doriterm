@@ -1,9 +1,9 @@
 // Terminals another client starts while the app is open (`hc run --bg` from another terminal, a script, an agent) get
 // a tab of their own, in the space their label names, on this core and on an added machine, without anyone clicking
 // them. A change another client saves to the layout shows without a reload.
-import type { Page } from "@playwright/test";
 import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { getCoreDoc, updateCoreDoc } from "./core-doc.ts";
+import { spaceRow, spacesShowing } from "./core-tabs.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { tabs } from "./tab-strip.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
@@ -18,34 +18,10 @@ test.afterEach(() => {
   for (const { core, address } of started.splice(0)) endAgent(core, address);
 });
 
-function startOutside(core: "host" | "machine", name: string, space: string): string {
-  const address = startAgent(core, name, "working", space);
+function startOutside(core: "host" | "machine", name: string, space: string, parent?: string): string {
+  const address = startAgent(core, name, "working", space, parent);
   started.push({ core, address });
   return address;
-}
-
-interface DocTab {
-  readonly name: string;
-  readonly root: unknown;
-}
-interface DocSpace {
-  readonly name: string;
-  readonly tabs: readonly DocTab[];
-}
-
-/** The sidebar row of the space with that name. */
-const spaceRow = (page: Page, name: string) =>
-  page
-    .getByRole("complementary", { name: "Workspace" })
-    .getByRole("region", { name: "Spaces" })
-    .getByRole("button", { name: new RegExp(`^${name}\\b`) });
-
-/** The names of the spaces whose tabs show the terminal, in the saved layout of its core. */
-function spacesShowing(address: string, on?: string): string[] {
-  const doc = getCoreDoc(LAYOUT_DOC, on) as { spaces?: readonly DocSpace[] } | null;
-  return (doc?.spaces ?? []).flatMap((space) =>
-    space.tabs.filter((tab) => JSON.stringify(tab.root).includes(`"terminal":"${address}"`)).map(() => space.name),
-  );
 }
 
 test("an agent started outside the app on this core gets one tab in its labelled space without a click", async ({
@@ -65,6 +41,21 @@ test("an agent started outside the app on an added machine gets one tab in its l
   await expect(page.getByText(MACHINE_NAME).first()).toBeVisible({ timeout: STATE_BOUND_MS });
   const address = startOutside("machine", "remote-lane", "lanes");
   await expect.poll(() => spacesShowing(address, MACHINE_NAME), { timeout: 30_000 }).toEqual(["lanes"]);
+});
+
+test("an agent another agent started (hc records its parent) gets its own tab in its labelled space without a click", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  const lead = startOutside("host", "lead-lane", "lanes");
+  await expect.poll(() => spacesShowing(lead), { timeout: 20_000 }).toEqual(["lanes"]);
+  const count = spaceRow(page, "lanes").getByLabel(/^\d+ tabs$/);
+  await expect(count).toHaveText("1");
+  const worker = startOutside("host", "worker-lane", "lanes", lead);
+  await expect.poll(() => spacesShowing(worker), { timeout: 20_000 }).toEqual(["lanes"]);
+  // The space's count follows without anyone clicking the worker's row in the Agents list.
+  await expect(count).toHaveText("2");
 });
 
 test("an agent opened from the Agents list before it has a tab goes to the space its label names", async ({ page }) => {

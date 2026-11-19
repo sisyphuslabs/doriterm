@@ -80,6 +80,15 @@ describe("line grants (section 7.2)", () => {
     expect(offline.policy.gate(b.signPub)?.misses).toBe(1);
   });
 
+  test("a reached member that refuses the line as revoked (4401) is gated offline with no reconnect grace (#2517)", async () => {
+    const { policy, lines: grants } = lines({ members: [a, b], revoked: [] }, () =>
+      Promise.reject(new RelayCloseError(4401, "closed")),
+    );
+    policy.report(b.signPub, "connected");
+    expect((await grants.grant(b.hostId)).ok).toBe(false);
+    expect(policy.gate(b.signPub)).toMatchObject({ cause: "offline", misses: 1 });
+  });
+
   test("a line dial that fails without a close code gates the member", async () => {
     const { policy, lines: grants } = lines({ members: [a, b], revoked: [] }, () =>
       Promise.reject(new Error("the dial timed out")),

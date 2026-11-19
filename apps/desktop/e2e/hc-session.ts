@@ -8,7 +8,7 @@ export function scratchHcSession(hc = process.env["HC_BIN"]): {
   readonly env: Record<string, string>;
   dispose(): Promise<void>;
 } {
-  if (hc === undefined || hc === "") throw new Error("the launch test needs HC_BIN pointing at hc 0.1.20");
+  if (hc === undefined || hc === "") throw new Error("the launch test needs HC_BIN pointing at hc 0.1.21");
   const dir = mkdtempSync(join(tmpdir(), "dd-e2e-"));
   const name = `doriface-desktop-e2e-${process.pid}`;
   const env = {

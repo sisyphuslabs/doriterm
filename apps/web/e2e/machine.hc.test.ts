@@ -45,9 +45,15 @@ async function dialOnce(hc: string, via: string): Promise<number> {
     stdout: "ignore",
     stderr: "ignore",
   });
-  line.stdin.write('{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
-  await line.stdin.flush();
-  void line.stdin.end();
+  // A refused line can stop reading before the hello is written. The pipe is closed then (EPIPE), and the line's exit
+  // code is still the answer (#2402).
+  try {
+    line.stdin.write('{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
+    await line.stdin.flush();
+    await line.stdin.end();
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "EPIPE")) throw error;
+  }
   return line.exited;
 }
 
