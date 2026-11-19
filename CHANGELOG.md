@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+## v0.1.22 - 2026-11-19
+
+### Workspace
+
+- A space whose shell starts in the root or a system directory, such as `C:\Windows\System32` on Windows, is named
+  after that shell ("PowerShell", "Command Prompt", "Bash") instead of the path, in the sidebar, the status bar, the
+  phone's Spaces list and notifications. (#2660)
+- Double-clicking an agent in the sidebar's Agents list renames it, as a double-click already renames a space. (#2662)
+
+### Joining a mesh
+
+- Paste invite works in the desktop app: the app reads the clipboard itself when you click it and takes only a
+  Doriterm invite link from it. When the clipboard cannot be read, or holds something else, the message says to paste
+  into the field instead of showing a browser error. (#2656)
+
+### Phone
+
+- Each space in the Spaces list has its own "..." to rename or close the space without opening it first. (#2662)
+
+### Settings
+
+- Machines shows each machine's agent skill (installed, outdated, not installed, or not managed by Doriterm), with
+  Install and Update buttons that ask that machine's host to do it. (#2655)
+
+### Host install
+
+- `doriface-host skill install`, `skill status [--json]` and `skill uninstall` put the Doriterm agent skill this host
+  carries into `~/.agents/skills` and `~/.claude/skills`, and never touch a `doriterm` skill the host did not write.
+  The installer installs it with the host, and a host that updated itself updates the copies an older host wrote. (#2655)
+
+### Documentation
+
+- A `doriterm` skill for coding agents in `skills/doriterm`: running and steering agents and long commands with
+  `hc` here and on other machines, the host's relay, mesh and pairing commands, and OmO as the agent to run. (#2654)
+
 ## v0.1.21 - 2026-11-19
 
 ### Terminal
