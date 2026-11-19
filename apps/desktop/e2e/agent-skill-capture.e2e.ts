@@ -5,7 +5,7 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addMachine, MACHINE_NAME } from "../../web/e2e/machine.ts";
+import { type ChildProcess, spawn } from "node:child_process";
 import { scratchHcSession } from "./hc-session.ts";
 import { launchOptions } from "./launch.ts";
 
@@ -14,7 +14,8 @@ test.skip(process.env["CAPTURE"] !== "1", "captures run only with CAPTURE=1");
 let session: ReturnType<typeof scratchHcSession> | undefined;
 let root: string | undefined;
 let launched: ElectronApplication | undefined;
-let stopMachine: (() => Promise<void>) | undefined;
+let machine: ChildProcess | undefined;
+const MACHINE_NAME = "build-box";
 
 test.beforeAll(async () => {
   session = scratchHcSession();
@@ -26,14 +27,26 @@ test.beforeAll(async () => {
       (entry): entry is [string, string] => entry[1] !== undefined,
     ),
   );
-  stopMachine = await addMachine(env["HC_BIN"] ?? "hc", env, join(root, "machine"), false, undefined, true);
+  const added = spawn("bun", [join(import.meta.dirname, "added-machine.ts"), join(root, "machine")], {
+    env,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  machine = added;
+  await new Promise<void>((resolve, reject) => {
+    added.stdout?.on("data", (chunk: Buffer) => (chunk.toString().includes("READY") ? resolve() : undefined));
+    added.once("exit", (code) => reject(new Error(`the added machine's setup exited (${code})`)));
+  });
   launched = await electron.launch({ ...launchOptions([`--user-data-dir=${join(root, "profile")}`]), env });
 });
 
 test.afterAll(async () => {
   try {
     await launched?.close();
-    await stopMachine?.();
+    if (machine !== undefined && machine.exitCode === null) {
+      const exited = new Promise((resolve) => machine?.once("exit", resolve));
+      machine.kill("SIGTERM");
+      await exited;
+    }
   } finally {
     await session?.dispose();
     if (root !== undefined) rmSync(root, { recursive: true, force: true });
@@ -64,20 +77,31 @@ test("Settings > Machines installs the agent skill on this computer and on the a
   test.setTimeout(120_000);
   if (launched === undefined) throw new Error("the app did not launch");
   const page = await launched.firstWindow();
-  await page.evaluate(() => {
-    localStorage.setItem("doriface.appearance", JSON.stringify({ theme: "day", custom: [] }));
-    history.replaceState(null, "", "/settings#machines");
-    location.reload();
-  });
+  const started = page.getByRole("button", { name: "Use this computer" });
+  const workspace = page
+    .getByRole("button", { name: "New tab" })
+    .or(page.getByRole("button", { name: "New terminal" }))
+    .first();
+  await expect(started.or(workspace)).toBeVisible({ timeout: 60_000 });
+  if (await started.isVisible()) await started.click();
+  await expect(workspace).toBeVisible({ timeout: 60_000 });
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "doriface.appearance",
+      JSON.stringify({ mode: "light", dark: "night", light: "day", density: "comfortable", custom: [] }),
+    ),
+  );
+  const url = new URL(page.url());
+  await page.goto(`${url.protocol}//${url.host}/settings#machines`);
   const rows = page.getByRole("list", { name: "Machines" }).getByRole("listitem");
-  const machine = rows.filter({ hasText: MACHINE_NAME });
+  const added = rows.filter({ hasText: MACHINE_NAME });
   const here = rows.first();
   await expect(here).toContainText("Agent skill not installed", { timeout: 30_000 });
-  await expect(machine).toContainText("Agent skill not installed", { timeout: 30_000 });
+  await expect(added).toContainText("Agent skill not installed", { timeout: 30_000 });
   await shoot(page, "before");
   await here.getByRole("button", { name: /^Install agent skill on / }).click();
   await expect(here).toContainText(/Agent skill installed v\S+/, { timeout: 30_000 });
-  await machine.getByRole("button", { name: `Install agent skill on ${MACHINE_NAME}` }).click();
-  await expect(machine).toContainText(/Agent skill installed v\S+/, { timeout: 30_000 });
+  await added.getByRole("button", { name: `Install agent skill on ${MACHINE_NAME}` }).click();
+  await expect(added).toContainText(/Agent skill installed v\S+/, { timeout: 30_000 });
   await shoot(page, "after");
 });
