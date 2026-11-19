@@ -4,7 +4,7 @@ import type { e2eeDeps } from "./host-e2ee.ts";
 import type { HostOptions } from "./host-types.ts";
 import { type GitFactsPublisher, publishGitFacts } from "./git-facts.ts";
 import { type HostInfoPublisher, publishHostInfo } from "./host-info.ts";
-import type { HcTarget } from "./mesh/hc-machines.ts";
+import { HC_STOP_GRACE_MS, type HcTarget } from "./mesh/hc-machines.ts";
 import { type MeshOfferService, serveMeshOffers } from "./mesh/offer-doc.ts";
 import { publishMeshStatusOnCore, type MeshStatusPublisher } from "./mesh/status-publisher.ts";
 import { pairingArtifact } from "./pair-link.ts";
@@ -19,6 +19,25 @@ export interface WriterParts {
   readonly meshStatus: (() => MeshStatus | undefined) | undefined;
   readonly refreshMeshLines: () => Promise<void>;
   readonly started: (name: string, stop: () => unknown, kill?: () => readonly string[]) => void;
+}
+
+interface Writer {
+  stop(): Promise<unknown>;
+  kill(): readonly number[];
+}
+
+/**
+ * Stops a writer, and kills its `hc connect` child if closing it has not ended it within the grace: a launch a busy
+ * machine still holds when the host stops would otherwise start the core after the host is gone (#441).
+ */
+async function stopWriter(writer: Writer | undefined): Promise<void> {
+  if (writer === undefined) return;
+  const grace = setTimeout(() => writer.kill(), HC_STOP_GRACE_MS);
+  try {
+    await writer.stop();
+  } finally {
+    clearTimeout(grace);
+  }
 }
 
 const pids = (killed: readonly number[] | undefined): string[] => (killed ?? []).map((pid) => `hc connect pid ${pid}`);
@@ -114,7 +133,7 @@ export function coreWriters({ core, options, e2ee, meshStatus, refreshMeshLines,
     hostInfoSettled: () => info?.settled ?? Promise.resolve(),
     gitFactsSettled: () => git?.settled() ?? Promise.resolve(),
     meshStatusSettled: () => meshDoc?.settled() ?? Promise.resolve(),
-    stopMeshDoc: () => meshDoc?.stop(),
-    stopOthers: () => Promise.all([info?.stop(), git?.stop(), offers?.stop()]),
+    stopMeshDoc: () => stopWriter(meshDoc),
+    stopOthers: () => Promise.all([stopWriter(info), stopWriter(git), stopWriter(offers)]),
   };
 }
