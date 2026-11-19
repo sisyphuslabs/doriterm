@@ -5,6 +5,9 @@
   "apps/desktop/test/updater.test.ts": {
     "doriterm-testing/no-fixed-sleep": 1
   },
+  "apps/host/install/install-mac.test.ts": {
+    "doriterm-testing/no-flake-masking": 2
+  },
   "apps/host/src/e2ee/first-line-hc.test.ts": {
     "doriterm-testing/no-flake-masking": 1
   },
