@@ -1,9 +1,10 @@
+import { terminalSpaceName } from "@doriface/protocol";
 import { Button, StatusChip, StatusIndicator } from "@doriface/ui";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useFittedLines } from "./fit-lines.ts";
 import { agentStatus } from "./attention.ts";
-import { machineOf, type Session, spaceName, spaceOfAddress, terminalTitle } from "./model.ts";
+import { machineOf, type Session, spaceOfAddress, terminalTitle } from "./model.ts";
 import { useShown } from "./use-shown.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { PhoneSessionSheet } from "./phone-session-sheet.tsx";
@@ -42,7 +43,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
   const machine = machineOf(terminal.address);
   // Where it is: the layout space whose tab shows it (#404), else where it runs.
   const { spaces } = useSpaceSelection();
-  const space = spaceOfAddress(spaces, terminal.address)?.name ?? spaceName(terminal);
+  const space = spaceOfAddress(spaces, terminal.address)?.name ?? terminalSpaceName(terminal);
   const where = `${machine ?? host} · ${space}`;
   return (
     <header

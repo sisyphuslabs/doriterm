@@ -11,6 +11,7 @@ export * from "./host-info.ts";
 export * from "./mesh-status.ts";
 export * from "./push.ts";
 export * from "./notice-text.ts";
+export * from "./space-name.ts";
 export { isMeshName, meshRevokeCommand } from "./mesh-name.ts";
 export { parseMeshStatus } from "./mesh-status-parse.ts";
 export { isTerminal } from "./event-guards.ts";

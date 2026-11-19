@@ -1,10 +1,11 @@
+import { terminalSpaceName } from "@doriface/protocol";
 import type { HcConnection } from "@doriface/client";
 import { Button, Kbd, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Monitor } from "lucide-react";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { agentStatus, nextNeedingYou } from "./attention.ts";
-import { machineOf, type Session, spaceName } from "./model.ts";
+import { machineOf, type Session } from "./model.ts";
 import { HistoryGapStatus } from "./history-gap-status.tsx";
 import { HostDownHelp } from "./host-down-help.tsx";
 import { MachineDownHelp } from "./machine-down.tsx";
@@ -65,7 +66,7 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
                 ›
               </span>
               <span className="sr-only">Space: </span>
-              <StatusBarItem>{spaceName(focusedTerminal)}</StatusBarItem>
+              <StatusBarItem>{terminalSpaceName(focusedTerminal)}</StatusBarItem>
             </span>
           )}
           {loaded ? (
