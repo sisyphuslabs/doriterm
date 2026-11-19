@@ -6,8 +6,10 @@ test.use({ serviceWorkers: "block" });
 
 // An idle terminal must cost its renderer nothing per frame: a CSS animation on the cursor makes Chromium recalculate
 // style and paint on every frame (60 a second) even though a blink changes only twice a second. The focused cursor
-// still blinks, by data-cursor-off flipped every half second (cursor-blink.ts), and it must look exactly as wterm's
-// keyframes drew it: on, then at 50% the cell as it is, with no block, bar, underline or outline.
+// still blinks, by data-cursor-on and data-cursor-off flipped every half second (cursor-blink.ts), and it must look
+// exactly as the keyframes drew it, per shape: a block (cursor-blink) in the cursor colour with the app background as
+// its text, then the cell; a bar or underline (cursor-line-blink) its line, then none, its text untouched; a configured
+// block_hollow (doriface-hollow-blink, render-css.ts) its outline, then a transparent one.
 
 /** How the cursor's span is drawn, as the browser computed it. */
 interface Drawing {
@@ -23,6 +25,8 @@ interface Blink {
   readonly off: Drawing;
   /** The cell under the cursor drawn as wterm's 50% keyframe drew it: its own background and colour. */
   readonly cell: Drawing;
+  /** The block's 0% keyframe: the cursor colour, with the app background as the text's colour. */
+  readonly block: Drawing;
   readonly animations: readonly string[];
 }
 
@@ -53,18 +57,19 @@ function observeBlink(terminal: Locator): Promise<Blink> {
           if (span === null) throw new Error("the terminal draws no cursor");
           return span;
         };
-        const cellOf = (span: Element): Drawing => {
-          const probe = span.cloneNode(true);
-          if (!(probe instanceof HTMLElement)) throw new Error("the cursor is not an element");
-          probe.classList.remove("term-cursor");
-          probe.style.background = "var(--term-cell-bg, transparent)";
-          probe.style.color = "var(--term-cell-fg, inherit)";
-          span.after(probe);
-          const drawn = draw(probe);
-          probe.remove();
+        // A copy of the cursor's cell, not a cursor, drawn in the given colours as the page resolves them there.
+        const probe = (span: Element, background: string, color: string): Drawing => {
+          const copy = span.cloneNode(true);
+          if (!(copy instanceof HTMLElement)) throw new Error("the cursor is not an element");
+          copy.classList.remove("term-cursor");
+          copy.style.background = background;
+          copy.style.color = color;
+          span.after(copy);
+          const drawn = draw(copy);
+          copy.remove();
           return drawn;
         };
-        const seen: { on?: Drawing; off?: Drawing; cell?: Drawing } = {};
+        const seen: { on?: Drawing; off?: Drawing; cell?: Drawing; block?: Drawing } = {};
         const give = setTimeout(() => {
           watch.disconnect();
           reject(new Error(`the cursor did not blink within ${within} ms: ${JSON.stringify(seen)}`));
@@ -73,9 +78,15 @@ function observeBlink(terminal: Locator): Promise<Blink> {
           const span = cursor();
           if (element.hasAttribute("data-cursor-off")) {
             seen.off = draw(span);
-            seen.cell = cellOf(span);
+            seen.cell = probe(span, "var(--term-cell-bg, transparent)", "var(--term-cell-fg, inherit)");
+            seen.block = probe(
+              span,
+              "var(--term-app-cursor, var(--term-cursor))",
+              "var(--term-app-bg, var(--term-bg))",
+            );
           } else seen.on = draw(span);
           if (seen.on === undefined || seen.off === undefined || seen.cell === undefined) return;
+          if (seen.block === undefined) return;
           watch.disconnect();
           clearTimeout(give);
           const running = document.getAnimations().filter((animation) => animation.playState === "running");
@@ -83,6 +94,7 @@ function observeBlink(terminal: Locator): Promise<Blink> {
             on: seen.on,
             off: seen.off,
             cell: seen.cell,
+            block: seen.block,
             animations: running.map((animation) => (animation instanceof CSSAnimation ? animation.animationName : "")),
           });
         });
@@ -101,6 +113,24 @@ function expectOffIsTheCell(blink: Blink): void {
   expect(blink.off.color).toBe(blink.cell.color);
   expect(blink.off.boxShadow).toBe("none");
   expect(blink.off.outlineStyle === "none" || blink.off.outlineColor === TRANSPARENT).toBe(true);
+}
+
+/** The cursor as drawn while it does not blink: the steady `shape` (DECSCUSR 2, 4 or 6), in the config's colours. */
+async function steadyCursor(terminal: Locator, shape: "2" | "4" | "6"): Promise<Drawing> {
+  await run(terminal, `printf '\\033[${shape} q'`);
+  await expect(terminal.locator(".term-grid")).toHaveAttribute("data-cursor-blink", "false");
+  await expect(terminal).not.toHaveAttribute("data-cursor-off");
+  await expect(terminal).not.toHaveAttribute("data-cursor-on");
+  return terminal.locator(".term-cursor").evaluate((span) => {
+    const style = getComputedStyle(span);
+    return {
+      background: style.backgroundColor,
+      color: style.color,
+      boxShadow: style.boxShadow,
+      outlineStyle: style.outlineStyle,
+      outlineColor: style.outlineColor,
+    };
+  });
 }
 
 /** Opens a terminal in the workspace on screen and focuses it. */
@@ -163,12 +193,106 @@ test("a configured block_hollow cursor blinks its outline off", async ({ page })
   expect(blink.on.outlineColor).not.toBe(TRANSPARENT);
 });
 
-test("a configured cursor-text colour is not drawn in the off phase: the cell keeps its own", async ({ page }) => {
+// The block's keyframes set the text's colour in both phases, over the config's cursor-text: a blinking block never
+// showed it, a steady one does.
+test("a blinking block draws the app background over the cursor colour, never cursor-text, then the cell", async ({
+  page,
+}) => {
   await importConfig(page, "cursor-text = #ff00ff\n");
   const terminal = await focusedTerminal(page);
   const blink = await observeBlink(terminal);
   expectOffIsTheCell(blink);
-  expect(blink.cell.color).not.toBe("rgb(255, 0, 255)");
+  expect(blink.on.background).toBe(blink.block.background);
+  expect(blink.on.color).toBe(blink.block.color);
+  const steady = await steadyCursor(terminal, "2");
+  expect(steady.color, "the config's cursor-text reaches a steady block").toBe("rgb(255, 0, 255)");
+  expect(blink.on.color).not.toBe(steady.color);
+});
+
+// The line's keyframes set only the box-shadow: the text keeps the config's cursor-text in both phases.
+async function expectLineKeepsCursorText(
+  terminal: Locator,
+  blinking: "3" | "5",
+  steady: "4" | "6",
+  shape: "bar" | "underline",
+): Promise<void> {
+  const still = await steadyCursor(terminal, steady);
+  expect(still.color, `the config's cursor-text reaches a steady ${shape}`).toBe("rgb(255, 0, 255)");
+  await run(terminal, `printf '\\033[${blinking} q'`);
+  await expect(terminal.locator(".term-grid")).toHaveAttribute("data-cursor-shape", shape);
+  const blink = await observeBlink(terminal);
+  expect(blink.animations).toEqual([]);
+  expect(blink.on.color, shape).toBe(still.color);
+  expect(blink.off.color, shape).toBe(still.color);
+  expect(blink.on.boxShadow, shape).toBe(still.boxShadow);
+  expect(blink.off.boxShadow, shape).toBe("none");
+  expect(blink.off.background, shape).toBe(blink.cell.background);
+}
+
+test("a blinking bar and underline keep the configured cursor-text colour in both phases", async ({ page }) => {
+  await importConfig(page, "cursor-text = #ff00ff\n");
+  const terminal = await focusedTerminal(page);
+  await expectLineKeepsCursorText(terminal, "5", "6", "bar");
+  await expectLineKeepsCursorText(terminal, "3", "4", "underline");
+});
+
+// A DECSCUSR from a block to a bar renamed wterm's animation (cursor-blink to cursor-line-blink), which started it over:
+// vim entering insert mode showed its bar at once, never hidden for what was left of the block's off phase.
+test("a block switched to a bar while it is off shows the bar on at once", async ({ page }) => {
+  await page.goto("/");
+  const terminal = await focusedTerminal(page);
+  // With echo off the shell's read takes Enter without moving the cursor, so its span is kept (wterm changes only the
+  // grid's data-cursor-shape for a new shape): what starts the phase over can only be the change of shape.
+  // The marker is the shell's last output before it waits, so nothing else moves the cursor until Enter.
+  await run(terminal, String.raw`stty -echo; echo waiting-$((6*7)); read line; printf '\033[5 q'; sleep 30`);
+  await expect(terminal).toContainText("waiting-42", { timeout: 15_000 });
+  await terminal.evaluate(
+    (element, within) =>
+      new Promise<void>((resolve, reject) => {
+        const grid = element.querySelector(".term-grid");
+        if (grid === null) throw new Error("the terminal has no grid");
+        // Armed at the start of an off phase. The app's own observers were made first, so within the batch that brings
+        // the new shape they have already run: the phase is read after whatever they did about it.
+        const arm = (): void => {
+          const span = grid.querySelector(".term-cursor");
+          let offBefore = true;
+          const atSwitch = new Promise<object>((settle, fail) => {
+            const give = setTimeout(() => fail(new Error(`the shape did not change within ${within} ms`)), within);
+            const watch = new MutationObserver((records) => {
+              const off = element.hasAttribute("data-cursor-off");
+              if (!records.some((record) => record.attributeName === "data-cursor-shape")) {
+                offBefore = off;
+                return;
+              }
+              watch.disconnect();
+              clearTimeout(give);
+              settle({ offBefore, off, rebuilt: grid.querySelector(".term-cursor") !== span });
+            });
+            watch.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
+            watch.observe(grid, { attributes: true, attributeFilter: ["data-cursor-shape"] });
+          });
+          Reflect.set(element, "atSwitch", atSwitch);
+          resolve();
+        };
+        const give = setTimeout(() => reject(new Error(`no off phase within ${within} ms`)), within);
+        const off = new MutationObserver(() => {
+          if (!element.hasAttribute("data-cursor-off")) return;
+          off.disconnect();
+          clearTimeout(give);
+          arm();
+        });
+        off.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
+      }),
+    FLIP_WITHIN_MS,
+  );
+  await terminal.getByRole("textbox").press("Enter");
+  const atSwitch: unknown = await terminal.evaluate((element) => Reflect.get(element, "atSwitch"));
+  expect(atSwitch, "the bar came while the block was off, its span kept, and is drawn on").toEqual({
+    offBefore: true,
+    off: false,
+    rebuilt: false,
+  });
+  await expect(terminal.locator(".term-grid")).toHaveAttribute("data-cursor-shape", "bar");
 });
 
 // wterm rebuilds the cursor's span whenever its row is drawn again, and its CSS animation started over with the
