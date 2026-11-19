@@ -98,7 +98,10 @@ export class CursorBlink {
     if (this.blinking) this.#start();
   }
 
-  /** A press began: the state is taken now and again on each frame until the cursor blinks or {@link release}. */
+  /**
+   * A press began: the state is taken now and, while the press could still make the cursor blink, again on each frame
+   * until it blinks or {@link release}.
+   */
   press(): void {
     this.#held?.();
     this.#follow();
@@ -119,8 +122,12 @@ export class CursorBlink {
   }
 
   #follow(): void {
-    this.decide();
-    this.#held = this.blinking ? null : this.#frame(() => this.#follow());
+    const state = this.#read();
+    this.#settle(state, false);
+    // A press can only bring `:active`: a cursor that would not blink even focused (steady, hidden, in a hidden
+    // window) is not followed, so a click or a drag in such a terminal costs this one read and no frame.
+    const pending = !this.blinking && cursorBlinks({ ...state, focused: true });
+    this.#held = pending ? this.#frame(() => this.#follow()) : null;
   }
 
   #halt(): void {
