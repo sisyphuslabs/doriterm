@@ -24,6 +24,7 @@ import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
 import { afterGrace } from "./use-dead-panes.ts";
 import { useQuietKeyboard } from "./use-quiet-keyboard.ts";
+import { useOmoCommands } from "./use-omo-commands.ts";
 import { useStickyKeys } from "./use-sticky-keys.ts";
 
 export interface PhoneTerminalProps {
@@ -104,6 +105,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const setBrowsing = (on: boolean): void => setBrowsingOn(on ? terminal.address : null);
   const host = useHostPlatform(connection, machine, offline);
   const sticky = useStickyKeys(port, host);
+  const slash = useOmoCommands(connection, now);
   const voice = useDictation();
   const mic = useRef<HTMLButtonElement>(null);
   const { toggle } = voice;
@@ -247,6 +249,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             setPacks(true);
           }}
           browsing={browsing}
+          slash={slash}
           {...(mouseOnly ? { onKeys: setKeysShown } : { onBrowse: setBrowsing })}
         />
       )}

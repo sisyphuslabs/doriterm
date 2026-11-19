@@ -9,6 +9,7 @@ import type { TerminalPort } from "../terminal/terminal-port.ts";
 import { InputBox } from "./input-box.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { useShown } from "./use-shown.ts";
+import type { OmoCommands } from "./use-omo-commands.ts";
 import type { StickyKeys } from "./use-sticky-keys.ts";
 
 export function keysBottom(inset: number): string {
@@ -71,6 +72,8 @@ export interface PhoneKeysProps {
   readonly browsing?: boolean;
   /** Set on a touch device: a round Read-only button beside the keyboard button turns browsing on and off. */
   readonly onBrowse?: (on: boolean) => void;
+  /** OmO's commands for the Type field, when the terminal runs OmO (#2658). */
+  readonly slash?: OmoCommands | null;
 }
 
 /** Reports an element's border-box height as it changes, and 0 once it is gone. */
@@ -118,6 +121,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
     onBarHeight,
     browsing = false,
     onBrowse,
+    slash = null,
   } = props;
   const named = useShown(terminals);
   const barRef = useHeightReport(onBarHeight);
@@ -160,7 +164,12 @@ export function PhoneKeys(props: PhoneKeysProps) {
       onPad={() => onPad(!pad)}
       onPaste={sticky.paste}
       inputField={
-        <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
+        <InputBox
+          className="w-full p-0"
+          draftKey={current}
+          slash={slash}
+          onSend={(text) => port.current?.send(`${text}\r`)}
+        />
       }
       {...(onKeys === undefined
         ? { onHideKeyboard: hideKeyboard }

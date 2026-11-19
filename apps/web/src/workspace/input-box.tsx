@@ -1,6 +1,9 @@
 import { SendHorizontal } from "lucide-react";
-import { type CSSProperties, type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button, cn } from "@doriface/ui";
+import { matchCommands, namingCommand } from "./omo-commands.ts";
+import { optionId, SlashList } from "./slash-list.tsx";
+import type { OmoCommands } from "./use-omo-commands.ts";
 
 export interface InputBoxProps {
   /** Writes the text and presses Return: one line for the program, as the field shows it. */
@@ -9,6 +12,8 @@ export interface InputBoxProps {
   readonly draftKey: string;
   readonly className?: string;
   readonly style?: CSSProperties;
+  /** OmO's commands, when the terminal runs OmO: a `/` typed into the empty field lists them to pick from (#2658). */
+  readonly slash?: OmoCommands | null;
 }
 
 /** Unsent lines by terminal, kept for this page's life: closing the keyboard unmounts the field, not the draft. */
@@ -24,7 +29,7 @@ const MAX_HEIGHT_PX = 112;
  * the whole line is in view while it is written (#949). On the phone it is the keys bar's top row, Send at its end, typing
  * or not (#1551).
  */
-export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) {
+export function InputBox({ onSend, draftKey, className, style, slash = null }: InputBoxProps) {
   const [text, setTextState] = useState(() => drafts.get(draftKey) ?? "");
   const [focused, setFocused] = useState(false);
   const field = useRef<HTMLTextAreaElement | null>(null);
@@ -35,6 +40,25 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
     setTextState(next);
   };
   const active = focused || text !== "";
+  const listId = useId();
+  // The line Escape put the list away for; typing on brings it back.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const [pick, setPick] = useState(0);
+  const listing = slash !== null && focused && namingCommand(text) && dismissed !== text;
+  const matches = listing && slash.list.kind === "ready" ? matchCommands(slash.list.commands, text) : [];
+  const chosen = matches[Math.min(pick, matches.length - 1)];
+  const type = (next: string): void => {
+    setText(next);
+    setPick(0);
+    setDismissed(null);
+  };
+  // Asked for when the list is first wanted, which may be before OmO took the terminal's foreground (a `/` typed as it
+  // starts): the field reads the commands once it knows the program.
+  const wantsList = listing && slash.list.kind === "idle";
+  const want = slash?.want;
+  useEffect(() => {
+    if (wantsList) want?.();
+  }, [wantsList, want]);
   // The field in use is as tall as its wrapped text, up to MAX_HEIGHT_PX; an idle field keeps its pill height (h-11).
   useLayoutEffect(() => {
     const element = field.current;
@@ -62,14 +86,43 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
   // Enter sends; Shift+Enter is a line of its own. A key that is still composing a Hangul syllable belongs to the
   // input method, which commits on it, and never to Send.
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (listing && listKey(event)) return;
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     send();
   };
+  // Picking a command runs it: the field sends a whole line with Return, and a command that takes words is typed out
+  // with a space, which puts the list away, then sent as any line is.
+  const run = (name: string): void => {
+    onSend(`/${name}`);
+    setText("");
+  };
+  const listKey = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (event.key === "Escape") setDismissed(text);
+    else if (event.key === "ArrowDown" && matches.length > 0) setPick((pick + 1) % matches.length);
+    else if (event.key === "ArrowUp" && matches.length > 0) setPick((pick - 1 + matches.length) % matches.length);
+    else if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && chosen !== undefined)
+      run(chosen.name);
+    else return false;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  };
   // The field and Send keep the 0.5rem the phone chrome leaves between two pressable controls (the round buttons'
   // slot), so a thumb at the field's end does not land on Send (#1506).
   return (
-    <div className={cn("flex items-end gap-2 px-1.5 py-1", className)} style={style}>
+    <div className={cn("relative flex items-end gap-2 px-1.5 py-1", className)} style={style}>
+      {listing ? (
+        <SlashList
+          id={listId}
+          list={slash.list}
+          matches={matches}
+          typed={text}
+          active={chosen === undefined ? -1 : matches.indexOf(chosen)}
+          onActive={setPick}
+          onPick={(command) => run(command.name)}
+        />
+      ) : null}
       <textarea
         ref={field}
         rows={1}
@@ -80,7 +133,16 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
         spellCheck={false}
         value={text}
         aria-label="Type into the terminal"
-        onChange={(event) => setText(event.target.value)}
+        {...(slash === null
+          ? {}
+          : {
+              role: "combobox",
+              "aria-autocomplete": "list" as const,
+              "aria-expanded": listing,
+              "aria-controls": listId,
+              "aria-activedescendant": chosen === undefined ? undefined : optionId(listId, matches.indexOf(chosen)),
+            })}
+        onChange={(event) => type(event.target.value)}
         onKeyDown={onKeyDown}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
