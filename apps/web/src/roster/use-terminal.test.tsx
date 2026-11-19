@@ -55,7 +55,7 @@ test("a terminal reader renders only for its own foreground event (#2607)", asyn
   });
 });
 
-test("a reader that is not watching renders for nothing, and reads its terminal as it stands once it watches", async () => {
+test("a reader not watching renders for nothing, then reads its terminal as it stands once it watches", async () => {
   const core = new FakeCore("terminal-render-unwatched");
   core.terminals = [terminal("t1"), terminal("t2")];
   const connection = core.connection() as unknown as HcConnection;

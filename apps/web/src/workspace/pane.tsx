@@ -116,8 +116,9 @@ export function Pane(props: PaneProps) {
     onGrab,
   } = props;
   const sessionMenuFocus = useSessionMenuFocus();
-  // The title as it stands: the list this pane came from changes only with the terminals' shape (#2607).
-  const title = terminalTitle(useTerminal(connection, terminal.address) ?? terminal);
+  // The title as it stands: the list this pane came from changes only with the terminals' shape (#2607). A pane in a
+  // hidden tab or behind a zoom draws nothing for a new title, and shows the title it has now when it is shown.
+  const title = terminalTitle(useTerminal(connection, terminal.address, shown) ?? terminal);
   const machine = machineOf(terminal.address);
   // Watched for every pane on screen, so a drop is noticed within a line read, focused or not; a pane in a hidden tab or
   // behind a zoom has the roster read nothing for it (#2505 review). Past the grace the pane body says the machine is
