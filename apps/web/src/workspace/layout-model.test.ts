@@ -281,14 +281,21 @@ describe("adoptLoose (#404)", () => {
     expect(adopted === null ? null : docSpaces(adopted).at(-1)?.name).toBe(HOME_SPACE);
   });
 
-  test("nothing to adopt writes nothing: shown, finished and started-by-another terminals stay as they are", () => {
-    expect(
-      adoptLoose(saved, [
-        loose("t1", "/w"),
-        loose("t6", "/w", { state: "finished" }),
-        loose("t7", "/w", { parent: "t1" }),
-      ]),
-    ).toBeNull();
+  test("nothing to adopt writes nothing: shown and finished terminals stay as they are", () => {
+    expect(adoptLoose(saved, [loose("t1", "/w"), loose("t6", "/w", { state: "finished" })])).toBeNull();
+  });
+
+  test("a terminal another one started (an agent's worker, on this machine or from another) is adopted like any (#2467)", () => {
+    const adopted = adoptLoose(
+      saved,
+      [loose("t7", "/tmp", { parent: "t1", labels: { space: "lanes" } }), loose("t8", "/w", { parent: "box/t3" })],
+      ids(),
+    );
+    expect(where(adopted)).toEqual([
+      ["spc-w", ["t1"]],
+      ["spc-w", ["t8"]],
+      ["spc3", ["t7"]],
+    ]);
   });
 
   test("a terminal that End is ending is not adopted back: its closed tab stays closed while its program goes (#2122)", () => {

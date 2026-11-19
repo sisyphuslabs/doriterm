@@ -27,7 +27,7 @@ const layout = process.argv[2] === "layout";
 const port = layout ? E2E_LAYOUT_PORT : E2E_HOST_PORT;
 
 const hc = process.env["HC_BIN"] || Bun.which("hc");
-if (hc === null || hc === undefined || hc === "") throw new Error("set HC_BIN to an hc 0.1.20 binary");
+if (hc === null || hc === undefined || hc === "") throw new Error("set HC_BIN to an hc 0.1.21 binary");
 // Resolved, since a process is seen holding resolved paths (macOS: /var and /tmp are links into /private).
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "dw-")));
 const session = `web-e2e-${layout ? "layout-" : ""}${crypto.randomUUID().slice(0, 8)}`;

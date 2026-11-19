@@ -27,7 +27,8 @@ export function RenameDialog({
 }: RenameDialogProps) {
   const id = useId();
   const [name, setName] = useState(value);
-  const waiting = refused !== null && !busy;
+  /** Why the name waits, while it does: a write in flight shows its own busy state instead. */
+  const waiting = busy ? null : refused;
   return (
     <Dialog
       open
@@ -41,7 +42,7 @@ export function RenameDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (busy || waiting) return;
+          if (busy || waiting !== null) return;
           onRename(name);
         }}
         className="flex flex-col gap-5"
@@ -49,12 +50,12 @@ export function RenameDialog({
         <Field label="Name" htmlFor={id} {...(error === null ? {} : { error })}>
           <Input id={id} value={name} maxLength={80} autoFocus onValueChange={(next: string) => setName(next)} />
         </Field>
-        {refused !== null && waiting ? <NotNowLine action="Rename" why={refused} /> : null}
+        {waiting === null ? null : <NotNowLine action="Rename" why={waiting} />}
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" loading={busy} disabled={waiting}>
+          <Button variant="primary" type="submit" loading={busy} disabled={waiting !== null}>
             Rename
           </Button>
         </div>

@@ -2,6 +2,7 @@ import type { Socket, UnixSocketListener } from "bun";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { type ControlRequest, parseRequest } from "./control-requests.ts";
+import { SocketWriter, type WritableSocket } from "./socket-writer.ts";
 
 /**
  * A Unix socket in the state dir (0700) through which `doriface-host pair` and `devices revoke` reach the running
@@ -28,40 +29,14 @@ interface ConnectionState {
   readonly closed: AbortController;
   started: boolean;
   answer: ((line: string) => void) | undefined;
-  readonly out: Outgoing;
-}
-
-/**
- * What a control connection still owes its peer. A Bun socket takes only what fits its send buffer and keeps none of the
- * rest, so a reply past it (about 8 KB on macOS) was cut short and the socket never closed (#2387): the rest waits here
- * for `drain`, in order.
- */
-interface Outgoing {
-  readonly queue: Uint8Array[];
-  ending: boolean;
+  readonly out: SocketWriter;
 }
 
 const encoder = new TextEncoder();
 
-/** Writes what the socket takes now, and ends it once everything queued is out and an end was asked for. */
-function flushOut<T>(socket: Socket<T>, out: Outgoing): void {
-  for (let head = out.queue[0]; head !== undefined; head = out.queue[0]) {
-    const taken = Math.max(0, socket.write(head));
-    if (taken < head.byteLength) {
-      out.queue[0] = head.subarray(taken);
-      return;
-    }
-    out.queue.shift();
-  }
-  if (out.ending) socket.end();
-}
-
 /** Sends one JSON line after anything still queued; `end` closes the connection once all of it is written. */
-function sendLine<T>(socket: Socket<T>, out: Outgoing, value: unknown, end = false): void {
-  if (out.ending) return;
-  out.queue.push(encoder.encode(`${JSON.stringify(value)}\n`));
-  out.ending = end;
-  flushOut(socket, out);
+function sendLine(socket: WritableSocket, out: SocketWriter, value: unknown, end = false): void {
+  out.send(socket, encoder.encode(`${JSON.stringify(value)}\n`), end);
 }
 
 export interface ControlListener {
@@ -96,11 +71,11 @@ export function listenControl(stateDir: string, handle: ControlHandler): Control
           closed: new AbortController(),
           started: false,
           answer: undefined,
-          out: { queue: [], ending: false },
+          out: new SocketWriter(),
         };
       },
       drain(socket) {
-        flushOut(socket, socket.data.out);
+        socket.data.out.flush(socket);
       },
       close(socket) {
         socket.data.closed.abort(new Error("the control connection closed"));
@@ -177,7 +152,7 @@ export async function requestControl(
   let text = "";
   const decoder = new TextDecoder();
   let asked = false;
-  const out: Outgoing = { queue: [], ending: false };
+  const out = new SocketWriter();
   try {
     await Bun.connect({
       unix: controlSocketPath(stateDir),
@@ -186,7 +161,7 @@ export async function requestControl(
           sendLine(socket, out, request);
         },
         drain(socket) {
-          flushOut(socket, out);
+          out.flush(socket);
         },
         data(socket, chunk) {
           text += decoder.decode(chunk, { stream: true });

@@ -183,6 +183,8 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     await expect(down).toContainText(MACHINE_NAME, { timeout: ACTION_GRACE_MS + STATE_BOUND_MS });
     await expect(down.getByRole("button", { name: "Try again" })).toHaveCount(1);
     expect(await overlap(down, terminal)).toBe(false);
+    // The reason says it keeps trying, so it takes the reconnect line's place: one line, and the terminal keeps its rows.
+    await expect(status).toHaveCount(0);
     await capture(page, "machine-down-phone");
     await expect(page.getByText(`${MACHINE_NAME} is offline`)).toBeVisible({ timeout: OFFLINE_BOUND_MS });
     await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(1);

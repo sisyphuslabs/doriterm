@@ -19,7 +19,9 @@
  * absolute pseudo-element one that is positioned, and for both an absolute and a fixed one one that is transformed
  * (`transform`, `translate`, `scale`, `rotate`, `perspective`), filtered (`filter`, `backdrop-filter`), contained
  * (`contain` layout or paint, a `container-type`) or will change one of those; else the initial containing block for
- * an absolute one and the viewport for a fixed one. A scale on the block or above it scales the layer's offsets and size;
+ * an absolute one and the viewport for a fixed one. The layer moves with its block's content: the block's scroll offset
+ * is taken off its offsets, except the root's, which its box already moved by (#2472). A scale on the block or above it
+ * scales the layer's offsets and size;
  * a block rotated, skewed or seen through a perspective has no padding box this can read, and any other pseudo-element
  * with an app-region has no readable box either: both throw instead of being skipped.
  */
@@ -85,9 +87,14 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       if (border.display === "inline" && !horizontalLtr) throw unreadable;
       const box =
         (border.display === "inline" ? block.getClientRects()[0] : undefined) ?? block.getBoundingClientRect();
+      // A layer moves with its block's content, by the block's scroll offset in its own units: an absolute one, and a fixed
+      // one too, since a block that holds a fixed layer (transformed, filtered, contained or will-change) scrolls it with
+      // its content. The root's scroll offset is the viewport's, which the root's own box already moved by, so it is not
+      // counted twice (#2472 review).
+      const scrolled = block !== document.documentElement;
       origin = {
-        left: box.left + Number.parseFloat(border.borderLeftWidth) * sx,
-        top: box.top + Number.parseFloat(border.borderTopWidth) * sy,
+        left: box.left + (Number.parseFloat(border.borderLeftWidth) - (scrolled ? block.scrollLeft : 0)) * sx,
+        top: box.top + (Number.parseFloat(border.borderTopWidth) - (scrolled ? block.scrollTop : 0)) * sy,
       };
       scale = { x: sx, y: sy };
     }

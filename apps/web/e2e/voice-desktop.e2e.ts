@@ -1,4 +1,5 @@
 import { agentRow, endAgent, startShell } from "./agents.ts";
+import { spacesShowing } from "./core-tabs.ts";
 import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
@@ -157,7 +158,7 @@ test("a dictation under way ends when its terminal's machine drops: the recogniz
   }
 });
 
-test("the desktop's ended view offers no dictation: no mic, no strip, and a bound Dictate key starts nothing (#258)", async ({
+test("an ended program's tab offers no dictation: its tab goes, and nothing offers to dictate into it (#258)", async ({
   page,
 }) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
@@ -186,12 +187,14 @@ test("the desktop's ended view offers no dictation: no mic, no strip, and a boun
     hcOn("machine", ["kill", remote]);
     await expect.poll(() => stateOn("machine", remote), { timeout: 15_000 }).toBe("finished");
     reconnect();
-    await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: STATE_BOUND_MS });
+    // The pane was hidden while offline; once the machine is back, its ended program's tab leaves the machine's saved
+    // layout (the tabs follow the core), so only then is there nothing left to dictate into.
+    await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
+    await expect.poll(() => spacesShowing(remote, MACHINE_NAME), { timeout: OFFLINE_BOUND_MS }).toEqual([]);
+    await expect(terminal).toHaveCount(0);
 
-    await expect(page.getByRole("button", { name: /^Dictate into/ })).toHaveCount(0);
-    await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
-    await page.keyboard.press("Control+Alt+Shift+D");
-    await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible();
+    // Another tab may be in view now and offer its own Dictate; none is offered for the ended terminal.
+    await expect(page.getByRole("button", { name: "Dictate into dictate-ended" })).toHaveCount(0);
     await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
     expect(await speech.started()).toEqual([]);
   } finally {
@@ -200,9 +203,7 @@ test("the desktop's ended view offers no dictation: no mic, no strip, and a boun
   }
 });
 
-test("a tab whose program ended while the page was closed offers no Dictate in the tab bar (#269)", async ({
-  page,
-}) => {
+test("a program that ended while the page was closed leaves no Dictate in the tab bar (#269)", async ({ page }) => {
   const speech = await stubSpeech(page);
   const ended = startShell("host", "dictate-gone");
   try {
@@ -216,9 +217,12 @@ test("a tab whose program ended while the page was closed offers no Dictate in t
     hcOn("host", ["kill", ended]);
     await expect.poll(() => stateOn("host", ended), { timeout: 15_000 }).toBe("finished");
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: 30_000 });
+    // The reloaded page removes the ended program's tab from the saved layout (the tabs follow the core); only once
+    // it has is the tab bar checked for a Dictate for it.
+    await expect.poll(() => spacesShowing(ended), { timeout: 30_000 }).toEqual([]);
+    await expect(page.locator(`[data-terminal="${ended}"]`)).toHaveCount(0);
 
-    await expect(page.getByRole("button", { name: /^Dictate into/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Dictate into dictate-gone" })).toHaveCount(0);
     await expect(page.locator("[data-voice-strip]")).toHaveCount(0);
     expect(await speech.started()).toEqual([]);
   } finally {
