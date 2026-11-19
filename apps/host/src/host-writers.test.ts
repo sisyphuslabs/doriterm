@@ -14,7 +14,7 @@ function virtualClock() {
     },
     advance(ms: number) {
       now += ms;
-      for (const timer of [...timers]) {
+      for (const timer of timers) {
         if (timer.at > now) continue;
         timers.delete(timer);
         timer.run();

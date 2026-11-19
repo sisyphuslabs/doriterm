@@ -108,8 +108,8 @@ export async function skillCommand(
         };
         const results = await installSkill(bundle, targets, now);
         return report(
-          results.map(({ dir, action, error }) =>
-            action === "failed" ? failedLine(dir, error) : { dir, text: words[action], failed: false },
+          results.map(({ dir, action: done, error }) =>
+            done === "failed" ? failedLine(dir, error) : { dir, text: words[done], failed: false },
           ),
           out,
         );
@@ -130,8 +130,8 @@ export async function skillCommand(
         };
         const results = await uninstallSkill(bundle, targets);
         return report(
-          results.map(({ dir, action, error }) =>
-            action === "failed" ? failedLine(dir, error) : { dir, text: words[action], failed: false },
+          results.map(({ dir, action: done, error }) =>
+            done === "failed" ? failedLine(dir, error) : { dir, text: words[done], failed: false },
           ),
           out,
         );
