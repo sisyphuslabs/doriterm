@@ -21,7 +21,9 @@ import {
   type UpdateReady,
 } from "../shared/bridge.ts";
 import type { DictationHost, DictationOwner } from "./dictation.ts";
+import type { PasteInviteAnswer } from "../shared/paste-invite.ts";
 import { LocalHostStartError } from "./local-host.ts";
+import { pasteInvite, type PasteInviteDeps } from "./paste-invite.ts";
 import { SHELL_MENU_ACTIONS } from "./shell-menu.ts";
 
 /** The part of an IPC event the gate reads; `senderFrame` is null once the frame is gone. */
@@ -41,7 +43,7 @@ export interface IpcReplySender extends IpcSender {
   readonly sender: { readonly id: number; send(channel: string, ...args: unknown[]): void };
 }
 
-export interface IpcDeps {
+export interface IpcDeps extends PasteInviteDeps {
   readonly origin: string;
   readonly startLocalHost: () => Promise<LocalHostEndpoint>;
   /** This computer's pairing offer: `open` replaces a pending one, `state` reads what stands. */
@@ -128,6 +130,8 @@ export interface IpcHandlers {
   /** Only the page that owns the current session may stop or end it. */
   dictationStop(event: IpcOwnerSender, candidate: unknown): Promise<boolean>;
   dictationAbort(event: IpcOwnerSender, candidate: unknown): Promise<boolean>;
+  /** Paste invite (#2656): the clipboard's invite link, read only right after the person's own click or key. */
+  pasteInvite(event: IpcSender): Promise<PasteInviteAnswer>;
 }
 
 const TRIGGER = /^[a-z0-9_+=\-[\];',./`\\]{1,40}$/;
@@ -303,6 +307,10 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
     async dictationAbort(event, candidate) {
       assertAppFrame(event, deps.origin);
       return deps.dictation?.abort(event.sender, candidate) ?? false;
+    },
+    async pasteInvite(event) {
+      assertAppFrame(event, deps.origin);
+      return pasteInvite(event.sender?.id, deps);
     },
   };
 }

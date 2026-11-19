@@ -1,6 +1,5 @@
-import type { JsonObject, Terminal } from "@doriface/protocol";
+import { type JsonObject, SPACE_LABEL, type Terminal } from "@doriface/protocol";
 import { docSpaces, type NewSpace } from "@doriface/protocol/layout";
-import { SPACE_LABEL } from "./model.ts";
 
 /** The label herdr-app places a terminal by: the id of a space in its machine's layout document. */
 export const HERDR_SPACE_LABEL = "herdr.space";
