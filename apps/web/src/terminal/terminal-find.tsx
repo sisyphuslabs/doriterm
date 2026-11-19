@@ -4,7 +4,7 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 import { findMatches, type FindMatch, MatchCache, matchAtOrBefore, stepMatch } from "./find.ts";
 import type { CellSource } from "./links.ts";
 import { scrollTopAtRow, type ScrollBox } from "./scrollbar.ts";
-import type { TerminalScroll } from "./terminal-scroll.tsx";
+import { type TerminalScroll, useScrollState } from "./terminal-scroll.tsx";
 
 /** Each terminal's last query, so reopening its find bar shows it selected (herdr-app keeps one per terminal). */
 const queries = new Map<string, string>();
@@ -70,8 +70,8 @@ export interface TerminalFindProps {
  */
 export function TerminalFind({ wt, address, scroll, written, opened, onClose }: TerminalFindProps) {
   const [query, setQuery] = useState(() => queries.get(address) ?? "");
-  const box = scroll.view?.box ?? null;
-  // Each published frame (a scroll or a write) draws again; only changed cells or a new query search again.
+  // Each read of the scroll state (after a scroll or a write) draws again; only changed cells or a new query search again.
+  const box = useScrollState(scroll).view?.box ?? null;
   const cache = useRef(new MatchCache());
   const matches = box === null ? [] : cache.current.get(written.current, query, (next) => search(wt, next));
   const [current, setCurrent] = useState<number | null>(() =>
