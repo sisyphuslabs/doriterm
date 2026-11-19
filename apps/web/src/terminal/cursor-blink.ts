@@ -218,18 +218,20 @@ export function blinkCursor(element: HTMLElement, timer: Timer = after): () => v
   settings.observe(element, { attributes: true, attributeFilter: ["class", "data-preedit", "data-predicting"] });
   settings.observe(grid, { attributes: true, attributeFilter: ["data-cursor-blink", "data-cursor-shape"] });
   document.addEventListener("visibilitychange", decide);
-  view?.addEventListener("blur", decide);
+  // A press whose release never reaches the page (it opened a context menu, or the window lost focus under it) ends
+  // here, so no held press is followed for longer than it lasts.
+  view?.addEventListener("blur", release);
   element.addEventListener("pointerdown", press);
-  element.addEventListener("contextmenu", decide);
+  element.addEventListener("contextmenu", release);
   document.addEventListener("pointerup", release);
   document.addEventListener("pointercancel", release);
   decide();
   return () => {
     settings.disconnect();
     document.removeEventListener("visibilitychange", decide);
-    view?.removeEventListener("blur", decide);
+    view?.removeEventListener("blur", release);
     element.removeEventListener("pointerdown", press);
-    element.removeEventListener("contextmenu", decide);
+    element.removeEventListener("contextmenu", release);
     document.removeEventListener("pointerup", release);
     document.removeEventListener("pointercancel", release);
     blink.stop();
