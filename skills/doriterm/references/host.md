@@ -75,7 +75,7 @@ doriface-host mesh revoke --compromised <member>   # also removes every member i
 doriface-host mesh leave                           # take this machine out
 ```
 
-A revoke or leave is permanent for every member, and the machine must join again to come back. Show the user the member from `mesh status` and get their yes first. Some revokes and every leave ask for confirmation on the terminal; after the user's yes, pass `--yes` so the command does not wait on a prompt nobody sees.
+A revoke or leave is permanent for every member, and the machine must join again to come back. Show the user the member from `mesh status` and get their yes first. Some revokes and leaves ask for confirmation on the terminal; after the user's yes, pass `--yes` so the command does not wait on a prompt nobody sees.
 
 ## Phones and browsers
 
