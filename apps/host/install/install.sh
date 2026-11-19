@@ -277,6 +277,17 @@ else
   say "using herdr-core at ${hc_path} ($("$hc_path" --version 2>/dev/null || echo 'version unknown'))"
 fi
 
+# What this host build offers, read once: an older host lacks the newer commands and options.
+host_help="$("$host_bin" --help 2>/dev/null || true)"
+offers() { printf '%s\n' "$host_help" | grep -q -- "$1"; }
+
+# The Doriterm agent skill this host carries goes into the agent skill directories found here (#2653); a host older than
+# the command has none, and a skill that cannot be written is said and does not stop the install.
+if offers 'skill install'; then
+  "$host_bin" skill install --state-dir "$state_dir" ||
+    say "the agent skill was not installed; install it later with: ${host_bin} skill install"
+fi
+
 # The link admits one machine into the mesh, so mesh join reads it from a file only this user can read, never from its
 # command line, where other local users can read it while it runs (#1201). The file is gone when the install exits.
 join_file() {
@@ -297,7 +308,7 @@ fi
 
 # A host older than #1969 has no --auto-update; it is passed only to one that lists it.
 update_args=""
-if "$host_bin" --help 2>/dev/null | grep -q -- --auto-update; then update_args="$auto_update"; fi
+if offers --auto-update; then update_args="$auto_update"; fi
 
 # The service runs with this shell's PATH and SHELL, so the terminals it opens find the same tools.
 service_path="${bin_dir}:$(dirname "$hc_path"):${PATH}"

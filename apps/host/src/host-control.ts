@@ -10,6 +10,8 @@ export function openControl(
   e2ee: ReturnType<typeof e2eeDeps>,
   meshStatus: (() => Promise<MeshStatus | undefined>) | undefined,
   push: HostPush | undefined,
+  /** Writes the host's facts again after `skill install` or `skill uninstall` changed the skill on this machine. */
+  skillChanged?: () => void,
 ) {
   return listenControl(stateDir, async (request, closed, confirm) => {
     switch (request.op) {
@@ -37,6 +39,9 @@ export function openControl(
         return e2ee.meshCommands.revoke(request);
       case "mesh-rename":
         return e2ee.meshCommands.rename(request);
+      case "skill-changed":
+        skillChanged?.();
+        return { refreshed: skillChanged !== undefined };
       case "mesh-leave":
         return request.preview === true ? e2ee.meshCommands.leavePreview() : e2ee.meshCommands.leave(request.expect);
     }

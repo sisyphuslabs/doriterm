@@ -26,6 +26,7 @@ import { openRelayPasses } from "./relay/relay-passes.ts";
 import { RelaySessionWire } from "./relay/session-wire.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
 import { startHostPush } from "./push/host-push.ts";
+import { skillHooks } from "./skill/skill-host.ts";
 
 export { HOST_VERSION, type E2eeEndpoint, type Host, type HostOptions } from "./host-types.ts";
 
@@ -136,6 +137,8 @@ async function serve(
   let git: GitFactsPublisher | undefined;
   let meshDoc: MeshStatusPublisher | undefined;
   let offers: MeshOfferService | undefined;
+  const skill = options.skill === undefined ? undefined : skillHooks(options.skill, () => info?.refresh(), options.log);
+  void skill?.refreshOutdated();
   // A one-line Add a machine (#668): a client asks for a mesh offer through a core document, and the host answers it.
   const meshOffer = async (client: boolean) => {
     if (e2ee === undefined) throw new Error("this host keeps no state, so it cannot open a mesh offer");
@@ -208,7 +211,7 @@ async function serve(
     resumeGraceMs: options.resumeGraceMs,
     openPipe: () => {
       void ends.ensure();
-      info ??= publishHostInfo(core, options.platform ?? process.platform, options.log);
+      info ??= publishHostInfo(core, options.platform ?? process.platform, options.log, undefined, skill?.status);
       git ??= publishGitFacts(core, options.log);
       meshDoc ??=
         meshStatus === undefined || e2ee === undefined
@@ -232,6 +235,7 @@ async function serve(
           undefined,
           undefined,
           (nonce, approve, code) => pending.decide(nonce, approve, code),
+          skill?.answer,
         );
       }
       return new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log });
@@ -307,6 +311,7 @@ async function serve(
                   return meshStatus();
                 },
             push,
+            skill?.changed,
           );
   } catch (error) {
     throw new Error(`cannot open the control socket that devices revoke uses: ${String(error)}`, { cause: error });

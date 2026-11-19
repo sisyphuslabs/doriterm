@@ -12,6 +12,10 @@ import { FINGERPRINT_USAGE, fingerprintCommand } from "./commands/fingerprint.ts
 import { MESH_JOIN_USAGE, meshJoinCommand } from "./commands/mesh-join.ts";
 import { MESH_USAGE, meshCommand } from "./commands/mesh.ts";
 import { PAIR_USAGE, pairCommand } from "./commands/pair.ts";
+import { SKILL_USAGE, skillCommand } from "./commands/skill.ts";
+import { BUNDLED_SKILL } from "./skill/bundled.ts";
+import { agentSkill } from "./skill/skill-host.ts";
+import { skillTargets } from "./skill/skill-targets.ts";
 import { HcInstallError, installHc } from "./hc-install.ts";
 import { HOST_VERSION, startHost } from "./host.ts";
 import {
@@ -38,6 +42,7 @@ const USAGE = `usage: doriface-host [options]
        doriface-host mesh pair | mesh join <mesh link | code> | mesh join --from-file <file>
        doriface-host mesh status [--json] | mesh revoke [--compromised] <member> | mesh rename <member> <name> | mesh leave
        doriface-host update [--channel stable|beta] | verify-release <SHA256SUMS.txt> <SHA256SUMS.txt.sig>
+       doriface-host skill install [--dir <dir>]... | skill status [--json] | skill uninstall
 
   --listen <host:port>  where to listen (default 127.0.0.1:7766; loopback only)
   --hc <path>           the herdr-core binary (default hc)
@@ -84,6 +89,10 @@ async function main(args: readonly string[]): Promise<void> {
   }
   if (command === "update") {
     process.exitCode = await updateCommand(rest, out);
+    return;
+  }
+  if (command === "skill") {
+    process.exitCode = await skillCommand(rest, out, { bundle: BUNDLED_SKILL });
     return;
   }
   if (command === "verify-release") {
@@ -182,6 +191,7 @@ async function serve(args: readonly string[]): Promise<void> {
     stateDir: values["state-dir"] ?? defaultStateDir(),
     relay: values["no-relay"] ? undefined : { url: values.relay },
     pushTestOrigins: values["push-test-origin"]?.map(pushOrigin),
+    skill: agentSkill(BUNDLED_SKILL, () => skillTargets(homedir())),
     log,
   }).catch((error: unknown) => {
     throw asStartupError(error);
@@ -252,6 +262,7 @@ main(Bun.argv.slice(2)).catch((error: unknown) => {
     mesh: `${MESH_JOIN_USAGE}\n${MESH_USAGE}`,
     update: UPDATE_USAGE,
     "verify-release": UPDATE_USAGE,
+    skill: SKILL_USAGE,
   };
   const usage = usages[Bun.argv[2] ?? ""] ?? USAGE;
   process.stderr.write(`doriface-host: ${error instanceof Error ? error.message : String(error)}\n\n${usage}\n`);

@@ -113,6 +113,9 @@ function rig(system: "Linux" | "Darwin", machine = "x86_64"): Rig {
     `echo "doriface-host $*" >> "${log}"`,
     `if [ "$1" = --install-hc ]; then mkdir -p "$HOME/.local/bin"; printf '#!/bin/sh\\necho 0.1.17\\n' > "$HOME/.local/bin/hc"; chmod 755 "$HOME/.local/bin/hc"; fi`,
     `if [ "$1" = pair ]; then echo "doriface://pair#h=fake"; fi`,
+    // A test that writes `help` gets a host whose --help names those commands; `skill-exit` sets how `skill` exits.
+    `if [ "$1" = --help ]; then cat "${root}/help" 2>/dev/null; fi`,
+    `if [ "$1" = skill ]; then exit "$(cat "${root}/skill-exit" 2>/dev/null || echo 0)"; fi`,
     // What mesh join read from --from-file, and the file's mode, as the host saw them while it ran.
     `prev=""; for a in "$@"; do if [ "$prev" = --from-file ]; then echo "from-file $(cat "$a") $(stat -c %a "$a" 2>/dev/null || stat -f %Lp "$a")" >> "${log}"; fi; prev="$a"; done`,
     "",
@@ -193,6 +196,30 @@ describe("install.sh on Linux", () => {
     expect(unit).not.toMatch(/^Nice=/m);
     expect(unit).toContain("WantedBy=default.target");
     expect(run.out).toContain("doriface://pair#h=fake");
+  });
+
+  test("a host that offers skill install installs the agent skill with the installer's state dir, before the service", () => {
+    const r = rig("Linux");
+    writeFileSync(join(r.root, "help"), "doriface-host skill install [--dir <dir>]... | skill status [--json]\n");
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(0);
+    const state = join(r.home, ".local", "state", "doriface-host");
+    expect(run.calls.slice(1, 4)).toEqual([
+      "doriface-host --install-hc",
+      "doriface-host --help",
+      `doriface-host skill install --state-dir ${state}`,
+    ]);
+    expect(run.calls).toContain("systemctl --user restart doriface-host.service");
+  });
+
+  test("an agent skill that cannot be installed is said, and the host is installed anyway", () => {
+    const r = rig("Linux");
+    writeFileSync(join(r.root, "help"), "doriface-host skill install\n");
+    writeFileSync(join(r.root, "skill-exit"), "1");
+    const run = install(r, ["--no-pair"]);
+    expect(run.code).toBe(0);
+    expect(run.out).toContain("the agent skill was not installed; install it later with:");
+    expect(run.calls).toContain("systemctl --user restart doriface-host.service");
   });
 
   test("--join joins the mesh of the host that made the link once the service answers, instead of printing a pairing", () => {
