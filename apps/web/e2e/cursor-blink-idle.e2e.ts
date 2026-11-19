@@ -302,43 +302,52 @@ test("a block switched to a bar while it is off shows the bar on at once", async
 test("typing while the cursor is off draws it on as soon as it moves", async ({ page }) => {
   await page.goto("/");
   const terminal = await focusedTerminal(page);
-  // Once the cursor is off, a watcher notes whether it is still drawn off the moment its span is rebuilt.
+  // Armed at the start of an off phase, so the key lands within it; a key that came after the phase had ended would
+  // find the cursor on whether or not anything started it over, and proves nothing. The app's own observers were made
+  // first, so within the batch that rebuilds the span they have already run: the phase is read after what they did.
   await terminal.evaluate(
     (element, within) =>
       new Promise<void>((resolve, reject) => {
         const grid = element.querySelector(".term-grid");
         if (grid === null) throw new Error("the terminal has no grid");
-        const watchRebuild = () => {
-          const before = grid.querySelector(".term-cursor");
-          const offAt = performance.now();
-          const offWhenRebuilt = new Promise<{ off: boolean; afterMs: number }>((settle, fail) => {
+        const arm = (): void => {
+          const span = grid.querySelector(".term-cursor");
+          let offBefore = true;
+          const atRebuild = new Promise<object>((settle, fail) => {
             const give = setTimeout(() => fail(new Error(`the cursor did not move within ${within} ms`)), within);
-            const rebuilt = new MutationObserver(() => {
-              if (grid.querySelector(".term-cursor") === before) return;
-              rebuilt.disconnect();
+            const watch = new MutationObserver(() => {
+              const off = element.hasAttribute("data-cursor-off");
+              if (grid.querySelector(".term-cursor") === span) {
+                offBefore = off;
+                return;
+              }
+              watch.disconnect();
               clearTimeout(give);
-              settle({ off: element.hasAttribute("data-cursor-off"), afterMs: Math.round(performance.now() - offAt) });
+              settle({ offBefore, off });
             });
-            rebuilt.observe(grid, { childList: true, subtree: true });
+            watch.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
+            watch.observe(grid, { childList: true, subtree: true });
           });
-          Reflect.set(element, "offWhenRebuilt", offWhenRebuilt);
+          Reflect.set(element, "atRebuild", atRebuild);
           resolve();
         };
-        if (element.hasAttribute("data-cursor-off")) return watchRebuild();
         const give = setTimeout(() => reject(new Error(`no off phase within ${within} ms`)), within);
         const off = new MutationObserver(() => {
           if (!element.hasAttribute("data-cursor-off")) return;
           off.disconnect();
           clearTimeout(give);
-          watchRebuild();
+          arm();
         });
         off.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
       }),
     FLIP_WITHIN_MS,
   );
   await terminal.getByRole("textbox").press("x");
-  const rebuilt: unknown = await terminal.evaluate((element) => Reflect.get(element, "offWhenRebuilt"));
-  expect(rebuilt, "the cursor is drawn on the moment its span is rebuilt").toMatchObject({ off: false });
+  const rebuilt: unknown = await terminal.evaluate((element) => Reflect.get(element, "atRebuild"));
+  expect(rebuilt, "the key came while the cursor was off, and it is drawn on the moment its span is rebuilt").toEqual({
+    offBefore: true,
+    off: false,
+  });
 });
 
 // The hide rule (styles.css) stopped wterm's animation while a composition hid the cursor, and its removal started a
