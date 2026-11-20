@@ -230,7 +230,20 @@ describe("tabTitle", () => {
     expect(tabTitle("", 2, terminal({ name: "worker", labels: { "herdr.name": "deploy" } }))).toBe("deploy");
   });
 
-  test("an unnamed tab with no agent (a shell, another program, panes not known yet) reads its place counted from 1", () => {
+  test("an unnamed tab whose pane carries a name reads it, a lane's, never a bare number (#2670)", () => {
+    expect(
+      tabTitle("", 4, undefined, terminal({ name: "lane doriterm-2670", argv: ["bash", "-c", "sleep 600"] })),
+    ).toBe("lane doriterm-2670");
+  });
+
+  test("an unnamed tab whose pane runs a program reads the program's title (#2670)", () => {
+    expect(tabTitle("", 1, undefined, terminal({ title: "build watcher", argv: ["node", "watch.js"] }))).toBe(
+      "build watcher",
+    );
+  });
+
+  test("an unnamed shell pane at a prompt keeps its place counted from 1 (#466)", () => {
+    expect(tabTitle("", 3, undefined, terminal({ title: "lo@box: ~/w", argv: ["zsh"] }))).toBe("4");
     expect(tabTitle("", 0)).toBe("1");
     expect(tabTitle("", 8)).toBe("9");
   });
