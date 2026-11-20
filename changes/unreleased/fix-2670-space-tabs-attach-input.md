@@ -6,3 +6,8 @@
 - A tab that is not an agent's own, a lane's above all, now reads the lane's name, or the title of the program it runs,
   from the first tab on. The label truncates with its whole title on hover, and only a pane that names nothing keeps
   its place as a number. (#2670)
+
+### Phone
+
+- The Type field no longer draws a thin unlabeled bar down its right edge: the idle pill fits its one line exactly,
+  where it used to be 2 px too short for it and so drew a scroll strip inside itself. (#2670)
