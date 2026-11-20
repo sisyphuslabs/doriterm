@@ -11,3 +11,6 @@
 
 - The Type field no longer draws a thin unlabeled bar down its right edge: the idle pill fits its one line exactly,
   where it used to be 2 px too short for it and so drew a scroll strip inside itself. (#2670)
+- A phone opening a terminal a desktop is already watching no longer squeezes what the desktop shows into a
+  phone-wide column: the pane in use answers the smaller size with its own, so the program keeps laying out for the
+  wider viewer, and a smaller viewer alone still takes the size when it is the one used. (#2670)
