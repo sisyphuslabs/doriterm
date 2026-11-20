@@ -70,8 +70,12 @@ export interface UplinkOptions {
   readonly proofs?: RelayProofs | undefined;
 }
 
-/** Reconnecting cannot fix these: the key is wrong, or another uplink for this host took over. */
-const FINAL_CODES: ReadonlySet<number> = new Set([CloseCode.RelayAuthFailed, CloseCode.UplinkReplaced]);
+/**
+ * Reconnecting cannot fix these: another uplink for this host took over. A 4403 is not one of them: the relay sends it
+ * for an answer that came too late as well as for a wrong key, and this host's key never changes while it runs, so a
+ * redial with backoff answers a fresh challenge instead of leaving the host off the relay until a restart (#2669).
+ */
+const FINAL_CODES: ReadonlySet<number> = new Set([CloseCode.UplinkReplaced]);
 const CONNECTING = 0;
 /** How long a pair-slot request waits for the relay's reply; a host's stop waits this long to release its slot. */
 export const PAIR_SLOT_REPLY_TIMEOUT_MS = 10_000;
@@ -81,7 +85,7 @@ const STABLE_MS = 30_000;
 /** The host's one connection to the relay, carrying every client session multiplexed by sessionId. */
 export class Uplink {
   readonly hostId: string;
-  /** Resolves with the close code once the uplink stops for good: `stop()`, 4403 or 4409. */
+  /** Resolves with the close code once the uplink stops for good: `stop()` or 4409. */
   readonly stopped: Promise<number>;
   readonly #options: UplinkOptions;
   readonly #url: string;

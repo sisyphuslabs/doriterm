@@ -15,6 +15,7 @@ import {
   RelayCloseError,
   relayOriginOf,
   Uplink,
+  type UplinkState,
 } from "@doriface/relay-client";
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { defer, runDeferred } from "./support/cleanup.ts";
@@ -115,16 +116,25 @@ describe("host challenge auth", () => {
     });
   });
 
-  test("an uplink stops for good on 4403", async () => {
+  test("an uplink refused with 4403 redials instead of stopping for good (#2669)", async () => {
     const signer = ed25519Signer(generateSigningKey());
     const wrong = ed25519Signer(generateSigningKey());
+    const refused = Promise.withResolvers<UplinkState>();
     const uplink = await Uplink.start({
       relayUrl: relay.url,
       signer: { publicKey: signer.publicKey, sign: (message) => wrong.sign(message) },
       createSocket: socketFrom(testIp()),
       onSession: () => {},
+      onState: (state) => {
+        if (state.state === "waiting" || state.state === "stopped") refused.resolve(state);
+      },
     });
-    expect(await uplink.stopped).toBe(CloseCode.RelayAuthFailed);
+    defer(() => uplink.stop());
+    expect(await refused.promise).toMatchObject({
+      state: "waiting",
+      code: CloseCode.RelayAuthFailed,
+      reason: "relay auth failed",
+    });
   });
 
   test("an uplink stopped while connecting closes its socket and never comes online", async () => {
