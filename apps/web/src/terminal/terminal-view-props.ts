@@ -14,6 +14,12 @@ export interface TerminalViewProps {
   readonly live: boolean;
   readonly focused: boolean;
   /**
+   * The pty size the core holds for this terminal, as its size facts say: one below this pane's own grid, arriving
+   * while this pane is the one in use (a phone opening the terminal, #2670), is answered with the pane's own size, so
+   * the program keeps laying out for the wider viewer. Unset where no facts reach the view.
+   */
+  readonly held?: { readonly cols: number; readonly rows: number };
+  /**
    * This page asked for this terminal's pane (opened, split, picked it): starting, it takes the keyboard from wherever
    * it is. Unset where no other device edits what is shown (the phone shows one terminal at a time). Not asked for (a
    * view another device's layout edit mounts again, #332), it takes the keyboard only from nowhere.
