@@ -11,12 +11,13 @@ test.use({ serviceWorkers: "block" });
 const HIDDEN = 30;
 
 /**
- * Counts, for every commit React makes, the components it rendered again, the way React DevTools tells them: a
- * component that did work (React's PerformedWork flag), skipping any subtree React kept as it was. React reports each
- * commit to this hook when it finds one installed before the app loads.
+ * Records the first React commit that shows each requested title in the measured pane. Count every component that
+ * did work in that commit (React's PerformedWork flag), skipping subtrees React kept as they were. Commits that leave
+ * the title as it was, including late work from mounting the hidden panes, are not samples.
  */
-function countRenders(): void {
-  const commits: number[] = [];
+function countRenders(address: string): void {
+  const commits = new Map<string, number>();
+  const terminal = `[data-terminal="${CSS.escape(address)}"]`;
   const COMPONENT_TAGS = new Set([0, 1, 11, 14, 15]);
   type Fiber = {
     readonly tag: number;
@@ -46,21 +47,37 @@ function countRenders(): void {
       onCommitFiberUnmount: () => undefined,
       onPostCommitFiberRoot: () => undefined,
       onCommitFiberRoot: (_renderer: number, root: { readonly current: Fiber }) => {
-        commits.push(rendered(root.current.child));
+        const label = document.querySelector(terminal)?.closest("section")?.getAttribute("aria-label");
+        if (label?.startsWith("spin ") && !commits.has(label)) commits.set(label, rendered(root.current.child));
       },
     },
   });
-  Object.defineProperty(window, "__commits", { value: commits });
+  Object.defineProperty(window, "__titleCommits", { value: commits });
 }
 
-/** The most components any one commit rendered again, over twenty commits of the spinning title from now on. */
-async function worstCommit(page: Page): Promise<number> {
-  const from = await page.evaluate(() => Reflect.get(window, "__commits").length);
-  await expect
-    .poll(() => page.evaluate(() => Reflect.get(window, "__commits").length), { timeout: 60_000 })
-    .toBeGreaterThan(from + 20);
-  const commits: number[] = await page.evaluate((skip) => Reflect.get(window, "__commits").slice(skip), from);
-  return Math.max(...commits);
+/** Each OSC title has to reach the pane in a React commit before the next title is sent. */
+async function worstTitleCommit(
+  page: Page,
+  phase: "few" | "many",
+  sendTitle: (title: string) => void,
+): Promise<number> {
+  const prefix = `spin ${phase}-`;
+  for (let sample = 0; sample < 20; sample += 1) {
+    const title = `${prefix}${sample}`;
+    sendTitle(title);
+    // oxlint-disable-next-line no-await-in-loop -- don't let React coalesce multiple titles into one commit
+    const committed = await page.waitForFunction(
+      (label) => Reflect.get(window, "__titleCommits").has(label) === true,
+      `${title} terminal`,
+      { timeout: 10_000 },
+    );
+    // oxlint-disable-next-line no-await-in-loop -- free this sample's handle before taking the next
+    await committed.dispose();
+  }
+  return page.evaluate((startsWith) => {
+    const commits: ReadonlyMap<string, number> = Reflect.get(window, "__titleCommits");
+    return Math.max(...[...commits].filter(([label]) => label.startsWith(startsWith)).map(([, count]) => count));
+  }, prefix);
 }
 
 test("a terminal's title change costs the same however many terminals sit in hidden tabs (#2086)", async ({ page }) => {
@@ -68,29 +85,39 @@ test("a terminal's title change costs the same however many terminals sit in hid
   const hcRun = (args: readonly string[]): string =>
     execFileSync(hc, args, { env: { ...process.env, ...env }, encoding: "utf8" });
   const started: string[] = [];
-  const start = (argv: readonly string[]): void => {
+  const start = (argv: readonly string[]): string => {
     const answer: unknown = JSON.parse(hcRun(["run", "--bg", "--json", "--", ...argv]));
-    started.push(String(Reflect.get(Object(answer), "address")));
+    const address = String(Reflect.get(Object(answer), "address"));
+    started.push(address);
+    return address;
   };
   try {
-    start(["sh", "-c", "i=0; while :; do printf '\\033]0;spin %d\\007' $i; i=$((i+1)); sleep 0.1; done"]);
+    const spinner = start([
+      "sh",
+      "-c",
+      "stty -echo; while IFS= read -r title; do printf '\\033]0;%s\\007' \"$title\"; done",
+    ]);
+    const sendTitle = (title: string): void => void hcRun(["send", "--force", spinner, title]);
     for (let index = 0; index < HIDDEN; index += 1) start(["sleep", "3600"]);
-    await page.addInitScript(countRenders);
+    await page.addInitScript(countRenders, spinner);
     // The sidebar's ages tick once a minute and redraw every agent row in one commit: a run crossing a minute would
     // measure that tick rather than a title change. Date.now stays put; every timer still runs (#2098).
     await page.clock.setFixedTime(Date.now());
     await page.goto("/");
-    // Every terminal is listed, and the loose ones are adopted into tabs as the page loads, each pane mounted.
-    await expect(page.locator("[data-terminal]")).toHaveCount(HIDDEN + 1, { timeout: 30_000 });
-    const few = await worstCommit(page);
+    // Loose terminals are adopted into tabs on page load. Start sending titles once all panes have a renderer.
+    const ready = page.locator('[data-terminal][data-ready="true"]');
+    await expect(ready).toHaveCount(HIDDEN + 1, { timeout: 30_000 });
+    const few = await worstTitleCommit(page, "few", sendTitle);
     for (let index = 0; index < HIDDEN; index += 1) start(["sleep", "3600"]);
     await page.reload();
-    await expect(page.locator("[data-terminal]")).toHaveCount(2 * HIDDEN + 1, { timeout: 30_000 });
-    const many = await worstCommit(page);
+    await expect(ready).toHaveCount(2 * HIDDEN + 1, { timeout: 30_000 });
+    const many = await worstTitleCommit(page, "many", sendTitle);
     // Before #2086 each title change rendered every pane, sidebar row and tab again, many components each: twice the
     // terminals cost about twice as many renders per commit (2136 at 30 hidden terminals).
     // A loaded runner adds a few renders here and there; what this guards against grows by every hidden pane (#2098).
-    expect(many - few).toBeLessThan(HIDDEN);
+    expect(many - few, `title commit maxima: ${few} with ${HIDDEN} hidden, ${many} with ${2 * HIDDEN}`).toBeLessThan(
+      HIDDEN,
+    );
   } finally {
     for (const address of started) hcRun(["kill", address]);
     for (const address of started) hcRun(["rm", address]);

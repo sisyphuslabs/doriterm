@@ -268,8 +268,8 @@ Out of scope: a compromised host or client at runtime, keystroke timing (no padd
 | `relay-e2e` (ubuntu, 25 min)                            | the same setup, then `tests/relay` against the private relay at `relay-pin.json`'s commit (fetched with a read-only token); a run without the token fails, except from a fork |
 | `web-e2e` (ubuntu, 30 min)                              | the same setup + Chromium, Playwright e2e against the real `hc`, then two e2e runs at once on their own ports (#37)                                                           |
 | `desktop` (ubuntu, 20 min)                              | package with `electron-builder --dir`, check the tree is clean after install and pack, launch the packaged app                                                                |
+| `install-linux` (ubuntu, 10 min)                        | verify the committed Ghostty wasm against `wasm/build.json`, then the one-step host install on a runner with no herdr-core; each step runs even if the other failed           |
 | `windows-private-state` (windows x64 and arm64, 20 min) | the real-ACL suite (a skip fails the job), the state units on Windows, and a compiled host keeping its keys across two starts                                                 |
-| `ghostty-wasm` (ubuntu, 5 min)                          | verify the committed wasm against `wasm/build.json`                                                                                                                           |
 | Triggers                                                | push to `dev`, `pull_request`, `merge_group`; concurrency cancels in-progress PR runs                                                                                         |
 
 ## 15. Decisions table
