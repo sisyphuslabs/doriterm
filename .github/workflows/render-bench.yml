@@ -19,6 +19,10 @@ on:
         description: Rounds (each runs every build once)
         default: "5"
         type: string
+      relay_latency:
+        description: Also measure keystroke latency through the private relay (the relay-latency job)
+        default: true
+        type: boolean
   workflow_call:
     inputs:
       label:
@@ -28,6 +32,10 @@ on:
       rounds:
         default: "5"
         type: string
+      # release.yml leaves it off: the measurement asserts nothing about a release, so it must not hold one up.
+      relay_latency:
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -162,3 +170,98 @@ jobs:
           path: ${{ runner.temp }}/results/*
           if-no-files-found: warn
           retention-days: 90
+
+  # Keystroke latency through the private relay (apps/web/e2e/keystroke-latency-relay.e2e.ts): a measurement, not a gate.
+  # The spec only asserts it collected enough samples, and it took about 10 of Relay e2e's 26 minutes on every pull
+  # request, so it runs here instead: on a bench/** push and by hand (relay_latency, on by default), never from
+  # release.yml's call, whose relay_latency is off. A push carries no inputs, and null == false in GitHub's loose
+  # equality, so the condition compares the input's JSON text, as release-mirror.yml does.
+  relay-latency:
+    name: Keystroke latency through the relay
+    if: toJSON(inputs.relay_latency) != 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: The relay needs the read token
+        env:
+          RELAY_TOKEN_SET: ${{ secrets.DORIFACE_RELAY_READ_TOKEN != '' && secrets.RELAY_REPO != '' }}
+        run: |
+          if [ "$RELAY_TOKEN_SET" != true ]; then
+            echo "::error::DORIFACE_RELAY_READ_TOKEN or RELAY_REPO is not set, so the relay cannot be fetched."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      # The relay runs under wrangler dev, which needs Node 22 or newer.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Install herdr-core
+        env:
+          HC_URL: https://releases.herdr.dev/core/0.1.21/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: 78424755c10a40dde38a0bdb55c20ac19706e9ae05ed68fc2acf1fcff0d941c1
+        run: |
+          mkdir -p "$RUNNER_TEMP/hc"
+          curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
+          echo "$HC_SHA256  $RUNNER_TEMP/hc.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/hc.tar.gz" -C "$RUNNER_TEMP/hc" herdr-core
+          ln -s herdr-core "$RUNNER_TEMP/hc/hc"
+          echo "$RUNNER_TEMP/hc" >> "$GITHUB_PATH"
+          echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/hc/hc" --version
+      - run: bun install --frozen-lockfile
+      # The same step-scoped credential helper as ci.yml's: the token never appears in a URL, an argument or the log.
+      - name: Fetch the private relay
+        env:
+          RELAY_READ_TOKEN: ${{ secrets.DORIFACE_RELAY_READ_TOKEN }}
+          RELAY_REPO: ${{ secrets.RELAY_REPO }}
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: credential.https://github.com.helper
+          GIT_CONFIG_VALUE_0: '!f() { test "$1" = get && printf "username=x-access-token\npassword=%s\n" "$RELAY_READ_TOKEN"; }; f'
+        run: bun run relay:fetch
+      - name: Playwright version
+        id: playwright
+        working-directory: apps/web
+        run: echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
+      - name: Install Chromium
+        working-directory: apps/web
+        timeout-minutes: 12
+        run: |
+          # Bounded as in the bench job above (doriterm#914).
+          bash "$GITHUB_WORKSPACE/.github/scripts/apt-bounds.sh"
+          timeout 300 bunx playwright install-deps chromium
+          if compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null; then
+            timeout 300 bunx playwright install chromium
+          else
+            timeout 600 bunx playwright install chromium
+          fi
+      - name: Keystroke latency through the relay
+        working-directory: apps/web
+        env:
+          CI: "1"
+          DORIFACE_RELAY_DIR: ${{ github.workspace }}/.relay
+        run: bun run test:e2e e2e/keystroke-latency-relay.e2e.ts --workers=1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: relay-keystroke-latency
+          path: apps/web/test-results
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Keystroke latency through the relay"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Job status | ${{ job.status }} |"
+            echo "| Artifact | relay-keystroke-latency (apps/web/test-results/**/keystroke-latency/*.json) |"
+          } >> "$GITHUB_STEP_SUMMARY"
