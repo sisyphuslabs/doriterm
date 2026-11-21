@@ -305,7 +305,9 @@ jobs:
   web-e2e:
     name: Web e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Each long step has its own bound, and the job's budget covers all of them at their worst, so a slow test times out
+    # by itself and the report upload still runs (#2382: the old 30-minute cap cancelled runs mid-upload, leaving no log).
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -379,16 +381,20 @@ jobs:
           echo "cores: $(nproc)"
           free -m
       - name: Playwright e2e against a real hc
+        # Measured 21.7-27.3 min in passing runs, and cut at 28.9 and 29.4 min by the old job cap (#2382).
+        timeout-minutes: 40
         run: bun run test:e2e
         working-directory: apps/web
         env:
           CI: "1"
       - name: Two e2e runs at once, each on its own ports (#37)
+        timeout-minutes: 5
         run: bun run test:e2e:two-runs
         working-directory: apps/web
         env:
           CI: "1"
       - if: always()
+        timeout-minutes: 5
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-e2e
