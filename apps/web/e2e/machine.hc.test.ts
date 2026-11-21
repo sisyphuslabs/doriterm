@@ -114,8 +114,8 @@ describe("a dial held past the final gate (#2525)", () => {
   let line: Bun.Subprocess<"pipe", "pipe", "inherit"> | undefined;
   let output: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
-  // The slow part is setup: adding the machine (herdr's hello probe) and a dial that has passed every switch check and
-  // waits, just before its transport, for the test to release it.
+  // Setup: adding the machine (0.4-1.2 s measured, herdr's hello probe included) and a dial that has passed every switch
+  // check and waits, just before its transport, for the test to release it. Each step ends on an event.
   beforeEach(async () => {
     dialer = createHcSession("machine-held-dial");
     root = mkdtempSync(join(tmpdir(), "dw-machine-"));
@@ -133,7 +133,7 @@ describe("a dial held past the final gate (#2525)", () => {
     });
     output = line.stdout.getReader();
     expect(new TextDecoder().decode((await output.read()).value)).toBe("ready\n");
-  }, 60_000);
+  });
 
   afterEach(async () => {
     line?.kill();
