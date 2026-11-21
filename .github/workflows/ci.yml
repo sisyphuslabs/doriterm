@@ -124,8 +124,9 @@ jobs:
     runs-on: ubuntu-latest
     # The relay and mesh suites (tests/relay): real hosts, hc cores and the private relay under wrangler dev, in
     # parallel with Check so neither waits on the other.
-    # Measured on a loaded hosted runner (#2027): relay:test ~12 min, then the browser step ~13 min at one worker, of
-    # which keystroke-latency-relay's 12-case matrix is ~10.5 min. At 25 the job was cancelled with a spec still running.
+    # Measured on a hosted runner (run 43129623615, #2377's head): relay:test ~12 min (705 s), then the browser step ~14 min
+    # (833 s) for its 29 cases at one worker, of which keystroke-latency-relay's 12-case matrix is ~10 min; the whole job
+    # took 26.5 min. The first measurement (#2027) was 12 + 13 min. At 25 the job was cancelled with a spec still running.
     timeout-minutes: 40
     env:
       # Pull requests from forks get no secrets; only they may skip the relay suites (see the first step).
@@ -282,12 +283,13 @@ jobs:
         with:
           path: ~/.cache/playwright-apt
           key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
-      # Every browser spec that needs this job's relay checkout runs here, one worker, as listed on the line below: the mesh
-      # specs above and those that go through the real relay code (keystroke-latency-relay's JSON files land in
-      # apps/web/test-results). A name that matches no file yet runs nothing and fails nothing.
+      # Every browser spec that needs this job's relay checkout runs here, one worker, as listed on this step's run line:
+      # the mesh specs above and those that go through the real relay code (keystroke-latency-relay's JSON files land in
+      # apps/web/test-results). tests/ci/relay-run-line.test.ts fails when a spec that skips without the checkout is left
+      # off the line, or when the line names a file that does not exist (#2376).
       - name: Browser spec through the mesh
         if: env.RELAY_TOKEN_SET == 'true'
-        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/keystroke-latency-relay.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts --workers=1
+        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/keystroke-latency-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts e2e/space-rename-relay.e2e.ts e2e/terminal-links-relay.e2e.ts e2e/terminal-images-relay.e2e.ts --workers=1
         working-directory: apps/web
         env:
           CI: "1"
