@@ -441,11 +441,35 @@ jobs:
         run: |
           echo "cores: $(nproc)"
           free -m
+      # The per-file times the last push to dev recorded (the Web e2e job saves them); a pull request reads dev's caches.
+      - name: Restore the e2e file times
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/e2e-timings.json
+          key: e2e-timings-${{ github.run_id }}
+          restore-keys: e2e-timings-
+      # Longest files first onto the lightest shard (scripts/e2e-shard-plan.ts); without a record, an even split by count.
+      - name: This shard's spec files
+        working-directory: apps/web
+        run: bun scripts/e2e-shards.ts pick ${{ matrix.shard }} 4 "$RUNNER_TEMP/e2e-timings.json" > "$RUNNER_TEMP/shard-files.txt"
       - name: Playwright e2e against a real hc
-        run: bun run test:e2e --shard=${{ matrix.shard }}/4
+        run: bun run test:e2e $(cat "$RUNNER_TEMP/shard-files.txt")
         working-directory: apps/web
         env:
           CI: "1"
+          E2E_JSON_REPORT: ${{ runner.temp }}/e2e-report.json
+      - name: The files this shard ran and their times
+        if: always()
+        working-directory: apps/web
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e-ran"
+          bun scripts/e2e-shards.ts record "$RUNNER_TEMP/e2e-report.json" > "$RUNNER_TEMP/e2e-ran/shard-${{ matrix.shard }}.json"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-ran-${{ matrix.shard }}
+          path: ${{ runner.temp }}/e2e-ran/shard-${{ matrix.shard }}.json
+          if-no-files-found: ignore
       # Once per run, not per shard: it starts two short suites of its own.
       - name: Two e2e runs at once, each on its own ports (#37)
         if: matrix.shard == 1
@@ -479,6 +503,25 @@ jobs:
             echo "::error::a Web e2e shard ended '$SHARDS'; its own job names the failing tests."
             exit 1
           fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: e2e-ran-*
+          path: ${{ runner.temp }}/e2e-ran
+          merge-multiple: true
+      # Green only when the four shards together ran every spec file exactly once; their merged times plan the next run.
+      - name: The shards ran every spec file once
+        working-directory: apps/web
+        run: bun scripts/e2e-shards.ts cover "$RUNNER_TEMP/e2e-timings.json" "$RUNNER_TEMP"/e2e-ran/shard-*.json
+      - name: Record the e2e file times for the next runs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/e2e-timings.json
+          key: e2e-timings-${{ github.run_id }}
 
   android:
     # After the merge, like the other platform jobs: the Android app (#704) builds from the web build, and its JVM tests
