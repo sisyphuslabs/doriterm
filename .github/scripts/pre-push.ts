@@ -8,6 +8,8 @@
  * branch cannot know, and the `no-changelog` label it honours lives on the pull request.
  */
 
+import { dirname } from "node:path";
+
 const ZERO_SHA = /^0+$/;
 
 export const FAST_CHECK = "bun run check:fast";
@@ -59,7 +61,9 @@ if (import.meta.main) {
     const refusal = pushRefusal(pushed, head, status !== "");
     if (refusal !== undefined) refuse(refusal);
     console.error(`pre-push: ${FAST_CHECK}`);
+    // The checks call bun again by name, so the bun running this hook leads their PATH (it may not be on the caller's).
     const code = await Bun.spawn(["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", FAST_CHECK], {
+      env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env["PATH"] ?? ""}` },
       stdout: "inherit",
       stderr: "inherit",
     }).exited;
