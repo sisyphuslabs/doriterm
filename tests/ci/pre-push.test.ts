@@ -30,7 +30,7 @@ test("the hook and the Check job run one script, and `bun run check` is that scr
 test("bun install activates the hook through husky", () => {
   expect(pkg.scripts["prepare"]).toBe("husky");
   expect(pkg.devDependencies["husky"]).toBeDefined();
-  expect(readFileSync(join(ROOT, ".husky", "pre-push"), "utf8")).toContain("bun .github/scripts/pre-push.ts");
+  expect(readFileSync(join(ROOT, ".husky", "pre-push"), "utf8")).toContain('"$bun_bin" .github/scripts/pre-push.ts');
 });
 
 test("a push judges the commits it sends to branches; tags and deletions are not judged", () => {
