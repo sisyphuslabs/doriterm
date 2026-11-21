@@ -88,8 +88,9 @@ export function TabBar({
   if (drawn.key !== key) setDrawn({ key, before: drawn.now, now: new Set(ids) });
   // The strip owns a touch's long press: held and moved it drags the tab, held and let go it opens the tab's menu.
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  // Pinned tabs lead (#1561) and sit in a group of their own that never scrolls, so they stay in view while the other
-  // tabs scroll; each group drags within itself, so no drag carries a tab across the last pinned one.
+  // Pinned tabs lead (#1561) and sit in a group of their own that never scrolls with the other tabs, so they stay in view
+  // while those scroll (past half the strip it scrolls on its own, #1916); each group drags within itself, so no drag
+  // carries a tab across the last pinned one.
   const firstUnpinned = tabs.findIndex((tab) => tab.pinned !== true);
   const pins = firstUnpinned === -1 ? tabs.length : firstUnpinned;
   const pinnedList = useRef<HTMLDivElement>(null);
@@ -200,7 +201,9 @@ export function TabBar({
             ref={pinnedList}
             data-tab-pins
             onClickCapture={pinnedDrag.onClickCapture}
-            className="relative flex shrink-0 items-center gap-[3px] py-1"
+            // At most half the strip: past that the pinned tabs scroll in their own group, so the other tabs keep room
+            // (#1916). Below it the group is as wide as its tabs and never scrolls.
+            className="relative flex max-w-1/2 min-w-0 items-center gap-[3px] overflow-x-auto overflow-y-hidden py-1"
           >
             {pinnedDrag.drag === null ? null : <DropIndicator drag={pinnedDrag.drag} />}
             {pinnedDrag.drag === null ? null : <DropCaret drag={pinnedDrag.drag} />}

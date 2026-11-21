@@ -11,6 +11,8 @@ const doc = (...tabs: JsonObject[]): JsonObject => ({
   ],
 });
 const pinsOf = (...ids: string[]): ReadonlySet<string> => new Set(ids);
+/** Reads the document's own tab order, with no pins to bring forward. */
+const NO_PINS_READ: ReadonlySet<string> = new Set();
 const order = (value: JsonObject | null, pins: ReadonlySet<string>): string[] =>
   value === null
     ? []
@@ -109,6 +111,25 @@ describe("a move keeps pinned tabs in front (#1561)", () => {
   test("an unpinned tab moves only among the unpinned ones", () => {
     expect(order(moveTab(four, "u2", 0, pins), pins)).toEqual(["p1*", "p2*", "u2", "u1"]);
     expect(moveTab(four, "u1", 1, pins)).toBeNull();
+  });
+});
+
+describe("pinned tabs read first even when the document has them elsewhere (#1916)", () => {
+  // Written by an older client, or herdr-app after a tab was added past a pinned one: a pinned tab in the middle.
+  const middle = doc(tab("a"), tab("b"), tab("c"));
+  test("a pinned tab reads in front, and the others keep their order", () => {
+    expect(order(middle, pinsOf("b"))).toEqual(["b*", "a", "c"]);
+  });
+  test("a move is placed in the order as read, and writes the pinned tab in front", () => {
+    expect(order(moveTab(middle, "c", 1, pinsOf("b")), NO_PINS_READ)).toEqual(["b", "c", "a"]);
+  });
+  test("Close tabs to the right from that pinned tab takes the tabs shown after it", () => {
+    expect(closeSet(middle, "b", "right", pinsOf("b"))).toEqual(["a", "c"]);
+  });
+  test("a tab pinned next lands after it, not before it", () => {
+    const pins = pinsOf("b", "c");
+    expect(order(placePinned(middle, "c", pinsOf("b")), pins)).toEqual(["b*", "c*", "a"]);
+    expect(order(placePinned(middle, "c", pinsOf("b")), NO_PINS_READ)).toEqual(["b", "c", "a"]);
   });
 });
 

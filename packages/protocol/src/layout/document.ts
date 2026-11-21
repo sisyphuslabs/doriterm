@@ -1,6 +1,6 @@
 import { isJsonObject, type JsonObject, type JsonValue } from "../json.ts";
 import { problemIn, type Node } from "./node.ts";
-import { moveBounds } from "./pins.ts";
+import { moveBounds, pinnedFirst } from "./pins.ts";
 
 /** The core document herdr-app keeps its spaces, tabs and split trees in, one per machine (`doc.get` `on`). */
 export const LAYOUT_DOC = "herdr-app";
@@ -64,7 +64,7 @@ const NO_PINS: ReadonlySet<string> = new Set();
 /** The document's tabs; `pins` are the ids the machine's pins document names (`storedPins`). */
 export function tabsOf(doc: JsonObject, pins: ReadonlySet<string> = NO_PINS): readonly DocTab[] {
   return spacesOf(doc).flatMap((space) =>
-    tabsIn(space).map((tab) => ({
+    pinnedFirst(tabsIn(space), pins).map((tab) => ({
       id: text(tab["id"]),
       name: text(tab["name"]),
       space: text(space["id"]),
@@ -200,7 +200,8 @@ export function moveTab(
   const at = spaces.findIndex((space) => tabsIn(space).some((tab) => text(tab["id"]) === tabId));
   const space = spaces[at];
   if (space === undefined) return null;
-  const tabs = tabsIn(space);
+  // In the order the strip shows (pinned first), which the move writes back (#1916).
+  const tabs = pinnedFirst(tabsIn(space), pins);
   const from = tabs.findIndex((tab) => text(tab["id"]) === tabId);
   const moving = tabs[from];
   if (moving === undefined) return null;

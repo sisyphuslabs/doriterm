@@ -48,6 +48,16 @@ const objects = (value: JsonValue | undefined): readonly JsonObject[] =>
   Array.isArray(value) ? value.filter(isJsonObject) : [];
 const pinnedIn = (pins: ReadonlySet<string>) => (tab: JsonObject) => pins.has(text(tab["id"]));
 
+/**
+ * A space's tabs with its pinned ones in front, each group in the document's order. The app writes pinned tabs first,
+ * but a document an older client or herdr-app wrote can hold one further on; it is read, and moved, as if in front (#1916).
+ */
+export function pinnedFirst(tabs: readonly JsonObject[], pins: ReadonlySet<string>): readonly JsonObject[] {
+  if (pins.size === 0) return tabs;
+  const pinned = pinnedIn(pins);
+  return [...tabs.filter(pinned), ...tabs.filter((tab) => !pinned(tab))];
+}
+
 /** The first and last index a tab may move to among `tabs`: pinned ones stay in front, unpinned ones behind them. */
 export function moveBounds(
   tabs: readonly JsonObject[],
@@ -71,7 +81,9 @@ export function placePinned(doc: JsonObject, tabId: string, pins: ReadonlySet<st
   const tabs = objects(space["tabs"]);
   const moving = tabs.find((tab) => text(tab["id"]) === tabId);
   if (moving === undefined) return null;
-  const rest = tabs.filter((tab) => tab !== moving);
+  // Placed in the order the strip shows (#1916): in a document holding a pinned tab further on, the count alone would
+  // put this one before it.
+  const rest = pinnedFirst(tabs, pins).filter((tab) => tab !== moving);
   const placed = rest.toSpliced(rest.filter(pinnedIn(pins)).length, 0, moving);
   if (placed.every((tab, index) => tab === tabs[index])) return null;
   return { ...doc, spaces: spaces.with(at, { ...space, tabs: placed }) };
@@ -88,7 +100,7 @@ export function closeSet(
   pins: ReadonlySet<string>,
 ): readonly string[] {
   const space = objects(doc["spaces"]).find((each) => objects(each["tabs"]).some((tab) => text(tab["id"]) === tabId));
-  const tabs = space === undefined ? [] : objects(space["tabs"]);
+  const tabs = space === undefined ? [] : pinnedFirst(objects(space["tabs"]), pins);
   const at = tabs.findIndex((tab) => text(tab["id"]) === tabId);
   if (at === -1) return [];
   const picked = which === "right" ? tabs.slice(at + 1) : tabs.filter((_, index) => index !== at);
