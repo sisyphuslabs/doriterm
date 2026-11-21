@@ -50,11 +50,13 @@ function contextFor(width: (typeof WIDTHS)[number]) {
 }
 
 /**
- * When the scroller overflows, writes <file>-end.png (the viewport scrolled to the end, proving the bottom is reachable), then grows
+ * When the scroller overflows (the slot itself, or on a phone the page that scrolls it, #2533), writes <file>-end.png (the viewport scrolled to the end, proving the bottom is reachable), then grows
  * the viewport to the scroller's full height so the main capture shows every row.
  */
 async function captureScroller(page: Page, slot: string, file: string) {
-  const scroller = page.locator(`[data-slot="${slot}"]`);
+  const own = page.locator(`[data-slot="${slot}"]`);
+  const owns = await own.evaluate((element) => element.scrollHeight > element.clientHeight);
+  const scroller = owns ? own : page.locator(":root");
   const extra = await scroller.evaluate((element) => element.scrollHeight - element.clientHeight);
   const viewport = page.viewportSize();
   if (viewport === null || extra <= 0) return;

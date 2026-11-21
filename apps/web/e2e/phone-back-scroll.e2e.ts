@@ -41,27 +41,44 @@ interface Place {
 const AGENT_ROW = /^\s*keep\d\d/;
 const SPACE_ROW = /keep\d\d/;
 
+/**
+ * The list scrolls the document (#2533): its offset is the document scroller's, and what the reader sees of it is the band
+ * between the pinned header and the pinned bars under it.
+ */
+const offset = (list: Locator): Promise<number> =>
+  list.evaluate(() => Math.round((document.scrollingElement ?? document.documentElement).scrollTop));
+
+/** Scrolls the document to `top` at once. */
+const scrollDocument = (list: Locator, top: number): Promise<void> =>
+  list.evaluate((_el, y) => window.scrollTo({ top: y, behavior: "instant" }), top);
+
 /** Where the list is: its offset and the first seeded row in view, an agent's or a space's (headers are not counted). */
 const place = async (list: Locator, row: RegExp = AGENT_ROW): Promise<Place> => {
   const at = await list.evaluate((el, source) => {
     const pattern = new RegExp(source);
-    const edge = el.getBoundingClientRect().top;
+    const edge = document.querySelector('[data-pinned="top"]')?.getBoundingClientRect().bottom ?? 0;
     const first = [...el.querySelectorAll("button")].find(
       (button) => pattern.test(button.textContent ?? "") && button.getBoundingClientRect().bottom > edge + 1,
     );
     // The row's name, not its whole text: the text ends with the agent's age, which moves on while the test runs.
-    return { top: el.scrollTop, first: /keep\d\d/.exec(first?.textContent ?? "")?.[0] ?? "" };
+    return {
+      top: Math.round((document.scrollingElement ?? document.documentElement).scrollTop),
+      first: /keep\d\d/.exec(first?.textContent ?? "")?.[0] ?? "",
+    };
   }, row.source);
   return { ...at, row };
 };
 
 /** Scrolls the list to half its overflow and waits for that offset to be the one it holds. */
 async function scrollHalfway(list: Locator, row: RegExp = AGENT_ROW): Promise<Place> {
-  const room = await list.evaluate((el) => el.scrollHeight - el.clientHeight);
+  const room = await list.evaluate(() => {
+    const scroller = document.scrollingElement ?? document.documentElement;
+    return scroller.scrollHeight - scroller.clientHeight;
+  });
   expect(room, "the list overflows the screen by more than a few rows").toBeGreaterThan(300);
   const target = Math.round(room / 2);
-  await list.evaluate((el, top) => el.scrollTo({ top, behavior: "instant" }), target);
-  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBe(target);
+  await scrollDocument(list, target);
+  await expect.poll(() => offset(list)).toBe(target);
   return place(list, row);
 }
 
@@ -69,11 +86,12 @@ async function scrollHalfway(list: Locator, row: RegExp = AGENT_ROW): Promise<Pl
 async function rowInView(list: Locator, row: RegExp = AGENT_ROW): Promise<Locator> {
   const index = await list.evaluate((el, source) => {
     const pattern = new RegExp(source);
-    const box = el.getBoundingClientRect();
+    const top = document.querySelector('[data-pinned="top"]')?.getBoundingClientRect().bottom ?? 0;
+    const bottom = document.querySelector('[data-pinned="bottom"]')?.getBoundingClientRect().top ?? window.innerHeight;
     const rows = [...el.querySelectorAll("button")].filter((button) => pattern.test(button.textContent ?? ""));
     return rows.findIndex((button) => {
       const r = button.getBoundingClientRect();
-      return r.top > box.top + 40 && r.bottom < box.bottom - 40;
+      return r.top > top + 40 && r.bottom < bottom - 40;
     });
   }, row.source);
   expect(index).toBeGreaterThanOrEqual(0);
@@ -97,7 +115,7 @@ const arrived = (screen: Locator): Promise<void> =>
 async function expectSamePlace(list: Locator, before: Place): Promise<void> {
   // A row pattern that matches nothing would pass below as '' === ''.
   expect(before.first, "a first row was found").not.toBe("");
-  await expect.poll(() => list.evaluate((el) => el.scrollTop), "the same offset").toBe(before.top);
+  await expect.poll(() => offset(list), "the same offset").toBe(before.top);
   expect((await place(list, before.row)).first, "the same first row in view").toBe(before.first);
 }
 
@@ -147,7 +165,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expectSamePlace(agentsList(page), before);
 
         // The system's Back, from another offset.
-        await list.evaluate((el) => el.scrollTo({ top: el.scrollTop + 120, behavior: "instant" }));
+        await scrollDocument(list, (await offset(list)) + 120);
         const again = await place(list);
         await (await rowInView(list)).click();
         await expect(page.getByRole("button", { name: /^Back to / })).toBeVisible({ timeout: 20_000 });
@@ -180,7 +198,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect(page.getByRole("heading", { level: 1, name: SPACE })).toBeVisible();
         await expectSamePlace(spaceTabs(page), before);
 
-        await tabs.evaluate((el) => el.scrollTo({ top: el.scrollTop + 120, behavior: "instant" }));
+        await scrollDocument(tabs, (await offset(tabs)) + 120);
         const again = await place(tabs);
         await (await rowInView(tabs)).click();
         await expect(page.getByRole("button", { name: `Back to ${SPACE}` })).toBeVisible({ timeout: 20_000 });
@@ -206,7 +224,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await sections(page).getByRole("button", { name: "Spaces", exact: true }).click();
         await expect(page.getByRole("heading", { level: 1, name: "Spaces", exact: true })).toBeVisible();
         await expect(list.getByRole("button", { name: /^keep24\b/ })).toBeAttached();
-        await expect.poll(() => list.evaluate((el) => el.scrollTop), "Spaces opens at its top").toBe(0);
+        await expect.poll(() => offset(list), "Spaces opens at its top").toBe(0);
 
         // A space opened from Spaces, and Back: Spaces is where it was left, not where the agents were.
         const spaces = await scrollHalfway(list, SPACE_ROW);

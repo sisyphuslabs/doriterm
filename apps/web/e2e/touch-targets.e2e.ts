@@ -76,6 +76,7 @@ test("on the phone every Settings switch takes a tap anywhere in its 44x44 box, 
   const tabs = page.getByRole("tablist").getByRole("tab");
   await expect(tabs.first()).toBeVisible({ timeout: 20_000 });
   const body = page.locator("[data-slot=settings-body]");
+  // On a phone the page scrolls Settings, not the sections' body (#2533): each section is stepped through the document.
   const found: string[] = [];
   let switches = 0;
   for (const label of await tabs.allTextContents()) {
@@ -84,13 +85,13 @@ test("on the phone every Settings switch takes a tap anywhere in its 44x44 box, 
     // oxlint-disable-next-line no-await-in-loop -- as above
     await expect(page.getByRole("heading", { name: label, level: 2 }).first()).toBeVisible();
     // oxlint-disable-next-line no-await-in-loop -- as above
-    const { height, view } = await body.evaluate((element) => ({
-      height: element.scrollHeight,
-      view: element.clientHeight,
-    }));
+    const { height, view } = await page.evaluate(() => {
+      const scroller = document.scrollingElement ?? document.documentElement;
+      return { height: scroller.scrollHeight, view: scroller.clientHeight };
+    });
     for (let top = 0; top < height; top += Math.max(1, Math.floor(view * 0.75))) {
       // oxlint-disable-next-line no-await-in-loop -- each scroll position is read after the last one settles
-      await body.evaluate((element, to) => element.scrollTo({ top: to }), top);
+      await page.evaluate((to) => window.scrollTo({ top: to, behavior: "instant" }), top);
       // oxlint-disable-next-line no-await-in-loop -- as above
       found.push(...(await shortTargets(page)).map((entry) => `${label}: ${entry}`));
     }
