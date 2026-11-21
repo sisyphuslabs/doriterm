@@ -107,6 +107,40 @@ test("a dial that reaches an added machine after its stop is refused, so the sto
   expect(await dialOnce(dialer.hc, viaCommand(own, spec))).not.toBe(0);
   expect(await stopLeftUnder(join(root, "machine"))).toEqual([]);
 }, 60_000);
+
+test("a dial released past the final gate cannot restart a stopped core (#2525)", async () => {
+  dialer = createHcSession("machine-held-dial");
+  root = mkdtempSync(join(tmpdir(), "dw-machine-"));
+  const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
+  const machine = join(root, "machine");
+  const stop = await addMachine(dialer.hc, { ...dialer.env }, machine, false, spec);
+  const { env: own } = JSON.parse(readFileSync(join(spec.dir, "env.json"), "utf8")) as {
+    readonly env: Readonly<Record<string, string>>;
+  };
+  // Pause the actual via shell immediately before it hands off to its transport, after all the switch checks.
+  const held = viaCommand(own, spec).replace("; exec env ", "; echo ready; read -r release || exit 1; exec env ");
+  const line = Bun.spawn(["sh", "-c", `${held} 'exec "${dialer.hc}" connect'`], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  const output = line.stdout.getReader();
+  try {
+    expect(new TextDecoder().decode((await output.read()).value)).toBe("ready\n");
+    await dialer.dispose();
+    await stop();
+    line.stdin.write('\n{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
+    await line.stdin.end();
+    const code = await line.exited;
+    expect(await stopLeftUnder(machine)).toEqual([]);
+    expect(code).not.toBe(0);
+  } finally {
+    line.kill();
+    await line.exited;
+    await output.cancel();
+  }
+}, 60_000);
+
 test("a slow dial that passed the check before the machine stopped is refused once it wakes (#2158)", async () => {
   dialer = createHcSession("machine-slow-dial");
   root = mkdtempSync(join(tmpdir(), "dw-machine-"));
