@@ -115,40 +115,51 @@ test("the reconnect note belongs to the terminal that lost output, not to one op
   await expect(note).toBeVisible();
 });
 
+/**
+ * The phone says the note in the line under the terminal's header, where it says "Reconnecting": the line hands over
+ * from one to the other at the same height, so the terminal is not fitted again while the repaint lands (#2257). The
+ * line sits outside the terminal, and Dismiss takes it away. After a reconnect the note takes over from Reconnecting,
+ * which is one line at every phone width, so the hand-over keeps its height below 390 px too, where the Offline sentence
+ * wraps (DESIGN.md 5 (e)) and the line changes height as Offline gives way to Reconnecting (#2406). A note already
+ * showing, or one raised while Offline shows, appears as Offline clears, with no repaint in flight.
+ */
+for (const width of [390, 320]) {
+  test.describe(`on a phone ${width} px wide`, () => {
+    test.use({ ...PHONE, viewport: { width, height: 844 } });
+
+    test("the note takes over the reconnecting line at its height, outside the terminal (#2257, #2406)", async ({
+      page,
+    }) => {
+      test.slow();
+      const link = await routeHcSocket(page);
+      const terminal = await openPhoneTerminal(page);
+      opened.push((await terminal.getAttribute("data-terminal")) ?? "");
+      await reconnectPastAScreen(page, link, terminal, async () => {
+        await expect(page.getByRole("status").filter({ hasText: /Reconnecting/ })).toBeVisible();
+        // From here, every height the terminal is laid out at.
+        await terminal.evaluate((element) => {
+          const heights = [element.getBoundingClientRect().height];
+          Object.assign(window, { terminalHeights: heights });
+          new ResizeObserver(() => heights.push(element.getBoundingClientRect().height)).observe(element);
+        });
+      });
+      const note = page.locator("[data-history-gap-status]");
+      await expect(note).toBeVisible();
+      const heights = await page.evaluate(() => Reflect.get(window, "terminalHeights") as number[]);
+      expect(new Set(heights).size, `terminal heights through the reconnect: ${heights.join(", ")}`).toBe(1);
+
+      const box = await terminal.boundingBox();
+      const line = await note.boundingBox();
+      if (box === null || line === null) throw new Error("the terminal or the note is not laid out");
+      expect(line.y + line.height).toBeLessThanOrEqual(box.y + 0.5);
+      await page.getByRole("button", { name: "Dismiss" }).click();
+      await expect(note).toHaveCount(0);
+    });
+  });
+}
+
 test.describe("on a phone", () => {
   test.use({ ...PHONE });
-
-  /**
-   * The phone says the note in the line under the terminal's header, where it says "Reconnecting": the line hands over
-   * from one to the other at the same height, so the terminal is not fitted again while the repaint lands (#2257). The
-   * line sits outside the terminal, and Dismiss takes it away.
-   */
-  test("the note takes over the reconnecting line at its height, outside the terminal (#2257)", async ({ page }) => {
-    test.slow();
-    const link = await routeHcSocket(page);
-    const terminal = await openPhoneTerminal(page);
-    opened.push((await terminal.getAttribute("data-terminal")) ?? "");
-    await reconnectPastAScreen(page, link, terminal, async () => {
-      await expect(page.getByRole("status").filter({ hasText: /Reconnecting/ })).toBeVisible();
-      // From here, every height the terminal is laid out at.
-      await terminal.evaluate((element) => {
-        const heights = [element.getBoundingClientRect().height];
-        Object.assign(window, { terminalHeights: heights });
-        new ResizeObserver(() => heights.push(element.getBoundingClientRect().height)).observe(element);
-      });
-    });
-    const note = page.locator("[data-history-gap-status]");
-    await expect(note).toBeVisible();
-    const heights = await page.evaluate(() => Reflect.get(window, "terminalHeights") as number[]);
-    expect(new Set(heights).size, `terminal heights through the reconnect: ${heights.join(", ")}`).toBe(1);
-
-    const box = await terminal.boundingBox();
-    const line = await note.boundingBox();
-    if (box === null || line === null) throw new Error("the terminal or the note is not laid out");
-    expect(line.y + line.height).toBeLessThanOrEqual(box.y + 0.5);
-    await page.getByRole("button", { name: "Dismiss" }).click();
-    await expect(note).toHaveCount(0);
-  });
 
   /**
    * A terminal left while its line was down and opened again later is a new view: its first attach plays its history
