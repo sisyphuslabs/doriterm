@@ -2,6 +2,7 @@ import { base64urlDecode } from "@doriface/crypto";
 import type { HcConnection } from "@doriface/client";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useState } from "react";
+import type { MemberEntry } from "../connection/mesh-connections.ts";
 import { connectionStore, useMeshMembers } from "../connection/store.ts";
 import { runsInstalled } from "../device/install.ts";
 import { forgetMembership, useBrowserMembership } from "../mesh/membership-state.ts";
@@ -12,6 +13,14 @@ import { MeshDevice, MeshMachineList, sortedMachines } from "./mesh-device.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { BrowserMemberList, RevokeCommand } from "./browser-members.tsx";
 import { useNow } from "../workspace/use-now.ts";
+
+/**
+ * How many machines the This device row counts as online, decided away from React so the rule can be tested: a session
+ * being carried on over a new socket is not online yet, and its own row says Reconnecting meanwhile (#2424).
+ */
+export function onlineCount(entries: readonly MemberEntry[]): number {
+  return entries.filter((entry) => entry.state.phase === "open" && entry.state.resuming !== true).length;
+}
 
 export function RemovedMembership() {
   const [error, setError] = useState<string>();
@@ -103,7 +112,7 @@ export function MembershipDeviceSection() {
         mesh={mesh.mesh}
         fingerprint={fingerprintOf(base64urlDecode(mesh.self.signPub))}
         installed={runsInstalled()}
-        online={entries.filter((entry) => entry.state.phase === "open").length}
+        online={onlineCount(entries)}
         onLeave={() => setLeaving(true)}
       />
       <LeaveMeshDialog open={leaving} close={() => setLeaving(false)} />

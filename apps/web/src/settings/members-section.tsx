@@ -58,9 +58,11 @@ function title(icon: ReactNode, name: string) {
 function stateLine(entry: MemberEntry): ReactNode {
   const { state } = entry;
   const problem = PROBLEMS.has(state.phase);
+  // A session being carried on over a new socket is not connected yet: the row says what the status bar says (#2424).
+  const word = state.phase === "open" && state.resuming === true ? "Reconnecting" : WORDS[state.phase];
   return (
     <>
-      <span className={cn(problem && "text-status-blocked-text")}>{WORDS[state.phase]}</span>
+      <span className={cn(problem && "text-status-blocked-text")}>{word}</span>
       {state.phase === "failed" ? <span className="block">{state.error.message}</span> : null}
       {state.phase === "host-failed" ? <span className="block">{state.failure.details}</span> : null}
     </>
