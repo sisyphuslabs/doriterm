@@ -68,7 +68,7 @@ test("tapping a modifier while a syllable composes sends the syllable plain, bef
   await compose(page, "한");
   await key(page, "Option").click();
   await key(page, "Arrow keys").click();
-  await key(page, "Left arrow").click();
+  await page.getByRole("group", { name: "Arrow keys" }).getByRole("button", { name: "Left arrow" }).click();
   await key(page, "Return").click();
   // 한, then alt+left as xterm encodes it (ESC [ 1 ; 3 D); an alt that reached the syllable would put ESC before it.
   await expect(terminal).toContainText(`${HAN} 1b 5b 31 3b 33 44`, { timeout: 10_000 });

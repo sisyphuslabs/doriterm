@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { Touch } from "./touch.ts";
 import { commandModifier, pressWithCommand } from "./platform-keys.ts";
-import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { chatComposer, key, keysBar, openChat, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "clipboard-write"] });
 
@@ -28,7 +28,7 @@ test("the field takes Korean through the input method, and Send writes the line 
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
+  await openChat(page);
   await expect(field(page)).toBeVisible();
   await expect(field(page)).toBeFocused();
 
@@ -42,7 +42,7 @@ test("the field takes Korean through the input method, and Send writes the line 
 
 test("a composed syllable reaches the program as one word, and nothing is sent before Send", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
+  await openChat(page);
   await page.keyboard.type("echo ");
   await compose(page, "한글");
   await expect(field(page)).toHaveValue("echo 한글");
@@ -54,34 +54,25 @@ test("a composed syllable reaches the program as one word, and nothing is sent b
   await expect(field(page)).toHaveValue("");
 });
 
-test("the field stays inside the keys bar, and the keyboard's own key takes both away", async ({ page }) => {
+test("Chat's field takes the keys' place over the terminal, and Close chat gives the keys back (#2604)", async ({
+  page,
+}) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
-  await expect(field(page)).toBeVisible();
-  const [box, bar, term] = await Promise.all([
-    field(page).boundingBox(),
-    keysBar(page).boundingBox(),
-    terminal.boundingBox(),
-  ]);
-  // The field shares the bar's row, and the terminal ends above the bar.
-  expect(box?.y ?? -1).toBeGreaterThanOrEqual(bar?.y ?? 0);
-  expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual((bar?.y ?? 0) + (bar?.height ?? 0));
-  expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((bar?.y ?? 0) + 1);
+  await openChat(page);
+  await expect(keysBar(page)).toHaveCount(0);
+  const [composer, term] = await Promise.all([chatComposer(page).boundingBox(), terminal.boundingBox()]);
+  // The terminal ends above the composer.
+  expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((composer?.y ?? 0) + 1);
 
-  // Putting the keyboard down keeps the panel, the field's row included (#2499).
-  await key(page, "Hide keyboard").click();
-  await expect(key(page, "Hide keyboard")).toHaveCount(0);
+  await chatComposer(page).getByRole("button", { name: "Close chat" }).click();
+  await expect(chatComposer(page)).toHaveCount(0);
   await expect(keysBar(page)).toBeVisible();
-  await expect(field(page)).toBeVisible();
-  await key(page, "Show keyboard").click();
-  await expect(keysBar(page)).toBeVisible();
-  await expect(field(page)).toBeVisible();
-  await expect(page.locator("[data-terminal] textarea")).toBeFocused();
+  await expect(field(page)).toHaveCount(0);
 });
 
-test("a long line in the field is shown whole, and the keys stay reachable under it", async ({ page }) => {
+test("a long line in the field is shown whole above the terminal", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
+  await openChat(page);
   const line = "echo the quick brown fox jumps over the lazy dog 한글 $((6*7))";
   await page.keyboard.type(line);
   // The field takes the bar's whole width and wraps, so nothing typed is scrolled out of sight.
@@ -93,30 +84,17 @@ test("a long line in the field is shown whole, and the keys stay reachable under
   expect(shown.width).toBeGreaterThan(300);
   expect(shown.hidden).toBeLessThanOrEqual(1);
   expect(shown.clipped).toBeLessThanOrEqual(1);
-  // The key row keeps its width: at least six keys in view beside the field.
-  const keysInView = await keysBar(page)
-    .locator('[data-slot="terminal-keys-scroll"] button')
-    .evaluateAll(
-      (keys) =>
-        keys.filter((button) => {
-          const box = button.getBoundingClientRect();
-          return box.left >= 0 && box.right <= window.innerWidth && box.width > 0;
-        }).length,
-    );
-  expect(keysInView).toBeGreaterThanOrEqual(6);
-  // The terminal ends above the taller bar, so its last row is not under the field.
-  const [bar, term] = await Promise.all([keysBar(page).boundingBox(), terminal.boundingBox()]);
+  // The terminal ends above the taller composer, so its last row is not under the field.
+  const [bar, term] = await Promise.all([chatComposer(page).boundingBox(), terminal.boundingBox()]);
   expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((bar?.y ?? 0) + 1);
   await key(page, "Send").click();
   await expect(terminal).toContainText("한글 42", { timeout: 15_000 });
 });
 
 test("an idle, empty field keeps the pill's 44 pt height, and grows only while in use", async ({ page }) => {
-  const terminal = await openPhoneTerminal(page);
-  await terminal.click();
-  await expect(field(page)).toBeVisible();
+  await openPhoneTerminal(page);
+  await openChat(page);
   await expect.poll(async () => (await field(page).boundingBox())?.height).toBe(44);
-  await field(page).click();
   await page.keyboard.type("echo one two three four five six seven eight nine ten eleven twelve");
   await expect.poll(async () => (await field(page).boundingBox())?.height ?? 0).toBeGreaterThan(44);
 });
@@ -125,7 +103,7 @@ test("a press held in the terminal while typing gives the keyboard back as it li
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
-  await expect(field(page)).toBeVisible();
+  await expect(keysBar(page)).toBeVisible();
   const box = await terminal.boundingBox();
   if (box === null) throw new Error("the terminal is not laid out");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -137,14 +115,14 @@ test("a press held in the terminal while typing gives the keyboard back as it li
   );
   await page.mouse.up();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
-  await expect(field(page)).toBeVisible();
+  await expect(keysBar(page)).toBeVisible();
 });
 
 test("another pointer lifting during a held press in the terminal leaves that press to give the keyboard back (#2093)", async ({
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
-  await expect(field(page)).toBeVisible();
+  await expect(keysBar(page)).toBeVisible();
   const box = await terminal.boundingBox();
   if (box === null) throw new Error("the terminal is not laid out");
   const frames = (): Promise<void> =>
@@ -162,18 +140,17 @@ test("another pointer lifting during a held press in the terminal leaves that pr
   await frames();
   await page.mouse.up();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
-  await expect(field(page)).toBeVisible();
+  await expect(keysBar(page)).toBeVisible();
 });
 
-test("what is typed in the field is still there after the keyboard closes and opens again", async ({ page }) => {
+test("what is typed in the field is still there after Chat closes and opens again", async ({ page }) => {
   await openPhoneTerminal(page);
-  await field(page).click();
+  await openChat(page);
   await page.keyboard.type("git commit -m 초안");
-  // The field stays on screen with the keyboard down (#2499), holding what was typed.
-  await key(page, "Hide keyboard").click();
-  await expect(key(page, "Hide keyboard")).toHaveCount(0);
-  await expect(field(page)).toHaveValue("git commit -m 초안");
-  await key(page, "Show keyboard").click();
+  // Closing Chat keeps the line, and Chat opened again shows it (#2604).
+  await chatComposer(page).getByRole("button", { name: "Close chat" }).click();
+  await expect(field(page)).toHaveCount(0);
+  await openChat(page);
   await expect(field(page)).toHaveValue("git commit -m 초안");
 });
 
@@ -181,7 +158,7 @@ test("Send tapped while a syllable is still composing sends the line once and le
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
+  await openChat(page);
   await page.keyboard.type("echo once-");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Input.imeSetComposition", { text: "한", selectionStart: 1, selectionEnd: 1 });
@@ -196,7 +173,7 @@ test("Send tapped while a syllable is still composing sends the line once and le
 test("pasting into the fixed field sends the pasted line when Enter is pressed", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
   await page.evaluate(() => navigator.clipboard.writeText("echo pasted-$((6*7))"));
-  await field(page).click();
+  await openChat(page);
   await pressWithCommand(page, `${await commandModifier(page)}+v`, "paste");
   await expect(field(page)).toHaveValue("echo pasted-$((6*7))");
   expect(await value(page)).not.toContain("pasted-42");
@@ -204,5 +181,5 @@ test("pasting into the fixed field sends the pasted line when Enter is pressed",
   await expect(terminal).toContainText("pasted-42", { timeout: 15_000 });
   await expect(field(page)).toHaveValue("");
   await expect(field(page)).toBeFocused();
-  await expect(keysBar(page)).toBeVisible();
+  await expect(chatComposer(page)).toBeVisible();
 });

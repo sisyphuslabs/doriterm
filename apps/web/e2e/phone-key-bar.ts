@@ -138,6 +138,15 @@ export async function settledGrid(page: Page, terminal: Locator): Promise<void> 
 }
 
 export const keysBar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });
+/** The Chat composer, which takes the keys' place while a line is written (#2604). */
+export const chatComposer = (page: Page) => page.getByRole("group", { name: "Chat" });
+/** Opens the Chat composer from the keys and returns its field, focused. */
+export async function openChat(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "Chat", exact: true }).click();
+  const field = chatComposer(page).getByLabel("Type into the terminal");
+  await expect(field).toBeFocused();
+  return field;
+}
 export const key = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
 
 /**

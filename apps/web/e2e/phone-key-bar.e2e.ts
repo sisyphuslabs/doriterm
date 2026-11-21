@@ -5,23 +5,19 @@ import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboar
 test.use({ serviceWorkers: "block", ...PHONE });
 
 const BAR_KEYS = [
+  "Escape",
   "Control",
   "Shift",
   "Tab",
-  "Escape",
-  "Arrow left",
-  "Arrow up",
-  "Arrow down",
-  "Arrow right",
   "Arrow keys",
   "Paste",
   "Switch session",
-  "Send",
+  "Chat",
   "Hide keyboard",
 ];
 const PAD_KEYS = ["Delete", "Up arrow", "Clear screen", "Left arrow", "Return", "Right arrow", "Down arrow"];
-/** Send belongs to the fixed input column; the keyboard key has its own column. */
-const FIXED_KEYS = ["Send", "Hide keyboard"];
+/** The arrow pad, Switch session, Chat and the keyboard key sit fixed at the row's end (#2604). */
+const FIXED_KEYS = ["Arrow keys", "Switch session", "Chat", "Hide keyboard"];
 const SCROLL_KEYS = BAR_KEYS.length - FIXED_KEYS.length;
 const names = (scope: Locator) =>
   scope.getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
@@ -39,14 +35,11 @@ for (const width of [390, 320]) {
         .filter((button) => button.getBoundingClientRect().right <= edge.right + 1)
         .map((button) => button.getAttribute("aria-label"));
     });
-    // The fixed input leaves room for the first three keys at 390; the rest are reached by swiping.
-    if (width === 390) {
-      // The keys in the row's own order, of which the first few fit: the row swipes for the rest (#195).
-      expect(shown.slice(0, 3)).toEqual(
-        process.platform === "darwin" ? ["Control", "Command", "Shift"] : ["Control", "Shift", "Tab"],
-      );
-      expect(shown.length).toBeLessThan(SCROLL_KEYS);
-    }
+    // Beside the fixed controls the row shows its first keys, Control leading, as the owner's row has them (#2604);
+    // the rest are reached by swiping (#195).
+    expect(shown[0]).toBe("Control");
+    expect(shown.length).toBeGreaterThanOrEqual(width === 390 ? 3 : 1);
+    expect(shown.length).toBeLessThan(SCROLL_KEYS);
     const box = await bar.boundingBox();
     // With the keyboard up the header stays above the bar: the terminal keeps the room between them.
     const head = await page.getByRole("banner").boundingBox();
@@ -132,7 +125,7 @@ test("the D-pad toggle lays a 3x3 pad over the terminal", async ({ page }) => {
   expect(await names(pad)).toEqual(PAD_KEYS);
   await expectTouchTargets(pad);
   // Pressing pad keys keeps the keyboard up: the terminal keeps focus.
-  await key(page, "Up arrow").click();
+  await pad.getByRole("button", { name: "Up arrow" }).click();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await toggle.click();
   await expect(pad).toHaveCount(0);

@@ -94,9 +94,12 @@ for (const [name, device] of PHONES) {
       expect(first.right).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
     });
 
-    test("the keys bar's Type field and the command palette do not zoom when focused", async ({ page }) => {
+    test("the Chat composer's field and the command palette do not zoom when focused", async ({ page }) => {
       await openPhoneTerminal(page);
+      // The field the keys open is the Chat composer's (#2604).
+      await page.getByRole("button", { name: "Chat", exact: true }).click();
       await expectNoZoomOnFocus(page.getByLabel("Type into the terminal"));
+      await page.getByRole("button", { name: "Close chat" }).click();
       expect(await zoomingFields(page)).toEqual([]);
 
       await page.getByRole("button", { name: "Back to agents" }).click();

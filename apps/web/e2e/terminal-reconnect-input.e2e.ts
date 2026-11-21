@@ -48,7 +48,7 @@ test.describe("on a phone", () => {
     await expect.poll(socket.refused, { timeout: 15_000 }).toBeGreaterThan(0);
     await page.keyboard.type("echo pk-ab");
     await page.getByRole("button", { name: "Arrow keys" }).click();
-    await page.getByRole("button", { name: "Left arrow" }).click();
+    await page.getByRole("group", { name: "Arrow keys" }).getByRole("button", { name: "Left arrow" }).click();
     await input.focus();
     await page.keyboard.type("Z");
     await page.keyboard.press("Enter");

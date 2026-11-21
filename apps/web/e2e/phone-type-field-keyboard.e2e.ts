@@ -1,6 +1,6 @@
 import { devices, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { key, type KeyboardShape, keysBar, openPhoneTerminal, showKeyboard } from "./phone-key-bar.ts";
+import { chatComposer, key, type KeyboardShape, keysBar, openPhoneTerminal, showKeyboard } from "./phone-key-bar.ts";
 
 const { defaultBrowserType: _iphoneBrowser, ...IPHONE } = devices["iPhone 14"];
 const { defaultBrowserType: _pixelBrowser, ...PIXEL } = devices["Pixel 7"];
@@ -25,14 +25,14 @@ test.use({
 const field = (page: Page) => page.getByLabel("Type into the terminal");
 
 /**
- * The Type field lies inside the visual viewport, above its bottom edge (the keyboard's top), and the keys bar rides
- * on the keyboard: its bottom edge is the visual viewport's.
+ * Chat's field lies inside the visual viewport, above its bottom edge (the keyboard's top), and the composer rides on the
+ * keyboard: its bottom edge is the visual viewport's (#2604).
  */
 async function expectAboveKeyboard(page: Page): Promise<void> {
   await expect(async () => {
     const [box, bar, viewport] = await Promise.all([
       field(page).boundingBox(),
-      keysBar(page).boundingBox(),
+      chatComposer(page).boundingBox(),
       page.evaluate(() => {
         const visual = window.visualViewport;
         if (visual === null) throw new Error("this page has no visual viewport");
@@ -79,19 +79,21 @@ for (const { name, shape } of SHAPES) {
   }) => {
     await openPhoneTerminal(page, SIZE.width, shape);
     await pressShowKeyboard(page);
-    await expectAboveKeyboard(page);
-    await field(page).click();
+    await key(page, "Chat").click();
     await expect(field(page)).toBeFocused();
+    await expectAboveKeyboard(page);
     await page.keyboard.type("echo typed-above-the-keyboard");
     await expect(field(page)).toHaveValue("echo typed-above-the-keyboard");
     await expectAboveKeyboard(page);
 
-    // Down, the field stays in the keys panel under the terminal (#2499), what was typed still in it.
-    await key(page, "Hide keyboard").click();
-    await expect(key(page, "Hide keyboard")).toHaveCount(0);
+    // Closed, Chat keeps the line; opened again, it is back with what was typed still in it.
+    await chatComposer(page).getByRole("button", { name: "Close chat" }).click();
+    await expect(field(page)).toHaveCount(0);
+    await expect(keysBar(page)).toBeVisible();
+    // Closing went back to rest, keyboard down (#2604); the tap on Chat raises it again, as a phone's tap on a field does.
+    await key(page, "Chat").click();
+    await showKeyboard(page, 336);
     await expect(field(page)).toHaveValue("echo typed-above-the-keyboard");
-    await pressShowKeyboard(page);
-    await expect(field(page)).toBeVisible();
     await expectAboveKeyboard(page);
   });
 }
