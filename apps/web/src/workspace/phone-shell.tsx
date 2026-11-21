@@ -94,14 +94,16 @@ export function PhoneShell(props: PhoneShellProps) {
   // Agents and Spaces scroll in the same frame: each keeps its own place, by its section (#1553).
   const listViewport = useKeptScroll(section, machines.terminalsLoaded && terminal === undefined && space === null);
   // A space's rows are its live terminals: until the terminals are listed (or when that failed) the screen says so,
-  // never "Nothing is running".
-  if (terminal === undefined && (space === "loading" || (space !== null && !machines.terminalsLoaded)))
+  // never "Nothing is running". A terminal the address names waits on its own screen, not on the list (#2532).
+  const waiting = !machines.terminalsLoaded && open !== null;
+  if (terminal === undefined && (space === "loading" || (space !== null && !machines.terminalsLoaded) || waiting))
     return (
       <PhoneSpaceLoading
         error={machines.terminalsError}
         onRetry={machines.retryTerminals}
         from={section}
-        onBack={onSpaceBack}
+        onBack={space === null ? onBack : onSpaceBack}
+        terminal={waiting}
       />
     );
   if (terminal === undefined && space !== null && space !== "loading") {

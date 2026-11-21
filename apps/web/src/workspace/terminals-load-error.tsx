@@ -2,13 +2,21 @@ import { Button, Notice } from "@doriface/ui";
 
 /**
  * The core's first terminal answer failed: the lists cannot be drawn, and saying they are loading or empty would both be
- * untrue (#819). Try again asks the core once more.
+ * untrue (#819). Try again asks the core once more. `title` names what the screen was drawing (a space, a terminal, #2532).
  */
-export function TerminalsLoadError({ cause, onRetry }: { readonly cause: string; readonly onRetry: () => void }) {
+export function TerminalsLoadError({
+  cause,
+  onRetry,
+  title = "Could not load the agents",
+}: {
+  readonly cause: string;
+  readonly onRetry: () => void;
+  readonly title?: string;
+}) {
   return (
     <Notice
       tone="error"
-      title="Could not load the agents"
+      title={title}
       className="mx-2 my-3"
       actions={
         <Button size="sm" variant="secondary" onClick={onRetry}>

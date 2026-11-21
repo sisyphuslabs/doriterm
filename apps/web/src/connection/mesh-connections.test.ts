@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it } from "bun:test";
 import type { HcConnection } from "@doriface/client";
 import type { OpenConnection } from "./connect.ts";
 import { MeshConnections, type MemberConnection, type StoreFactory } from "./mesh-connections.ts";
-import { DEFAULT_SETTINGS, loadSettings, type ConnectionSettings, type MemberTarget } from "./settings.ts";
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+  type ConnectionSettings,
+  type MemberTarget,
+} from "./settings.ts";
 
 const member = (hostId: string, hostName = hostId): MemberTarget => ({
   hostId,
@@ -95,8 +101,9 @@ class FakeConnection implements MemberConnection {
 
   hostStartFailed(): void {}
 
-  fail(): void {
-    this.#state = { phase: "failed", error: new Error(`down`), retryInMs: 1_000, retryAt: 0, stale: null };
+  /** `retryInMs` null is a failure no retry can help. */
+  fail(retryInMs: number | null = 1_000): void {
+    this.#state = { phase: "failed", error: new Error(`down`), retryInMs, retryAt: 0, stale: null };
     this.rename(`renamed`);
     this.#emit();
   }
@@ -111,7 +118,7 @@ class FakeConnection implements MemberConnection {
   }
 }
 
-const harness = (initial: ConnectionSettings) => {
+const harness = (initial: ConnectionSettings, holdsPlace = (): boolean => false) => {
   const made: FakeConnection[] = [];
   const saved: ConnectionSettings[] = [];
   const savers: ((settings: ConnectionSettings) => void)[] = [];
@@ -124,7 +131,7 @@ const harness = (initial: ConnectionSettings) => {
     made.push(connection);
     return connection;
   };
-  return { mesh: new MeshConnections(initial, factory), made, saved, savers };
+  return { mesh: new MeshConnections(initial, factory, holdsPlace), made, saved, savers };
 };
 
 /** A mesh that is dialling, which is what the boot path does once the settings are known. */
@@ -136,7 +143,20 @@ const running = (initial: ConnectionSettings) => {
 
 afterEach(() => {
   globalThis.localStorage?.clear?.();
+  if (!("clear" in (globalThis.localStorage ?? { clear: 0 }))) Reflect.deleteProperty(globalThis, "localStorage");
 });
+
+/** A memory localStorage holding `saved`: bun has none, so without it every save is dropped and "not saved" proves nothing. */
+function storing(saved: ConnectionSettings): void {
+  const kept = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => kept.get(key) ?? null,
+    setItem: (key: string, value: string) => void kept.set(key, value),
+    removeItem: (key: string) => void kept.delete(key),
+  };
+  Object.assign(globalThis, { localStorage: storage });
+  saveSettings(saved);
+}
 
 describe("verified view members", () => {
   it("dials learned members independently without saving them as pairings", () => {
@@ -382,11 +402,78 @@ describe("one connection per member", () => {
   });
 
   it("moves the shown machine off one not reached since the start, to a member that is open", () => {
+    storing(settingsWith([member("a"), member("b")], "a"));
     const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
     made[1]?.start();
     made[0]?.fail();
     expect(mesh.settings.hostId).toBe("b");
     expect(mesh.state.phase).toBe("open");
+    // Shown, not saved: a later start opens the machine the person chose again (#2532).
+    expect(loadSettings().hostId).toBe("a");
+  });
+
+  it("keeps a start on the machine whose space or terminal the address names while a retry can bring it back (#2532)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"), () => true);
+    made[0]?.connecting();
+    made[1]?.start();
+    made[0]?.fail();
+    expect(mesh.settings.hostId).toBe("a");
+    expect(mesh.state.phase).toBe("failed");
+  });
+
+  it("keeps a machine the person picked though it was not reached yet and its redial fails (#2532, #2505 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[0]?.start();
+    mesh.select("b");
+    made[1]?.fail();
+    expect(mesh.settings.hostId).toBe("b");
+    expect(mesh.state.phase).toBe("failed");
+  });
+
+  it("a final failure still moves a start off its machine, though the address names a place on it (#2535 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"), () => true);
+    made[0]?.connecting();
+    made[1]?.start();
+    made[0]?.fail(null);
+    expect(mesh.settings.hostId).toBe("b");
+  });
+
+  it("an edit to how the app dials keeps the machine a failover shows, not the one that is down (#2535 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    expect(mesh.settings.hostId).toBe("b");
+    mesh.edit({});
+    expect(mesh.settings.hostId).toBe("b");
+  });
+
+  it("an edit that names another machine stops showing the failover and shows that one (#2535 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b"), member("c")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    expect(mesh.settings.hostId).toBe("b");
+    mesh.edit({ ...member("c") });
+    expect(mesh.settings.hostId).toBe("c");
+  });
+
+  it("a failover whose machine leaves the roster is no longer shown (#2535 review)", () => {
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    expect(mesh.settings.hostId).toBe("b");
+    mesh.edit({ members: [member("a")] });
+    expect(mesh.settings.hostId).toBe("a");
+  });
+
+  it("settings built from what a failover shows save the person's machine, not the shown one (#2535 review)", () => {
+    storing(settingsWith([member("a"), member("b")], "a"));
+    const { mesh, made } = harness(settingsWith([member("a"), member("b")], "a"));
+    made[1]?.start();
+    made[0]?.fail();
+    // As Start this computer does: the shown settings with a new loopback address.
+    mesh.update({ ...mesh.settings, mode: "loopback", loopbackUrl: "ws://127.0.0.1:7766/v1/hc", token: "t" });
+    expect(loadSettings().hostId).toBe("a");
+    expect(mesh.settings.hostId).toBe("b");
   });
 
   it("does not move off a machine that is only connecting", () => {
