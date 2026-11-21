@@ -2,7 +2,7 @@
 // not confirm as infrastructure: none of it may fail a spec that never started one, and a slow stop may not read as a
 // failed test (#1412).
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FullConfig } from "@playwright/test";
@@ -98,7 +98,7 @@ async function leavingHost(): Promise<{ readonly pid: number; readonly left: () 
         '  const left = spawn("bun", ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });',
         "  writeFileSync(process.env.LEAKED, String(left.pid));",
         '  writeFileSync(process.env.LEFT_FILE, JSON.stringify([{ pid: left.pid, command: "hc-core left behind" }]));',
-        '  writeFileSync(process.env.STOPPED_FILE, "stopped");',
+        "  writeFileSync(process.env.STOPPED_FILE, JSON.stringify({ pid: process.pid }));",
         "  process.exit(0);",
         "});",
         'writeFileSync(process.env.READY_LOG, "ready");',
@@ -167,6 +167,8 @@ test("a layout host this run started, that never exits, is reported as infrastru
   const host = await stubbornHost();
   try {
     savedLayoutHost(host.pid, RUN);
+    // A previous layout host may have left its stop marker at the same path.
+    writeFileSync(E2E_LAYOUT_STOPPED, JSON.stringify({ pid: host.pid + 1 }));
     const logged = await teardown();
     expect(logged).toHaveLength(1);
     expect(logged[0]).toStartWith("E2E_INFRA_TIMEOUT: ");
