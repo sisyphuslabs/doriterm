@@ -64,3 +64,18 @@ test("with no tabs bar the jump button sits at the terminal's corner: the round 
     endAgent("host", shell);
   }
 });
+
+test("the idle Type field fits its own line, so no scroll strip draws inside it (#2670)", async ({ page }) => {
+  await fakeSoftKeyboard(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("banner").getByRole("button", { name: "New tab" }).click();
+  await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 15_000 });
+  const field = page.getByLabel("Type into the terminal");
+  await expect(field).toBeVisible();
+  // A field that cannot scroll draws nothing inside itself: on Android's WebView a scrollable textarea renders a grey
+  // bar down its right edge, the unlabeled object this item is about.
+  const overflow = await field.evaluate((el) => el.scrollHeight - el.clientHeight);
+  expect(overflow).toBeLessThanOrEqual(0);
+});

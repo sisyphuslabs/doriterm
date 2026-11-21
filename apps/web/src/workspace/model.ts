@@ -78,13 +78,27 @@ export function terminalTitle(terminal: Terminal): string {
 }
 
 /**
- * A tab's title on the desktop strip: its own name, else the title of the agent it runs (#1541), else its place in its
- * space counted from 1 (#466). A shell or another program keeps the number, so a prompt's or a program's changing
- * window title never renames the tab. It does not follow the pane in focus (the phone reads {@link phoneTabTitle}).
+ * A tab's title on the desktop strip: its own name, else the title of the agent it runs (#1541), else its first pane's
+ * title when that pane names itself — one a name was given (a lane's, #2670) or one whose program is not a plain shell
+ * — else its place in its space counted from 1 (#466). A shell at a prompt keeps the number: its window title is the
+ * prompt's own, and one that flaps with every command names nothing. It does not follow the pane in focus (the phone
+ * reads {@link phoneTabTitle}).
  */
-export function tabTitle(name: string, position: number, agent?: Terminal): string {
+export function tabTitle(name: string, position: number, agent?: Terminal, pane?: Terminal): string {
   if (name !== "") return name;
-  return agent === undefined ? String(position + 1) : terminalTitle(agent);
+  if (agent !== undefined) return terminalTitle(agent);
+  if (pane !== undefined && namesItself(pane)) return terminalTitle(pane);
+  return String(position + 1);
+}
+
+/** Whether a pane's own title names it: a name it was given, or, for a program that is not a plain shell, its window
+ * title. A shell at a prompt flaps its title with every command, so only a given name counts there. */
+function namesItself(terminal: Terminal): boolean {
+  const renamed = terminal.labels[TITLE_LABEL];
+  if (renamed !== undefined && renamed !== "") return true;
+  const given = isOpeningName(terminal.name) ? undefined : terminal.name;
+  if (given !== undefined && given !== null && given !== "") return true;
+  return programKind(terminal) !== "shell";
 }
 
 /**
