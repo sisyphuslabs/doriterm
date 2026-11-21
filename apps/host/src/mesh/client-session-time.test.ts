@@ -2,6 +2,7 @@ import { signCard } from "@doriface/mesh";
 import { MeshLines } from "@doriface/mesh/join";
 import { parseMeshStatus } from "@doriface/protocol";
 import { afterEach, expect, spyOn, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { writePrivateJson } from "../state/files.ts";
 import { withStateLock } from "../state/lock.ts";
@@ -16,6 +17,26 @@ import { accept, clients, status, lastSeen, clearClientSessions } from "../testi
 
 afterEach(clearClientSessions);
 const AT = 1_790_000_000_000;
+
+test("a client's session time survives the one-time rebuild of an index saved under other admission rules (#1483)", async () => {
+  const f = clients();
+  const clock = spyOn(Date, "now").mockReturnValue(AT);
+  try {
+    expect(await accept(f, undefined)).toBeDefined();
+  } finally {
+    clock.mockRestore();
+  }
+  expect(lastSeen(f)).toBe(AT);
+  // As an earlier build saved it: the index has no rules version, so the next start rebuilds it from the records.
+  const path = join(f.a.dir, "mesh.json");
+  const saved = JSON.parse(readFileSync(path, "utf8")) as { generation: number; index: Record<string, unknown> };
+  delete saved.index["rules"];
+  writePrivateJson(path, saved);
+  const restarted = new MeshStore(f.a.dir, { log: () => {} });
+  restarted.ensureIndex();
+  expect(restarted.read()?.generation).toBe(saved.generation + 1);
+  expect(lastSeen(f, restarted)).toBe(AT);
+});
 
 test.each([undefined, "roster", "push"] as const)(
   "an accepted %s client session is local status that survives restart",

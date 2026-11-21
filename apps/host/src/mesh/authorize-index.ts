@@ -44,9 +44,10 @@ export interface NamingEntry {
 }
 
 /**
- * The admission rules `indexOf` applies, saved with the index. Raise it whenever a change to `indexOf` would leave out a
- * member an earlier build indexed: a saved index under other rules is rebuilt at start (#1483), as the first such change,
- * the client key binding of #1476, needs.
+ * The admission rules `indexOf` applies, saved with the index. Raise it whenever a change to `indexOf` would authorize
+ * less than an earlier build's index: leaving a member out, or listing more keys in `named`, `revoked` or `superseded`
+ * so that `member` or `client` refuses one. A saved index under other rules is rebuilt at start (#1483), as the first
+ * such change, the client key binding of #1476, needs.
  */
 export const INDEX_RULES = 2;
 

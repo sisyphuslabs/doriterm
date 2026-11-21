@@ -118,6 +118,23 @@ function indexData(value: unknown): IndexData | undefined {
   return { generation: Number(value["generation"]), rules: INDEX_RULES, members, revoked, superseded, named };
 }
 
+/**
+ * Each client's last session time in the index saved in `mesh.json`, read even when that index is not kept (built under
+ * other admission rules, or missing a field). It is display state, so the one-time rebuild carries it over (#1483).
+ */
+export function sessionTimes(value: unknown): ReadonlyMap<string, number> {
+  const index = isRecord(value) ? value["index"] : undefined;
+  const members: readonly unknown[] = isRecord(index) && Array.isArray(index["members"]) ? index["members"] : [];
+  return new Map(
+    members.flatMap((item) => {
+      const member = memberEntry(item);
+      return member?.kind === "client" && member.lastSessionAt !== undefined
+        ? [[member.signPub, member.lastSessionAt] as const]
+        : [];
+    }),
+  );
+}
+
 const objectOr = (value: unknown): Readonly<Record<string, unknown>> => (isRecord(value) ? value : {});
 
 export function parseMeshFile(value: unknown): MeshFile {
