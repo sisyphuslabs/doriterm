@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, watch, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -108,25 +108,45 @@ test("a dial that reaches an added machine after its stop is refused, so the sto
   expect(await stopLeftUnder(join(root, "machine"))).toEqual([]);
 }, 60_000);
 
-test("a dial released past the final gate cannot restart a stopped core (#2525)", async () => {
-  dialer = createHcSession("machine-held-dial");
-  root = mkdtempSync(join(tmpdir(), "dw-machine-"));
-  const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
-  const machine = join(root, "machine");
-  const stop = await addMachine(dialer.hc, { ...dialer.env }, machine, false, spec);
-  const { env: own } = JSON.parse(readFileSync(join(spec.dir, "env.json"), "utf8")) as {
-    readonly env: Readonly<Record<string, string>>;
-  };
-  // Pause the actual via shell immediately before it hands off to its transport, after all the switch checks.
-  const held = viaCommand(own, spec).replace("; exec env ", "; echo ready; read -r release || exit 1; exec env ");
-  const line = Bun.spawn(["sh", "-c", `${held} 'exec "${dialer.hc}" connect'`], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "inherit",
-  });
-  const output = line.stdout.getReader();
-  try {
+describe("a dial held past the final gate (#2525)", () => {
+  let machine = "";
+  let stop: (() => Promise<void>) | undefined;
+  let line: Bun.Subprocess<"pipe", "pipe", "inherit"> | undefined;
+  let output: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+  // The slow part is setup: adding the machine (herdr's hello probe) and a dial that has passed every switch check and
+  // waits, just before its transport, for the test to release it.
+  beforeEach(async () => {
+    dialer = createHcSession("machine-held-dial");
+    root = mkdtempSync(join(tmpdir(), "dw-machine-"));
+    const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
+    machine = join(root, "machine");
+    stop = await addMachine(dialer.hc, { ...dialer.env }, machine, false, spec);
+    const { env: own } = JSON.parse(readFileSync(join(spec.dir, "env.json"), "utf8")) as {
+      readonly env: Readonly<Record<string, string>>;
+    };
+    const held = viaCommand(own, spec).replace("; exec env ", "; echo ready; read -r release || exit 1; exec env ");
+    line = Bun.spawn(["sh", "-c", `${held} 'exec "${dialer.hc}" connect'`], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "inherit",
+    });
+    output = line.stdout.getReader();
     expect(new TextDecoder().decode((await output.read()).value)).toBe("ready\n");
+  }, 60_000);
+
+  afterEach(async () => {
+    line?.kill();
+    await line?.exited;
+    await output?.cancel();
+    line = undefined;
+    output = undefined;
+  });
+
+  test("released after the machine's stop, it cannot restart the stopped core", async () => {
+    if (line === undefined || dialer === undefined || stop === undefined) {
+      throw new Error("the held dial was not set up");
+    }
     await dialer.dispose();
     await stop();
     line.stdin.write('\n{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
@@ -134,12 +154,8 @@ test("a dial released past the final gate cannot restart a stopped core (#2525)"
     const code = await line.exited;
     expect(await stopLeftUnder(machine)).toEqual([]);
     expect(code).not.toBe(0);
-  } finally {
-    line.kill();
-    await line.exited;
-    await output.cancel();
-  }
-}, 60_000);
+  });
+});
 
 test("a slow dial that passed the check before the machine stopped is refused once it wakes (#2158)", async () => {
   dialer = createHcSession("machine-slow-dial");
