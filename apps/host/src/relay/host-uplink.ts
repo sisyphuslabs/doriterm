@@ -38,10 +38,11 @@ const FINAL_REASONS: Readonly<Record<number, string>> = {
 /**
  * A close as the log shows it: the code, and the relay's reason beside it when it gave one (`4408: idle`), which tells
  * an idle timeout from a relay that ran too far ahead of this host. The reason is the relay's text, so only its
- * printable ASCII reaches the log.
+ * printable ASCII reaches the log: every other character becomes one `?`, an emoji or other character outside the
+ * basic plane included (the `u` flag reads it as one character, not as its two surrogates).
  */
 const closeOf = (code: number, reason: string): string =>
-  reason === "" ? String(code) : `${code}: ${reason.replaceAll(/[^\x20-\x7e]/g, "?")}`;
+  reason === "" ? String(code) : `${code}: ${reason.replaceAll(/[^\x20-\x7e]/gu, "?")}`;
 
 const REFUSALS: Readonly<Record<SessionRefusal["reason"], string>> = {
   pending_cap: "8 sessions were already waiting for the host's answer",

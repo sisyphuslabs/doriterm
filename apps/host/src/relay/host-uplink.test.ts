@@ -34,6 +34,7 @@ test.each([
   ["idle", "4408: idle"],
   ["", "4408"],
   ["too\tfar\u00e9", "4408: too?far?"],
+  ["a\u{1f600}b", "4408: a?b"],
 ])("a closed uplink is logged with the relay's reason beside the code: %p reads (%s)", async (reason, shown) => {
   answered = Promise.withResolvers();
   const closed = Promise.withResolvers<string>();
