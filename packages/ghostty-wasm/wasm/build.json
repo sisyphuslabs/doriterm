@@ -2,9 +2,9 @@
   "ghosttyTag": "v1.4.0",
   "ghosttyCommit": "83fb95624b0439ee660c2679b43b38c8b63769cd",
   "ghosttyArchiveSha256": "7759929eadaddf602d6fd5ad6b3403d854b91b7083975cd984bb525bc8275187",
-  "wtermTag": "v0.5.9",
-  "wtermCommit": "f797b1e2dc30242b434f0944c1b5b396e0702da9",
-  "wtermArchiveSha256": "b84cd4b7424ca7cba6f6c386eb74ca65d427d8e1a1f2add4970b15fa028c9232",
+  "wtermTag": "v0.6.0",
+  "wtermCommit": "b00ad0b7786cc9031d45d878bb9ad9bc75016850",
+  "wtermArchiveSha256": "eaf2ef9bca47903594ce8cd45063f8da14d1f20d4ee30ba62b221290a64dbeb0",
   "zig": "0.17.0",
   "optimize": "ReleaseSmall",
   "patches": [
@@ -30,13 +30,13 @@
     },
     {
       "path": "patches/wterm/0001-port-to-zig-0.17-and-ghostty-1.4.patch",
-      "sha256": "f78e45aa54ce4048d84c27e6ec5ab0670136500a8c845da889d3a5cacee936bf"
+      "sha256": "5eec00033d6caebf09fafa6a222a9f6abcc9ae08ae40273cecf9af7a1310e30b"
     },
     {
       "path": "patches/wterm/0002-answer-osc-7501-program-status.patch",
-      "sha256": "a3735eb566e89002d888078668d1bfb0d530e81a33bb0420daf9e29f4998a68e"
+      "sha256": "a1259f7bf925f9efb9b9ba3d3803345cc77c7f87cbb88fb460d117b95b86de31"
     }
   ],
-  "sha256": "2a4f3b1c54b70b194a59e38610d5730a0abc362a76aefeaa140ebc97e3e8e29e",
-  "bytes": 666200
+  "sha256": "62a91deb8d4142c812bd91b28a934bbecd8dffc316fe73e3289d68584c1f17fe",
+  "bytes": 666533
 }
