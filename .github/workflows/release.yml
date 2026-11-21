@@ -363,8 +363,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # #670: the candidate's web client against the last published release's on one runner. A rendering regression past
-  # apps/web/bench/thresholds.json fails this job, so no draft is made and nothing is published; the table and the runs
-  # (Doriterm-<version>-render-bench.md and .json) are attached to the release with the other files.
+  # apps/web/bench/thresholds.json fails this job, so attach-bench, Sign and Publish never run and the release stays a
+  # draft. It runs beside the builds, the draft and the smokes rather than before the draft: it takes about 13 minutes,
+  # longer than the slowest build, and the draft waited for it (#2678).
   render-bench:
     name: Render bench
     needs: version
@@ -374,7 +375,7 @@ jobs:
 
   release:
     name: Draft release
-    needs: [version, desktop, web, render-bench]
+    needs: [version, desktop, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -390,9 +391,11 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      # Only the builds: the render bench may or may not have uploaded its results by now, and attach-bench adds them.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: assets
+          pattern: "{desktop-*,web}"
           merge-multiple: true
       # Stamped with this tag, so the installer from a release installs that release rather than whatever is latest.
       - name: The host installer
@@ -709,6 +712,83 @@ jobs:
             echo "| Checks | checksum, silent per-user install, packaged host fingerprint twice (same identity), app version, launch |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # The render bench's table and runs (Doriterm-<version>-render-bench.md and .json) join the draft once the bench has
+  # passed and the smokes are done, so no smoke reads SHA256SUMS.txt while it is replaced. They are listed in it, since
+  # the mirror refuses an asset that is not, and named in the notes; Sign and the staging mirror wait for this job.
+  attach-bench:
+    name: Attach the render bench
+    needs: [version, release, render-bench, smoke-linux, smoke-mac, smoke-windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: render-bench
+          path: ${{ runner.temp }}/bench
+      - name: Attach the results and list them in SHA256SUMS.txt
+        working-directory: ${{ runner.temp }}/bench
+        run: |
+          shopt -s nullglob
+          results=(*-render-bench.md *-render-bench.json)
+          if [ "${#results[@]}" -ne 2 ]; then
+            echo "::error title=Missing artifact::expected the render bench's .md and .json, found ${#results[@]} files"
+            ls -la
+            exit 1
+          fi
+          gh release download "$TAG" --pattern SHA256SUMS.txt --output "$RUNNER_TEMP/SHA256SUMS.draft.txt"
+          # A re-run of this job replaces the bench's lines rather than listing a file twice.
+          {
+            grep -v -E '  [^ ]+-render-bench\.(md|json)$' "$RUNNER_TEMP/SHA256SUMS.draft.txt"
+            sha256sum -- "${results[@]}"
+          } | sort -k 2 > "$RUNNER_TEMP/SHA256SUMS.txt"
+          cat "$RUNNER_TEMP/SHA256SUMS.txt"
+          gh release upload "$TAG" "${results[@]}" "$RUNNER_TEMP/SHA256SUMS.txt" --clobber
+      - name: Every asset is listed in SHA256SUMS.txt, and the bench's at its size
+        working-directory: ${{ runner.temp }}/bench
+        run: |
+          export LC_ALL=C
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"' | sort > "$RUNNER_TEMP/remote.txt"
+          awk '{ print $2 }' "$RUNNER_TEMP/SHA256SUMS.txt" | sort > "$RUNNER_TEMP/listed.txt"
+          cut -d ' ' -f 1 "$RUNNER_TEMP/remote.txt" | grep -v -x SHA256SUMS.txt | comm -23 - "$RUNNER_TEMP/listed.txt" > "$RUNNER_TEMP/unlisted.txt"
+          if [ -s "$RUNNER_TEMP/unlisted.txt" ]; then
+            echo "::error title=Unlisted asset::not in SHA256SUMS.txt: $(tr '\n' ' ' < "$RUNNER_TEMP/unlisted.txt")"
+            exit 1
+          fi
+          for file in *-render-bench.md *-render-bench.json "$RUNNER_TEMP/SHA256SUMS.txt"; do
+            echo "$(basename "$file") $(wc -c < "$file" | tr -d ' ')"
+          done | sort > "$RUNNER_TEMP/local.txt"
+          # Every line of local.txt (name and size) must be one of the release's.
+          comm -23 "$RUNNER_TEMP/local.txt" "$RUNNER_TEMP/remote.txt" | diff -u /dev/null -
+      - name: Release notes, with the bench
+        run: |
+          mkdir -p "$RUNNER_TEMP/names"
+          gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r name; do : > "$RUNNER_TEMP/names/$name"; done
+          bun .github/scripts/release-notes.ts "$VERSION" "$RUNNER_TEMP/names" > "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Attach the render bench to $TAG"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Job status | ${{ job.status }} |"
+            echo
+            cat "$RUNNER_TEMP"/bench/*-render-bench.md 2>/dev/null || echo "no results"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Signs the draft's SHA256SUMS.txt before Publish, apart from any mirror, so neither a staging bucket that already holds
   # this version nor a channel that offers a newer one can keep a release unsigned (#2297). The key lives only in the
   # release-mirror environments (staging's allows release tags); Ed25519 is deterministic, so the production mirror's
@@ -716,7 +796,7 @@ jobs:
   sign:
     name: Sign the draft's checksums
     if: github.event_name == 'push'
-    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    needs: [version, smoke-linux, smoke-mac, smoke-windows, attach-bench]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: release-mirror-staging
@@ -746,7 +826,7 @@ jobs:
     if: github.event_name == 'push'
     # The sign job puts SHA256SUMS.txt.sig on the draft, and the first step refuses without it: a release is never public
     # unsigned (#2297).
-    needs: [version, smoke-linux, smoke-mac, smoke-windows, sign]
+    needs: [version, smoke-linux, smoke-mac, smoke-windows, attach-bench, sign]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -792,7 +872,7 @@ jobs:
   mirror-staging:
     name: Mirror the draft to staging.get.doriterm.com
     if: github.event_name == 'workflow_dispatch'
-    needs: [version, smoke-linux, smoke-mac, smoke-windows]
+    needs: [version, smoke-linux, smoke-mac, smoke-windows, attach-bench]
     permissions:
       contents: write
     uses: ./.github/workflows/release-mirror.yml
