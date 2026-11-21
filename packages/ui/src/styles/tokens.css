@@ -35,6 +35,7 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-disabled-glyph: var(--disabled-glyph);
+  --color-disabled-ink: var(--disabled-ink);
   --color-dim: var(--dim);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);

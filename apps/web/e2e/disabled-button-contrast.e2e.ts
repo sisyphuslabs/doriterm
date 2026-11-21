@@ -6,7 +6,7 @@ import { SHOTS } from "./capture-shots.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { newOn, OFFLINE_BOUND_MS, OFFLINE_TEST_TIMEOUT_MS, reconnect, switchTo } from "./machine-switch.ts";
-import { measure, SURFACES } from "./painted-contrast.ts";
+import { measure, SURFACES, tokenStep } from "./painted-contrast.ts";
 
 test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
 
@@ -132,9 +132,9 @@ for (const theme of ["day", "night"] as const) {
       await expect(add, `${MACHINE_NAME} goes offline`).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
       const disabled = await measure(page, add, { svg: true, enabled: enabled.ink });
       expect(disabled.ratio, disabled.label).toBeGreaterThanOrEqual(3);
-      // The 3:1 floor caps how far a ghost glyph can dim: the enabled one is drawn in --muted-foreground, not the ghost
-      // label colour, and measures 5.3:1 by day and 7.3:1 by night on the sidebar.
-      expect(disabled.step, disabled.label).toBeGreaterThanOrEqual(1.7);
+      // The glyph floor (3.5:1 on every surface, #2513) caps how far a ghost glyph can dim: the enabled one is drawn in
+      // --muted-foreground, so the painted step is the one the tokens hold, within rounding.
+      expect(disabled.step, disabled.label).toBeGreaterThanOrEqual((await tokenStep(page)) * 0.97);
       // The floor holds on every surface a ghost Button sits on, not only the sidebar it is measured in above (#1034).
       const everywhere = await Promise.all(SURFACES.map((surface) => measure(page, add, { svg: true, surface })));
       for (const measured of everywhere) expect(measured.ratio, measured.label).toBeGreaterThanOrEqual(3);

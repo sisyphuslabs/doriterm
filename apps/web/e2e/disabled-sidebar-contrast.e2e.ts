@@ -43,15 +43,32 @@ for (const theme of ["day", "night"] as const) {
       await expect(there, `${MACHINE_NAME} goes offline`).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
       await group.screenshot({ path: test.info().outputPath(`${theme}-offline-machine.png`) });
       const parts = [
-        { name: "New space there label", min: 4.5, ...(await measure(page, there, { enabled: label.ink })) },
-        { name: "New space there icon", min: 3, ...(await measure(page, there, { svg: true, enabled: icon.ink })) },
-        { name: "header icon", min: 3, ...(await measure(page, header, { svg: true, enabled: headerName.ink })) },
+        // A disabled label reads as unavailable at a glance: about twice as faint as enabled, the most its 4.5:1 floor on
+        // --raised leaves in night (#2510). The icons keep the Button spec's step.
+        {
+          name: "New space there label",
+          min: 4.5,
+          minStep: 1.95,
+          ...(await measure(page, there, { enabled: label.ink })),
+        },
+        {
+          name: "New space there icon",
+          min: 3,
+          minStep: 1.5,
+          ...(await measure(page, there, { svg: true, enabled: icon.ink })),
+        },
+        {
+          name: "header icon",
+          min: 3,
+          minStep: 1.5,
+          ...(await measure(page, header, { svg: true, enabled: headerName.ink })),
+        },
       ];
       for (const part of parts) {
         const said = `${theme} ${part.name}: ${part.label}, ${part.ratio.toFixed(2)}:1, step ${part.step.toFixed(2)}`;
         console.log(said);
         expect.soft(part.ratio, said).toBeGreaterThanOrEqual(part.min);
-        expect.soft(part.step, said).toBeGreaterThanOrEqual(1.5);
+        expect.soft(part.step, said).toBeGreaterThanOrEqual(part.minStep);
       }
     });
   });

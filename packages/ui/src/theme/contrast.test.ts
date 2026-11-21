@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { BUILTIN_PALETTES } from "./builtins.ts";
 import { contrast, mix, parseRgba, type Rgb } from "./color.ts";
-import { DISABLED_STEP, disabledGlyph, themeVariables } from "./css.ts";
+import { DISABLED_GLYPH_FLOOR, DISABLED_STEP, disabledGlyph, themeVariables } from "./css.ts";
 import { AA_GRAPHIC, AA_TEXT, flatten, worstContrast } from "./guard.ts";
 import { resolveTheme } from "./resolve.ts";
 
@@ -13,24 +13,24 @@ import { resolveTheme } from "./resolve.ts";
 function stepReachable(muted: Rgb, surface: Rgb): boolean {
   for (let step = 1; step <= 100; step += 1) {
     const candidate = mix(muted, surface, step / 100);
-    if (contrast(candidate, surface) < AA_GRAPHIC) return false;
+    if (contrast(candidate, surface) < DISABLED_GLYPH_FLOOR) return false;
     if (contrast(candidate, muted) >= DISABLED_STEP) return true;
   }
   return false;
 }
 
-/** The disabled glyph's two requirements: always 3:1 on its surface, and the full step wherever the path reaches it. */
+/** The disabled glyph's two requirements: always the floor on its surface, and the full step wherever the path reaches it. */
 function expectDisabledGlyph(disabled: Rgb, muted: Rgb, surface: Rgb): void {
-  expect(contrast(disabled, surface)).toBeGreaterThanOrEqual(AA_GRAPHIC);
+  expect(contrast(disabled, surface)).toBeGreaterThanOrEqual(DISABLED_GLYPH_FLOOR);
   if (stepReachable(muted, surface)) expect(contrast(disabled, muted)).toBeGreaterThanOrEqual(DISABLED_STEP);
 }
 
-test("a muted glyph just above 5.1:1 whose 1% path holds no stop with both keeps the 3:1 floor (#1896)", () => {
-  const muted = 0x7e7e7e;
+test("a muted glyph just above the floor times the step whose 1% path holds no stop with both keeps the floor (#1896)", () => {
+  const muted = 0x898989;
   const surface = 0x000000;
-  expect(contrast(muted, surface)).toBeGreaterThanOrEqual(AA_GRAPHIC * DISABLED_STEP);
+  expect(contrast(muted, surface)).toBeGreaterThanOrEqual(DISABLED_GLYPH_FLOOR * DISABLED_STEP);
   expect(stepReachable(muted, surface)).toBe(false);
-  const disabled = parseRgba(disabledGlyph(muted, surface))?.rgb;
+  const disabled = parseRgba(disabledGlyph(muted, surface, [surface]))?.rgb;
   if (disabled === undefined) throw new Error("no disabled glyph");
   expectDisabledGlyph(disabled, muted, surface);
 });
@@ -67,12 +67,34 @@ describe.each(Object.entries(BUILTIN_PALETTES))("%s meets WCAG 2.2 AA", (_, pale
     },
   );
 
-  test("--disabled-glyph holds 3:1 on its raised stepper and steps 1.7 from --muted-foreground where that leaves room", () => {
+  test("--disabled-glyph holds its floor on its raised stepper and steps 1.7 from --muted-foreground where that leaves room", () => {
     const raised = opaque[4];
     const muted = parseRgba(role("muted-foreground"))?.rgb;
     const disabled = parseRgba(role("disabled-glyph"))?.rgb;
     if (raised === undefined || muted === undefined || disabled === undefined) throw new Error("missing role");
     expectDisabledGlyph(disabled, muted, raised);
+  });
+
+  test("--disabled-glyph dims as far as its floor allows: the full step from --muted-foreground, or within 3% of the floor on its worst surface", () => {
+    const muted = parseRgba(role("muted-foreground"))?.rgb;
+    const disabled = parseRgba(role("disabled-glyph"))?.rgb;
+    if (muted === undefined || disabled === undefined) throw new Error("missing role");
+    const worst = worstContrast(role("disabled-glyph"), opaque);
+    expect(contrast(disabled, muted) >= DISABLED_STEP || worst <= DISABLED_GLYPH_FLOOR * 1.03).toBe(true);
+    expect(contrast(disabled, muted)).toBeGreaterThan(1.3);
+  });
+
+  test("--disabled-glyph reads 3.5:1 on every opaque surface, so a thin 1x stroke still clears 3:1 once antialiased (visual QA)", () => {
+    expect(worstContrast(role("disabled-glyph"), opaque)).toBeGreaterThanOrEqual(DISABLED_GLYPH_FLOOR);
+  });
+
+  test("--disabled-ink holds 4.5:1 on every surface a label with no fill sits on (#2510)", () => {
+    expect(worstContrast(role("disabled-ink"), opaque)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  test("--muted-foreground holds 4.5:1 on the hover wash, where a highlighted disabled menu item draws it (#2513 review)", () => {
+    const washed = [canvasRgb, surfaceRgb, chromeRgb, popoverRgb].map((under) => flatten(role("hover"), under));
+    expect(worstContrast(role("muted-foreground"), washed)).toBeGreaterThanOrEqual(AA_TEXT);
   });
 
   test("primary button label", () => {
