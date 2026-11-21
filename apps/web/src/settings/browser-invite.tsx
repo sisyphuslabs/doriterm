@@ -9,8 +9,37 @@ import { sortedMachines } from "./mesh-device.tsx";
 import { LeaveMeshDialog } from "./membership-device.tsx";
 import { MeshBody } from "./mesh-section.tsx";
 
-export const onlineInviters = (entries: readonly MemberEntry[]) =>
-  sortedMachines(entries).filter((entry) => entry.state.phase === "open");
+/** Whether a member's session carries traffic now: open, and not being carried on over a new socket (#2000). */
+const carriesTraffic = (entry: MemberEntry): boolean => entry.state.phase === "open" && entry.state.resuming !== true;
+
+/** The machines an invite is offered on: one whose session is being carried on is not offered until it is back (#2429). */
+export const onlineInviters = (entries: readonly MemberEntry[]) => sortedMachines(entries).filter(carriesTraffic);
+
+/** The machine a newly opened invite dialog starts on: the last one chosen if it is offered now, else the first offered. */
+export function openingMachine(entries: readonly MemberEntry[], chosen: string | undefined): string | undefined {
+  const online = onlineInviters(entries);
+  return (online.find((entry) => entry.target.hostId === chosen) ?? online[0])?.target.hostId;
+}
+
+/**
+ * The machines the invite dialog lists, decided away from React so the rule can be tested: the ones offered, and the
+ * dialog's own machine while its session is being carried on, so the choice still names it (#2429).
+ */
+export function inviteChoices(entries: readonly MemberEntry[], held: string | undefined): readonly MemberEntry[] {
+  return sortedMachines(entries).filter(
+    (entry) => carriesTraffic(entry) || (entry.target.hostId === held && entry.state.phase === "open"),
+  );
+}
+
+/**
+ * The machine the invite dialog is on, decided away from React so the rule can be tested: the one it was opened on or
+ * switched to stays while its connection is open, resuming or not, so a short resume neither tears an open invite down
+ * nor moves it to another machine (#2429); otherwise the first machine offered.
+ */
+export function inviteMachine(entries: readonly MemberEntry[], chosen: string | undefined): MemberEntry | undefined {
+  const kept = entries.find((entry) => entry.target.hostId === chosen && entry.state.phase === "open");
+  return kept ?? onlineInviters(entries)[0];
+}
 
 export function InviteMachineChoice({
   entries,
@@ -118,7 +147,7 @@ export function BrowserInvite({ install = false }: { readonly install?: boolean 
   const online = onlineInviters(entries);
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<string>();
-  const selected = online.find((entry) => entry.target.hostId === chosen) ?? online[0];
+  const selected = inviteMachine(entries, chosen);
   const title = install ? "Join in the home-screen app" : "Add a browser or phone";
   return (
     <>
@@ -130,7 +159,15 @@ export function BrowserInvite({ install = false }: { readonly install?: boolean 
             : "An invite joins the browser to the whole mesh."
         }
         control={
-          <Button size="sm" disabled={online.length === 0} onClick={() => setOpen(true)}>
+          <Button
+            size="sm"
+            disabled={online.length === 0}
+            onClick={() => {
+              // The dialog opens on a machine offered now, and holds that machine from then on (#2429).
+              setChosen(openingMachine(entries, chosen));
+              setOpen(true);
+            }}
+          >
             {title}
           </Button>
         }
@@ -143,7 +180,11 @@ export function BrowserInvite({ install = false }: { readonly install?: boolean 
       >
         {open && selected !== undefined && selected.state.phase === "open" ? (
           <div className="flex flex-col gap-4">
-            <InviteMachineChoice entries={online} selected={selected.target.hostId} onSelect={setChosen} />
+            <InviteMachineChoice
+              entries={inviteChoices(entries, selected.target.hostId)}
+              selected={selected.target.hostId}
+              onSelect={setChosen}
+            />
             <InviteAnswer key={selected.target.hostId} connection={selected.state.connection} install={install} />
           </div>
         ) : (
