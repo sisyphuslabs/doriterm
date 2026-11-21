@@ -99,7 +99,9 @@ test("Show keyboard on a field focused for typing outside a tap still asks for t
   page,
 }) => {
   // A program that asks for focus reports (mode 1004) and shows what it is sent: `cat -v` writes a focus-out as ^[[O.
-  const report = "printf 'reporting\\n\\033[?1004h'; exec cat -v";
+  // Its terminal echoes nothing, so each line on screen is the program's one copy of it, written whole: with an echo the
+  // line showed twice, and a count taken once the echo was in could miss the program's copy still on its way (#2555).
+  const report = "stty -echo; printf 'reporting\\n\\033[?1004h'; exec cat -v";
   const out = hcOn("host", ["run", "--bg", "--name", "keysfocus", "--label", "space=api", "--", "sh", "-c", report]);
   const address = String((JSON.parse(out) as { address: string }).address);
   try {
