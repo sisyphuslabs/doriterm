@@ -32,12 +32,12 @@ The paced phases (visible, hidden and prompt) start one `sleep` per tick in each
 
 ## The release gate
 
-`.github/workflows/render-bench.yml`, called by `release.yml` before the draft release is made (and runnable by hand, or by pushing a `bench/**` branch):
+`.github/workflows/render-bench.yml`, called by `release.yml` beside the desktop builds, the draft release and its smokes, so it adds no time while it is shorter than them (#2678) (and runnable by hand, or by pushing a `bench/**` branch):
 
 - the candidate's web app is built from the release commit, and the baseline's from the tag of the last published release (`gh release view`: never a draft or a prerelease);
 - the candidate's bench drives both builds on the same runner (same spec, host and core: only the web app differs), every round running each build once and alternating which goes first, so drift on the runner falls on both;
 - `bench/run.ts --compare` takes each gated metric's median over the rounds per pane count and fails when the candidate passes its limit in `apps/web/bench/thresholds.json`: a metric that grows when worse fails past `ratio` times the baseline **and** `floor` above it; drawn bytes per second fails under `ratio` times the baseline; a metric with a `max` (Close prompt ms: 200, #560's product budget) also fails past it, however slow the baseline was; a metric with a `ceiling` (Main busy: a share of wall time cannot pass 1) is reported ungated wherever its limit reaches that ceiling, so at 50 panes Main busy is in the table but neither passes nor fails, and Long-task ms gates there instead (#844);
-- a failure fails the release before the draft exists, so nothing is published; the table and every run are attached to the release as `Doriterm-<version>-render-bench.md` and `.json`.
+- a failure fails the release before its checksums are signed, so the draft is never published; once the bench and the smokes pass, `release.yml`'s `attach-bench` job attaches the table and every run to the draft as `Doriterm-<version>-render-bench.md` and `.json`, lists them in `SHA256SUMS.txt` and names them in the notes, and Sign waits for it.
 
 ## Noise floor
 

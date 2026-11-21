@@ -1,9 +1,9 @@
 name: Render bench
 
 # #670: the web client's terminal rendering at 1, 15 and 50 live panes (apps/web/bench, docs/render-bench.md), the
-# candidate against a baseline build on the same runner, round by round. The release workflow calls it before the draft
-# release is made, so a regression past apps/web/bench/thresholds.json stops the release; its table and runs are
-# attached to the release. Run it by hand (Actions > Render bench), or push a bench/** branch to bench that branch
+# candidate against a baseline build on the same runner, round by round. The release workflow calls it beside its builds,
+# draft and smokes, and Sign waits for it, so a regression past apps/web/bench/thresholds.json keeps the release a draft;
+# its table and runs are attached to the release (release.yml's attach-bench). Run it by hand (Actions > Render bench), or push a bench/** branch to bench that branch
 # against the last published release; a branch ending in -noise benches the branch against itself, which is how the
 # noise floor in the thresholds file is measured.
 on:
