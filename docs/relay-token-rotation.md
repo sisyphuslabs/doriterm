@@ -11,7 +11,7 @@ window where nothing works.
 - Repository access: the private relay repository, and no other.
 - Permissions: **Contents: read-only**. GitHub adds **Metadata: read-only** to every fine-grained token; nothing else is
   granted — no `workflow`, no `pull_request`, no access to any other repository.
-- Used by the `Relay e2e` parts (job `relay-e2e-part`) of `.github/workflows/ci.yml`, step "Fetch the private relay". That step hands it to git
+- Used by the `Relay e2e` job of `.github/workflows/ci.yml`, step "Fetch the private relay". That step hands it to git
   through a step-scoped credential helper, so it never appears in a clone URL, an argument or the log.
 - `RELAY_REPO` is a separate secret naming the relay repository (`owner/name`); a rotation does not change it.
 - The day it expires is recorded in `relay-token.json`. `bun tests/relay-fetch/token-expiry.ts` prints a GitHub
