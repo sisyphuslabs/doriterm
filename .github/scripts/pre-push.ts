@@ -28,7 +28,9 @@ export function pushRefusal(pushed: readonly string[], head: string, dirty: bool
   if (pushed.some((sha) => sha !== head)) {
     return "the pushed commit is not HEAD; check it out and push again so the checks judge what is pushed";
   }
-  if (dirty) return "tracked files have uncommitted changes; commit or stash them so the checks judge what is pushed";
+  if (dirty) {
+    return "the tree has uncommitted or untracked files; commit, stash or ignore them so the checks judge what is pushed";
+  }
   return undefined;
 }
 
@@ -48,7 +50,9 @@ if (import.meta.main) {
   const [refs, head, status] = await Promise.all([
     Bun.stdin.text(),
     git("rev-parse", "HEAD"),
-    git("status", "--porcelain", "--untracked-files=no"),
+    // Untracked files count too: tsc, oxlint and oxfmt read the filesystem, so a file HEAD imports but never committed
+    // would pass here and fail in CI. Ignored files are not listed.
+    git("status", "--porcelain"),
   ]);
   const pushed = pushedBranchCommits(refs);
   if (pushed.length > 0) {
