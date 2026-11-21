@@ -123,6 +123,39 @@ jobs:
         if: failure()
         run: tail -100 ~/Library/Logs/doriface-host.log || true
 
+  shard-plan:
+    # The per-file times both e2e jobs balance their shards by, restored once per run and handed to every shard as an
+    # artifact. A shard that restored the cache itself could, when re-run after a newer push to dev saved a newer record,
+    # plan a different split from its siblings, and a file would then run twice or not at all (#2688 review).
+    name: Shard plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Restore the e2e file times
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/plan/e2e-timings.json
+          key: e2e-timings-${{ github.run_id }}
+          restore-keys: e2e-timings-
+      - name: Restore the relay suite file times
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/plan/relay-timings.json
+          key: relay-timings-${{ github.run_id }}
+          restore-keys: relay-timings-
+      # Without a record (the first run, or an expired cache) each file still exists, empty: the plans split by count.
+      - name: Pin this run's records
+        run: |
+          mkdir -p "$RUNNER_TEMP/plan"
+          for f in e2e-timings.json relay-timings.json; do
+            [ -s "$RUNNER_TEMP/plan/$f" ] || echo '{"version":1,"files":{}}' > "$RUNNER_TEMP/plan/$f"
+            echo "$f: $(jq '.files | length' "$RUNNER_TEMP/plan/$f") files"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-plan
+          path: ${{ runner.temp }}/plan
+
   relay-e2e-part:
     # The relay and mesh suites (tests/relay) and the browser specs that need the relay checkout: real hosts, hc cores and
     # the private relay under wrangler dev. They ran one after the other in one job for ~26 min (#2027: suites ~12 min,
@@ -131,6 +164,7 @@ jobs:
     # org's 20-job cap (#2689). `Relay e2e` below is the required context and reports their sum.
     # A pull request from a fork gets no secrets, so no part runs for it (see `Relay e2e`).
     name: Relay e2e (${{ matrix.shard }}/2)
+    needs: shard-plan
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -187,13 +221,11 @@ jobs:
           GIT_CONFIG_KEY_0: credential.https://github.com.helper
           GIT_CONFIG_VALUE_0: '!f() { test "$1" = get && printf "username=x-access-token\npassword=%s\n" "$RELAY_READ_TOKEN"; }; f'
         run: bun run relay:fetch
-      # The per-file times the last push to dev recorded; `bun test --timings` balances the shards by them.
-      - name: Restore the relay suite file times
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # This run's pinned per-file times (shard-plan); `bun test --timings` balances the shards by them.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: ${{ runner.temp }}/relay-timings.json
-          key: relay-timings-${{ github.run_id }}
-          restore-keys: relay-timings-
+          name: shard-plan
+          path: ${{ runner.temp }}
       - name: Relay suites against the private relay
         # A mesh scenario whose capability is missing fails instead of being skipped.
         env:
@@ -201,7 +233,6 @@ jobs:
         # The JUnit report is what the next step and `Relay e2e` count: a green run of nothing is not a pass.
         run: |
           timings="$RUNNER_TEMP/relay-timings.json"
-          [ -s "$timings" ] || echo '{"version":1,"files":{}}' > "$timings"
           bun run relay:test -- --shard=${{ matrix.shard }}/2 --timings="$timings" --update-timings --reporter=junit \
             --reporter-outfile="$RUNNER_TEMP/relay-suites-${{ matrix.shard }}.xml"
       - name: This shard's relay suites ran
@@ -394,6 +425,7 @@ jobs:
     # 30-minute limit and was cancelled at that limit on slower runners (#2627); a shard is a quarter of the files. `Web
     # e2e` below is the required context and reports the shards together.
     name: Web e2e (${{ matrix.shard }}/4)
+    needs: shard-plan
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -472,13 +504,11 @@ jobs:
         run: |
           echo "cores: $(nproc)"
           free -m
-      # The per-file times the last push to dev recorded (the Web e2e job saves them); a pull request reads dev's caches.
-      - name: Restore the e2e file times
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # This run's pinned per-file times (shard-plan), recorded by the last push to dev; a pull request reads dev's caches.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: ${{ runner.temp }}/e2e-timings.json
-          key: e2e-timings-${{ github.run_id }}
-          restore-keys: e2e-timings-
+          name: shard-plan
+          path: ${{ runner.temp }}
       # Longest files first onto the lightest shard (scripts/e2e-shard-plan.ts); without a record, an even split by count.
       - name: This shard's spec files
         working-directory: apps/web
