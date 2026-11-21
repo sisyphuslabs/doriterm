@@ -182,6 +182,8 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     const down = page.locator("[data-machine-down]");
     await expect(down).toContainText(MACHINE_NAME, { timeout: ACTION_GRACE_MS + STATE_BOUND_MS });
     await expect(down.getByRole("button", { name: "Try again" })).toHaveCount(1);
+    // The reason is announced as it replaces the reconnect line: it is a live region of its own (#2617).
+    await expect(down.getByRole("status")).toContainText(MACHINE_NAME);
     expect(await overlap(down, terminal)).toBe(false);
     // The reason says it keeps trying, so it takes the reconnect line's place: one line, and the terminal keeps its rows.
     await expect(status).toHaveCount(0);
