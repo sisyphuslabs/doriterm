@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { generateX25519 } from "@doriface/crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,7 +19,7 @@ const pairUrl = (): string => `http://127.0.0.1:${host.port}/v1/pair`;
 const request = (method: "GET" | "POST" = "GET", auth: string | null = `Bearer ${token}`): Promise<Response> =>
   fetch(pairUrl(), { method, ...(auth === null ? {} : { headers: { authorization: auth } }) });
 
-beforeAll(async () => {
+beforeEach(async () => {
   stateDir = mkdtempSync(join(tmpdir(), "dh-pair-route-"));
   session = createHcSession("doriface-pair-route-test");
   host = await startHost({
@@ -33,7 +33,7 @@ beforeAll(async () => {
   });
 });
 
-afterAll(async () => {
+afterEach(async () => {
   await host.stop();
   await session.dispose();
   rmSync(stateDir, { recursive: true, force: true });
@@ -74,6 +74,7 @@ describe("this computer's pairing offer on the loopback gateway", () => {
   });
 
   test("an offer a device used reads as paired, naming the device", async () => {
+    expect((await request("POST")).status).toBe(200);
     const claim = new PairingStore(stateDir).claimLink();
     if ("refused" in claim) throw new Error(`claim refused: ${claim.reason}`);
     expect(claim.complete()).toBe(true);
