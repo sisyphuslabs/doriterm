@@ -11,6 +11,7 @@ import { KeyBarHero } from "./key-bar-hero.tsx";
 import { KeyboardEdit } from "./keyboard-edit.tsx";
 import { KeyPickerSheet } from "./key-picker-sheet.tsx";
 import { PacksSheet } from "./packs-sheet.tsx";
+import { rememberedHostId } from "../terminal/known-host-os.ts";
 
 type SheetId = "keys" | "packs" | "custom" | null;
 
@@ -33,6 +34,7 @@ function useBarHost() {
     live,
     live === null && settings.hostName !== "" ? settings.hostName : undefined,
     state.phase !== "open",
+    rememberedHostId(settings),
   );
 }
 

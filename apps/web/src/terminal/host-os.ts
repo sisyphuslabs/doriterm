@@ -1,14 +1,11 @@
 import type { HcConnection } from "@doriface/client";
 import { HOST_INFO_DOC, type HostOs, parseHostInfo } from "@doriface/protocol";
 import { useEffect, useState } from "react";
-import { type HostPlatform, hostPlatform } from "./keys.ts";
+import { guardedLocalStorage } from "../storage/guarded.ts";
+import { type HostPlatform, platformOf } from "./keys.ts";
+import { offlinePlatform, rememberHostOs } from "./known-host-os.ts";
 
-/**
- * The key bar's platform for a terminal's host: what the host reported on its core when it did, else the guess from
- * the core's or machine's name (an older host writes no OS).
- */
-export const platformOf = (os: HostOs | undefined, name: string): HostPlatform =>
-  os === undefined ? hostPlatform(name) : os === "darwin" ? "mac" : "other";
+export { platformOf } from "./keys.ts";
 
 /** The OS a machine's doriface-host wrote on its core (`on` it, or this core), or undefined when it wrote none or the read failed. */
 export async function readHostOs(
@@ -36,6 +33,8 @@ export function useHostPlatform(
   connection: HcConnection | null,
   machine: string | undefined,
   offline: boolean,
+  /** The host's id, when the caller has one: its reported OS is kept under it and stands in while there is no line (#2385). */
+  hostId?: string,
 ): HostPlatform {
   const key = `${machine ?? ""}#${offline}#${connection === null ? "none" : "live"}`;
   const [read, setRead] = useState<{ readonly key: string; readonly os: HostOs | undefined } | undefined>(undefined);
@@ -44,11 +43,18 @@ export function useHostPlatform(
     let live = true;
     void (async () => {
       const os = await readHostOs(connection, machine);
-      if (live) setRead({ key, os });
+      if (!live) return;
+      if (os !== undefined && hostId !== undefined && hostId !== "") rememberHostOs(guardedLocalStorage(), hostId, os);
+      setRead({ key, os });
     })();
     return () => {
       live = false;
     };
-  }, [connection, machine, key]);
-  return platformOf(read?.key === key ? read.os : undefined, machine ?? connection?.hello.core.name ?? "");
+  }, [connection, machine, key, hostId]);
+  const name = machine ?? connection?.hello.core.name ?? "";
+  const os = read?.key === key ? read.os : undefined;
+  // No OS from the host (no line, a line that has dropped, or a read still on its way): what it reported last time stands.
+  if (os === undefined && hostId !== undefined && hostId !== "")
+    return offlinePlatform(guardedLocalStorage(), hostId, name);
+  return platformOf(os, name);
 }

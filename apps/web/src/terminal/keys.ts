@@ -1,3 +1,4 @@
+import type { HostOs } from "@doriface/protocol";
 import { twoSetKey } from "./hangul-keys.ts";
 
 /** Bytes for each key the phone's keys bar and arrow pad send. */
@@ -136,3 +137,10 @@ export function hostPlatform(coreName: string): HostPlatform {
     ? "mac"
     : "other";
 }
+
+/**
+ * The key bar's platform for a terminal's host: what the host reported on its core when it did, else the guess from
+ * the core's or machine's name (an older host writes no OS).
+ */
+export const platformOf = (os: HostOs | undefined, name: string): HostPlatform =>
+  os === undefined ? hostPlatform(name) : os === "darwin" ? "mac" : "other";
