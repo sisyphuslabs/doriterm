@@ -193,7 +193,9 @@ test("a terminal's output runs only the components that read its scroll position
   // Renderer readiness and predictor initialization each redraw the view. Finish them in every pane before output
   // opens a sample; those commits are not work caused by output.
   await page.waitForFunction(() =>
-    [...document.querySelectorAll("[data-terminal]")].every((pane) => pane.getAttribute("data-ready") === "true"),
+    [...document.querySelectorAll("[data-terminal]")].every(
+      (pane) => pane.getAttribute("data-ready") === "true" && pane.getAttribute("data-predictor-ready") === "true",
+    ),
   );
   await terminal.getByRole("textbox").focus();
   // No process, title or status event reaches the page meanwhile, and the roster's ten-second machine read, which
