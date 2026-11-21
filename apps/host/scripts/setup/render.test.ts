@@ -148,6 +148,8 @@ describe("the host's own output", () => {
     expect(lastRelayState(log)).toBe("reconnecting");
     expect(lastRelayState(`${log}\nrelay: connected to wss://relay-doriface.omo.dev`)).toBe("connected");
     expect(lastRelayState("listening on 127.0.0.1:7766")).toBeUndefined();
+    expect(lastRelayState("relay: uplink closed (1006); reconnecting in 180 ms")).toBe("reconnecting");
+    expect(lastRelayState("relay: uplink closed (1006); reconnecting now")).toBe("reconnecting");
   });
 
   test("mesh pair's link is found and the code is not carried", () => {
