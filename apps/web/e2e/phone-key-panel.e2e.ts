@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { fakeSoftKeyboard, key, keysBar, PHONE } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 // A touch phone's keys are one panel whether the soft keyboard is up or down (#2499): the Type field with Send in a row
 // of its own, then the keys in one flat row that ends in the keyboard's own toggle. Putting the keyboard down only puts
@@ -132,3 +132,27 @@ test("at 390 the keys are one panel with the keyboard down and up: the same stru
   await expect(keysBar(page).getByRole("button", { name: "Show keyboard", exact: true })).toBeVisible();
   expect(await panel(page)).toEqual(down);
 });
+
+for (const motion of ["no-preference", "reduce"] as const) {
+  test(`at 390 the riding panel eases as the keyboard moves, unless motion is reduced (${motion}, #2539)`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: motion });
+    await openPhoneTerminal(page);
+    await expect(key(page, "Hide keyboard")).toBeVisible();
+    // The element that carries the panel's `bottom` is the one that has to transition it.
+    const carrier = await keysBar(page).evaluate((bar) => {
+      let el: Element | null = bar;
+      while (el !== null && !(el instanceof HTMLElement && el.style.bottom !== "")) el = el.parentElement;
+      if (el === null) return null;
+      const css = getComputedStyle(el);
+      return { property: css.transitionProperty, duration: css.transitionDuration };
+    });
+    expect(carrier, "an element carries the riding panel's bottom").not.toBeNull();
+    if (motion === "reduce") expect(carrier?.duration).toBe("0s");
+    else {
+      expect(carrier?.property).toBe("bottom");
+      expect(carrier?.duration).not.toBe("0s");
+    }
+  });
+}

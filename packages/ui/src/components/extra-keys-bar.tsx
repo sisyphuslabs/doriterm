@@ -144,10 +144,7 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
       role="toolbar"
       aria-label="Terminal keys"
       style={props.style}
-      className={cn(
-        "px-1.5 py-1 transition-[bottom] duration-(--duration-standard) ease-out motion-reduce:transition-none motion-reduce:duration-0",
-        props.className,
-      )}
+      className={cn("px-1.5 py-1", props.className)}
     >
       <div
         className={cn(

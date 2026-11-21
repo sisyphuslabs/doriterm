@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { KEYBOARD_REQUEST_MS } from "../src/terminal/keyboard-inset.ts";
 import { expect, test } from "./fixtures.ts";
 import { key, keysBar, openPhoneTerminal } from "./phone-key-bar.ts";
@@ -38,6 +39,13 @@ test("entering split screen with the terminal focused is no keyboard: the keys s
   await expect(key(page, "Hide keyboard")).toBeVisible();
 });
 
+/**
+ * Two frames on from a resize, by which the page has had the resize event: back-to-back viewport changes otherwise land as
+ * one resize, which the page reads as a rotation with the keyboard still up rather than as a rotation and then a close.
+ */
+const resized = (page: Page): Promise<void> =>
+  page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+
 test("rotating with the keyboard up keeps the key bar up, until the keyboard closes", async ({ page }) => {
   await openPhoneTerminal(page, PORTRAIT.width, "resize");
   const input = page.locator("[data-terminal] textarea");
@@ -50,6 +58,7 @@ test("rotating with the keyboard up keeps the key bar up, until the keyboard clo
   await expect(key(page, "Hide keyboard")).toBeVisible();
 
   await page.setViewportSize({ width: LANDSCAPE.width, height: LANDSCAPE.height - LANDSCAPE_KEYBOARD });
+  await resized(page);
   await expect(key(page, "Hide keyboard")).toBeVisible();
   await expect(input).toBeFocused();
 
