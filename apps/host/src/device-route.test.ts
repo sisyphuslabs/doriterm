@@ -10,6 +10,9 @@ import { DeviceStore, deviceIdOf } from "./state/devices.ts";
 import { createHcSession, type HcSession } from "./testing/hc-session.ts";
 
 const token = generateToken();
+/** The short id a device with this static key gets. */
+const idOf = (key: Uint8Array): string =>
+  deviceIdOf({ clientStaticPub: Buffer.from(key).toString("base64url"), name: "", pairedAt: "" });
 let session: HcSession;
 let host: Host;
 let stateDir: string;
@@ -78,17 +81,13 @@ describe("this computer's paired devices on the loopback gateway", () => {
   });
 
   test("a short id two devices share is refused as a conflict, and neither is revoked", async () => {
-    // The short id is the first eight hex characters of SHA-256(key): a birthday collision turns up in about 2^16 keys.
-    const seen = new Map<string, Uint8Array>();
-    let collision: readonly [Uint8Array, Uint8Array] | undefined;
-    for (let attempt = 0; attempt < 400_000 && collision === undefined; attempt += 1) {
-      const key = crypto.getRandomValues(new Uint8Array(32));
-      const id = deviceIdOf({ clientStaticPub: Buffer.from(key).toString("base64url"), name: "", pairedAt: "" });
-      const earlier = seen.get(id);
-      if (earlier === undefined) seen.set(id, key);
-      else collision = [earlier, key];
-    }
-    if (collision === undefined) throw new Error("no short-id collision turned up in 400000 keys");
+    // Two keys whose short ids (the first eight hex characters of SHA-256(key)) collide, found once offline (a
+    // collision needs tens of thousands of random draws, far too slow and uneven to search for in a test, #2418).
+    const collision = [
+      Buffer.from("XPW-XL7J3VKRSNbU4WPiliBR2WHMCFwqK6KLTqyFJ3o", "base64url"),
+      Buffer.from("bzroR4h3wxk-YQ0-dRvdoqB8ORYjzWMbpf6V39GFUTo", "base64url"),
+    ] as const;
+    expect(idOf(collision[0])).toBe(idOf(collision[1]));
     const store = new DeviceStore(stateDir);
     store.add(collision[0], "first");
     store.add(collision[1], "second");
