@@ -73,7 +73,7 @@ test("CONTRIBUTING.md's from-zero path installs the tools, clones, checks and ru
   const all = steps.join("\n");
   for (const wanted of [
     "https://bun.sh/install",
-    "bun-v1.4.4",
+    "bun-v1.4.5",
     "https://releases.herdr.dev/core/0.1.21/herdr-core-linux-x86_64.tar.gz",
     "sha256sum --check",
     CLONE_LINE,

@@ -3,7 +3,7 @@
   "appId": "dev.omo.doriface",
   "productName": "Doriterm",
   "executableName": "Doriterm",
-  "electronVersion": "45.2.1",
+  "electronVersion": "45.4.1",
   "toolsets": { "appimage": "1.0.3" },
   "directories": { "output": "dist/release", "buildResources": "build" },
   "files": ["dist/app/**", "package.json"],

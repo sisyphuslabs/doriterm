@@ -14,7 +14,17 @@ const builder = JSON.parse(readFileSync(join(import.meta.dir, "..", "electron-bu
   readonly toolsets?: { readonly appimage?: string };
   readonly appImage?: { readonly executableArgs?: readonly string[] };
   readonly nsis?: { readonly include?: string };
+  readonly electronVersion?: string;
 };
+const desktop = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as {
+  readonly devDependencies?: { readonly electron?: string };
+};
+
+test("the installers embed the Electron the app is built and tested against (#2674)", () => {
+  // electron-builder packages electronVersion, not the installed electron: a bump that misses it ships the old runtime,
+  // and the Windows addon, built against the installed electron's headers, would load inside that other runtime.
+  expect(builder.electronVersion).toBe(desktop.devDependencies?.electron);
+});
 
 test("Windows installers load the architecture guard before installing (#1298)", () => {
   expect(builder.nsis?.include).toBe("build/installer.nsh");

@@ -33,7 +33,7 @@ defaults:
     shell: bash
 
 env:
-  BUN_VERSION: 1.4.4
+  BUN_VERSION: 1.4.5
   NODE_VERSION: 24
 
 jobs:

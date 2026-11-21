@@ -243,8 +243,8 @@ describe("the host's own output", () => {
 
   test("versions", () => {
     expect(hcVersionOf("hc 0.1.17\n")).toBe("0.1.17");
-    expect(bunMeetsFloor("1.4.4")).toBe(true);
+    expect(bunMeetsFloor("1.4.5")).toBe(true);
     expect(bunMeetsFloor("1.10.0")).toBe(true);
-    expect(bunMeetsFloor("1.4.3")).toBe(false);
+    expect(bunMeetsFloor("1.4.4")).toBe(false);
   });
 });

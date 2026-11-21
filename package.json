@@ -24,16 +24,16 @@
     "bench:render": "bun run --cwd apps/web bench:render"
   },
   "devDependencies": {
-    "@types/bun": "1.4.4",
-    "oxc-parser": "0.148.0",
-    "oxfmt": "0.75.0",
-    "oxlint": "1.90.0",
+    "@types/bun": "1.4.5",
+    "oxc-parser": "0.159.0",
+    "oxfmt": "0.79.0",
+    "oxlint": "1.94.0",
     "typescript": "7.0.2"
   },
   "engines": {
-    "bun": ">=1.4.4"
+    "bun": ">=1.4.5"
   },
-  "packageManager": "bun@1.4.4",
+  "packageManager": "bun@1.4.5",
   "patchedDependencies": {
     "@wterm/dom@0.5.9": "patches/@wterm%2Fdom@0.5.9.patch",
     "@wterm/ghostty@0.5.9": "patches/@wterm%2Fghostty@0.5.9.patch"

@@ -107,7 +107,7 @@ async function must(context: SetupContext, step: string, command: readonly strin
 }
 
 export function checkBun(context: SetupContext, version: string = Bun.version): void {
-  if (!bunMeetsFloor(version)) throw new SetupError("bun", `bun ${version} is older than 1.4.4; run: bun upgrade`);
+  if (!bunMeetsFloor(version)) throw new SetupError("bun", `bun ${version} is older than 1.4.5; run: bun upgrade`);
   context.report("bun", "ok", `bun ${version} at ${process.execPath}`);
 }
 

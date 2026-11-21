@@ -10,10 +10,10 @@ x86_64, and the `From zero` workflow runs these blocks exactly as written, in or
 take the herdr-core archive for your machine from the same release (`herdr-core-macos-aarch64.tar.gz` or
 `herdr-core-macos-x86_64.tar.gz`) and check it with `shasum -a 256`. You need `git`, `curl`, `tar` and `unzip` first.
 
-Install Bun 1.4.4:
+Install Bun 1.4.5:
 
 ```sh from-zero
-curl -fsSL https://bun.sh/install | bash -s bun-v1.4.4
+curl -fsSL https://bun.sh/install | bash -s bun-v1.4.5
 export PATH="$HOME/.bun/bin:$PATH"
 bun --version
 ```
