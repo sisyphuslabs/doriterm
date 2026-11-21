@@ -83,7 +83,7 @@ test("a layout host that leaves a core running fails the teardown, which names i
 test("a layout host that stops its cores leaves the teardown nothing to report", async () => {
   const { host } = await startLayoutHost();
   try {
-    expect(await stopLayoutHost()).toEqual({ left: [], infra: [] });
+    expect(await stopLayoutHost()).toEqual({ left: [], infra: [], failed: [] });
   } finally {
     host.kill("SIGTERM");
     await host.exited;
