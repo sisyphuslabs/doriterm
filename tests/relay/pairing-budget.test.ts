@@ -9,27 +9,20 @@ import {
   type SessionLink,
   type WebSocketLink,
 } from "@doriface/relay-client";
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { defer, runDeferred } from "./support/cleanup.ts";
 import { closedWith, received } from "./support/links.ts";
 import { socketFrom, testIp } from "./support/probe.ts";
 import { startRawHost } from "./support/raw-host.ts";
-import { type LocalRelay, startLocalRelay, RELAY_STOP_MS } from "./support/relay-dev.ts";
+import { useLocalRelay } from "./support/relay-fixture.ts";
 import { inOrder, times } from "./support/sequential.ts";
 import { uniqueSlot } from "./support/slots.ts";
 import { startTestHost, type TestHost } from "./support/test-host.ts";
-import { setUpOnce } from "./support/set-up-once.ts";
 
 /** The expiry a host signs with its slot: one offer TTL from now (#22). */
 const offerExpiry = (): number => Date.now() + 10 * 60 * 1000;
 
-let relay: LocalRelay;
-
-setUpOnce(async () => {
-  relay = await startLocalRelay();
-}, 120_000);
-
-afterAll(() => relay?.stop(), RELAY_STOP_MS);
+const relay = useLocalRelay();
 
 afterEach(runDeferred);
 
