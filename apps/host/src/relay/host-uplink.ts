@@ -26,12 +26,11 @@ export interface UplinkHandlers {
   readonly onConnected: () => void;
   /** The uplink closed and will reconnect. */
   readonly onDropped?: () => void;
-  /** The uplink stopped for good with a final close (4403, 4409); it will not reconnect. */
+  /** The uplink stopped for good with a final close (4409); it will not reconnect. */
   readonly onFinalClose?: () => void;
 }
 
 const FINAL_REASONS: Readonly<Record<number, string>> = {
-  4403: "the relay refused this host's key",
   4409: "another doriface-host with this identity took over the uplink",
 };
 

@@ -50,12 +50,8 @@ async function pairOutput(): Promise<string> {
   return stdout;
 }
 
-test.each([4403, 4409])(
-  "after the relay closes the uplink with final %p, pair reports no relay slot",
-  async (code) => {
-    relay.dropUplink(code);
-    await stopped;
-    expect(await pairOutput()).toContain("(no relay slot: pair with the link or QR code)");
-  },
-  30_000,
-);
+test("after the relay closes the uplink with final 4409, pair reports no relay slot", async () => {
+  relay.dropUplink(4409);
+  await stopped;
+  expect(await pairOutput()).toContain("(no relay slot: pair with the link or QR code)");
+}, 30_000);

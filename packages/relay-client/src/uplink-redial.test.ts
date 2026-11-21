@@ -118,6 +118,24 @@ describe("the uplink's redial after the relay ends it (#2498)", () => {
     expect(waitings(states)).toEqual([{ state: "waiting", code: 4429, reason: "rate limited", retryInMs: 500 }]);
   });
 
+  test("a 4403 (the answer came too late) redials with the backoff and keeps the relay's reason, so the host re-answers on its own (#2669)", async () => {
+    const until = await stableUplink(() => 1);
+    keptSocket().close(4403, "relay auth timed out");
+    const states = await until((seen) => seen.filter((state) => state.state === "answered").length === 2);
+    expect(waitings(states)).toEqual([
+      { state: "waiting", code: 4403, reason: "relay auth timed out", retryInMs: 250 },
+    ]);
+    expect(states.some((state) => state.state === "stopped")).toBe(false);
+  });
+
+  test("a 4409 (another uplink took over) still stops the uplink for good", async () => {
+    const until = await stableUplink(() => 1);
+    keptSocket().close(4409, "replaced by a newer uplink");
+    const states = await until((seen) => seen.some((state) => state.state === "stopped"));
+    expect(waitings(states)).toEqual([]);
+    expect(states.at(-1)).toEqual({ state: "stopped", code: 4409 });
+  });
+
   test("the redial after a stable uplink drops is a reconnect (attempt 1), not a fresh start", async () => {
     const until = await stableUplink(() => 1);
     restartRelay();
