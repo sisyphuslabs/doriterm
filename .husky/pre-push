@@ -1,0 +1,5 @@
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-push: refused: bun is not on PATH; install Bun 1.4.4 as CONTRIBUTING.md says" >&2
+  exit 1
+fi
+bun .github/scripts/pre-push.ts "$@"

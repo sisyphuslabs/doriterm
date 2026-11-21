@@ -53,9 +53,8 @@ jobs:
       # passed, on every push, so the date reaches the run page without anyone watching a calendar.
       - name: Relay read token expiry
         run: bun tests/relay-fetch/token-expiry.ts
-      - run: bun run typecheck
-      - run: bun run lint
-      - run: bun run fmt:check
+      # The same script the pre-push hook runs (.github/scripts/pre-push.ts): typecheck, lint, format, API codegen.
+      - run: bun run check:fast
       - run: bun run test
       - name: Build apps/web
         run: bun run --cwd apps/web build
