@@ -14,7 +14,7 @@
  */
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, delimiter, join, resolve } from "node:path";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 const MANAGED_DIR = resolve(REPO_ROOT, ".relay");
@@ -217,9 +217,34 @@ async function main(command: string | undefined, rest: readonly string[]): Promi
   const proc = Bun.spawn(argv, {
     cwd: command === "test" ? REPO_ROOT : dir,
     stdio: ["inherit", "inherit", "inherit"],
-    env: { ...process.env, DORIFACE_RELAY_DIR: dir },
+    env: relaySpawnEnv(dir, process.env),
   });
   return proc.exited;
+}
+
+// Release builds name it bun-node-<uid>-<hash>; a Bun built without a commit hash makes a bare bun-node.
+const isBunNodeShim = (name: string): boolean => name === "bun-node" || name.startsWith("bun-node-");
+
+/**
+ * `env` with the directory `bunx --bun` puts first on PATH left out: its `node` is bun, and wrangler run under bun never
+ * gets the relay up (#2327). Every process a `bunx --bun playwright test` worker spawns inherits that PATH. It lives here
+ * because this script runs on its own, before any install (tests/relay-fetch copies it alone).
+ */
+export function withoutBunNodeShim(
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> {
+  const path = env["PATH"];
+  if (path === undefined) return { ...env };
+  const kept = path.split(delimiter).filter((dir) => !isBunNodeShim(basename(dir)));
+  return { ...env, PATH: kept.join(delimiter) };
+}
+
+/** The env relay:dev and relay:test start their child with: the relay checkout named, and no bun-node shim (#2346). */
+export function relaySpawnEnv(
+  dir: string,
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> {
+  return withoutBunNodeShim({ ...env, DORIFACE_RELAY_DIR: dir });
 }
 
 if (import.meta.main) {
