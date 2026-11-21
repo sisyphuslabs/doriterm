@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { OFFLINE_GRACE_MS } from "../src/workspace/machine-grace.ts";
 import { E2E_HOST_ENV } from "./config.ts";
 import { stopLines } from "./line-stop.ts";
@@ -80,12 +80,12 @@ function dialedLines(): number[] {
     .filter((pid) => Number.isInteger(pid) && pid > 1);
 }
 
-/** Whether `pid` is one of this run's lines and still up: still running hc's `connect` under the second core's session. */
+/** Whether `pid` is one of this run's socket bridges and still up under the second core's session. */
 function isLine(pid: number): boolean {
   // Only this run's lines: the dial runs them under the second core's HC_SESSION (`exec env ...`), which `ps e` shows.
   const session = `HC_SESSION=${readSavedEnv(MACHINE_ENV).env["HC_SESSION"] ?? "?"}`;
   const seen = spawnSync("ps", ["eww", "-o", "command=", "-p", String(pid)], { encoding: "utf8" }).stdout;
-  return /\bconnect\b/.test(seen) && seen.includes(session);
+  return seen.includes("/machine-connect.ts") && seen.includes(session);
 }
 
 /** How many lines have been dialed to the machine so far; read before a drop, it marks where hc's redial will land. */
@@ -124,8 +124,7 @@ export const redialedSince = (dialed: number): boolean =>
   dialedLines().slice(dialed).some(isLine) && dialsInFlight().length === 0;
 
 function stopMachineLines(): void {
-  // hc may hold more than one line, so each one still running hc's `connect` ends. macOS sh execs the line itself; Linux
-  // dash keeps a `sh -c` around it, so its children go too. Dead or reused pids are skipped.
+  // hc may hold more than one line, so each one still running the bridge ends. Dead or reused pids are skipped.
   stopLines(dialedLines(), isLine);
 }
 
@@ -141,6 +140,8 @@ export function slowDials(): void {
 
 /** Lets the machine answer again; hc redials on its own. */
 export function switchOn(): void {
+  // Unlike hc connect, the dial only attaches. Bring a deliberately stopped core back before admitting dials again.
+  if (existsSync(MACHINE_SWITCH)) hcOn("machine", ["server", "start"]);
   rmSync(MACHINE_SWITCH, { force: true });
 }
 

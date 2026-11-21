@@ -27,9 +27,17 @@ export interface LocalRelay {
   stop(): Promise<void>;
 }
 
+export interface RelayProcess extends LocalRelay {
+  readonly pid: number;
+}
+
 export interface LocalRelayOptions {
   /** For tests of this helper: picks each attempt's HTTP port, given the helper's own free-port picker. */
   readonly pickPort?: (pickFree: () => number) => number;
+  /** The mesh provides a route-free config and keeps Durable Object state across launches. */
+  readonly mesh?: { readonly config: string; readonly persistTo: string };
+  readonly signal?: AbortSignal;
+  readonly onOutput?: (chunk: string) => void;
 }
 
 /** wrangler dev failed to bind the HTTP port this attempt picked: another process took it after the pick. */
@@ -92,14 +100,16 @@ async function removingOnFailure<T>(scratch: string, spawn: () => T): Promise<T>
 export async function startLocalRelay(
   vars: Readonly<Record<string, string>> = {},
   options: LocalRelayOptions = {},
-): Promise<LocalRelay> {
+): Promise<RelayProcess> {
+  if (options.mesh !== undefined) return startOnce(0, vars, "", options);
   const pickPort = options.pickPort ?? ((pickFree) => pickFree());
-  const attempt = async (number: number, races: string): Promise<LocalRelay> => {
+  const attempt = async (number: number, races: string): Promise<RelayProcess> => {
     try {
-      return await startOnce(pickPort(freePort), vars, races);
+      return await startOnce(pickPort(freePort), vars, races, options);
     } catch (error) {
       if (!(error instanceof BindRace) || number === START_ATTEMPTS) throw error;
       const race = `[relay-dev] 127.0.0.1:${error.port} was taken before wrangler dev bound it; retrying on a fresh port\n`;
+      options.onOutput?.(race);
       return attempt(number + 1, races + race);
     }
   };
@@ -110,7 +120,9 @@ async function startOnce(
   httpPort: number,
   vars: Readonly<Record<string, string>>,
   earlier: string,
-): Promise<LocalRelay> {
+  { mesh, signal, onOutput }: LocalRelayOptions,
+): Promise<RelayProcess> {
+  signal?.throwIfAborted();
   const dir = relayDir();
   const wrangler = join(dir, "node_modules", ".bin", "wrangler");
   if (!existsSync(wrangler)) {
@@ -127,6 +139,7 @@ async function startOnce(
       [
         wrangler,
         "dev",
+        ...(mesh === undefined ? [] : ["-c", mesh.config]),
         "--ip",
         "127.0.0.1",
         "--port",
@@ -135,10 +148,9 @@ async function startOnce(
         "0",
         // Without this, wrangler rewrites request URLs to the production route, and the relay origin hosts sign over
         // would not match the address they dialed.
-        "--local-upstream",
-        `127.0.0.1:${port}`,
+        ...(mesh === undefined ? ["--local-upstream", `127.0.0.1:${port}`] : []),
         "--persist-to",
-        join(scratch, "state"),
+        mesh?.persistTo ?? join(scratch, "state"),
         ...Object.entries(vars).flatMap(([name, value]) => ["--var", `${name}:${value}`]),
       ],
       {
@@ -169,7 +181,9 @@ async function startOnce(
   const drain = async (stream: ReadableStream<Uint8Array>): Promise<void> => {
     const decoder = new TextDecoder();
     for await (const chunk of stream) {
-      output += decoder.decode(chunk, { stream: true });
+      const text = decoder.decode(chunk, { stream: true });
+      output += text;
+      onOutput?.(text);
       const url = READY.exec(output)?.[1];
       if (url !== undefined) ready.resolve(url);
       // wrangler's own error naming the port just picked proves the race; its exit can lag behind it.
@@ -207,13 +221,18 @@ async function startOnce(
     await rm(scratch, { recursive: true, force: true });
     if (left.length > 0) throw new Error(`relay processes outlived stop() (now killed): ${left.join(", ")}`);
   };
+  const abort = (): void => ready.reject(signal?.reason);
+  signal?.addEventListener("abort", abort);
+  if (signal?.aborted === true) abort();
   try {
     const url = await ready.promise;
-    return { url, output: () => output, stop };
+    signal?.throwIfAborted();
+    return { url, pid: proc.pid, output: () => output, stop };
   } catch (error) {
     await stop();
     throw error;
   } finally {
+    signal?.removeEventListener("abort", abort);
     clearTimeout(timer);
   }
 }

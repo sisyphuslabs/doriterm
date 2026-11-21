@@ -292,7 +292,7 @@ bun run capture:readme                        # the README's app screenshots, 12
 Pull requests into `dev` are gated by `Check`, `Relay e2e` and `Web e2e`. [CONTRIBUTING.md](CONTRIBUTING.md) covers what each
 one runs, and what a pull request from a fork does about `Relay e2e`, which needs a secret that forks never receive. The
 platform jobs — `Desktop`, `Desktop (macOS)`, `Windows private state` on both architectures — run after the merge, on the push
-to `dev`, and never on a pull request; `Ghostty wasm provenance` runs on every event.
+to `dev`, and never on a pull request; `Install (Linux) and wasm provenance` runs on every event.
 
 ## Contributing
 
