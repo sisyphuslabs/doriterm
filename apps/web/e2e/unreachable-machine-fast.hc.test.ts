@@ -19,6 +19,22 @@ import { addMachine, DEMO_MACHINE } from "./machine.ts";
  */
 const FAST_MS = 10_000;
 
+/**
+ * Whether hc's machine state says the line is down and stays down: `unreachable` (its dial was refused) or
+ * `needs_login`. Not "anything but connected": `connecting` is hc redialing, and a run asked then waits on that dial,
+ * which may still win (#2389). An absent row is not an answer either.
+ */
+export const settledOffline = (state: string | undefined): boolean =>
+  state === "unreachable" || state === "needs_login";
+
+test("only a refused or login-blocked line counts as down; a redial in progress does not (#2389)", () => {
+  expect(settledOffline("unreachable")).toBe(true);
+  expect(settledOffline("needs_login")).toBe(true);
+  expect(settledOffline("connecting")).toBe(false);
+  expect(settledOffline("connected")).toBe(false);
+  expect(settledOffline(undefined)).toBe(false);
+});
+
 let dialer: HcSession | undefined;
 let root: string | undefined;
 afterEach(async () => {
@@ -41,17 +57,29 @@ test("a New terminal on an added machine that is not connected fails from its st
   await stop();
   const core = await HcConnection.open(spawnHcLink({ hc: dialer.hc, session: dialer.name, env: dialer.env }));
   try {
-    // The core learns the line is gone from its own read of it, a moment after the stop; until then a run still starts
-    // there. Wait for the core's own machine state to leave "connected" (a state, not a delay), then time one New terminal.
-    const gone = async (deadline: number): Promise<void> => {
-      const { machines } = await core.call("machine.list");
-      const state = machines.find((machine) => machine.name === spec.name)?.state;
-      if (state !== "connected") return;
-      if (performance.now() > deadline) throw new Error(`${spec.name} still reads connected after its stop`);
+    // The core learns the line is gone from its own read of it, a moment after the stop, and redials (`connecting`); a
+    // run asked during that redial waits on it. Wait for the core's own state to SETTLE as down (a state, not a delay),
+    // then time one New terminal (#2389).
+    const state = async (): Promise<string | undefined> =>
+      (await core.call("machine.list")).machines.find((machine) => machine.name === spec.name)?.state;
+    const settled = async (deadline: number): Promise<string | undefined> => {
+      const now = await state();
+      if (settledOffline(now) || performance.now() > deadline) return now;
       await Bun.sleep(10);
-      return gone(deadline);
+      return settled(deadline);
     };
-    await gone(performance.now() + 10_000);
+    // A dial hc started just before the stop passed its "is the machine there" check already, and its hc connect starts
+    // the stopped core again (#2142): the machine reads connected once more. Stop that core too and wait again, a few
+    // times at most (#2389). A workaround for #2428: the loop goes once an in-flight dial can no longer restart a stopped
+    // machine.
+    const down = async (stops: number): Promise<string | undefined> => {
+      const now = await settled(performance.now() + 10_000);
+      if (settledOffline(now) || stops === 0) return now;
+      await stop();
+      return down(stops - 1);
+    };
+    const last = await down(3);
+    if (!settledOffline(last)) throw new Error(`${spec.name} reads ${last ?? "absent"}, not down, after its stop`);
     const startedAt = performance.now();
     const started = await startTerminal(
       (params) => core.call("terminal.run", params),
