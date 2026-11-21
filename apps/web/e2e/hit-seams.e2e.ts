@@ -16,18 +16,32 @@ test.afterEach(() => {
 /**
  * Every column between two neighbouring controls, on the line through both centres, that a pointer there would reach
  * neither of. Sampled every quarter of a CSS pixel: a high-density screen has three device pixels in one of these, so a
- * sliver narrower than a pixel is still a place a pointer lands on neither control. A pair one of whose controls is not
- * reachable at its own centre (scrolled under the paging cue) is not on screen to tap, so it has no seam.
+ * sliver narrower than a pixel is still a place a pointer lands on neither control. A control a pointer cannot reach at
+ * its own centre is reported by what is there instead. Its NEIGHBOUR there, or any other control of its own role, is a COVER: the neighbour's hit layer takes the
+ * tap meant for it, which is the very seam this proves, and fails in every case (#1912). Anything else there is
+ * UNREACHABLE: in a list that scrolls (the Settings section tabs) that is a tab under the paging cue, not on screen to
+ * tap, and only such a case skips it; anywhere else it fails too.
  */
+const UNREACHABLE = "unreachable";
 const unowned = async (left: Locator, right: Locator) =>
   left.evaluate(
-    (a, b) => {
+    (a, b): (number | "unreachable" | "covered")[] => {
       const ra = a.getBoundingClientRect();
       const rb = b.getBoundingClientRect();
       const y = (Math.max(ra.top, rb.top) + Math.min(ra.bottom, rb.bottom)) / 2;
       const reached = (el: Element, box: DOMRect) =>
         el.contains(document.elementFromPoint(box.left + box.width / 2, y));
-      if (!reached(a, ra) || !reached(b, rb)) return [];
+      // Taken by its neighbour, or by any other control of its own role (a tab two places over): a cover either way.
+      const covered = (el: Element, box: DOMRect, neighbour: Element) => {
+        const hit = document.elementFromPoint(box.left + box.width / 2, y);
+        if (hit === null || el.contains(hit)) return false;
+        if (neighbour.contains(hit)) return true;
+        const role = el.getAttribute("role");
+        const owner = role === null ? null : hit.closest(`[role="${role}"]`);
+        return owner !== null && owner !== el;
+      };
+      if (covered(a, ra, b) || covered(b, rb, a)) return ["covered"];
+      if (!reached(a, ra) || !reached(b, rb)) return ["unreachable"];
       const step = 0.25;
       const from = ra.right - 1;
       const to = rb.left + 1;
@@ -52,6 +66,8 @@ const neighbours = async (controls: Locator) => {
 const cases: readonly {
   name: string;
   width: 390 | 1440;
+  /** The controls sit in a list that scrolls, so one can be off screen under its paging cue and has no seam to prove. */
+  scrolls?: true;
   pairs: (page: Page) => Promise<(readonly [Locator, Locator])[]>;
 }[] = [
   {
@@ -80,6 +96,7 @@ const cases: readonly {
   {
     name: "settings",
     width: 390,
+    scrolls: true,
     pairs: (page) => neighbours(page.getByRole("dialog").getByRole("tab").filter({ visible: true })),
   },
   {
@@ -94,7 +111,7 @@ const cases: readonly {
   },
 ];
 
-for (const { name, width, pairs } of cases) {
+for (const { name, width, scrolls, pairs } of cases) {
   test.describe(`${width}`, () => {
     test.use({
       viewport: { width, height: width === 390 ? 844 : 900 },
@@ -115,7 +132,14 @@ for (const { name, width, pairs } of cases) {
           columns: await unowned(left, right),
         })),
       );
-      for (const { label, columns } of seams) expect.soft(columns, label).toEqual([]);
+      let measured = 0;
+      for (const { label, columns } of seams) {
+        if (scrolls === true && columns.includes(UNREACHABLE)) continue;
+        measured += 1;
+        expect.soft(columns, label).toEqual([]);
+      }
+      // A case whose every pair was skipped would pass having measured nothing.
+      expect(measured, "pairs measured").toBeGreaterThan(0);
     });
   });
 }
