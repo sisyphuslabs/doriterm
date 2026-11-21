@@ -16,7 +16,9 @@ test("5: + sits outside the scrolling tabs, so with 22 tabs it stays in view and
   const seeded = 21;
   Array.from({ length: seeded }, (_, index) => startShell("host", `strip-shell-${index + 1}`));
   await page.goto("/");
-  await tabs(page).nth(seeded - 1).waitFor();
+  await tabs(page)
+    .nth(seeded - 1)
+    .waitFor();
   await openNewTerminal(page);
   await expect(tabs(page)).toHaveCount(22);
 
