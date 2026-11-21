@@ -122,54 +122,47 @@ jobs:
         if: failure()
         run: tail -100 ~/Library/Logs/doriface-host.log || true
 
-  relay-e2e:
-    # This job is the only reporter of the required "Relay e2e" context, so it carries that name only on the paths that
-    # can run the suites. A pull request from a fork gets no secrets: it reports under another name, so the required
-    # context is never reported for it and it cannot merge until a run inside this repository does that work
-    # (CONTRIBUTING.md, "Pull requests from forks"). A skipped job would not close this: a skipped check is reported as
-    # a success. A path that loses the token reports the required name and fails, so a missing secret is loud.
-    name: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'Relay e2e (fork: not run)' || 'Relay e2e' }}"
+  relay-e2e-part:
+    # The relay and mesh suites (tests/relay) and the browser specs that need the relay checkout: real hosts, hc cores and
+    # the private relay under wrangler dev. They ran one after the other in one job for ~26 min (#2027: suites ~12 min,
+    # browser specs ~13 min); now each part has its own runner, the suites as three `bun test --shard` shards, so the
+    # slowest part sets the time. `Relay e2e` below is the required context and reports their sum.
+    # A pull request from a fork gets no secrets, so no part runs for it (see `Relay e2e`).
+    name: "Relay e2e (${{ matrix.part == 'suites' && format('suites {0}/3', matrix.shard) || 'browser specs' }})"
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # The relay and mesh suites (tests/relay): real hosts, hc cores and the private relay under wrangler dev, in
-    # parallel with Check so neither waits on the other.
-    # Measured on a loaded hosted runner (#2027): relay:test ~12 min, then the browser step ~13 min at one worker, of
-    # which keystroke-latency-relay's 12-case matrix is ~10.5 min. At 25 the job was cancelled with a spec still running.
-    timeout-minutes: 40
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { part: suites, shard: 1 }
+          - { part: suites, shard: 2 }
+          - { part: suites, shard: 3 }
+          - { part: browser, shard: 0 }
     env:
-      # Pull requests from forks get no secrets; only they may skip the relay suites (see the first step).
       RELAY_TOKEN_SET: ${{ secrets.DORIFACE_RELAY_READ_TOKEN != '' }}
     steps:
       # First, so a missing token is answered in seconds instead of after the toolchain is installed.
       - name: The relay suites need the read token
         if: env.RELAY_TOKEN_SET != 'true'
-        env:
-          FROM_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
-          if [ "$FROM_FORK" = true ]; then
-            echo "::notice title=Relay e2e (fork: not run)::A pull request from a fork has no DORIFACE_RELAY_READ_TOKEN, so the relay and mesh suites in tests/relay did not run. This job reports under another name, so the required 'Relay e2e' check stays unreported and the pull request cannot merge until a run inside this repository does it: see CONTRIBUTING.md, 'Pull requests from forks'."
-          else
-            echo "::error::DORIFACE_RELAY_READ_TOKEN is not set, so the relay suites in tests/relay cannot run."
-            exit 1
-          fi
+          echo "::error::DORIFACE_RELAY_READ_TOKEN is not set, so the relay suites in tests/relay cannot run."
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.RELAY_TOKEN_SET == 'true'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        if: env.RELAY_TOKEN_SET == 'true'
         with:
           bun-version: 1.4.4
       # The relay suites run the private relay under wrangler dev, which needs Node 22 or newer.
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        if: env.RELAY_TOKEN_SET == 'true'
         with:
           node-version: 24
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: env.RELAY_TOKEN_SET == 'true'
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
       - name: Install herdr-core
-        if: env.RELAY_TOKEN_SET == 'true'
         env:
           HC_URL: https://releases.herdr.dev/core/0.1.21/herdr-core-linux-x86_64.tar.gz
           HC_SHA256: 78424755c10a40dde38a0bdb55c20ac19706e9ae05ed68fc2acf1fcff0d941c1
@@ -182,15 +175,13 @@ jobs:
           echo "$RUNNER_TEMP/hc" >> "$GITHUB_PATH"
           echo "HC_BIN=$RUNNER_TEMP/hc/hc" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/hc/hc" --version
-      - if: env.RELAY_TOKEN_SET == 'true'
-        run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
       # The relay server is deployed separately, from its own private repository, named by the RELAY_REPO secret so
       # that Actions masks it in the log. tests/relay runs this repository's host and client against it at the commit
       # relay-pin.json names, cloned over HTTPS with a fine-grained token that can only read that repository. git asks a
       # step-scoped credential helper for it, so it never appears in a URL, an argument or the log (Actions masks
       # secrets as well).
       - name: Fetch the private relay
-        if: env.RELAY_TOKEN_SET == 'true'
         env:
           RELAY_READ_TOKEN: ${{ secrets.DORIFACE_RELAY_READ_TOKEN }}
           RELAY_REPO: ${{ secrets.RELAY_REPO }}
@@ -199,28 +190,29 @@ jobs:
           GIT_CONFIG_VALUE_0: '!f() { test "$1" = get && printf "username=x-access-token\npassword=%s\n" "$RELAY_READ_TOKEN"; }; f'
         run: bun run relay:fetch
       - name: Relay suites against the private relay
-        if: env.RELAY_TOKEN_SET == 'true'
+        if: matrix.part == 'suites'
         # A mesh scenario whose capability is missing fails instead of being skipped.
         env:
           DORIFACE_MESH_E2E: require
-        # The JUnit report is what the next step counts: a green run of nothing is not a pass.
-        run: bun run relay:test -- --reporter=junit --reporter-outfile="$RUNNER_TEMP/relay-suites.xml"
-      - name: The relay and mesh suites ran
-        if: env.RELAY_TOKEN_SET == 'true'
-        # The required "Relay e2e" context may only be green when the suites above produced cases, so this reads their
-        # report: every case must have run (no skip), nothing may fail, and the mesh and relay e2e specs must be in it.
+        # The JUnit report is what the next step and `Relay e2e` count: a green run of nothing is not a pass.
+        run: >-
+          bun run relay:test -- --shard=${{ matrix.shard }}/3 --reporter=junit
+          --reporter-outfile="$RUNNER_TEMP/relay-suites-${{ matrix.shard }}.xml"
+      - name: This shard's relay suites ran
+        if: matrix.part == 'suites'
+        # Every case of this shard must have run (no skip) and nothing may fail; `Relay e2e` checks the shards together
+        # for the mesh specs and tests/relay/e2e.test.ts.
         run: |
           set -euo pipefail
-          report="$RUNNER_TEMP/relay-suites.xml"
+          report="$RUNNER_TEMP/relay-suites-${{ matrix.shard }}.xml"
           if [ ! -s "$report" ]; then
-            echo "::error::$report is missing or empty, so the relay suites reported nothing."
+            echo "::error::$report is missing or empty, so this shard of the relay suites reported nothing."
             exit 1
           fi
           total=$(grep -c '<testcase ' "$report" || true)
           failures=$(grep -c '<failure' "$report" || true)
           skipped=$(grep -c '<skipped' "$report" || true)
-          mesh=$(grep -oE 'file="tests/relay/mesh-[^"]+\.test\.ts"' "$report" | sort -u | wc -l || true)
-          echo "cases: $total, failures: $failures, skipped: $skipped, mesh specs: $mesh"
+          echo "cases: $total, failures: $failures, skipped: $skipped"
           if [ "$failures" -ne 0 ]; then
             echo "::error::the relay suites report $failures failing cases."
             exit 1
@@ -229,14 +221,16 @@ jobs:
             echo "::error::$skipped cases were skipped; every case of these suites has to run here."
             exit 1
           fi
-          if [ "$total" -lt 1 ] || [ "$mesh" -lt 1 ]; then
-            echo "::error::the relay suites ran $total cases and $mesh mesh specs, so they are not the suites this check exists for."
+          if [ "$total" -lt 1 ]; then
+            echo "::error::this shard ran no case."
             exit 1
           fi
-          if ! grep -q 'file="tests/relay/e2e.test.ts"' "$report"; then
-            echo "::error::tests/relay/e2e.test.ts did not run."
-            exit 1
-          fi
+      - if: always() && matrix.part == 'suites'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: relay-suites-${{ matrix.shard }}
+          path: ${{ runner.temp }}/relay-suites-${{ matrix.shard }}.xml
+          if-no-files-found: ignore
       # mesh-attach.e2e.ts, mesh-input-hold.e2e.ts and mesh-join-browser.e2e.ts are browser specs that need this job's relay
       # checkout: the web app paired with one mesh member attaches to a terminal on another, through the mesh (G009 C004);
       # mesh-input-hold.e2e.ts types into that terminal while the other member's line is down (#1489); and a browser joins
@@ -244,21 +238,21 @@ jobs:
       # skips all three. They run one worker after the other: each starts two hosts, the relay and Chromium, and two of
       # those at once do not fit one runner's cores.
       - name: Playwright version
-        if: env.RELAY_TOKEN_SET == 'true'
+        if: matrix.part == 'browser'
         id: playwright
         working-directory: apps/web
         run: |
           echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
           echo "distro=$(. /etc/os-release && echo "$ID-$VERSION_ID")" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: env.RELAY_TOKEN_SET == 'true'
+        if: matrix.part == 'browser'
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
       # The .deb files of the system packages Chromium is missing on the image (doriterm#1012); the install step decides
       # whether they are enough, so this only restores them.
       - name: Restore the Playwright system packages
-        if: env.RELAY_TOKEN_SET == 'true'
+        if: matrix.part == 'browser'
         id: playwright-apt
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -267,7 +261,7 @@ jobs:
           key: playwright-apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.distro }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('.github/scripts/playwright-linux-deps.sh') }}-${{ github.run_id }}
           restore-keys: playwright-apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.distro }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('.github/scripts/playwright-linux-deps.sh') }}-
       - name: Install Chromium
-        if: env.RELAY_TOKEN_SET == 'true'
+        if: matrix.part == 'browser'
         id: chromium
         working-directory: apps/web
         timeout-minutes: 12
@@ -285,35 +279,95 @@ jobs:
             timeout 600 bunx playwright install chromium
           fi
       - name: Save the Playwright system packages
-        if: env.RELAY_TOKEN_SET == 'true' && steps.chromium.outputs.save-debs == 'true'
+        if: matrix.part == 'browser' && steps.chromium.outputs.save-debs == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/playwright-apt
           key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
       # Every browser spec that needs this job's relay checkout runs here, one worker, as listed on the line below: the mesh
-      # specs above and those that go through the real relay code (keystroke-latency-relay's JSON files land in
-      # apps/web/test-results). A name that matches no file yet runs nothing and fails nothing.
+      # specs above and those that go through the real relay code. A name that matches no file yet runs nothing and fails
+      # nothing.
       - name: Browser spec through the mesh
-        if: env.RELAY_TOKEN_SET == 'true'
-        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/keystroke-latency-relay.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts --workers=1
+        if: matrix.part == 'browser'
+        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts --workers=1
         working-directory: apps/web
         env:
           CI: "1"
           DORIFACE_RELAY_DIR: ${{ github.workspace }}/.relay
-      - if: always() && env.RELAY_TOKEN_SET == 'true'
+      - if: always() && matrix.part == 'browser'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: relay-web-e2e
           path: |
             apps/web/playwright-report
             apps/web/test-results
-            ${{ runner.temp }}/relay-suites.xml
           if-no-files-found: ignore
 
-  web-e2e:
-    name: Web e2e
+  relay-e2e:
+    # This job is the only reporter of the required "Relay e2e" context, so it carries that name only on the paths that
+    # can run the suites. A pull request from a fork gets no secrets: no part above runs for it and this job reports under
+    # another name, so the required context is never reported for it and it cannot merge until a run inside this
+    # repository does that work (CONTRIBUTING.md, "Pull requests from forks"). A skipped job would not close this: a
+    # skipped check is reported as a success, which is why this job runs always() and reads its parts' results itself.
+    name: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'Relay e2e (fork: not run)' || 'Relay e2e' }}"
+    needs: relay-e2e-part
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    env:
+      FROM_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      PARTS: ${{ needs.relay-e2e-part.result }}
+    steps:
+      - name: A fork's pull request does not run the relay suites
+        if: env.FROM_FORK == 'true'
+        run: |
+          echo "::notice title=Relay e2e (fork: not run)::A pull request from a fork has no DORIFACE_RELAY_READ_TOKEN, so the relay and mesh suites in tests/relay did not run. This job reports under another name, so the required 'Relay e2e' check stays unreported and the pull request cannot merge until a run inside this repository does it; see CONTRIBUTING.md, 'Pull requests from forks'."
+      - name: Every relay part passed
+        if: env.FROM_FORK != 'true'
+        run: |
+          if [ "$PARTS" != success ]; then
+            echo "::error::a Relay e2e part ended '$PARTS'; its own job names what failed."
+            exit 1
+          fi
+      - if: env.FROM_FORK != 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: relay-suites-*
+          path: ${{ runner.temp }}/relay-suites
+          merge-multiple: true
+      - name: The relay and mesh suites ran
+        if: env.FROM_FORK != 'true'
+        # The required "Relay e2e" context may only be green when the shards together ran the suites this check exists
+        # for: three reports, the mesh specs among them, and tests/relay/e2e.test.ts.
+        run: |
+          set -euo pipefail
+          reports=("$RUNNER_TEMP"/relay-suites/relay-suites-*.xml)
+          if [ "${#reports[@]}" -ne 3 ] || [ ! -s "${reports[0]}" ]; then
+            echo "::error::expected 3 relay suite reports, found: ${reports[*]}"
+            exit 1
+          fi
+          mesh=$(cat "${reports[@]}" | grep -oE 'file="tests/relay/mesh-[^"]+\.test\.ts"' | sort -u | wc -l || true)
+          echo "mesh specs: $mesh"
+          if [ "$mesh" -lt 1 ]; then
+            echo "::error::the relay suites ran no mesh spec, so they are not the suites this check exists for."
+            exit 1
+          fi
+          if ! cat "${reports[@]}" | grep -q 'file="tests/relay/e2e.test.ts"'; then
+            echo "::error::tests/relay/e2e.test.ts did not run."
+            exit 1
+          fi
+
+  web-e2e-shard:
+    # The browser suite against a real hc, in four shards on four runners. As one job it took 25 to 29 minutes of its
+    # 30-minute limit and was cancelled at that limit on slower runners (#2627); a shard is a quarter of the files. `Web
+    # e2e` below is the required context and reports the shards together.
+    name: Web e2e (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -387,11 +441,13 @@ jobs:
           echo "cores: $(nproc)"
           free -m
       - name: Playwright e2e against a real hc
-        run: bun run test:e2e
+        run: bun run test:e2e --shard=${{ matrix.shard }}/4
         working-directory: apps/web
         env:
           CI: "1"
+      # Once per run, not per shard: it starts two short suites of its own.
       - name: Two e2e runs at once, each on its own ports (#37)
+        if: matrix.shard == 1
         run: bun run test:e2e:two-runs
         working-directory: apps/web
         env:
@@ -399,11 +455,29 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: web-e2e
+          name: web-e2e-${{ matrix.shard }}
           path: |
             apps/web/playwright-report
             apps/web/test-results
           if-no-files-found: ignore
+
+  web-e2e:
+    # The only reporter of the required "Web e2e" context. It runs always() and reads the shards' result itself: a job
+    # skipped because a shard it needs failed would be reported as a success.
+    name: Web e2e
+    needs: web-e2e-shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every Web e2e shard passed
+        env:
+          SHARDS: ${{ needs.web-e2e-shard.result }}
+        run: |
+          if [ "$SHARDS" != success ]; then
+            echo "::error::a Web e2e shard ended '$SHARDS'; its own job names the failing tests."
+            exit 1
+          fi
 
   android:
     # After the merge, like the other platform jobs: the Android app (#704) builds from the web build, and its JVM tests
