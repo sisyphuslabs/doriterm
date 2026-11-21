@@ -1,15 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { neighbour, shouldSelect, takesTextSizeKey } from "./use-app-actions.ts";
-
-describe("takesTextSizeKey", () => {
-  test("a browser keeps the text-size keys for its own zoom; the workspace and Settings take them in their handler", () => {
-    expect(takesTextSizeKey(false)).toBe(false);
-  });
-
-  test("the desktop window never zooms, so its fallback steps the text on every screen (#388)", () => {
-    expect(takesTextSizeKey(true)).toBe(true);
-  });
-});
+import { neighbour, shouldSelect } from "./use-app-actions.ts";
 
 describe("neighbour", () => {
   test("steps through the list and wraps", () => {
