@@ -42,7 +42,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  BUN_VERSION: 1.4.4
+  BUN_VERSION: 1.4.5
   NODE_VERSION: 24
   WRANGLER: wrangler@4.158.0
 

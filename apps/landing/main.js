@@ -196,7 +196,7 @@ const SESSIONS = [
   },
   {
     command: "bun test",
-    output: `<span class="dim">bun test v1.4.4</span>
+    output: `<span class="dim">bun test v1.4.5</span>
 <span class="ok">412 pass</span>
 <span class="dim">0 fail</span>
 <span class="dim">Ran 412 tests across 58 files.</span>`,

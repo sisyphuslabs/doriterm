@@ -319,7 +319,7 @@ export function failureOf(stderr: string, stdout: string): string {
   return hostFailure(stderr.trim() !== "" ? stderr : stdout);
 }
 
-export function bunMeetsFloor(version: string, floor = "1.4.4"): boolean {
+export function bunMeetsFloor(version: string, floor = "1.4.5"): boolean {
   const [a, b] = [versionParts(version), versionParts(floor)];
   for (let i = 0; i < 3; i += 1) {
     const [x, y] = [a[i] ?? 0, b[i] ?? 0];

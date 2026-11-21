@@ -41,7 +41,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUN_VERSION: 1.4.4
+  BUN_VERSION: 1.4.5
   WRANGLER: wrangler@4.158.0
 
 jobs:

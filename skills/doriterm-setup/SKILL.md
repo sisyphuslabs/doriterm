@@ -18,7 +18,7 @@ Run this on each machine the user wants to reach, as the user (never root, never
 
 All commands below use `S=~/.local/share/doriface-host/src` and `SETUP="bun $S/apps/host/scripts/setup/cli.ts"`. Each output line reads `doriterm-setup: <step> <ok|changed|unchanged|warn|fail> <detail>`, and the last line is `doriterm-setup: result ok|fail`.
 
-1. Prerequisites: `uname -s` must be Linux or Darwin. `git --version` must work. `bun --version` must be 1.4.4 or newer; if bun is missing, install it with `curl -fsSL https://bun.sh/install | bash` and use `~/.bun/bin/bun`.
+1. Prerequisites: `uname -s` must be Linux or Darwin. `git --version` must work. `bun --version` must be 1.4.5 or newer; if bun is missing, install it with `curl -fsSL https://bun.sh/install | bash` and use `~/.bun/bin/bun`.
 2. Checkout, first time only: if `$S/.git` does not exist, run `git clone https://github.com/sisyphuslabs/doriterm.git $S && (cd $S && bun install --frozen-lockfile)`.
 3. Install or update: `$SETUP install`. It moves the checkout to the newest `dev`, installs herdr-core when missing or too old, writes the systemd user unit (Linux) or LaunchAgent (macOS), starts it, and waits for `relay: connected`. On `result fail`, read the `fail` line and the host log it names, fix that one thing, and run `install` again. On a `linger warn` line, tell the user to run `sudo loginctl enable-linger <user>` once.
 4. Check: `$SETUP verify`. All of `running`, `relay` and `mesh` must read `ok`.
