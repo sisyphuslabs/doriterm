@@ -1,6 +1,7 @@
 import { createConnection, type Socket } from "node:net";
 import { join } from "node:path";
 import { isRecord } from "../state/files.ts";
+import { CONNECTION_FAILED_EXIT, type SessionEnd, sessionExitCode } from "./exit-code.ts";
 import type { Output } from "./pipe.ts";
 
 export const LINE_SOCKET_NAME = "line.sock";
@@ -97,7 +98,8 @@ const notRunning = (error: unknown): boolean =>
 /**
  * `doriface-host connect --mesh <hostId>` (section 7.2): asks the running host for a line to a member over
  * `<state dir>/line.sock`, then pipes stdin and stdout through it byte for byte. The host dials with its own Noise key;
- * this process holds no key. Every refusal is one line on stderr and exit 1.
+ * this process holds no key. Every refusal is one line on stderr and exit 255 (exit-code.ts), as is a line that closed
+ * before the member said a byte.
  *
  * The bridge lives exactly as long as its caller: the herdr core that spawned it, or the shell that ran it. When that
  * process is gone, so is the bridge, whether it was waiting for the answer or piping an open line.
@@ -110,7 +112,7 @@ export async function meshBridge(options: MeshBridgeOptions): Promise<number> {
       opened = await request(join(options.stateDir, LINE_SOCKET_NAME), options.hostId, caller.gone);
     } catch (error) {
       options.log(notRunning(error) ? "doriface-host is not running" : `line.sock: ${String(error)}`);
-      return 1;
+      return CONNECTION_FAILED_EXIT;
     }
     if (opened === "gone") {
       options.log("the process that started this bridge is gone");
@@ -120,25 +122,39 @@ export async function meshBridge(options: MeshBridgeOptions): Promise<number> {
     if (!answer.ok) {
       options.log(answer.reason);
       socket.destroy();
-      return 1;
+      return CONNECTION_FAILED_EXIT;
     }
     const ended = Promise.withResolvers<number>();
-    if (rest.byteLength > 0) options.output.write(rest);
+    const end: { -readonly [K in keyof SessionEnd]: SessionEnd[K] } = {
+      spoke: false,
+      endedByCaller: false,
+      error: undefined,
+    };
+    const deliver = (bytes: Uint8Array): boolean => {
+      end.spoke = true;
+      return options.output.write(bytes);
+    };
+    if (rest.byteLength > 0) deliver(rest);
     socket.on("data", (bytes: Buffer) => {
-      if (!options.output.write(bytes)) {
+      if (!deliver(bytes)) {
         socket.pause();
         void options.output.drained().then(() => socket.resume());
       }
     });
-    socket.once("close", () => ended.resolve(0));
+    socket.once("close", () => {
+      if (!end.spoke && !end.endedByCaller) options.log("the line closed before the member said anything");
+      ended.resolve(sessionExitCode(end));
+    });
     socket.once("error", (error) => {
       options.log(`the line ended: ${error.message}`);
-      ended.resolve(1);
+      end.error = error;
+      ended.resolve(sessionExitCode(end));
     });
     socket.resume();
     void (async () => {
       for await (const chunk of options.input)
         if (!socket.write(chunk)) await new Promise((r) => socket.once("drain", r));
+      end.endedByCaller = true;
       socket.end();
     })();
     const code = await Promise.race([
