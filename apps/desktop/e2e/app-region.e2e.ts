@@ -101,6 +101,18 @@ test("a static button's absolute hit layer is read against its nearest positione
     await page.evaluate(() => window.scrollTo(0, 100));
     expect(await page.evaluate(appRegionAt, { x: 105, y: 105 })).toBe("no-drag");
     expect(await page.evaluate(appRegionAt, { x: 105, y: 205 })).toBe("drag");
+    // In a quirks-mode page (no doctype) <body> is the scrolling element, so a positioned <body> scrolled with the page
+    // is moved by its own box once too: the layer still sits at y 100..110 (#2566 review).
+    await page.setContent(`<style>
+      body { position: relative; margin: 0; height: 2000px; -webkit-app-region: drag; }
+      #tall { display: block; width: 40px; height: 40px; -webkit-app-region: drag; }
+      #tall::after { content: ""; position: absolute; left: 100px; top: 200px; width: 20px; height: 10px; -webkit-app-region: no-drag; }
+    </style><button id="tall">tall</button>`);
+    expect(await page.evaluate(() => document.compatMode)).toBe("BackCompat");
+    await page.evaluate(() => window.scrollTo(0, 100));
+    expect(await page.evaluate(() => document.scrollingElement === document.body && document.body.scrollTop)).toBe(100);
+    expect(await page.evaluate(appRegionAt, { x: 105, y: 105 })).toBe("no-drag");
+    expect(await page.evaluate(appRegionAt, { x: 105, y: 205 })).toBe("drag");
     await page.setContent(SCALED);
     // The page lists no region of its own, so a point beside the layer reads none; read unscaled, the layer would sit at
     // x 0..20, y 50..70 instead.

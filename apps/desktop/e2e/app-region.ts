@@ -91,7 +91,8 @@ export function appRegionAt({ x, y }: { readonly x: number; readonly y: number }
       // one too, since a block that holds a fixed layer (transformed, filtered, contained or will-change) scrolls it with
       // its content. The root's scroll offset is the viewport's, which the root's own box already moved by, so it is not
       // counted twice (#2472 review).
-      const scrolled = block !== document.documentElement;
+      // The element whose scroll is the viewport's: the root, or <body> in a quirks-mode document (#2472 review).
+      const scrolled = block !== document.documentElement && block !== document.scrollingElement;
       origin = {
         left: box.left + (Number.parseFloat(border.borderLeftWidth) - (scrolled ? block.scrollLeft : 0)) * sx,
         top: box.top + (Number.parseFloat(border.borderTopWidth) - (scrolled ? block.scrollTop : 0)) * sy,
