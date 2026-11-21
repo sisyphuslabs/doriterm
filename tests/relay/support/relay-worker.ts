@@ -1,10 +1,10 @@
-import { parentPort, workerData } from "node:worker_threads";
+import { parentPort } from "node:worker_threads";
 import { startLocalRelay } from "./relay-dev.ts";
-import type { RelayWorkerData, RelayWorkerMessage } from "./worker-relay.ts";
+import { RELAY_WORKER_DATA, type RelayWorkerData, type RelayWorkerMessage } from "./worker-relay.ts";
 
 const port = parentPort;
 if (port === null) throw new Error("local relay worker needs a parent");
-const data: RelayWorkerData = workerData;
+const data = JSON.parse(process.env[RELAY_WORKER_DATA] ?? "{}") as RelayWorkerData;
 const send = (message: RelayWorkerMessage): void => port.postMessage(message, []);
 const cancel = new AbortController();
 const stopping = Promise.withResolvers<void>();
