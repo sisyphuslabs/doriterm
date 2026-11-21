@@ -25,7 +25,7 @@ import { PendingJoins } from "./pending-joins.ts";
 import { DeviceStore } from "../state/devices.ts";
 import { byDeadline, JoinRefused, ROSTER_EXPECTS } from "@doriface/mesh/join";
 import { serveRoster, type RosterDeps } from "./roster.ts";
-import { removedKey } from "./roster-removal.ts";
+import { REMOVED_READING, removedKey } from "./roster-removal.ts";
 import { sweepRoster } from "./roster-admits.ts";
 import { finishJoin, JoinResumes } from "./join-resumes.ts";
 import { spendMeshOffer } from "../e2ee/accept.ts";
@@ -77,6 +77,8 @@ export class HostMesh {
   readonly resumes = new JoinResumes();
   readonly #options: HostMeshOptions;
   readonly #core: () => Promise<HcCore>;
+  /** Removed keys reading their removal now: each holds one roster session at a time (#1493). */
+  readonly #removedReads = new Set<string>();
   #offerExpiresAt: number;
 
   constructor(options: HostMeshOptions) {
@@ -89,6 +91,11 @@ export class HostMesh {
 
   resumeKey(key: string): boolean {
     return this.pending.list().some(({ nonce }) => this.resumes.get(nonce, key) !== undefined);
+  }
+
+  /** Whether a removed member's key already holds its one roster session; the handshake refuses another. */
+  removedRosterHeld(key: string): boolean {
+    return this.#removedReads.has(key);
   }
 
   roster(secure: SecureLink): void {
@@ -107,9 +114,14 @@ export class HostMesh {
         });
       return;
     }
-    // A removed member's session is never live: it reads its removal and is closed by serveRoster (design 10.3).
-    const removed = removedKey(this.#options.mesh.authorizeIndex(), key);
-    if (!removed && !this.#options.sessions.add(secure)) return;
+    // A removed member's session is never live: it reads its removal and is closed by serveRoster (design 10.3). The
+    // plan's session limit does not count it, so each removed key holds one at a time, freed when it closes (#1493).
+    if (removedKey(this.#options.mesh.authorizeIndex(), key)) {
+      // Two handshakes can pass the gate in acceptE2ee before either session arrives here: the later one is closed.
+      if (this.#removedReads.has(key)) return secure.close(CloseCode.RateLimited, REMOVED_READING);
+      this.#removedReads.add(key);
+      secure.onClose(() => this.#removedReads.delete(key));
+    } else if (!this.#options.sessions.add(secure)) return;
     void serveRoster(new MeshLines(secure, ROSTER_EXPECTS), secure.remoteStatic, this.#rosterDeps()).catch(
       (error: unknown) =>
         this.#options.log(`mesh: roster refused: ${error instanceof Error ? error.message : String(error)}`),

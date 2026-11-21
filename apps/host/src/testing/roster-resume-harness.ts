@@ -57,6 +57,7 @@ export function fixture(options: { readonly changed?: () => void; readonly log?:
     lanUrls: [],
     log,
     resumeKey: (key: string) => host.resumeKey(key),
+    removedRosterHeld: (key: string) => host.removedRosterHeld(key),
   };
   return { a, c, devices, pairing, host, deps };
 }
@@ -65,6 +66,7 @@ export async function open(f: ReturnType<typeof fixture>, kind: "pair" | "roster
   const [hostEnd, clientEnd] = memoryLinkPair(true);
   const offer = f.pairing.read();
   if (kind === "pair" && offer === undefined) throw new Error("no pairing offer");
+  let refusal: unknown;
   const [host, joined] = await Promise.all([
     acceptE2ee(hostEnd, f.deps, { kind: "relay" }),
     secureLink(clientEnd, {
@@ -76,13 +78,16 @@ export async function open(f: ReturnType<typeof fixture>, kind: "pair" | "roster
       ...(kind === "pair" && offer !== undefined
         ? { pairing: { mode: "link" as const, linkSecret: offer.linkSecret, name: client.m.name } }
         : {}),
-    }).catch(() => undefined),
+    }).catch((error: unknown) => {
+      refusal = error;
+      return undefined;
+    }),
   ]);
   stops.push(() => {
     host?.close();
     joined?.close();
   });
-  return { host, joined, hostEnd };
+  return { host, joined, hostEnd, refusal };
 }
 
 export const required = (link: SecureLink | undefined): SecureLink => {
