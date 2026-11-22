@@ -81,7 +81,7 @@ function canMove(id: string, { keys, active }: Strip): boolean {
  * then each is listed as unavailable, with why.
  */
 function unavailable(id: string, inView: boolean, readOnly: string | null): string | undefined {
-  if (id === "space.rename" || id === "tab.rename") return readOnly ?? undefined;
+  if (id === "space.rename" || id === "tab.rename" || id === "tab.new") return readOnly ?? undefined;
   if (!id.startsWith("pane.split:")) return undefined;
   return inView ? (readOnly ?? undefined) : "No terminal to split";
 }

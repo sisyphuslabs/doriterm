@@ -107,6 +107,60 @@
   animation: none !important;
 }
 
+/* The cursor blinks by data-cursor-on and data-cursor-off, flipped twice a second while it blinks and absent otherwise
+   (cursor-blink.ts), never by a CSS animation: a running animation makes Chromium recalculate style and paint every
+   frame, so an idle terminal cost its renderer 60 frames a second. Each phase draws what the animation for the
+   cursor's kind drew, and only what it drew: wterm's cursor-blink for a block, its cursor-line-blink for a bar or
+   underline, the config's doriface-hollow-blink for a block_hollow (render-css.ts). Keyframes sat above every normal
+   declaration, the config's cursor-text and hollow rules included, and !important stands in for that. :where() keeps
+   these at the specificity of .term-cursor, so where a composition or a prediction hides the cursor (above, also
+   !important, at 0,3,0 and 0,4,0) those win on every property they share, whatever the order. */
+.wterm .term-cursor {
+  animation: none !important;
+}
+/* A block, on: the cursor colour, its text in the app's background, so a blinking block never showed cursor-text. */
+:where(
+    .wterm[data-cursor-on]:not(.cursor-hollow):is(.focused, :active)
+      .term-grid:not([data-cursor-shape="bar"], [data-cursor-shape="underline"])
+  )
+  .term-cursor {
+  background: var(--term-app-cursor, var(--term-cursor)) !important;
+  color: var(--term-app-bg, var(--term-bg)) !important;
+}
+/* A block, off: the cell as it is. */
+:where(
+    .wterm[data-cursor-off]:not(.cursor-hollow):is(.focused, :active)
+      .term-grid:not([data-cursor-shape="bar"], [data-cursor-shape="underline"])
+  )
+  .term-cursor {
+  background: var(--term-cell-bg, transparent) !important;
+  color: var(--term-cell-fg, inherit) !important;
+}
+/* A bar or underline: its line on, then none; the text keeps its colour (cursor-text too) in both phases. */
+:where(
+    .wterm[data-cursor-on]:is(.focused, :active)
+      .term-grid:is([data-cursor-shape="bar"], [data-cursor-shape="underline"])
+  )
+  .term-cursor {
+  box-shadow: var(--term-cursor-shadow) !important;
+}
+:where(
+    .wterm[data-cursor-off]:is(.focused, :active)
+      .term-grid:is([data-cursor-shape="bar"], [data-cursor-shape="underline"])
+  )
+  .term-cursor {
+  /* What the keyframe's none computed to: Chromium animates it as a transparent shadow matching the line's. */
+  box-shadow: inset 0 0 0 transparent !important;
+}
+/* A configured block_hollow: its keyframes set nothing on, and only a transparent outline off. */
+:where(
+    .wterm.cursor-hollow[data-cursor-off]:is(.focused, :active)
+      .term-grid:not([data-cursor-shape="bar"], [data-cursor-shape="underline"])
+  )
+  .term-cursor {
+  outline-color: transparent !important;
+}
+
 /* Predicted cells (use-prediction-overlay.ts) sit over the grid in their own layer, in the terminal's colours, opaque
    over the cell they cover; underlined while the link is slow or glitching, mosh's flagging (design D8). */
 .wterm .term-prediction {

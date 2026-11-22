@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   Menu,
   nativeTheme,
@@ -28,6 +29,7 @@ import { openDeepLink, routeDeepLinksTo, takePairingLink } from "./deep-link.ts"
 import { DictationHost } from "./dictation.ts";
 import { DirectForwarder } from "./direct-forward.ts";
 import { applyDevCsp, hardenContents, lockPermissions } from "./harden.ts";
+import { InputGestures } from "./paste-invite.ts";
 import { findHc, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
 import { registerIpc } from "./ipc.ts";
 import { LocalHost } from "./local-host.ts";
@@ -90,6 +92,8 @@ const openExternal = (url: string): void => {
 };
 
 let mainWindow: BrowserWindow | undefined;
+/** The OS's own clicks and keys per page: Paste invite reads the clipboard only right after one (#2656). */
+const gestures = new InputGestures();
 /** The byte forwarder a plain `ws://` Direct address needs (#449); it lives as long as the app. */
 let forwarder: DirectForwarder | undefined;
 /** Dictation sessions, where this build has a system recognizer (#726). */
@@ -333,6 +337,8 @@ function ready(): void {
     forwardDirect: async (windowId) => (await forwarder?.issue(windowId)) ?? { refused: "no forwarder" },
     cancelDirectForward: (url) => forwarder?.cancel(url) ?? false,
     dictation,
+    takeGesture: (contentsId) => gestures.take(contentsId),
+    readClipboard: () => clipboard.readText(),
   });
   if (updates !== undefined) {
     updates.start();
@@ -352,7 +358,12 @@ app.enableSandbox();
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("web-contents-created", (_event, contents) => hardenContents(contents, origin, navigate));
+  app.on("web-contents-created", (_event, contents) => {
+    hardenContents(contents, origin, navigate);
+    const id = contents.id;
+    contents.on("input-event", (_input, input) => gestures.note(id, input.type));
+    contents.once("destroyed", () => gestures.forget(id));
+  });
   app.on("open-url", (event, url) => {
     event.preventDefault();
     openDeepLink(url);

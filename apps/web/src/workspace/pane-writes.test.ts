@@ -2,7 +2,7 @@ import type { JsonObject } from "@doriface/protocol";
 import { docSpaces, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
 import { describe, expect, test } from "bun:test";
 import { NO_VIEW } from "../layout/view.ts";
-import { apartWrite, newTabWrite, splitWrite, transientSplitWrite, viewInstead } from "./pane-writes.ts";
+import { apartWrite, newTabWrite, splitWrite, terminalRow, transientSplitWrite, viewInstead } from "./pane-writes.ts";
 
 /** A layout document of one space whose tabs are rows of terminal panes (local addresses). */
 const docOf = (tabs: readonly (readonly string[])[]): JsonObject => ({
@@ -131,5 +131,11 @@ describe("viewInstead (#2146)", () => {
     const view = { ...NO_VIEW, active: "tab-c", focused: { "tab-a": "p-new" } };
     expect(viewInstead(view, asked, at, "p-a")).toEqual({ ...view, focused: { "tab-a": "p-a" } });
     expect(viewInstead(view, asked, at, null)).toBe(view);
+  });
+});
+
+describe("terminalRow (#2470 review)", () => {
+  test("is a row holding the one terminal, the shape both the new tab and the kept transient tab are written in", () => {
+    expect(terminalRow("tb1", "p1", "t7")).toEqual({ children: [terminalBlock("p1", "t7")], id: "tb1", type: "row" });
   });
 });

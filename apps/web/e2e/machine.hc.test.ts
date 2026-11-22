@@ -1,10 +1,10 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, watch, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHcSession, type HcSession } from "@doriface/host/testing";
 import { stopLeftUnder } from "@doriface/host/testing/run-dir";
-import { addMachine, DEMO_MACHINE, viaCommand } from "./machine.ts";
+import { addMachine, DEMO_MACHINE, replyPid, running, viaCommand } from "./machine.ts";
 
 let dialer: HcSession | undefined;
 let root: string | undefined;
@@ -45,11 +45,51 @@ async function dialOnce(hc: string, via: string): Promise<number> {
     stdout: "ignore",
     stderr: "ignore",
   });
-  line.stdin.write('{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
-  await line.stdin.flush();
-  void line.stdin.end();
+  // A refused line can stop reading before the hello is written. The pipe is closed then (EPIPE), and the line's exit
+  // code is still the answer (#2402).
+  try {
+    line.stdin.write('{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
+    await line.stdin.flush();
+    await line.stdin.end();
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "EPIPE")) throw error;
+  }
   return line.exited;
 }
+
+/** The pid of the core `env` reaches, as its server.status names it. */
+async function corePid(hc: string, env: Readonly<Record<string, string | undefined>>): Promise<number | undefined> {
+  const status = Bun.spawn([hc, "connect"], { env, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+  const replies = new Response(status.stdout).text();
+  status.stdin.write('{"jsonrpc":"2.0","id":1,"method":"server.status"}\n');
+  await status.stdin.flush();
+  void status.stdin.end();
+  await status.exited;
+  return replyPid(await replies, 1);
+}
+
+test("a line of hc connect's output that is not JSON is no reply, so the pid is still read from the reply after it", () => {
+  const output = 'error: socket path is too long\n{"jsonrpc":"2.0","id":1,"result":{"pid":4242}}\n';
+  expect(replyPid(output, 1)).toBe(4242);
+  expect(replyPid('{"error":"socket path is too long"}\n', 1)).toBeUndefined();
+});
+
+test("the machine's stop resolves once its core has exited, not once it has answered (#2525)", async () => {
+  dialer = createHcSession("machine-stop-exit");
+  root = mkdtempSync(join(tmpdir(), "dw-machine-"));
+  const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
+  const stop = await addMachine(dialer.hc, { ...dialer.env }, join(root, "machine"), false, spec);
+  const { env: own } = JSON.parse(readFileSync(join(spec.dir, "env.json"), "utf8")) as {
+    readonly env: Readonly<Record<string, string>>;
+  };
+  const pid = await corePid(dialer.hc, { ...dialer.env, ...own });
+  expect(pid).toBeNumber();
+  // The teardown's order (fake-relay-host.ts): the dialing core first, so nothing dials the machine back up after it.
+  await dialer.dispose();
+  await stop();
+  // Read the moment the stop resolves: a core still on its way out is what a check or a late dial would then meet.
+  expect(pid === undefined ? true : running(pid)).toBe(false);
+}, 60_000);
 
 test("a dial that reaches an added machine after its stop is refused, so the stop leaves no core behind (#2142)", async () => {
   dialer = createHcSession("machine-late-dial");
@@ -67,6 +107,56 @@ test("a dial that reaches an added machine after its stop is refused, so the sto
   expect(await dialOnce(dialer.hc, viaCommand(own, spec))).not.toBe(0);
   expect(await stopLeftUnder(join(root, "machine"))).toEqual([]);
 }, 60_000);
+
+describe("a dial held past the final gate (#2525)", () => {
+  let machine = "";
+  let stop: (() => Promise<void>) | undefined;
+  let line: Bun.Subprocess<"pipe", "pipe", "inherit"> | undefined;
+  let output: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+  // Setup: adding the machine (0.4-1.2 s measured, herdr's hello probe included) and a dial that has passed every switch
+  // check and waits, just before its transport, for the test to release it. Each step ends on an event.
+  beforeEach(async () => {
+    dialer = createHcSession("machine-held-dial");
+    root = mkdtempSync(join(tmpdir(), "dw-machine-"));
+    const spec = { ...DEMO_MACHINE, dir: join(root, "files") };
+    machine = join(root, "machine");
+    stop = await addMachine(dialer.hc, { ...dialer.env }, machine, false, spec);
+    const { env: own } = JSON.parse(readFileSync(join(spec.dir, "env.json"), "utf8")) as {
+      readonly env: Readonly<Record<string, string>>;
+    };
+    const held = viaCommand(own, spec).replace("; exec env ", "; echo ready; read -r release || exit 1; exec env ");
+    line = Bun.spawn(["sh", "-c", `${held} 'exec "${dialer.hc}" connect'`], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "inherit",
+    });
+    output = line.stdout.getReader();
+    expect(new TextDecoder().decode((await output.read()).value)).toBe("ready\n");
+  });
+
+  afterEach(async () => {
+    line?.kill();
+    await line?.exited;
+    await output?.cancel();
+    line = undefined;
+    output = undefined;
+  });
+
+  test("released after the machine's stop, it cannot restart the stopped core", async () => {
+    if (line === undefined || dialer === undefined || stop === undefined) {
+      throw new Error("the held dial was not set up");
+    }
+    await dialer.dispose();
+    await stop();
+    line.stdin.write('\n{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
+    await line.stdin.end();
+    const code = await line.exited;
+    expect(await stopLeftUnder(machine)).toEqual([]);
+    expect(code).not.toBe(0);
+  });
+});
+
 test("a slow dial that passed the check before the machine stopped is refused once it wakes (#2158)", async () => {
   dialer = createHcSession("machine-slow-dial");
   root = mkdtempSync(join(tmpdir(), "dw-machine-"));

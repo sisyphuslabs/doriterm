@@ -2,10 +2,9 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
 
-// #1435 item 1: the desktop shell's Direct label in the status bar. A browser always says Relay (#1381 §8); only a page
-// with the shell's byte forwarder (`window.doriface`) races a saved Direct address, and its bar says which path won and
-// why. The forwarder here is a stub that hands the page the fake host's own direct listener, as the shell hands over its
-// forward of the address it holds.
+// #1435 item 1: the desktop shell's connection path label in the status bar. A browser always says Relay (#1381 §8). The
+// direct path is off (#2070), so the shell says Relay too, even with a saved Direct address and a forwarder that could
+// carry it. The forwarder here is a stub that would hand the page the fake host's own direct listener, were it asked.
 test.use({ serviceWorkers: "block" });
 
 const SETTINGS_KEY = "doriface.connection";
@@ -62,34 +61,29 @@ test.describe("the desktop shell's connection path label (#1435)", () => {
   });
   test.afterAll(async () => host.stop());
 
-  test("a session the forwarder carries says Direct, with why in its title", async ({ page }) => {
+  test("with the direct path off, a shell whose forwarder could carry the saved address says Relay and is never handed it (#2070)", async ({
+    page,
+  }) => {
     test.setTimeout(90_000);
     await pairWithDirectAddress(page, host);
+    // A forwarder that would carry the session to the host's own direct listener, were it asked to.
     await withForwarder(page, { url: host.directUrl });
     const sockets: string[] = [];
     page.on("websocket", (socket) => sockets.push(socket.url()));
     await page.goto("/");
     const path = page.locator("[data-connection-path]");
-    await expect(path).toHaveAttribute("data-connection-path", "direct", { timeout: 30_000 });
-    await expect(path).toHaveText("Direct");
-    await expect(path).toHaveAttribute("title", /^Direct: /);
-    await expect(page.getByRole("contentinfo")).toContainText("Direct");
-    // The forwarder was asked for the saved address, the session rode its forward, and no relay client socket opened.
-    expect(await directTargets(page)).toEqual([DIRECT_ADDRESS]);
-    expect(sockets).toContain(host.directUrl);
-    expect(sockets.filter((url) => url.includes("/v1/client/"))).toEqual([]);
-  });
-
-  test("a forward the shell refuses falls back to the relay, and the title says why", async ({ page }) => {
-    test.setTimeout(90_000);
-    await pairWithDirectAddress(page, host);
-    await withForwarder(page, { refused: "the shell forwards no address here" });
-    await page.goto("/");
-    const path = page.locator("[data-connection-path]");
     await expect(path).toHaveAttribute("data-connection-path", "relay", { timeout: 30_000 });
     await expect(path).toHaveText("Relay");
-    // A reason, not the browser's every-session-is-relay title nor the shell's plain one: the refusal reads as blocked.
-    await expect(path).toHaveAttribute("title", /^Relay: this page can't open ws:\/\//);
-    expect(await directTargets(page)).toEqual([DIRECT_ADDRESS]);
+    await expect(path).toHaveAttribute("title", "Relay: every session goes through the relay.");
+    // The saved address never left the page: the forwarder was handed no address, and no socket went to the
+    // direct listener. That the relay carried it the label already says: it shows only for a session open over the relay.
+    // (The relay's /v1/client/ sockets are served by page.routeWebSocket, which emits no page "websocket" event, so they
+    // cannot be counted here.)
+    const targets = await directTargets(page);
+    // Never handed an address: nothing dials it (connect.ts gates openForwardedLink, the only setTarget with one), so the
+    // stub records no target, or only main.tsx's "" where the full desktop bridge is present.
+    expect(Array.isArray(targets)).toBe(true);
+    expect((Array.isArray(targets) ? targets : []).filter((target) => target !== "")).toEqual([]);
+    expect(sockets).not.toContain(host.directUrl);
   });
 });

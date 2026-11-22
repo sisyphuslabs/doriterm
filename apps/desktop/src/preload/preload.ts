@@ -20,6 +20,7 @@ import {
   type DorifaceBridge,
 } from "../shared/bridge.ts";
 import { isUpdateChannel, isUpdateStatus } from "../shared/update.ts";
+import { isPasteInviteAnswer } from "../shared/paste-invite.ts";
 
 const version = process.argv.find((arg) => arg.startsWith(VERSION_ARG))?.slice(VERSION_ARG.length) ?? "0.0.0";
 
@@ -208,6 +209,10 @@ const bridge: DorifaceBridge = {
   async cancelDirectForward(url) {
     const cancelled: unknown = await ipcRenderer.invoke(Channel.cancelDirectForward, url);
     return cancelled === true;
+  },
+  async pasteInvite() {
+    const answer: unknown = await ipcRenderer.invoke(Channel.pasteInvite);
+    return isPasteInviteAnswer(answer) ? answer : { refused: "not-invite" };
   },
 };
 

@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -81,13 +82,19 @@ export function scrollTerminal(wt: WTerm, target: ScrollTarget): boolean {
 
 /**
  * The terminal's scroll state, read again on every scroll, resize and output. `changed` is called after each write, so
- * the bar follows output and the jump button learns of output that arrived while the view was scrolled up.
+ * the bar follows output and the jump button learns of output that arrived while the view was scrolled up. It is read
+ * with {@link useScrollState} by what draws it (the bar, the jump button, the find bar), so each read draws those again
+ * and nothing else: the terminal's view holds this handle and is not drawn again for output (#2607).
  */
 export interface TerminalScroll {
   readonly changed: () => void;
-  readonly view: ScrollView | null;
-  /** Output arrived while the view was away from the bottom, and the view has not been back there since. */
-  readonly unread: boolean;
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly snapshot: () => ScrollState;
+}
+
+/** The scroll state as last read; the component that calls this is drawn again at each read. */
+export function useScrollState(scroll: TerminalScroll): ScrollState {
+  return useSyncExternalStore(scroll.subscribe, scroll.snapshot);
 }
 
 export function useTerminalScroll(wt: WTerm | null): TerminalScroll {
@@ -105,15 +112,15 @@ export function useTerminalScroll(wt: WTerm | null): TerminalScroll {
       resize.disconnect();
     };
   }, [wt, read]);
-  const state = useSyncExternalStore(subscribe, snapshot);
   const changed = useCallback(() => {
     if (wt !== null) wrote(wt);
   }, [wt, wrote]);
-  return { changed, view: state.view, unread: state.unread };
+  return useMemo(() => ({ changed, subscribe, snapshot }), [changed, subscribe, snapshot]);
 }
 
-interface ScrollState {
+export interface ScrollState {
   readonly view: ScrollView | null;
+  /** Output arrived while the view was away from the bottom, and the view has not been back there since. */
   readonly unread: boolean;
 }
 
@@ -143,7 +150,11 @@ function createStore() {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
-        if (listeners.size === 0 && frame !== 0) cancelAnimationFrame(frame);
+        if (listeners.size > 0 || frame === 0) return;
+        // Nobody is left to draw the read that was booked. The readers come and go with the terminal (a retry mounts
+        // a new one under the same view), so the next read books its own frame.
+        cancelAnimationFrame(frame);
+        frame = 0;
       };
     },
     snapshot: () => state,
@@ -170,7 +181,7 @@ interface OverlayProps {
  * alternate screen, under five columns and when nothing scrolls. The lane is wider than the thumb, for the pointer.
  */
 export function TerminalScrollbar({ wt, scroll }: OverlayProps) {
-  const view = scroll.view;
+  const { view } = useScrollState(scroll);
   const drag = useRef<{ readonly pointer: number; readonly grab: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   if (view === null || view.alt || view.cols < MIN_COLS) return null;
@@ -240,16 +251,16 @@ export function TerminalScrollbar({ wt, scroll }: OverlayProps) {
  * whenever a write finds the view at the bottom). On the phone the pane already ends above the key bar.
  */
 export function JumpToBottom({ wt, scroll, clearance }: OverlayProps & { readonly clearance?: string }) {
-  const view = scroll.view;
+  const { view, unread } = useScrollState(scroll);
   if (view === null || view.alt || !awayFromBottom(view.box)) return null;
-  const label = scroll.unread ? "Jump to bottom, new output below" : "Jump to bottom";
+  const label = unread ? "Jump to bottom, new output below" : "Jump to bottom";
   return (
     <button
       type="button"
       aria-label={label}
       title="Jump to bottom"
       data-jump-to-bottom
-      data-unread={scroll.unread ? "" : undefined}
+      data-unread={unread ? "" : undefined}
       className={cn(
         "absolute grid size-8 place-items-center rounded-full pointer-coarse:size-11 border border-border bg-popover text-popover-foreground shadow-overlay",
         "outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring",
@@ -269,7 +280,7 @@ export function JumpToBottom({ wt, scroll, clearance }: OverlayProps & { readonl
       }}
     >
       <ArrowDown aria-hidden className="size-4" />
-      {scroll.unread ? (
+      {unread ? (
         <span data-unread-dot aria-hidden className="absolute top-0.5 right-0.5 size-2 rounded-full bg-primary" />
       ) : null}
     </button>
