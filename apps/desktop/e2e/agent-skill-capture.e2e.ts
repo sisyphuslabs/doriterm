@@ -40,7 +40,7 @@ test.beforeAll(async () => {
     added.stdout?.on("data", (chunk: Buffer) => (chunk.toString().includes("READY") ? resolve() : undefined));
     added.once("exit", (code) => reject(new Error(`the added machine's setup exited (${code})`)));
   });
-  launched = await electron.launch({ ...launchOptions([`--user-data-dir=${join(root, "profile")}`]), env });
+  launched = await electron.launch(await launchOptions([`--user-data-dir=${join(root, "profile")}`], { env }));
 });
 
 test.afterAll(async () => {
