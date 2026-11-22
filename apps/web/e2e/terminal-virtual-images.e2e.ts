@@ -18,8 +18,10 @@ test("an agent's virtual Kitty image follows its placeholder cells, not the tran
   await expect(terminal).not.toContainText("\u{10eeee}");
 
   // A horizontally sliced row needn't start at image column zero. Only the
-  // right (blue) half of a two-pixel image survives in these two cells.
-  const split = graphics("a=T,U=1,q=2,i=24,f=24,s=2,v=1,c=4,r=1", "/wAAAAD/");
+  // right (blue) half survives in these two cells. Each color is wide
+  // enough that the sampled pixel is outside the interpolation boundary.
+  const pixels = Buffer.from(Array.from({ length: 40 * 20 }, (_, i) => (i % 40 < 20 ? RED : BLUE)).flat());
+  const split = graphics("a=T,U=1,q=2,i=24,f=24,s=40,v=20,c=4,r=1", pixels.toString("base64"));
   const right = `\x1b[38;2;0;0;24m${cell}\u030e${cell}\u0310\x1b[0m`;
   await show(page, terminal, "slice", split + right);
   await expectImageBelow(terminal, "slice", BLUE);
