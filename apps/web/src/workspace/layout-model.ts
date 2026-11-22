@@ -241,6 +241,13 @@ export function pick(tabs: readonly LayoutTab[], view: View): Picked {
   return { active, focused, zoomed: active.panes.some((pane) => pane.id === zoomed) ? (zoomed ?? null) : null };
 }
 
+/**
+ * What `view.active` holds while `tab` is in view. A tab of no document that inherited the view of a refused write
+ * (keepMounts) is held by that mount: the document tab that saves it inherits the same mount, not its key, so `pick`
+ * finds it before and after that save.
+ */
+export const selectionOf = (tab: LayoutTab): string => (tab.transient ? (tab.mount ?? tab.key) : tab.key);
+
 /** The pane `pick` focuses once the tab `key` is the one in view; null when no tab is `key`. */
 export function landingPane(tabs: readonly LayoutTab[], focused: View["focused"], key: string): string | null {
   const tab = tabs.find((each) => each.key === key) ?? tabs.find((each) => each.mount === key);
@@ -268,7 +275,7 @@ export function keepTransient(
  * The tab shown once this screen closes `closed`, the tab in view, as herdr-app's `remove_tab` picks it: the tab that
  * slides into its place in its space, else that space's last. A space left with no tab goes (`remove_space`): the space
  * that slides into its place, else the last one, is shown on the tab it showed last (`remembered`), else its first.
- * Null when no other tab is open.
+ * Returned as `view.active` holds it (selectionOf); null when no other tab is open.
  */
 export function afterClosing(
   tabs: readonly LayoutTab[],
@@ -282,13 +289,14 @@ export function afterClosing(
   const slot = same.findIndex((tab) => tab.key === closed);
   const kept = same.filter((tab) => tab.key !== closed);
   const inSpace = kept[slot] ?? kept.at(-1);
-  if (inSpace !== undefined) return inSpace.key;
+  if (inSpace !== undefined) return selectionOf(inSpace);
   const order = [...new Set(tabs.map((tab) => tab.spaceKey))];
   const left = order.filter((key) => key !== space);
   const next = order.slice(order.indexOf(space ?? "") + 1).find((key) => key !== space) ?? left.at(-1);
   if (next === undefined) return null;
   const shown = others.filter((tab) => tab.spaceKey === next);
-  return (shown.find((tab) => tab.key === remembered[next]) ?? shown[0])?.key ?? null;
+  const landed = shown.find((tab) => tab.key === remembered[next]) ?? shown[0];
+  return landed === undefined ? null : selectionOf(landed);
 }
 
 export function findTerminal(tabs: readonly LayoutTab[], address: string): { tab: LayoutTab; pane: LayoutPane } | null {
