@@ -2,7 +2,11 @@
 // and the first-run steps then complete in order on their own events: the pairing, a terminal shown on this device,
 // and that terminal in the agents list. The guide can be skipped, and Settings opens it again.
 import { devices, type Page } from "@playwright/test";
+import { GUIDE_KEY } from "../src/pair/first-run-guide.ts";
+import { endAgent, startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { routeHcSocket } from "./hc-socket.ts";
+import { LAYOUT_DOC } from "./layout-doc.ts";
 import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -104,6 +108,42 @@ test("the list step waits for the terminal this device opened, not the host's ow
     await expect(status).toContainText(await guide(page).getByRole("heading").innerText());
   } finally {
     await host.stop();
+  }
+});
+
+// A core with no layout yet shows its first live terminal alone until the page saves it into the layout. That save can
+// take a while on a loaded host or over the relay; New tab and the guide's Start a terminal stay offered meanwhile, since
+// the layout takes edits, and are never offered and then dropped (#2721).
+test("Start a terminal starts one while the host's own shell is still being saved into the layout (#2721)", async ({
+  page,
+}) => {
+  const existing = startShell("host", "existing");
+  let started: string | null = null;
+  try {
+    await page.addInitScript(
+      (key) => localStorage.setItem(key, JSON.stringify({ status: "active", opened: false, key: null })),
+      GUIDE_KEY,
+    );
+    const saving = Promise.withResolvers<void>();
+    const socket = await routeHcSocket(page, {
+      sent: (frame) => {
+        if (frame.includes('"method":"doc.set"') && frame.includes(`"name":"${LAYOUT_DOC}"`)) saving.resolve();
+      },
+    });
+    const save = socket.hold("doc.set");
+    await page.goto("/");
+    await expect(guide(page)).toBeVisible({ timeout: 30_000 });
+    // The page shows the shell alone and asks to save it: the save is held, so the shell stays shown alone.
+    await saving.promise;
+    await expect(page.getByRole("button", { name: "New tab" })).toBeEnabled();
+    await guide(page).getByRole("button", { name: "Start a terminal" }).click();
+    save();
+    const terminal = page.locator("[data-terminal]");
+    await expect(terminal).toContainText("$", { timeout: 30_000 });
+    started = await terminal.getAttribute("data-terminal");
+  } finally {
+    if (started !== null) endAgent("host", started);
+    endAgent("host", existing);
   }
 });
 

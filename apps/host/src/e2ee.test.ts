@@ -14,20 +14,21 @@ import {
   secureLink,
   SessionKind,
 } from "@doriface/crypto";
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateToken } from "./auth.ts";
 import { type Host, startHost } from "./host.ts";
-import { openE2eeClient, type E2eeClient } from "./testing/e2ee-client.ts";
+import { DeviceStore } from "./state/devices.ts";
+import { openE2eeClient, SocketClosedError, type E2eeClient } from "./testing/e2ee-client.ts";
 import { createHcSession, HELLO, type HcSession, rpcFrame } from "./testing/hc-session.ts";
 
 const CLI = join(import.meta.dir, "cli.ts");
 /** These tests spawn the CLI; a cold transpiler cache alone can take most of bun's 5 s default. */
 setDefaultTimeout(30_000);
 const device = generateX25519();
-const stateDir = mkdtempSync(join(tmpdir(), "dh-e2ee-"));
+let stateDir: string;
 let session: HcSession;
 let host: Host;
 const logWaiters = new Set<(line: string) => void>();
@@ -45,11 +46,7 @@ function nextLog(pattern: RegExp): Promise<string> {
   return promise;
 }
 /** A relay stand-in: the first slot collides (409), later ones register. */
-const slots: { readonly asked: string[]; readonly keys: Uint8Array[]; readonly released: string[] } = {
-  asked: [],
-  keys: [],
-  released: [],
-};
+let slots: { readonly asked: string[]; readonly keys: Uint8Array[]; readonly released: string[] };
 const releaseWaiters = new Map<string, () => void>();
 /** Resolves when the host releases `slot`; subscribe before the action that should release it. */
 function released(slot: string): Promise<void> {
@@ -106,9 +103,9 @@ async function pair(): Promise<Offer> {
   return { ...parsePairingUrl(url), code: normalizePairingCode(typed) };
 }
 
-const viaLink = (name: string, offer: Offer = pairing): PairingSecret => ({
+const viaLink = (name: string): PairingSecret => ({
   mode: "link",
-  linkSecret: offer.linkSecret,
+  linkSecret: pairing.linkSecret,
   name,
 });
 
@@ -120,11 +117,29 @@ const dial = (staticKey: KeyPair, pairingWith?: PairingSecret) =>
     pairing: pairingWith,
   });
 
+function pairDevice(): void {
+  new DeviceStore(stateDir).add(device.publicKey, "test phone");
+}
+
+/** An admitted hc session starts the host writers that make speculative answers possible. */
+async function warmHost(): Promise<void> {
+  const client = await dial(device);
+  try {
+    client.link.send(HELLO);
+    await client.reader.line();
+  } finally {
+    client.link.close();
+    await client.closed;
+  }
+}
+
 /**
  * A session whose client never confirms the keys, as a replayed message 1 would be: every send after message 1 is
- * dropped. `early` rides in message 1. Resolves with what the host sent back after message 2, and the close code.
+ * dropped. Returns when message 2 arrives, with any subsequent answers collected until the socket closes.
  */
-async function unconfirmed(early: Uint8Array): Promise<{ readonly answer: Uint8Array[]; readonly code: number }> {
+async function unconfirmed(
+  early: Uint8Array,
+): Promise<{ readonly answer: Uint8Array[]; readonly closed: Promise<number> }> {
   const socket = new WebSocket(endpoint().url);
   socket.binaryType = "arraybuffer";
   const closed = new Promise<number>((resolve) => socket.addEventListener("close", (event) => resolve(event.code)));
@@ -143,7 +158,11 @@ async function unconfirmed(early: Uint8Array): Promise<{ readonly answer: Uint8A
       socket.addEventListener("message", handle);
       return () => socket.removeEventListener("message", handle);
     },
-    onClose: () => () => undefined,
+    onClose(listener) {
+      const handle = (event: CloseEvent): void => listener(new SocketClosedError(event.code, event.reason));
+      socket.addEventListener("close", handle);
+      return () => socket.removeEventListener("close", handle);
+    },
     close: (code, reason) => socket.close(code, reason),
   };
   const secure = await secureLink(link, {
@@ -154,7 +173,7 @@ async function unconfirmed(early: Uint8Array): Promise<{ readonly answer: Uint8A
     early,
   });
   secure.onData((bytes) => answer.push(bytes));
-  return { answer, code: await closed };
+  return { answer, closed };
 }
 
 /** A plain-mode JSON-RPC line that is not a hello. */
@@ -170,7 +189,9 @@ async function refusal(attempt: Promise<E2eeClient>): Promise<number | undefined
   return error.code;
 }
 
-beforeAll(async () => {
+beforeEach(async () => {
+  stateDir = mkdtempSync(join(tmpdir(), "dh-e2ee-"));
+  slots = { asked: [], keys: [], released: [] };
   session = createHcSession("doriface-e2ee-test");
   host = await startHost({
     listen: { hostname: "127.0.0.1", port: 0 },
@@ -188,9 +209,11 @@ beforeAll(async () => {
   pairing = await pair();
 });
 
-afterAll(async () => {
+afterEach(async () => {
   await host.stop();
   await session.dispose();
+  logWaiters.clear();
+  releaseWaiters.clear();
   rmSync(stateDir, { recursive: true, force: true });
 });
 
@@ -241,6 +264,7 @@ describe("/v1/e2ee against a real hc", () => {
   });
 
   test("an IK reconnect carries hello and terminal.list byte-identical to a direct hc connect", async () => {
+    pairDevice();
     const client = await dial(device);
     expect(client.link.kind).toBe(SessionKind.Session);
     client.link.send(HELLO);
@@ -266,8 +290,7 @@ describe("/v1/e2ee against a real hc", () => {
   });
 
   test("wrong link secrets leave the offer usable; the right one pairs and releases the relay slot", async () => {
-    const offer = await pair();
-    const used = released(pairingSlotOf(offer.code));
+    const used = released(pairingSlotOf(pairing.code));
     const stored = nextLog(/^paired device "second phone"$/);
     const guesses = [1, 2, 3, 4].map((attempt) =>
       refusal(
@@ -279,7 +302,7 @@ describe("/v1/e2ee against a real hc", () => {
       ),
     );
     expect(await Promise.all(guesses)).toEqual([4, 4, 4, 4].map(() => CloseCode.CryptoFailure));
-    const right = await dial(generateX25519(), viaLink("second phone", offer));
+    const right = await dial(generateX25519(), viaLink("second phone"));
     expect(right.link.kind).toBe(SessionKind.PairLink);
     right.link.close();
     await Promise.all([used, stored]);
@@ -291,6 +314,7 @@ describe("/v1/e2ee against a real hc", () => {
   });
 
   test("the LAN listener serves /v1/e2ee but never the plaintext /v1/hc", async () => {
+    pairDevice();
     const lanUrl = lanEndpoint();
     const plaintext = await fetch(lanUrl.replace("ws://", "http://").replace("/v1/e2ee", "/v1/hc"));
     expect(plaintext.status).toBe(404);
@@ -305,21 +329,30 @@ describe("/v1/e2ee against a real hc", () => {
   });
 
   test("hc's hello in message 1 is answered with message 2, before the keys are confirmed (#1271)", async () => {
-    const { answer, code } = await unconfirmed(new TextEncoder().encode(HELLO_REQUEST_LINE));
+    pairDevice();
+    await warmHost();
+    const { answer, closed } = await unconfirmed(new TextEncoder().encode(HELLO_REQUEST_LINE));
+    const code = await closed;
     const reply = JSON.parse(new TextDecoder().decode(Buffer.concat(answer)).split("\n")[0] ?? "");
     expect(reply.result.framed).toBe(true);
     expect(code).toBe(CloseCode.IdleTimeout);
   });
 
   test("early bytes other than the hello line still wait for the confirmation, so an unconfirmed session gets nothing", async () => {
-    const { answer, code } = await unconfirmed(rpcFrameLine("terminal.list"));
+    pairDevice();
+    await warmHost();
+    const { answer, closed } = await unconfirmed(rpcFrameLine("terminal.list"));
+    const code = await closed;
     expect(answer).toEqual([]);
     expect(code).toBe(CloseCode.IdleTimeout);
   });
 
   test("with every speculative slot held by unconfirmed hellos, a fifth client is not kept waiting: its hello is answered once and its RPC carried", async () => {
+    pairDevice();
+    await warmHost();
     const hello = new TextEncoder().encode(HELLO_REQUEST_LINE);
-    const held = [0, 1, 2, 3].map(() => unconfirmed(hello));
+    // Message 2 means the responder has reached the speculative-hello path for each unconfirmed client.
+    const held = await Promise.all([0, 1, 2, 3].map(() => unconfirmed(hello)));
     const client = await openE2eeClient(endpoint().url, {
       hostId: pairing.hostId,
       staticKey: rawStaticKey(device),
@@ -330,12 +363,13 @@ describe("/v1/e2ee against a real hc", () => {
     client.link.send(rpcFrame(1, "terminal.list"));
     expect(new TextDecoder().decode(await client.reader.frame())).toContain('"id":1');
     client.link.close();
-    const unanswered = await Promise.all(held);
-    expect(unanswered.every(({ code }) => code === CloseCode.IdleTimeout)).toBe(true);
-    expect(unanswered.filter(({ answer }) => answer.length > 0).length).toBeLessThanOrEqual(4);
+    const codes = await Promise.all(held.map(({ closed }) => closed));
+    expect(codes.every((code) => code === CloseCode.IdleTimeout)).toBe(true);
+    expect(held.filter(({ answer }) => answer.length > 0).length).toBeLessThanOrEqual(4);
   });
 
   test("devices revoke closes the live session with 4401 and refuses the next one", async () => {
+    pairDevice();
     const live = await dial(device);
     live.link.send(HELLO);
     await live.reader.line();

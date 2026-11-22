@@ -27,6 +27,7 @@ const setup = (
   dictation?: DictationHost,
 ) => {
   let hcInstalls = 0;
+  let clipboardReads = 0;
   let chooses = 0;
   let installs = 0;
   const opened: string[] = [];
@@ -97,6 +98,11 @@ const setup = (
     forwardDirect: async (windowId) => ({ url: `ws://127.0.0.1:1/${windowId}` }),
     cancelDirectForward: () => true,
     dictation,
+    takeGesture: () => true,
+    readClipboard: async () => {
+      clipboardReads += 1;
+      return "";
+    },
   });
   return {
     handlers,
@@ -113,6 +119,7 @@ const setup = (
     chooses: () => chooses,
     installs: () => installs,
     hcInstalls: () => hcInstalls,
+    clipboardReads: () => clipboardReads,
   };
 };
 
@@ -126,7 +133,7 @@ afterEach(() => void takePairingLink());
 
 describe("IPC sender gate", () => {
   test("refuses foreign and detached frames before touching the shell or the host", async () => {
-    const { handlers, opened, notices, starts, installs, background } = setup(undefined, undefined, {
+    const { handlers, opened, notices, starts, installs, background, clipboardReads } = setup(undefined, undefined, {
       version: "0.2.0",
     });
     openPairingLink("#p=waiting");
@@ -151,6 +158,7 @@ describe("IPC sender gate", () => {
         expect(handlers.setDirectTarget(event, "127.0.0.1:7767")).rejects.toThrow("refused IPC"),
         expect(handlers.forwardDirect(event)).rejects.toThrow("refused IPC"),
         expect(handlers.cancelDirectForward(event, "ws://127.0.0.1:1/cap")).rejects.toThrow("refused IPC"),
+        expect(handlers.pasteInvite(event)).rejects.toThrow("refused IPC"),
       ]),
     );
     expect(notices).toEqual([]);
@@ -160,6 +168,7 @@ describe("IPC sender gate", () => {
     expect(installs()).toBe(0);
     expect(opened).toEqual([]);
     expect(starts()).toBe(0);
+    expect(clipboardReads()).toBe(0);
     expect(handlers.takePairingLink(app)).toBe("#p=waiting");
   });
 

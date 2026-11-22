@@ -88,7 +88,8 @@ test("a machine added to the core is listed on another device at once, before an
     XDG_STATE_HOME: join(root, "state"),
     XDG_RUNTIME_DIR: join(root, "run"),
     HC_SOCKET: join(root, "c.sock"),
-    PATH: `${dirname(hc)}:${env["PATH"] ?? "/usr/bin:/bin"}`,
+    // The dial runs the socket bridge with bun (#2525), so the machine's PATH is this process's.
+    PATH: `${dirname(hc)}:${process.env["PATH"] ?? "/usr/bin:/bin"}`,
   };
   const stopCore = (): void => {
     const call = '{"jsonrpc":"2.0","id":1,"method":"server.stop"}\n';
@@ -106,6 +107,8 @@ test("a machine added to the core is listed on another device at once, before an
     await capture(other, "machine-device-b-before");
 
     const spec = { name, dir: join(root, "switch-dir"), seeds: [] };
+    // The dial only attaches to a running core (#2525), so this machine's core is started before it is added.
+    execFileSync(hc, ["server", "start"], { env: { ...process.env, ...env, ...own }, stdio: "pipe" });
     hcOn("host", ["machine", "add", "--via", viaCommand(own, spec), "--name", name]);
 
     await expect(machineRow(other, name)).toBeVisible({ timeout: THROUGH_THE_FEED_MS });

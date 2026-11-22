@@ -118,7 +118,7 @@ export class HostUplink implements PairingSlotRegistrar {
         return log(`relay: connected to ${relayUrl}`);
       case "waiting":
         return log(
-          `relay: uplink closed (${closeOf(state.code, state.reason)}); reconnecting in ${Math.ceil(state.retryInMs / 1000)} s`,
+          `relay: uplink closed (${closeOf(state.code, state.reason)}); reconnecting in ${state.retryInMs < 1000 ? `${state.retryInMs} ms` : `${Math.ceil(state.retryInMs / 1000)} s`}`,
         );
       case "stopped":
         if (state.code !== 1000)

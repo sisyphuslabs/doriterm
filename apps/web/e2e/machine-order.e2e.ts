@@ -259,23 +259,21 @@ test.describe("machine order with a third machine (#161)", () => {
       XDG_STATE_HOME: join(root, "state"),
       XDG_RUNTIME_DIR: join(root, "run"),
       HC_SOCKET: join(root, "c.sock"),
-      PATH: `${dirname(hc)}:${env["PATH"] ?? "/usr/bin:/bin"}`,
+      PATH: `${dirname(hc)}:${process.env["PATH"] ?? "/usr/bin:/bin"}`,
     };
     const coreDir = join(own.XDG_STATE_HOME, "herdr-core", session);
     mkdirSync(coreDir, { recursive: true });
     writeFileSync(join(coreDir, "core.json"), JSON.stringify({ id: randomUUID().replace(/-/g, ""), name: "third" }));
     const spec = { name: THIRD, dir: join(root, "switch"), seeds: [] };
     mkdirSync(spec.dir, { recursive: true });
-    execFileSync(hc, ["machine", "add", "--via", viaCommand(own, spec), "--name", THIRD], {
-      env: { ...process.env, ...env },
-      stdio: "pipe",
-    });
     stop = () =>
       void execFileSync(hc, ["connect", "--session", session], {
         env: { ...process.env, ...env, ...own },
         input: '{"jsonrpc":"2.0","id":1,"method":"server.stop"}\n',
         stdio: ["pipe", "ignore", "ignore"],
       });
+    execFileSync(hc, ["server", "start"], { env: { ...process.env, ...env, ...own }, stdio: "pipe" });
+    hcOn("host", ["machine", "add", "--via", viaCommand(own, spec), "--name", THIRD]);
   });
   test.afterEach(() => {
     hcOn("host", ["machine", "rm", THIRD]);

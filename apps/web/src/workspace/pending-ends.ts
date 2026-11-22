@@ -1,5 +1,6 @@
 import type { Terminal } from "@doriface/protocol";
 import { guardedLocalStorage, type StorageLike } from "../storage/guarded.ts";
+import { addressOf, identityOf, type TerminalRoute } from "./terminal-identity.ts";
 
 /**
  * An End the user confirmed that this browser has not seen through yet. The address alone is not the terminal: an added
@@ -21,7 +22,10 @@ export const PENDING_END_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** The Ends of one core this browser asked and has not seen settle, kept in local storage across page loads. */
 export interface PendingEnds {
   add(end: PendingEnd): void;
-  remove(address: string): void;
+  /** Drops the record at `address`; given `end`, only one about that same terminal (its pid and creation time). */
+  remove(address: string, end?: Pick<PendingEnd, "pid" | "created">): void;
+  /** Whether an End is kept for this address, whatever its age. */
+  has(address: string): boolean;
   /** The ones still young enough to resume, oldest first. */
   list(now?: number): readonly PendingEnd[];
 }
@@ -56,10 +60,69 @@ export function pendingEnds(core: string, storage: StorageLike | undefined = gua
   };
   return {
     add: (end) => write([...read().filter((entry) => entry.address !== end.address), end]),
-    remove: (address) => write(read().filter((entry) => entry.address !== address)),
+    remove: (address, end) =>
+      write(
+        read().filter(
+          (entry) =>
+            entry.address !== address ||
+            (end !== undefined && (entry.pid !== end.pid || entry.created !== end.created)),
+        ),
+      ),
+    has: (address) => read().some((entry) => entry.address === address),
     list: (now = Date.now()) =>
       read()
         .filter((entry) => now - entry.at <= PENDING_END_MAX_AGE_MS)
+        .toSorted((a, b) => a.at - b.at),
+  };
+}
+
+/**
+ * The pending Ends of every core `route` reaches, by the address each terminal has on this route (#2288). An End is kept
+ * with the core that runs its terminal, by that core's own terminal id, so one asked through another machine resumes
+ * when the page reaches that core directly, and the other way round. A record from before this (an address with a
+ * machine prefix, kept with the core it was asked through) is still acted on there, as written.
+ */
+export function routedPendingEnds(
+  route: TerminalRoute,
+  storage: StorageLike | undefined = guardedLocalStorage(),
+): PendingEnds {
+  const own = (core: string): PendingEnds => pendingEnds(core, storage);
+  return {
+    // A record this route's address already had in the old place is taken over here, so one terminal never has two.
+    add: (end) => {
+      const identity = identityOf(end.address, route);
+      if (identity === undefined) return own(route.core).add(end);
+      if (end.address.includes("/")) own(route.core).remove(end.address);
+      own(identity.core).add({ ...end, address: identity.terminal });
+    },
+    // Given the End it settles, it drops that terminal's record wherever it is kept (an older tab may have written one
+    // the old way meanwhile) and nothing else: a renamed machine's record for its own terminal of that id stays.
+    remove: (address, end) => {
+      if (address.includes("/")) own(route.core).remove(address, end);
+      const identity = identityOf(address, route);
+      if (identity !== undefined) own(identity.core).remove(identity.terminal, end);
+    },
+    has: (address) => {
+      const identity = identityOf(address, route);
+      return (
+        (address.includes("/") && own(route.core).has(address)) ||
+        (identity !== undefined && own(identity.core).has(identity.terminal))
+      );
+    },
+    list: (now) =>
+      [route.core, ...route.machines.map((machine) => machine.id)]
+        .flatMap((core) =>
+          own(core)
+            .list(now)
+            .flatMap((end) => {
+              const address = end.address.includes("/")
+                ? core === route.core
+                  ? end.address
+                  : undefined
+                : addressOf({ core, terminal: end.address }, route);
+              return address === undefined ? [] : [{ ...end, address }];
+            }),
+        )
         .toSorted((a, b) => a.at - b.at),
   };
 }

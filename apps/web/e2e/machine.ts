@@ -2,7 +2,9 @@
 // the machine off (the dial fails) or make it ask for a login (the dial prints ssh's refusal) with the page open.
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { E2E_MACHINE_DIR } from "./config.ts";
+import { startMachineHost } from "./machine-host.ts";
 
 export const MACHINE_NAME = "build-box";
 /** Holds `off` or `login`, or `slow` for a dial that answers late; absent means the machine answers. */
@@ -13,6 +15,7 @@ export const MACHINE_ENV = join(E2E_MACHINE_DIR, "env.json");
 export const MACHINE_LINE_PID = join(E2E_MACHINE_DIR, "line.pid");
 /** One line per `slow` dial, written before it sleeps: its pid, so a spec can tell a dial is still on its way. */
 export const MACHINE_DIALING = join(E2E_MACHINE_DIR, "dialing");
+const MACHINE_CONNECT = fileURLToPath(new URL("./machine-connect.ts", import.meta.url));
 
 const agent = (state: string, msg: string, line: string): string[] => [
   "sh",
@@ -47,7 +50,7 @@ export const DEMO_MACHINE: MachineSpec = {
 };
 
 /**
- * The `--via` command: refuses as the switch says, else runs hc's line against the second core. `slow` holds a dial past
+ * The `--via` command: refuses as the switch says, else attaches to the second core. `slow` holds a dial past
  * the switch for a moment before its line starts, as a dial on a loaded runner is, and records its pid in `dialing` first.
  */
 export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineSpec): string {
@@ -55,8 +58,7 @@ export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineS
     .map(([key, value]) => `${key}="${value}"`)
     .join(" ");
   const refusals = [
-    // The machine's stop removes its dir first: a dial that comes after (a line its dialing core started before it
-    // stopped) is refused, since its hc connect would start the stopped core again with nothing left to stop it (#2142).
+    // The machine's stop removes its dir first so new dials are refused before they try the socket.
     `[ -d "${spec.dir}" ] || { echo "${spec.name} is stopped" >&2; exit 1; }`,
     `m=$(cat "${join(spec.dir, "switch")}" 2>/dev/null)`,
     `[ "$m" = off ] && { echo "${spec.name} is switched off" >&2; exit 1; }`,
@@ -64,7 +66,8 @@ export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineS
     // A held dial checks again once it wakes: the machine may have stopped while it slept (#2158).
     `[ "$m" = slow ] && { echo $$ >> "${join(spec.dir, "dialing")}"; sleep 10; [ -d "${spec.dir}" ] || { echo "${spec.name} is stopped" >&2; exit 1; }; }`,
   ];
-  return `sh -c '${refusals.join("; ")}; echo $$ >> "${MACHINE_LINE_PID}"; exec env ${env} sh -c "$1"' sh`;
+  // Ignore the appended hc connect command: an admitted dial can be paused here until after stop (#2525).
+  return `sh -c '${refusals.join("; ")}; echo $$ >> "${MACHINE_LINE_PID}"; exec env ${env} bun "${MACHINE_CONNECT}"' sh`;
 }
 
 /** Starts each seed with `hc run --bg` in `cwd`. */
@@ -109,13 +112,90 @@ async function seedsListed(hc: string, env: Record<string, string | undefined>, 
   }
 }
 
-/** Starts the second core (with its demo terminals when `withSeeds`) and adds it; resolves with its stop. */
+/** How long a core told to stop may take to exit; past it the stop throws, naming the process. */
+const CORE_EXIT_BOUND_MS = 20_000;
+
+/** How long a core sent SIGKILL may take to leave the process table. */
+const KILLED_EXIT_BOUND_MS = 2_000;
+
+/** Whether a process with that pid is running (one owned by another user counts: it is there). */
+export function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return Reflect.get(Object(error), "code") === "EPERM";
+  }
+}
+
+/**
+ * The `pid` of the reply with `id` in hc connect's output (one JSON-RPC reply per line); undefined when it has none.
+ * A line that is not JSON (hc's own words on a failed connect) is no reply and is passed over.
+ */
+export function replyPid(output: string, id: number): number | undefined {
+  for (const line of output.split("\n")) {
+    if (line.trim() === "") continue;
+    let reply: unknown;
+    try {
+      reply = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (Reflect.get(Object(reply), "id") !== id) continue;
+    const pid: unknown = Reflect.get(Object(Reflect.get(Object(reply), "result")), "pid");
+    return typeof pid === "number" ? pid : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Resolves once `pid` has exited. hc answers server.stop before its core has exited, and a core that is not this
+ * process's child gives no exit event, so the process table is asked until it is gone or the bound runs out (#2525).
+ */
+async function exitOf(pid: number, withinMs: number): Promise<void> {
+  if (await gone(pid, withinMs)) return;
+  // Killed before the throw, so a teardown that stops at the error leaves no core behind it (#2527 review). A core
+  // that exited between the last look and the kill needs none; any other refusal is named with the timeout.
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (error) {
+    if (Reflect.get(Object(error), "code") !== "ESRCH") {
+      throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms and could not be killed`, {
+        cause: error,
+      });
+    }
+  }
+  // The stop settles only once the core is gone, on this path too (#2525): the kill is waited out, briefly.
+  if (!(await gone(pid, KILLED_EXIT_BOUND_MS))) {
+    throw new Error(
+      `the machine's core (pid ${pid}) did not exit within ${withinMs} ms, nor ${KILLED_EXIT_BOUND_MS} ms after SIGKILL`,
+    );
+  }
+  throw new Error(`the machine's core (pid ${pid}) did not exit within ${withinMs} ms, so it was killed`);
+}
+
+/** Whether `pid` leaves the process table within `withinMs`, asking it once per round. */
+async function gone(pid: number, withinMs: number): Promise<boolean> {
+  const deadline = Date.now() + withinMs;
+  while (running(pid)) {
+    if (Date.now() > deadline) return false;
+    // oxlint-disable-next-line no-await-in-loop -- one look at the process table per round, until the core is gone
+    await Bun.sleep(25);
+  }
+  return true;
+}
+
+/**
+ * Starts the second core (with its demo terminals when `withSeeds`, and a doriface-host beside it when `withHost`) and
+ * adds it; resolves with its stop.
+ */
 export async function addMachine(
   hc: string,
   env: Record<string, string | undefined>,
   root: string,
   withSeeds: boolean,
   spec: MachineSpec = DEMO_MACHINE,
+  withHost = false,
 ): Promise<() => Promise<void>> {
   const session = `web-e2e-b-${crypto.randomUUID().slice(0, 8)}`;
   const own = {
@@ -134,19 +214,36 @@ export async function addMachine(
   rmSync(spec.dir, { recursive: true, force: true });
   mkdirSync(spec.dir, { recursive: true });
   const there = { ...env, ...own };
+  let stopHost: (() => Promise<void>) | undefined;
   const stop = async (): Promise<void> => {
+    await stopHost?.();
     rmSync(spec.dir, { recursive: true, force: true });
     const control = Bun.spawn([hc, "connect", "--session", session], { env: there, stdin: "pipe", stdout: "pipe" });
-    // Drained, as above: the core's reply is read and dropped so a stopped core can never wait on a full pipe.
-    void new Response(control.stdout).text();
-    control.stdin.write('{"jsonrpc":"2.0","id":1,"method":"server.stop"}\n');
+    // Read while it runs, so a stopping core can never wait on a full pipe; the status reply names the core's pid.
+    const replies = new Response(control.stdout).text();
+    control.stdin.write(
+      '{"jsonrpc":"2.0","id":1,"method":"server.status"}\n{"jsonrpc":"2.0","id":2,"method":"server.stop"}\n',
+    );
     await control.stdin.flush();
     void control.stdin.end();
     await control.exited;
+    // The stop resolves once the core has exited, not once it has answered: a check right after it, or a dial that
+    // follows, then never meets a core still on its way out (#2525).
+    const output = await replies;
+    const pid = replyPid(output, 1);
+    // hc connect starts a core that is not running, so a status reply without a pid is a failed call, not a missing core.
+    if (pid === undefined)
+      throw new Error(`the machine's core did not name its pid, so its exit cannot be awaited: ${output}`);
+    await exitOf(pid, CORE_EXIT_BOUND_MS);
   };
   try {
     writeFileSync(join(spec.dir, "env.json"), JSON.stringify({ hc, env: own }));
-    if (withSeeds) await runSeeds(hc, there, join(root, "infra"), spec.seeds);
+    if (withSeeds && spec.seeds.length > 0) {
+      await runSeeds(hc, there, join(root, "infra"), spec.seeds);
+    } else {
+      const start = Bun.spawn([hc, "server", "start"], { env: there, stdout: "ignore", stderr: "inherit" });
+      if ((await start.exited) !== 0) throw new Error(`hc server start for ${spec.name} failed`);
+    }
     const add = Bun.spawn([hc, "machine", "add", "--via", viaCommand(own, spec), "--name", spec.name], {
       env,
       stdout: "ignore",
@@ -159,8 +256,20 @@ export async function addMachine(
     const why = await said;
     if (code !== 0) throw new Error(`hc machine add for the second core failed (exit ${code}): ${why}`);
     if (withSeeds) await seedsListed(hc, env, spec);
+    if (withHost) stopHost = await startMachineHost(hc, there, session, root);
   } catch (error) {
-    await stop();
+    try {
+      await stop();
+    } catch (stopError) {
+      // The setup's error stays first in the list: it is what went wrong; the stop's failure is kept beside it (#2527 review).
+      throw new AggregateError(
+        [error, stopError],
+        `the second core's setup failed, and so did its stop: ${String(error)}`,
+        {
+          cause: stopError,
+        },
+      );
+    }
     throw error;
   }
   return stop;

@@ -10,6 +10,10 @@ export function openControl(
   e2ee: ReturnType<typeof e2eeDeps>,
   meshStatus: (() => Promise<MeshStatus | undefined>) | undefined,
   push: HostPush | undefined,
+  /** Writes the host's facts again after `skill install` or `skill uninstall` changed the skill on this machine. */
+  skillChanged?: () => void,
+  /** Starts the host's writers on its core once it is in a mesh, whose reconciler brings the core up. */
+  meshJoined?: () => void,
 ) {
   return listenControl(stateDir, async (request, closed, confirm) => {
     switch (request.op) {
@@ -19,6 +23,7 @@ export function openControl(
         return e2ee.sessions.closeRevoked();
       case "mesh-changed":
         e2ee.sync.changed();
+        meshJoined?.();
         push?.prune();
         return e2ee.sessions.closeRevoked();
       case "pair":
@@ -29,16 +34,49 @@ export function openControl(
         return e2ee.hostMesh.pending.next(closed);
       case "mesh-approve":
         return { decided: e2ee.hostMesh.pending.decide(request.nonce, request.approve, request.code) };
-      case "mesh-join":
-        return e2ee.hostMesh.join(request, confirm);
+      case "mesh-join": {
+        const joined = await e2ee.hostMesh.join(request, confirm);
+        meshJoined?.();
+        return joined;
+      }
       case "mesh-status":
         return (await meshStatus?.()) ?? null;
       case "mesh-revoke":
         return e2ee.meshCommands.revoke(request);
       case "mesh-rename":
         return e2ee.meshCommands.rename(request);
+      case "skill-changed":
+        skillChanged?.();
+        return { refreshed: skillChanged !== undefined };
       case "mesh-leave":
         return request.preview === true ? e2ee.meshCommands.leavePreview() : e2ee.meshCommands.leave(request.expect);
     }
   });
+}
+
+/**
+ * The control socket of a host that keeps state, or none for a host without one. Its mesh status is read after the
+ * mesh lines are refreshed, as the published one is (#754); a socket that cannot open stops the start.
+ */
+export function openHostControl(
+  stateDir: string | undefined,
+  e2ee: ReturnType<typeof e2eeDeps> | undefined,
+  meshStatus: (() => MeshStatus | undefined) | undefined,
+  refreshMeshLines: () => Promise<void>,
+  push: HostPush | undefined,
+  writers: { readonly skillChanged?: (() => void) | undefined; readonly startIfInMesh: () => void },
+): ReturnType<typeof openControl> | undefined {
+  if (stateDir === undefined || e2ee === undefined) return undefined;
+  const status =
+    meshStatus === undefined
+      ? undefined
+      : async () => {
+          await refreshMeshLines();
+          return meshStatus();
+        };
+  try {
+    return openControl(stateDir, e2ee, status, push, writers.skillChanged, writers.startIfInMesh);
+  } catch (error) {
+    throw new Error(`cannot open the control socket that devices revoke uses: ${String(error)}`, { cause: error });
+  }
 }

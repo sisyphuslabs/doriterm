@@ -143,10 +143,8 @@ describe("space rename (#395)", () => {
   );
 
   test("a layout that takes no edits lists Rename space as unavailable, with why (#404)", () => {
-    const listed = availableActions("desktop", true, "the machine is not connected").find(
-      ({ id }) => id === "space.rename",
-    );
-    expect(listed).toEqual({ id: "space.rename", unavailable: "the machine is not connected" });
+    const listed = availableActions("desktop", true, "the machine is offline").find(({ id }) => id === "space.rename");
+    expect(listed).toEqual({ id: "space.rename", unavailable: "the machine is offline" });
   });
 });
 
@@ -255,5 +253,18 @@ describe("space keys, as herdr-app binds them", () => {
     expect(spaceHandler([], null, calls)("space.next")).toBe(false);
     expect(spaceHandler([], null, calls)("space.prev")).toBe(false);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("a layout that takes no edits", () => {
+  test("lists New tab, Rename tab and Rename space as unavailable, with why, so none is offered and then refused", () => {
+    const why = "The layout cannot take changes now: the machine is offline";
+    for (const shell of ["desktop", "phone"] as const) {
+      const blocked = availableActions(shell, true, why).filter(({ id }) =>
+        ["tab.new", "tab.rename", "space.rename"].includes(id),
+      );
+      expect(blocked.map(({ id }) => id)).toContain("tab.new");
+      expect(blocked.filter(({ unavailable }) => unavailable !== why)).toEqual([]);
+    }
   });
 });

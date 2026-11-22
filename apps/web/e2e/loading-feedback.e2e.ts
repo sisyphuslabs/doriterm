@@ -57,8 +57,9 @@ test("reduced motion keeps pending progress visible without rotation (#1443)", a
   const { button, finish } = await pendingPair(page);
   await page.clock.runFor(1100);
   await expect(button).toHaveAttribute("aria-busy", "true");
-  const spinner = button.locator("svg");
-  await expect(spinner).toBeVisible();
+  await expect(button.locator("svg")).toBeVisible();
+  // The box around the glyph is what turns or pulses (spinner.tsx).
+  const spinner = button.locator('[data-slot="spinner-turn"]');
   await expect(spinner).toHaveCSS("transform", "none");
   const opacity = await spinner.evaluate((el) => getComputedStyle(el).opacity);
   await expect.poll(() => spinner.evaluate((el) => getComputedStyle(el).opacity)).not.toBe(opacity);
