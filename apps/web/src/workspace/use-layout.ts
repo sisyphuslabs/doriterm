@@ -25,6 +25,7 @@ import {
   type LayoutTab,
   keepMounts,
   newMounts,
+  selectionOf,
 } from "./layout-model.ts";
 import { tabAddress, tabKey as terminalKey } from "./tab-keys.ts";
 import { usePaneMoves, type PaneMoves } from "./use-pane-moves.ts";
@@ -237,7 +238,7 @@ export function useLayout(
     // Picking a tab claims the pane it focuses, so that terminal takes the keyboard from the tab left behind (#1704).
     const landing = pane ?? landingPane(picked.current.tabs, picked.current.focused, key);
     const tab = select ? picked.current.tabs.find((each) => each.key === key) : undefined;
-    const selected = tab?.transient === true ? (tab.mount ?? key) : key;
+    const selected = tab === undefined ? key : selectionOf(tab);
     if (landing !== null && !placingQuietly) setClaimed(landing);
     if (pane !== null) {
       const visited = (history.current.get(key) ?? []).filter((id) => id !== pane);
