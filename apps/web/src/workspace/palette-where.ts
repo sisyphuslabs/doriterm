@@ -1,5 +1,5 @@
-import type { Terminal } from "@doriface/protocol";
-import { machineOf, spaceName } from "./model.ts";
+import { type Terminal, terminalSpaceName } from "@doriface/protocol";
+import { machineOf } from "./model.ts";
 
 /**
  * Where a palette agent lives, for the line under the list (#1465): its place, the machine (this one named as the host)
@@ -13,7 +13,7 @@ export function agentWhere(
 ): { readonly place: string; readonly directory: string } {
   const machine = machineOf(terminal.address) ?? host;
   return {
-    place: `${machine} \u203a ${listed ?? spaceName(terminal)}`,
+    place: `${machine} \u203a ${listed ?? terminalSpaceName(terminal)}`,
     directory: terminal.foreground?.cwd ?? terminal.cwd,
   };
 }

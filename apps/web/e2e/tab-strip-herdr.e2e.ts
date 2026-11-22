@@ -1,6 +1,6 @@
 // herdr-app's tab strip (herdrdev/herdr-app 4ed0efd3, defaults/mods/tabs/main.js), the #466 round-3 items 5, 7, 8 and 9.
 import type { Page } from "@playwright/test";
-import { agentRow, endAgent, startAgent } from "./agents.ts";
+import { agentRow, endAgent, startAgent, startShell } from "./agents.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 import { openFour, selectedIndex, strip, tabOf, tabs } from "./tab-strip.ts";
@@ -12,15 +12,14 @@ test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 const newTab = (page: Page) => page.getByRole("button", { name: "New tab", exact: true });
 
 test("5: + sits outside the scrolling tabs, so with 22 tabs it stays in view and the tabs scroll", async ({ page }) => {
-  test.setTimeout(240_000);
+  // Seed the space on the core, then wait for adoption to show it before adding the tab whose scroll we check.
+  const seeded = 21;
+  Array.from({ length: seeded }, (_, index) => startShell("host", `strip-shell-${index + 1}`));
   await page.goto("/");
+  await tabs(page)
+    .nth(seeded - 1)
+    .waitFor();
   await openNewTerminal(page);
-  const missing = 22 - (await tabs(page).count());
-  // One at a time: openNewTerminal waits for each new tab to take focus before the next.
-  await Array.from({ length: missing }).reduce<Promise<unknown>>(
-    (previous) => previous.then(() => openNewTerminal(page)),
-    Promise.resolve(),
-  );
   await expect(tabs(page)).toHaveCount(22);
 
   const plus = newTab(page);

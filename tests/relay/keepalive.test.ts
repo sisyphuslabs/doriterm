@@ -7,14 +7,13 @@ import {
   type SessionLink,
   type WebSocketLink,
 } from "@doriface/relay-client";
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { defer, runDeferred } from "./support/cleanup.ts";
 import { closedWith, received } from "./support/links.ts";
 import { Probe, socketFrom, testIp } from "./support/probe.ts";
 import { startRawHost } from "./support/raw-host.ts";
-import { type LocalRelay, startLocalRelay, RELAY_STOP_MS } from "./support/relay-dev.ts";
+import { useLocalRelay } from "./support/relay-fixture.ts";
 import { startTestHost, type TestHost } from "./support/test-host.ts";
-import { setUpOnce } from "./support/set-up-once.ts";
 
 // Short deadlines so the reaper runs within a test; production uses 10 s and 90 s.
 const PENDING_TIMEOUT_MS = 1_000;
@@ -23,17 +22,11 @@ const AUTH_TIMEOUT_MS = 1_000;
 const FAST_PING_MS = 300;
 const NO_PING_MS = 600_000;
 
-let relay: LocalRelay;
-
-setUpOnce(async () => {
-  relay = await startLocalRelay({
-    PENDING_TIMEOUT_MS: String(PENDING_TIMEOUT_MS),
-    IDLE_TIMEOUT_MS: String(IDLE_TIMEOUT_MS),
-    AUTH_TIMEOUT_MS: String(AUTH_TIMEOUT_MS),
-  });
-}, 120_000);
-
-afterAll(() => relay?.stop(), RELAY_STOP_MS);
+const relay = useLocalRelay({
+  PENDING_TIMEOUT_MS: String(PENDING_TIMEOUT_MS),
+  IDLE_TIMEOUT_MS: String(IDLE_TIMEOUT_MS),
+  AUTH_TIMEOUT_MS: String(AUTH_TIMEOUT_MS),
+});
 
 afterEach(runDeferred);
 

@@ -103,9 +103,9 @@ describe("moving a space", () => {
   });
 
   test("a layout that takes no edits writes nothing and says why", async () => {
-    const { here, layouts, id } = setup("the machine is not connected");
+    const { here, layouts, id } = setup("the machine is offline");
     await expect(moveSpace(layouts, id("api"), 2)).rejects.toThrow(
-      "The layout cannot take changes now: the machine is not connected",
+      "The layout cannot take changes now: the machine is offline",
     );
     expect(here.state.writes).toBe(0);
   });

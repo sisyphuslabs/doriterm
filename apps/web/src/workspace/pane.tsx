@@ -3,21 +3,25 @@ import { cn, ContextMenu, IconButton, skipMenuHandler, skipTouchMenu } from "@do
 import { Columns2, Maximize2, Minimize2, Rows2, X } from "lucide-react";
 import type { Axis } from "@doriface/protocol/layout";
 import { useActionKeys } from "../keys/use-action-keys.ts";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { memo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ApprovalOverlay } from "../approval/approval-overlay.tsx";
 import { RegionBoundary } from "../crash/region-boundary.tsx";
+import { useTerminal } from "../roster/use-terminal.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
 import { TerminalView } from "../terminal/terminal-view.tsx";
+import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { picksPane } from "./pane-focus.ts";
-import { SessionMenuItems } from "./session-menu.tsx";
+import { SessionMenuItems, useSessionMenuFocus } from "./session-menu.tsx";
 
 export interface PaneProps {
   readonly connection: HcConnection;
   readonly terminal: Session;
   readonly focused: boolean;
+  /** On screen: its tab is the selected one and no zoom hides it. A hidden tab's panes stay mounted. */
+  readonly shown: boolean;
   /** This screen asked for this pane: its terminal takes the keyboard as it starts (#332). */
   readonly claimed: boolean;
   /** True when the tab holds more than one pane: unfocused-split-opacity dims only those, and each gets a header. */
@@ -38,8 +42,10 @@ export interface PaneProps {
   readonly onGrab?: ((event: ReactPointerEvent<HTMLElement>) => void) | undefined;
 }
 
-/** herdr-app's pane header buttons, each with its shortcut in the tooltip. */
-function PaneButtons({
+/**
+ * herdr-app's pane header buttons, each with its shortcut in the tooltip; a title change leaves them as drawn (#2607).
+ */
+const PaneButtons = memo(function PaneButtons({
   zoomed,
   onSplit,
   onZoom,
@@ -83,7 +89,7 @@ function PaneButtons({
       />
     </span>
   );
-}
+});
 
 /**
  * A terminal card. A tab's only pane has no title bar: its tab names it, the status bar says where it runs, and the
@@ -95,6 +101,7 @@ export function Pane(props: PaneProps) {
     connection,
     terminal,
     focused,
+    shown,
     claimed,
     split,
     zoomed,
@@ -108,8 +115,15 @@ export function Pane(props: PaneProps) {
     onClose,
     onGrab,
   } = props;
-  const title = terminalTitle(terminal);
+  const sessionMenuFocus = useSessionMenuFocus();
+  // The title as it stands: the list this pane came from changes only with the terminals' shape (#2607). A pane in a
+  // hidden tab or behind a zoom draws nothing for a new title, and shows the title it has now when it is shown.
+  const title = terminalTitle(useTerminal(connection, terminal.address, shown) ?? terminal);
   const machine = machineOf(terminal.address);
+  // Watched for every pane on screen, so a drop is noticed within a line read, focused or not; a pane in a hidden tab or
+  // behind a zoom has the roster read nothing for it (#2505 review). Past the grace the pane body says the machine is
+  // offline, and the header no longer says it reconnects.
+  const away = useMachineLine(connection, terminal.address, shown && terminal.offline !== true);
   return (
     <section
       aria-label={`${title} terminal`}
@@ -123,12 +137,10 @@ export function Pane(props: PaneProps) {
     >
       {split ? (
         <ContextMenu
-          // A split pane's header names its session, so its right-click opens the session's menu (#699). An item that
-          // opened a dialog (Rename…) keeps the keyboard there, as a sidebar row's menu leaves it (#590).
-          finalFocus={() => {
-            const holder = document.activeElement;
-            return !(holder instanceof HTMLElement && holder.closest('[role="dialog"]') !== null);
-          }}
+          // A split pane's header names its session, so its right-click opens the session's menu (#699), and a dialog an
+          // item opened keeps the keyboard as the "..." menu leaves it (#590, #2362).
+          popupRef={sessionMenuFocus.popupRef}
+          finalFocus={sessionMenuFocus.finalFocus}
           trigger={
             <header
               onPointerDown={onGrab}
@@ -145,6 +157,12 @@ export function Pane(props: PaneProps) {
               <h2 title={title} className="min-w-0 truncate">
                 {title}
               </h2>
+              {/* Each pane says its own machine reconnects, in its header, never over its output (#2464 review). */}
+              {away === null || terminal.offline === true ? null : (
+                <span role="status" className="shrink-0 text-muted-foreground">
+                  Reconnecting…
+                </span>
+              )}
               <PaneButtons zoomed={zoomed} onSplit={onSplit} onZoom={onZoom} onClose={onClose} />
             </header>
           }

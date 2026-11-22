@@ -3,10 +3,10 @@
 import type { Browser, Page } from "@playwright/test";
 import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
-import { getCoreDoc } from "./core-doc.ts";
+import { coreDoc, getCoreDoc } from "./core-doc.ts";
 import { expect, terminalCount, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
-import { paneOf, seedSpaces } from "./layout-doc.ts";
+import { LAYOUT_DOC, paneOf, seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -157,7 +157,19 @@ async function refusalNotices(page: Page): Promise<() => Promise<number>> {
     });
 }
 
-test("a space closed while its layout write is refused says so once, not once per pane (#1337)", async ({ page }) => {
+/** The version of this core's layout document, as another client reads it. */
+function layoutVersion(): number {
+  const read: unknown = coreDoc(LAYOUT_DOC);
+  return typeof read === "object" && read !== null && "version" in read ? Number(read.version) : Number.NaN;
+}
+
+test("a space closed while its layout write is refused says so once, not once per pane (#1337)", async ({
+  page,
+  browser,
+}) => {
+  // A surviving device can legitimately remove ended panes before this page's refused close writes (#2504).
+  // ownPages (#2473) owns that isolation; fail here if a preceding test leaves another writer on this worker's core.
+  expect(browser.contexts()).toEqual([page.context()]);
   await page.setViewportSize({ width: 1440, height: 900 });
   const name = `cl1337-${test.info().repeatEachIndex}`;
   const [one = "", two = ""] = ["cl1337-one", "cl1337-two"].map((shellName) => startIn(name, shellName));
@@ -200,11 +212,17 @@ test("a space closed while its layout write is refused says so once, not once pe
   await item.click();
   const question = ask(page);
   await expect(question).toContainText(`${name} \u2014 1 tab, 2 terminals`);
+  // This isolated page's writes are all refused. Ending the programs must therefore leave the shared layout intact:
+  // another device's dead-pane edits (#2122) would change its version and invalidate this refusal scenario (#2504).
+  const version = layoutVersion();
+  // A reply without a version reads NaN, and NaN equals itself under toBe: the checks below would then check nothing.
+  expect(Number.isFinite(version), "the layout document reports its version").toBe(true);
   await question.getByRole("button", { name: "Close" }).click();
   // The close ends both programs first, and the feed then has the page ask about each pane it finds absent, answered
   // not_found: both drops it could report are queued behind the close's own write.
   await expect.poll(() => [one, two].every(toldGone), { timeout: 20_000 }).toBe(true);
   started.splice(0);
+  expect(layoutVersion()).toBe(version);
   await expect(question.getByText("The space was not closed")).toBeVisible({ timeout: 20_000 });
   await expect(
     question.getByText("The layout kept changing on another device, so this change was not saved"),
@@ -223,6 +241,7 @@ test("a space closed while its layout write is refused says so once, not once pe
   await expect(
     rename.getByText("The layout kept changing on another device, so this change was not saved"),
   ).toBeVisible({ timeout: 20_000 });
+  expect(layoutVersion()).toBe(version);
   expect(await said()).toBe(1);
 });
 
