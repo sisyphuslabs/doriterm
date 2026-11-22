@@ -33,6 +33,7 @@ archive digest recorded rather than checked. Commit only a pinned build: to move
 | `ghostty/0005` | Caps resident Kitty image and placement metadata at 4096 each on WebAssembly, whose memory never shrinks; see below for what happens at the cap.           |
 | `wterm/0001`   | Ports the export layer to Zig 0.17 and the Ghostty v1.4.0 API (`std.Io`, terminal stream effects, compressed pages, image data union, glyph protocol APC). |
 | `wterm/0002`   | Answers the OSC 7501 Program Status probe and keeps the root status record, readable through `get_program_status_*`.                                       |
+| `wterm/0003`   | Exports visible Kitty Unicode placeholder runs from the grid, including history, without painting their codepoints as text.                                |
 
 CI does not rebuild Zig. `scripts/verify.ts` checks that the committed wasm, its size, and every patch match
 `wasm/build.json`, and that `wasm/build.json` names the pinned revisions and Zig.

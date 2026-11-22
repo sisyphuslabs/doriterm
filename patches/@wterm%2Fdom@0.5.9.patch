@@ -1,3 +1,91 @@
+diff --git a/dist/graphics-layer.js b/dist/graphics-layer.js
+index 118caa6f23aa3aec975f6303376e13a1263fb90b..33d9d40d1ef5dfefbcee93ba2f24f0ba6de925a1 100644
+--- a/dist/graphics-layer.js
++++ b/dist/graphics-layer.js
+@@ -71,7 +71,9 @@ export class GraphicsLayer {
+         }
+         let state;
+         try {
+-            state = getState.call(core);
++            const first = Math.max(0, Math.floor(viewport.scrollTop / viewport.rowHeight) - viewport.overscanRows);
++            const end = Math.ceil((viewport.scrollTop + viewport.clientHeight) / viewport.rowHeight) + viewport.overscanRows;
++            state = getState.call(core, first, end);
+         }
+         catch {
+             this.clearCanvases();
+@@ -158,7 +160,8 @@ export class GraphicsLayer {
+             const canvas = existingCanvas ?? this.createCanvas(key);
+             if (!canvas)
+                 continue;
+-            if (changed || !existingCanvas) {
++            const metrics = `${viewport.charWidth}:${viewport.rowHeight}`;
++            if (changed || !existingCanvas || (placement.virtual && canvas.dataset.cellMetrics !== metrics)) {
+                 let painted = false;
+                 try {
+                     painted = this.paint(canvas, key, cached.data, placement, viewport, bounds, flowOffsets.get(placement.row) ?? 0);
+@@ -168,6 +171,8 @@ export class GraphicsLayer {
+                 }
+                 if (!painted) {
+                     this.removeCanvas(key);
++                } else if (placement.virtual) {
++                    canvas.dataset.cellMetrics = metrics;
+                 }
+             }
+             else {
+@@ -438,7 +443,7 @@ export class GraphicsLayer {
+             return false;
+         // The core hands out its own copy of the pixels, so wrap it without another.
+         const rgba = new Uint8ClampedArray(image.rgba.buffer, image.rgba.byteOffset, image.rgba.byteLength);
+-        const unscaled = sourceX === 0 &&
++        const unscaled = !placement.virtual && sourceX === 0 &&
+             sourceY === 0 &&
+             sourceWidth === image.width &&
+             sourceHeight === image.height &&
+@@ -453,18 +458,33 @@ export class GraphicsLayer {
+         const sourceContext = source?.getContext("2d");
+         if (!sourceContext)
+             return false;
+-        const imageData = typeof ImageData !== "undefined"
+-            ? new ImageData(rgba, image.width, image.height)
+-            : (sourceContext.createImageData?.(image.width, image.height) ?? {
+-                data: rgba,
+-                width: image.width,
+-                height: image.height,
+-            });
+-        if ("data" in imageData && imageData.data !== rgba)
+-            imageData.data.set(rgba);
+-        sourceContext.putImageData(imageData, 0, 0);
++        if (this.scratchImage?.deref() !== image) {
++            const imageData = typeof ImageData !== "undefined"
++                ? new ImageData(rgba, image.width, image.height)
++                : (sourceContext.createImageData?.(image.width, image.height) ?? {
++                    data: rgba,
++                    width: image.width,
++                    height: image.height,
++                });
++            if ("data" in imageData && imageData.data !== rgba)
++                imageData.data.set(rgba);
++            sourceContext.putImageData(imageData, 0, 0);
++            this.scratchImage = new WeakRef(image);
++        }
+         context.clearRect(0, 0, pixelWidth, pixelHeight);
+-        context.drawImage(source, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, pixelWidth, pixelHeight);
++        if (placement.virtual) {
++            // This canvas clips one surviving run of placeholder cells. Scale the
++            // whole image into its virtual grid, never each fragment in isolation.
++            const grid = placement.virtual;
++            const cw = viewport.charWidth, ch = viewport.rowHeight;
++            const width = (grid.columns || Math.ceil(image.width / cw)) * cw;
++            const height = (grid.rows || Math.ceil(image.height / ch)) * ch;
++            const scale = Math.min(width / image.width, height / image.height);
++            const w = image.width * scale, h = image.height * scale;
++            context.drawImage(source, (width - w) / 2 - grid.col * cw, (height - h) / 2 - grid.row * ch, w, h);
++        } else {
++            context.drawImage(source, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, pixelWidth, pixelHeight);
++        }
+         return true;
+     }
+     /** One reusable canvas for scaling and cropping; images paint one at a time. */
 diff --git a/dist/input.d.ts b/dist/input.d.ts
 index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02f1804d30 100644
 --- a/dist/input.d.ts
@@ -23,7 +111,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ff..6fa7805 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..6fa7805742f6ca8ea702784b91a02a222edd8b82 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -67,9 +67,48 @@ const FIXED_KEYS = {

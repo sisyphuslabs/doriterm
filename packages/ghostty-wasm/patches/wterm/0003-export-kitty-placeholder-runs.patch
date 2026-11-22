@@ -1,0 +1,109 @@
+--- a/src/wasm_api.zig
++++ b/src/wasm_api.zig
+@@ -712,7 +712,52 @@
+     return base | (@as(u32, @intFromEnum(state.terminal.screens.active_key)) << 31);
+ }
+ 
+-fn graphicsPlacements(state: *State, buf: [*]u8, max_records: u32) u32 {
++// A virtual placement is a template, not a canvas at the transmit cursor.
++// Read only rows in the browser's viewport (which may be in scrollback).
++// Ghostty decodes the image/placement ids, diacritics and left inheritance.
++fn placeholderRuns(state: *State, start: u32, end: u32, buf: ?[*]u8, capacity: usize) u32 {
++    const storage = activeStorage(state);
++    if (start >= end or capacity == 0 or storage.images.count() == 0) return 0;
++    const pages = &state.terminal.screens.active.pages;
++    var pin = pages.pin(.{ .screen = .{ .y = start, .x = 0 } }) orelse return 0;
++    var row = start;
++    var count: usize = 0;
++    const unicode = vt.kitty.graphics.unicode;
++    while (row < end and count < capacity) : (row += 1) {
++        if (pin.rowAndCell().row.kitty_virtual_placeholder) {
++            const cells = pin.cells(.all);
++            var x: usize = 0;
++            while (x < cells.len and count < capacity) {
++                if (cells[x].codepoint() != unicode.placeholder) {
++                    x += 1;
++                    continue;
++                }
++                const left = x;
++                const cell = &cells[x];
++                var run = unicode.IncompletePlacement.init(&pin.style(cell), pin.grapheme(cell) orelse &.{}).start();
++                x += 1;
++                while (x < cells.len and cells[x].codepoint() == unicode.placeholder) : (x += 1) {
++                    const next = &cells[x];
++                    if (!run.append(&.init(&pin.style(next), pin.grapheme(next) orelse &.{}))) break;
++                }
++                const image = run.imageId();
++                const target = storage.placeholderTarget(image, run.placement_id orelse 0) orelse continue;
++                if (target.placement.location != .virtual) continue;
++                if (buf) |out| {
++                    // Tag 2 distinguishes a run from either pinned-placement id tag.
++                    const p = target.placement;
++                    const record = [_]u32{ image, target.key.placement_id.id, imageVersionFor(state, image), row, @intCast(left), 0, 0, run.col.?, run.row.?, p.columns, p.rows, run.width, 1, @bitCast(p.z), 2 };
++                    for (record, 0..) |v, i| writeU32(out, count * GRAPHICS_PLACEMENT_RECORD_BYTES + 4 * i, v);
++                }
++                count += 1;
++            }
++        }
++        pin = pin.down(1) orelse break;
++    }
++    return @intCast(count);
++}
++
++fn graphicsPlacements(state: *State, buf: [*]u8, max_records: u32, start: u32, end: u32) u32 {
+     const capacity = @min(@as(usize, max_records), GRAPHICS_MAX_RECORDS);
+     var count: usize = 0;
+     var it = activeStorage(state).placements.iterator();
+@@ -747,7 +792,7 @@
+         writeU32(buf, offset + 56, placement_tag);
+         count += 1;
+     }
+-    return @intCast(count);
++    return @as(u32, @intCast(count)) + placeholderRuns(state, start, end, buf + count * GRAPHICS_PLACEMENT_RECORD_BYTES, capacity - count);
+ }
+ 
+ // -- Lifecycle --------------------------------------------------
+@@ -1164,7 +1209,8 @@
+         else => unreachable,
+     } else if (has_bg_style) resolveRgb(style.bg_color, palette) else color.RGB{};
+ 
+-    std.mem.writeInt(u32, out[0..4], cp, .little);
++    const placeholder = cp == vt.kitty.graphics.unicode.placeholder;
++    std.mem.writeInt(u32, out[0..4], if (placeholder) ' ' else cp, .little);
+     out[4] = fg.r;
+     out[5] = fg.g;
+     out[6] = fg.b;
+@@ -1174,7 +1220,7 @@
+     out[10] = packFlags(style);
+     out[11] = cellWidth(raw.*);
+     out[12] = (if (has_fg) @as(u8, 1) else 0) | (if (has_bg) @as(u8, 2) else 0);
+-    out[13] = (if (raw.content_tag == .codepoint_grapheme) @as(u8, 1) else 0) |
++    out[13] = (if (!placeholder and raw.content_tag == .codepoint_grapheme) @as(u8, 1) else 0) |
+         (if (raw.hyperlink) @as(u8, 2) else 0) |
+         (if (raw.wide == .spacer_head) @as(u8, 4) else 0);
+     out[14] = 0;
+@@ -1477,8 +1523,10 @@
+     return @intCast(activeStorage(stateFromPtr(ptr)).images.count());
+ }
+ 
+-export fn graphics_placement_count(ptr: usize) u32 {
+-    return @intCast(activeStorage(stateFromPtr(ptr)).placements.count());
++export fn graphics_placement_count(ptr: usize, start: u32, end: u32) u32 {
++    const state = stateFromPtr(ptr);
++    const stored = activeStorage(state).placements.count();
++    return stored + placeholderRuns(state, start, end, null, GRAPHICS_MAX_RECORDS -| stored);
+ }
+ 
+ export fn graphics_bytes_used(ptr: usize) u32 {
+@@ -1502,9 +1550,9 @@
+     return graphicsImages(stateFromPtr(ptr), @ptrFromInt(buf_ptr), max_records);
+ }
+ 
+-export fn graphics_placements(ptr: usize, buf_ptr: usize, max_records: u32) u32 {
++export fn graphics_placements(ptr: usize, buf_ptr: usize, max_records: u32, start: u32, end: u32) u32 {
+     if (buf_ptr == 0) return 0;
+-    return graphicsPlacements(stateFromPtr(ptr), @ptrFromInt(buf_ptr), max_records);
++    return graphicsPlacements(stateFromPtr(ptr), @ptrFromInt(buf_ptr), max_records, start, end);
+ }
+ 
+ fn findImage(state: *State, image_id: u32, version: u32) ?KittyImage {

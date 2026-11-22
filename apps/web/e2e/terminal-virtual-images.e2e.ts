@@ -1,5 +1,5 @@
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import { expectImageBelow, graphics, images, png, RED, show } from "./terminal-images.ts";
+import { BLUE, expectImageBelow, graphics, images, png, RED, show } from "./terminal-images.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -16,6 +16,13 @@ test("an agent's virtual Kitty image follows its placeholder cells, not the tran
   await show(page, terminal, "placed", row);
   await expectImageBelow(terminal, "placed", RED);
   await expect(terminal).not.toContainText("\u{10eeee}");
+
+  // A horizontally sliced row needn't start at image column zero. Only the
+  // right (blue) half of a two-pixel image survives in these two cells.
+  const split = graphics("a=T,U=1,q=2,i=24,f=24,s=2,v=1,c=4,r=1", "/wAAAAD/");
+  const right = `\x1b[38;2;0;0;24m${cell}\u030e${cell}\u0310\x1b[0m`;
+  await show(page, terminal, "slice", split + right);
+  await expectImageBelow(terminal, "slice", BLUE);
   await show(page, terminal, "erased", "\x1b[2J");
   await expect(images(terminal)).toHaveCount(0);
 });
