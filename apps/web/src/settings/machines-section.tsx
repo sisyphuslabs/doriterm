@@ -92,12 +92,11 @@ export function AddedMachine({ view, now, onRetry, onRemove, skill }: AddedMachi
   );
 }
 
-function MachineRows({ connection }: { readonly connection: HcConnection }) {
+function MachineRows({ connection, onAdd }: { readonly connection: HcConnection; readonly onAdd: () => void }) {
   const settings = useConnectionSettings();
   const ownComputer = desktopBridge() !== null && settings.mode === "loopback";
-  const { views, retry, remove, listError, entries } = useMachines(connection, NO_TERMINALS);
+  const { views, retry, remove, listError } = useMachines(connection, NO_TERMINALS);
   const now = useNow();
-  const [adding, setAdding] = useState(false);
   return (
     <div className="flex flex-col gap-3">
       <ul aria-label="Machines" className="flex flex-col divide-y divide-border">
@@ -133,27 +132,48 @@ function MachineRows({ connection }: { readonly connection: HcConnection }) {
       </ul>
       {listError === undefined ? null : <MachinesListError cause={listError} />}
       <div>
-        <Button onClick={() => setAdding(true)}>
+        <Button onClick={onAdd}>
           <Plus aria-hidden />
           Add a machine
         </Button>
       </div>
-      <AddMachineDialog open={adding} onClose={() => setAdding(false)} connection={connection} machines={entries} />
     </div>
   );
+}
+
+function MachineJoinDialog({
+  connection,
+  onClose,
+}: {
+  readonly connection: HcConnection;
+  readonly onClose: () => void;
+}) {
+  const { entries } = useMachines(connection, NO_TERMINALS);
+  return <AddMachineDialog open onClose={onClose} connection={connection} machines={entries} />;
 }
 
 /** Every machine this host reaches, this one first: its state, and when it was last seen and why when it is offline. */
 export function MachinesSection() {
   const state = useConnection();
   const mesh = useBrowserMembership();
-  if (mesh.phase !== "empty") return <MembershipMachines />;
-  if (state.phase !== "open") {
-    return (
-      <Notice tone="info" title="Not connected">
-        Connect to your host to see its machines.
-      </Notice>
-    );
-  }
-  return <MachineRows connection={state.connection} />;
+  const [inviter, setInviter] = useState<HcConnection | null>(null);
+  const connection = state.phase === "open" ? state.connection : null;
+  const offerConnection = connection?.hello.core.id === inviter?.hello.core.id ? connection : inviter;
+  return (
+    <>
+      {mesh.phase !== "empty" ? (
+        <MembershipMachines />
+      ) : connection === null ? (
+        <Notice tone="info" title="Not connected">
+          Connect to your host to see its machines.
+        </Notice>
+      ) : (
+        <MachineRows connection={connection} onAdd={() => setInviter(connection)} />
+      )}
+      {/* Accepting the invite can replace the machine list before the dialog reads the join receipt. */}
+      {offerConnection !== null && mesh.phase !== "removed" ? (
+        <MachineJoinDialog connection={offerConnection} onClose={() => setInviter(null)} />
+      ) : null}
+    </>
+  );
 }

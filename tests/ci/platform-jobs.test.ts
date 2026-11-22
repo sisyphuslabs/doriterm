@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { executableName } from "./support/electron-builder.ts";
 
 type Job = {
   if?: string;
@@ -46,7 +47,7 @@ test("the desktop, Windows and macOS jobs run only on a push to dev", () => {
 // electron-builder names the Linux binary executableName, and the macOS bundle and its binary executableName ?? productName.
 test("the desktop jobs launch the executable electron-builder.json names", () => {
   const linux = ci.jobs["desktop"]?.steps?.map((step) => step.env?.["DORIFACE_E2E_EXECUTABLE"]).filter(Boolean);
-  expect(linux).toEqual(["${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/" + builder.executableName]);
+  expect(linux).toEqual(["${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/" + executableName()]);
   const mac = builder.executableName ?? builder.productName;
   const find =
     ci.jobs["desktop-macos"]?.steps?.find((step) => step.run?.includes("DORIFACE_E2E_EXECUTABLE="))?.run ?? "";

@@ -6,7 +6,10 @@ name: From zero
 # e2e. A step that breaks, or that needs anything private, fails the job.
 #
 # It runs after every merge to dev and once a day (a public download the guide uses can move without a commit here),
-# and on a pull request that changes the guide, its runner or what the guide installs from.
+# and on a pull request that changes the guide, its runner, what the guide installs from or a script name it calls. A
+# pull request that only changes e2e specs or their config does not run it: `Web e2e` already runs that suite on the
+# same commit, and this job's own e2e run of it (about 30 minutes) proved nothing more there. The guide's environment
+# around that suite (no CI, a stock PATH) is still checked after the merge, on the push to dev.
 #
 # user-guide checks docs/getting-started.md the same way: a packed desktop app pairs a fresh browser through the
 # production relay and the hosted web app, as the release smoke does with the AppImage it publishes. It tests dev's app
@@ -29,9 +32,6 @@ on:
       - bunfig.toml
       - tests/relay/private-relay.ts
       - apps/web/package.json
-      - apps/web/playwright.config.ts
-      - apps/web/e2e/**
-      - apps/web/scripts/e2e-two-runs.ts
       - docs/getting-started.md
       - apps/desktop/e2e/hosted-relay-pair.e2e.ts
 
