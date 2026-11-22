@@ -1,0 +1,2 @@
+# No repo check at commit time. husky runs a hook only when the repo defines it, so this file lets a commit-msg check a
+# machine installs in ~/.config/husky/init.sh run too.

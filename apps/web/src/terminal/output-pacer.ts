@@ -56,7 +56,7 @@ export const nextFrame: FrameTimer = (run) => {
   return () => cancelAnimationFrame(id);
 };
 
-const after: Timer = (run, ms) => {
+export const after: Timer = (run, ms) => {
   const id = setTimeout(run, ms);
   return () => clearTimeout(id);
 };

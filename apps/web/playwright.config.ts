@@ -23,6 +23,12 @@ const e2eProjects = (): { name: string; use: Record<string, unknown> }[] => {
   ];
 };
 
+// A CI shard's per-file times (scripts/e2e-shards.ts record), which plan the next run's shards.
+const jsonReport = (): ["json", { outputFile: string }][] => {
+  const outputFile = process.env["E2E_JSON_REPORT"];
+  return outputFile === undefined ? [] : [["json", { outputFile }]];
+};
+
 // Playwright stops its web servers and workers (and with them every e2e host and core) on SIGINT, not on SIGTERM, which
 // would leave the layout host, its cores and vite preview running: the runner answers SIGTERM with its own SIGINT.
 if (process.env["TEST_WORKER_INDEX"] === undefined) process.once("SIGTERM", () => process.kill(process.pid, "SIGINT"));
@@ -44,7 +50,7 @@ export default defineConfig({
   // Where this run's hosts and scratch sessions keep their files; the teardown stops any hc process still holding one.
   metadata: { runDir: RUN_DIR },
   forbidOnly: Boolean(process.env["CI"]),
-  reporter: process.env["CI"] ? [["list"], ["html", { open: "never" }]] : "list",
+  reporter: process.env["CI"] ? [["list"], ["html", { open: "never" }], ...jsonReport()] : "list",
   // The window and the pixel ratio are pinned here rather than inherited from a device preset (#862): every spec that
   // measures layout has to measure the same boxes on a Linux runner and on a developer's Mac, and a preset that moves
   // between Playwright releases would move them silently. e2eProjects() carries the same pin into every engine.

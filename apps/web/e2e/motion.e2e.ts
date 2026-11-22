@@ -160,16 +160,24 @@ test("a kept tab on an added machine does not arrive late on the way back from S
 });
 
 test("coming back from Settings is not an arrival: the workspace returns without animating", async ({ page }) => {
-  await page.goto("/");
-  await openNewTerminal(page);
-  await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");
+  const socket = await routeHcSocket(page);
+  const release = socket.hold("doc.set");
+  const address = startShell("host", "settings-return");
   await recordArrivals(page);
-  await page.reload();
+  await page.goto("/");
+  // Show the first live terminal before its tab is saved, as on a reload that beats the layout write.
+  const transient = page.locator('[data-tab-id="transient"]');
+  await expect(transient).toBeVisible();
   await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");
+  release();
+  await expect(transient).toHaveCount(0);
+  const tab = await tabOf(page, address);
+  await expect(tab).toBeVisible();
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "This device", level: 2 })).toBeVisible();
   await page.goBack();
   await expect(page.locator(SIDEBAR)).toBeVisible({ timeout: 20_000 });
+  await expect(tab).toBeVisible();
   await expect.poll(() => page.locator(":root").getAttribute("data-ready")).toBe("");
   await twoFrames(page);
   expect(await arrivals(page)).toEqual([]);

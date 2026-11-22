@@ -5,8 +5,8 @@ import {
   absentPanes,
   absentRemotePanes,
   endedForGood,
-  endedInView,
-  goneFromView,
+  graceLeft,
+  JUST_BORN_MS,
   type Missing,
   settledPanes,
   stepMissing,
@@ -80,30 +80,46 @@ test("while the feed still names a machine machine.list no longer does, no added
   ]);
 });
 
-const listed = (address: string, state: string) => ({ address, state });
+const NOW = 1_000_000;
+const born = (address: string, created: number) => ({ address, state: "finished", created_ms: created });
+const listed = (address: string, state: string) => ({ address, state, created_ms: 0 });
 
-test("a pane whose terminal the feed lists as finished is asked about like an absent one, unless it is in view (#2122)", () => {
+test("a pane whose terminal the feed lists as finished is asked about like an absent one, in view or not (Q, 2026-11-15)", () => {
   const terminals = [listed("t1", "live"), listed("t2", "finished"), listed("t3", "finished")];
   const tabs = [tab("a", ["t1"]), tab("b", ["t2"]), tab("c", ["t3"]), tab("d", ["t9"])];
-  // t3's tab is the one in view: its view says the session ended and closes from there, so it is left alone.
-  expect(absentPanes(tabs, settledPanes(terminals, ["t3"]))).toEqual(["t2", "t9"]);
-  expect(absentPanes(tabs, settledPanes(terminals, []))).toEqual(["t2", "t3", "t9"]);
-  // A pane in view whose terminal the feed does not list at all is still asked about, as before.
-  expect(absentPanes(tabs, settledPanes(terminals, ["t9"]))).toEqual(["t2", "t3", "t9"]);
+  expect(absentPanes(tabs, settledPanes(terminals, NOW).settled)).toEqual(["t2", "t3", "t9"]);
+});
+
+test("a terminal's just-born grace runs JUST_BORN_MS from its start and is over at once for an older one", () => {
+  expect(graceLeft(NOW - 1_000, NOW)).toBe(JUST_BORN_MS - 1_000);
+  expect(graceLeft(NOW - JUST_BORN_MS, NOW)).toBe(0);
+  expect(graceLeft(NOW - 60_000, NOW)).toBe(0);
+});
+
+test("a terminal that ended within its first seconds keeps its pane for the just-born grace, so its failure shows", () => {
+  const tabs = [tab("a", ["t1"]), tab("b", ["t2"])];
+  const early = settledPanes([born("t1", NOW - 1_000), born("t2", NOW - JUST_BORN_MS)], NOW);
+  expect(absentPanes(tabs, early.settled)).toEqual(["t2"]);
+  expect(early.wake).toBe(NOW - 1_000 + JUST_BORN_MS);
+  const later = settledPanes([born("t1", NOW - 1_000)], NOW - 1_000 + JUST_BORN_MS);
+  expect(absentPanes(tabs, later.settled)).toEqual(["t1", "t2"]);
+  expect(later.wake).toBeUndefined();
 });
 
 test("an added machine's finished terminal waits like an absent one, and the rename check still reads the whole feed (#2122)", () => {
   const terminals = [listed("box/t4", "finished"), listed("box/t5", "live")];
   const tabs = [tab("box-a", ["box/t4", "box/t5"], false, "box")];
   const feed = new Set(terminals.map((terminal) => terminal.address));
-  expect([...absentRemotePanes(tabs, settledPanes(terminals, []), [machine("box", "connected")], feed)]).toEqual([
-    ["box/t4", "id-box"],
-  ]);
+  expect([
+    ...absentRemotePanes(tabs, settledPanes(terminals, NOW).settled, [machine("box", "connected")], feed),
+  ]).toEqual([["box/t4", "id-box"]]);
   // The feed still lists the machine under its old name, with finished terminals only: nothing is asked about.
   const renamed = [tab("new-a", ["new/t4"], false, "new")];
   const stale = [listed("old/t4", "finished")];
   const staleFeed = new Set(stale.map((terminal) => terminal.address));
-  expect(absentRemotePanes(renamed, settledPanes(stale, []), [machine("new", "connected")], staleFeed).size).toBe(0);
+  expect(
+    absentRemotePanes(renamed, settledPanes(stale, NOW).settled, [machine("new", "connected")], staleFeed).size,
+  ).toBe(0);
 });
 
 test("only a program that exited or was killed is over for good; a lost holder, a stopped server and a live terminal are not (#2122)", () => {
@@ -113,34 +129,6 @@ test("only a program that exited or was killed is over for good; a lost holder, 
   expect(endedForGood({ state: "finished" })).toBe(false);
   // A kept terminal whose program was lost stays live with the loss as its reason, until its shell comes back.
   expect(endedForGood({ state: "live", reason: "killed" })).toBe(false);
-});
-
-test("the panes in view whose terminal the feed lists as over are the ones their views say ended (#2146)", () => {
-  const terminals = [listed("t1", "live"), listed("t2", "finished"), listed("t3", "finished")];
-  expect([...endedInView(terminals, ["t1", "t2", "t9"])]).toEqual(["t2"]);
-});
-
-test("a pane left to its view that no tab shows any more went on another device, which had it out of view (#2146)", () => {
-  const tabs = [tab("a", ["t1"]), tab("b", ["t2", null])];
-  const left = new Map<string, string | null>([
-    ["t1", null],
-    ["t2", null],
-    ["t3", null],
-  ]);
-  expect(goneFromView(left, tabs, () => true)).toEqual(["t3"]);
-  expect(goneFromView(new Map(), tabs, () => true)).toEqual([]);
-});
-
-/** This core's document and rack's are still written; box was removed, so its document went with it. */
-const writtenOn = (name: string | null): boolean => name === null || name === "rack";
-
-test("a pane that went with its machine or with its layout document did not go on another device (#2231)", () => {
-  const left = new Map<string, string | null>([
-    ["t3", null],
-    ["box/t4", "box"],
-    ["rack/t5", "rack"],
-  ]);
-  expect(goneFromView(left, [], writtenOn)).toEqual(["t3", "rack/t5"]);
 });
 
 test("an absent remote pane is asked about only once a later machine.list read still finds it absent on that machine", () => {

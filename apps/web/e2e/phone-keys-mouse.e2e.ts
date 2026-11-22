@@ -58,7 +58,7 @@ test.describe("on a touch phone", () => {
     await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 15_000 });
     await expect(key(page, "Show keyboard")).toBeVisible();
     await expect(key(page, "Show keys")).toHaveCount(0);
-    await expect(keysBar(page)).toHaveCount(0);
+    await expect(key(page, "Hide keyboard")).toHaveCount(0);
     // The button is what raises the keyboard, and the bar rides it (#1375).
     await key(page, "Show keyboard").click();
     await expect(keysBar(page)).toBeVisible();
