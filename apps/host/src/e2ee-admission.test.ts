@@ -1,7 +1,15 @@
 import { HELLO_REQUEST_LINE } from "@doriface/client";
-import { base64urlEncode, type ByteLink, CloseCode, generateX25519, rawStaticKey, secureLink } from "@doriface/crypto";
+import {
+  base64urlEncode,
+  type ByteLink,
+  CloseCode,
+  generateX25519,
+  rawStaticKey,
+  secureLink,
+  SecureLinkError,
+} from "@doriface/crypto";
 import { parsePolicy } from "@doriface/policy";
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +25,7 @@ import { createHcSession, type HcSession, rpcFrame } from "./testing/hc-session.
 // message 1 can and cannot cause before the client proves it holds the session's keys.
 setDefaultTimeout(30_000);
 const HELLO_LINE = new TextEncoder().encode(HELLO_REQUEST_LINE);
-const stateDir = mkdtempSync(join(tmpdir(), "dh-admission-"));
+let stateDir: string;
 const device = generateX25519();
 const other = generateX25519();
 let session: HcSession;
@@ -65,26 +73,34 @@ async function captureMessage1(key = device): Promise<Uint8Array> {
 }
 
 /** A client as the app is now: hello inside message 1, its answer read without sending it again, then one RPC. */
-async function realClient(key = device): Promise<{ readonly hello: unknown; readonly list: Uint8Array }> {
+async function realClient(
+  key = device,
+  keepOpen?: E2eeClient[],
+): Promise<{ readonly hello: unknown; readonly list: Uint8Array }> {
   const client = await openE2eeClient(url(), {
     hostId: identity().hostId,
     staticKey: rawStaticKey(key),
     remoteStatic: identity().noise.publicKey,
     early: HELLO_LINE,
   });
+  keepOpen?.push(client);
   try {
     const hello: unknown = JSON.parse(new TextDecoder().decode(await client.reader.line()));
     client.link.send(rpcFrame(1, "terminal.list"));
     const list = await client.reader.frame();
-    client.link.close();
-    await client.closed;
     return { hello, list };
   } catch (error) {
-    throw new Error(`closed with ${await client.closed}: ${String(error)}`, { cause: error });
+    throw new SecureLinkError(await client.closed, `hc did not answer: ${String(error)}`, { cause: error });
+  } finally {
+    if (keepOpen === undefined) {
+      client.link.close();
+      await client.closed;
+    }
   }
 }
 
-beforeAll(async () => {
+beforeEach(async () => {
+  stateDir = mkdtempSync(join(tmpdir(), "dh-admission-"));
   session = createHcSession("doriface-admission-test");
   host = await startHost({
     listen: { hostname: "127.0.0.1", port: 0 },
@@ -102,7 +118,7 @@ beforeAll(async () => {
   devices.add(other.publicKey, "phone");
 });
 
-afterAll(async () => {
+afterEach(async () => {
   await host.stop();
   await session.dispose();
   rmSync(stateDir, { recursive: true, force: true });
@@ -122,11 +138,12 @@ describe("early-hello admission (#1271)", () => {
   });
 
   test("captured message 1 replays on new connections hold no session: a real client is still admitted under a limit of one", async () => {
+    await realClient();
     const captured = await captureMessage1();
     const replays = await Promise.all([raw(captured), raw(captured)]);
     const { hello, list } = await realClient();
     expect(hello).toMatchObject({ result: { framed: true } });
-    // The first client on a warm host: its hello was answered early, and its RPC still comes through, once.
+    // On a warm host its hello can be answered early, and its RPC still comes through, once.
     expect(new TextDecoder().decode(list)).toContain('"id":1');
     expect(await Promise.all(replays.map((replay) => replay.closed))).toEqual([
       CloseCode.IdleTimeout,
@@ -135,10 +152,18 @@ describe("early-hello admission (#1271)", () => {
   });
 
   test("two proven handshakes racing for one session slot: one is admitted, the other closes 4429", async () => {
-    const settled = await Promise.allSettled([realClient(device), realClient(other)]);
-    expect(settled.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
-    const refused = settled.find((outcome) => outcome.status === "rejected");
-    expect(refused?.status === "rejected" ? String(refused.reason) : "").toContain(String(CloseCode.RateLimited));
+    // Keep the winner's slot occupied until the other handshake has been refused.
+    const clients: E2eeClient[] = [];
+    try {
+      const settled = await Promise.allSettled([realClient(device, clients), realClient(other, clients)]);
+      expect(settled.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+      const refused = settled.find((outcome) => outcome.status === "rejected");
+      expect(refused?.reason).toBeInstanceOf(SecureLinkError);
+      expect(refused?.reason).toMatchObject({ code: CloseCode.RateLimited });
+    } finally {
+      for (const client of clients) client.link.close();
+      await Promise.all(clients.map((client) => client.closed));
+    }
   });
 
   test("a device revoked between message 1 and its confirmation is never admitted: its RPC gets no answer", async () => {

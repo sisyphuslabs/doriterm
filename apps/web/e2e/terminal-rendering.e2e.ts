@@ -185,8 +185,18 @@ test("a terminal's output runs only the components that read its scroll position
   // frames in which its scroll subscribers read and commit.
   await page.addInitScript(countRenders, [2, "[data-terminal] .term-row", true] as const);
   const socket = await routeHcSocket(page);
+  // Git-facts document reads also redraw the workspace. Hold their replies from the first read, including one already
+  // in flight when sampling starts; holding machine.list alone does not stop them.
+  const releaseFacts = socket.holdFromHost('"dirs":');
   await page.goto("/");
   const terminal = await openNewTerminal(page);
+  // Renderer readiness and predictor initialization each redraw the view. Finish them in every pane before output
+  // opens a sample; those commits are not work caused by output.
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("[data-terminal]")].every(
+      (pane) => pane.getAttribute("data-ready") === "true" && pane.getAttribute("data-predictor-ready") === "true",
+    ),
+  );
   await terminal.getByRole("textbox").focus();
   // No process, title or status event reaches the page meanwhile, and the roster's ten-second machine read, which
   // draws the workspace again, is not sent: only the terminal's own output arrives.
@@ -211,6 +221,7 @@ test("a terminal's output runs only the components that read its scroll position
     runs: Reflect.get(window, "__terminalFreshRuns"),
   }));
   release();
+  releaseFacts();
   console.log(`output render evidence ${JSON.stringify(evidence)}`);
   expect(evidence.painted).toEqual(Array.from({ length: LINES }, () => true));
   expect(evidence.runs.length).toBeGreaterThanOrEqual(LINES);
