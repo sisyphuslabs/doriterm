@@ -99,49 +99,51 @@ export function MeshMachineList({
   return (
     <ul aria-label="Machines" className="flex flex-col divide-y divide-border">
       {sortedMachines(entries).map((entry) => (
-			<AgentSkill
-			  key={entry.target.hostId}
-			  connection={entry.state.phase === "open" ? entry.state.connection : null}
-			  machine={undefined}
-			  name={entry.target.hostName || entry.target.hostId}
-			>
-			  {(skill) => (
-			    <li>
-			      <SettingRow
-			        inline
-			        className="border-b-0"
-			        title={
-			          <span className="flex items-center gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0">
-			            {ownComputer === entry.target.hostId ? <Monitor aria-hidden /> : <Server aria-hidden />}
-			            <span className="min-w-0 [overflow-wrap:anywhere]">{entry.target.hostName || entry.target.hostId}</span>
-			          </span>
-			        }
-			        description={
-			          <>
-			            <MachineDescription entry={entry} local={ownComputer === entry.target.hostId} />
-			            {skill.line}
-			          </>
-			        }
-			        control={
-			          entry.state.phase === "open" && (openMember !== undefined || skill.action !== null) ? (
-			            <span className="flex flex-wrap justify-end gap-2">
-			              {skill.action}
-			              {openMember === undefined ? null : (
-			                <Button size="sm" onClick={() => openMember(entry.target.hostId)}>
-			                  Open
-			                </Button>
-			              )}
-			            </span>
-			          ) : entry.state.phase === "failed" ? (
-			            <Button size="sm" onClick={() => retry(entry.target.hostId)}>
-			              Try now
-			            </Button>
-			          ) : null
-			        }
-			      />
-			    </li>
-			  )}
-			</AgentSkill>
+        <AgentSkill
+          key={entry.target.hostId}
+          connection={entry.state.phase === "open" ? entry.state.connection : null}
+          machine={undefined}
+          name={entry.target.hostName || entry.target.hostId}
+        >
+          {(skill) => (
+            <li>
+              <SettingRow
+                inline
+                className="border-b-0"
+                title={
+                  <span className="flex items-center gap-2 [&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0">
+                    {ownComputer === entry.target.hostId ? <Monitor aria-hidden /> : <Server aria-hidden />}
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                      {entry.target.hostName || entry.target.hostId}
+                    </span>
+                  </span>
+                }
+                description={
+                  <>
+                    <MachineDescription entry={entry} local={ownComputer === entry.target.hostId} />
+                    {skill.line}
+                  </>
+                }
+                control={
+                  entry.state.phase === "open" && (openMember !== undefined || skill.action !== null) ? (
+                    <span className="flex flex-wrap justify-end gap-2">
+                      {skill.action}
+                      {openMember === undefined ? null : (
+                        <Button size="sm" onClick={() => openMember(entry.target.hostId)}>
+                          Open
+                        </Button>
+                      )}
+                    </span>
+                  ) : entry.state.phase === "failed" ? (
+                    <Button size="sm" onClick={() => retry(entry.target.hostId)}>
+                      Try now
+                    </Button>
+                  ) : null
+                }
+              />
+            </li>
+          )}
+        </AgentSkill>
       ))}
     </ul>
   );
