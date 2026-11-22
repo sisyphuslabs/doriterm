@@ -20,7 +20,8 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Twice the job's p95 (7.7 min over 23 runs since sharding, #2715).
+    timeout-minutes: 16
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -166,7 +167,9 @@ jobs:
     needs: shard-plan
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Twice the slowest part's p95 (6.0 min, #2715) plus the 12 min the Chromium install step may take on a slow
+    # mirror in the part that runs it (#1012).
+    timeout-minutes: 24
     strategy:
       fail-fast: false
       matrix:
@@ -426,7 +429,8 @@ jobs:
     name: Web e2e (${{ matrix.shard }}/4)
     needs: shard-plan
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Twice the slowest shard's p95 (11.9 min over 21 runs, #2715); it also covers the 12 min Chromium install bound.
+    timeout-minutes: 24
     strategy:
       fail-fast: false
       matrix:
