@@ -87,11 +87,11 @@ describe("a granted line's end (R-12)", () => {
         reason: "doriface-host connect: the line closed before the member said anything",
       });
     });
-  }, 15_000);
+  });
 
   test("closed by the member after it spoke: exit 0, with what it said on stdout", async () => {
     await serving(endingLink(new TextEncoder().encode('{"jsonrpc":"2.0","id":1,"result":{}}\n')), async () => {
       expect(await bridgeHeld()).toEqual({ code: 0, stdout: '{"jsonrpc":"2.0","id":1,"result":{}}\n', reason: "" });
     });
-  }, 15_000);
+  });
 });

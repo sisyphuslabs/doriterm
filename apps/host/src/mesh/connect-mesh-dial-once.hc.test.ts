@@ -45,4 +45,4 @@ test("a refused mesh line is dialed once, with the POSIX line, never herdr's Win
   expect(lines).toHaveLength(1);
   expect(lines[0]).toStartWith("sh -c 'p=$(command -v herdr-core)");
   expect(lines.some((line) => line.includes("cmd /d /c"))).toBe(false);
-}, 30_000);
+});
