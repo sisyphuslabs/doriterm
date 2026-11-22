@@ -128,14 +128,16 @@ function SpacesLists({
           rail={rail}
           hideMachine={grouped}
           chevron={phone}
+          // A phone row keeps its "..." drawn on touch, so the row's own button leaves it room (see coarseActions).
+          {...(phone ? { className: "coarse:pr-8" } : {})}
         />
       </div>
     );
-    // A phone row only opens its space: the space screen's header holds what can be done with it.
-    if (phone) return button;
     return (
       <RowWithActions
         row={button}
+        // A phone row opens its space, and its "..." renames or closes it from the list without opening it (#2658).
+        coarseActions={phone}
         // The rail has no room for the "..." button, but its right-click opens the same menu (#699).
         actions={
           rail ? null : (

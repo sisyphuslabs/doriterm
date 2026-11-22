@@ -165,6 +165,9 @@ logouts and reboots, follow [docs/install.md](docs/install.md), or hand the
 writes the service, installs herdr-core if needed, waits for the relay and is safe to re-run. The service keeps its own state
 dir (`~/.local/state/doriface-host-mesh`), so it never shares keys or devices with the desktop app's own host.
 
+The [doriterm skill](skills/doriterm/SKILL.md) teaches a coding agent to use all of this: running and steering agents and
+long commands with `hc`, here and on other machines, and the host's relay, mesh and pairing commands.
+
 ## Pairing, and how the relay fits
 
 A client reaches another machine's host through the relay, in a Noise session the relay cannot read:
@@ -289,7 +292,7 @@ bun run capture:readme                        # the README's app screenshots, 12
 Pull requests into `dev` are gated by `Check`, `Relay e2e` and `Web e2e`. [CONTRIBUTING.md](CONTRIBUTING.md) covers what each
 one runs, and what a pull request from a fork does about `Relay e2e`, which needs a secret that forks never receive. The
 platform jobs — `Desktop`, `Desktop (macOS)`, `Windows private state` on both architectures — run after the merge, on the push
-to `dev`, and never on a pull request; `Ghostty wasm provenance` runs on every event.
+to `dev`, and never on a pull request; `Install (Linux) and wasm provenance` runs on every event.
 
 ## Contributing
 

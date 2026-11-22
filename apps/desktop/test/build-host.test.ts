@@ -46,4 +46,14 @@ test("a host compiled for a release version reports that version", async () => {
     code: 0,
     stdout: "doriface-host 9.8.7-rc.1\n",
   });
+  // The skill is read when the host is compiled (a macro): the binary carries it at its own version (#2653).
+  const home = join(dir, "home");
+  const status = Bun.spawnSync([outfile, "skill", "status", "--json"], {
+    env: { ...process.env, HOME: home },
+    stdout: "pipe",
+  });
+  expect(JSON.parse(status.stdout.toString())).toEqual({
+    bundled: "9.8.7-rc.1",
+    dirs: [{ dir: "~/.agents/skills", state: "missing" }],
+  });
 });

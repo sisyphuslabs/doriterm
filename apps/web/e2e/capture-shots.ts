@@ -6,7 +6,8 @@ import { agentRow, endAgent, startAgent, startShell } from "./agents.ts";
 import { SPACE_CLOSE_SHOTS } from "./capture-space-close-shots.ts";
 import { SPACE_RENAME_SHOTS } from "./capture-space-rename-shots.ts";
 import { VOICE_SHOTS } from "./capture-voice-shots.ts";
-import { seedSpaces } from "./layout-doc.ts";
+import { routeHcSocket } from "./hc-socket.ts";
+import { paneOf, seedLayout, seedSpaces } from "./layout-doc.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
   hcOn,
@@ -93,8 +94,9 @@ const meshLoaded = async (page: Page) => {
   await expect(page.locator('[data-mesh-group="pending"] [data-mesh-answer]').first()).toBeVisible({ timeout: 20_000 });
 };
 
-/** The terminal the session-ended shot started on the added machine, by its address there. */
+/** The terminal the session-ended shot started, by its address on the core it ran on. */
 let ended = "";
+let endedOn: "host" | "machine" = "host";
 /** The agent the attention shot starts to finish where that screen is not looking, ended once the shot is taken. */
 let verify = "";
 
@@ -350,14 +352,33 @@ export const SHOTS: readonly Shot[] = [
     },
   },
   {
-    // A session whose program ended while its machine was offline, so its view first attaches to a finished terminal.
+    // A session whose program ended while this page was not showing it, so its view says so. On a phone the open
+    // session stays on screen across its machine's absence. On a desktop a tab whose program ends goes (#2628) unless
+    // the layout write that drops it is refused: then its pane stays and says it ended, for as long as writes are.
     name: "session-ended",
     start: "connected",
     timeoutMs: OFFLINE_TEST_TIMEOUT_MS,
     run: async (page, width) => {
+      if (width === "1440") {
+        endedOn = "host";
+        ended = startShell("host", "nightly-build");
+        seedLayout([{ id: "tb-ended", name: "nightly-build", root: [{ pane: "p1", terminal: ended, weight: 1 }] }]);
+        const socket = await routeHcSocket(page);
+        await page.goto("/");
+        await expect(paneOf(page, ended)).toContainText("$", { timeout: 15_000 });
+        await paneOf(page, ended).getByRole("textbox").focus();
+        socket.staleWrites(true);
+        await page.keyboard.type("exit\r");
+        await expect(page.getByText("The layout was not saved")).toBeVisible({ timeout: 15_000 });
+        // The ended view takes the terminal's place in the pane, which keeps its name.
+        const kept = page.getByRole("region", { name: "nightly-build terminal" });
+        await expect(kept.getByRole("heading", { name: "This session ended" })).toBeVisible();
+        return;
+      }
+      endedOn = "machine";
       ended = startShell("machine", "nightly-build");
+      // The phone opens on its agent list, with no machine list to wait on.
       await page.goto("/");
-      await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
       await agentRow(page, "nightly-build", true).click();
       const terminal = page.locator(`[data-terminal="${MACHINE_NAME}/${ended}"]`);
       await expect(terminal).toContainText("$", { timeout: 15_000 });
@@ -365,13 +386,11 @@ export const SHOTS: readonly Shot[] = [
       await expect(terminal).toHaveCount(0, { timeout: OFFLINE_BOUND_MS });
       hcOn("machine", ["kill", ended]);
       reconnect();
-      // The phone's terminal screen has no machine list to wait on.
-      if (width === "1440") await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
       await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: STATE_BOUND_MS });
     },
     cleanup: () => {
-      reconnect();
-      hcOn("machine", ["rm", ended]);
+      if (endedOn === "machine") reconnect();
+      endAgent(endedOn, ended);
     },
   },
 ];

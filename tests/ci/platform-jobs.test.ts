@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { executableName } from "./support/electron-builder.ts";
 
 type Job = {
   if?: string;
+  needs?: string | string[];
   steps?: Array<{ run?: string; env?: Record<string, string> }>;
   "runs-on"?: string;
   strategy?: { matrix?: { include?: Array<{ runner?: string }> } };
@@ -45,7 +47,7 @@ test("the desktop, Windows and macOS jobs run only on a push to dev", () => {
 // electron-builder names the Linux binary executableName, and the macOS bundle and its binary executableName ?? productName.
 test("the desktop jobs launch the executable electron-builder.json names", () => {
   const linux = ci.jobs["desktop"]?.steps?.map((step) => step.env?.["DORIFACE_E2E_EXECUTABLE"]).filter(Boolean);
-  expect(linux).toEqual(["${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/" + builder.executableName]);
+  expect(linux).toEqual(["${{ github.workspace }}/apps/desktop/dist/release/linux-unpacked/" + executableName()]);
   const mac = builder.executableName ?? builder.productName;
   const find =
     ci.jobs["desktop-macos"]?.steps?.find((step) => step.run?.includes("DORIFACE_E2E_EXECUTABLE="))?.run ?? "";
@@ -55,7 +57,16 @@ test("the desktop jobs launch the executable electron-builder.json names", () =>
 
 test("Check, Relay e2e and Web e2e still run on every pull request", () => {
   expect(ci.on).toHaveProperty("pull_request");
-  for (const id of ["check", "relay-e2e", "web-e2e"]) {
-    expect({ id, found: id in ci.jobs, if: ci.jobs[id]?.if }).toEqual({ id, found: true, if: undefined });
+  expect({ id: "check", if: ci.jobs["check"]?.if }).toEqual({ id: "check", if: undefined });
+  // Relay e2e and Web e2e report the sum of their parts, so they run always(): a reporter skipped after a failed part
+  // would be reported as a success.
+  const reporters = { "relay-e2e": "relay-e2e-part", "web-e2e": "web-e2e-shard" };
+  for (const [id, part] of Object.entries(reporters)) {
+    const job = ci.jobs[id];
+    expect({ id, if: job?.if, needs: job?.needs }).toEqual({ id, if: "always()", needs: part });
+    expect({ part, onlyOnPush: /event_name == 'push'/.test(ci.jobs[part]?.if ?? "") }).toEqual({
+      part,
+      onlyOnPush: false,
+    });
   }
 });

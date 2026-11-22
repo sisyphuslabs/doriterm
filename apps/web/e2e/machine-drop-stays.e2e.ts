@@ -2,7 +2,10 @@
 // beside the terminal, never over its output, and comes back by itself; a machine that stays gone reads offline in the
 // same place with one way on. A drop never moves the person to another tab.
 import type { Locator, Page } from "@playwright/test";
+import { isJsonObject } from "@doriface/protocol";
+import { LAYOUT_DOC, panesOf, tabsOf } from "@doriface/protocol/layout";
 import { agentRow, startShell } from "./agents.ts";
+import { getCoreDoc } from "./core-doc.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { ACTION_GRACE_MS } from "../src/workspace/machine-grace.ts";
@@ -205,6 +208,24 @@ test.describe("the terminal in view when its machine drops (#2464)", () => {
     split = (await other.getAttribute("data-terminal")) ?? "";
     const unfocused = page.locator('section[data-split="true"][data-focused="false"]');
     await expect(unfocused.locator(`[data-terminal="${remote}"]`)).toBeVisible();
+
+    // The pane appears optimistically. Cutting the line before the remote layout saves can roll back the split.
+    const addresses = [remote, split].map((address) => address.slice(MACHINE_NAME.length + 1));
+    await expect
+      .poll(
+        () => {
+          const saved = getCoreDoc(LAYOUT_DOC, MACHINE_NAME);
+          return (
+            isJsonObject(saved) &&
+            tabsOf(saved).some(({ root }) => {
+              const terminals = new Set(panesOf(root).map(({ terminal }) => terminal));
+              return addresses.every((address) => terminals.has(address));
+            })
+          );
+        },
+        { timeout: STATE_BOUND_MS, message: "both panes are saved in the same remote tab" },
+      )
+      .toBe(true);
 
     switchTo("drop");
     const said = unfocused.locator("header").getByRole("status").filter({ hasText: "Reconnecting" });

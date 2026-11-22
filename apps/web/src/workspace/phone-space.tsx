@@ -2,6 +2,7 @@ import { AgentRow, Button, EmptyState, IconButton, Menu, ScrollArea, SidebarSect
 import { ChevronLeft, Ellipsis, Plus, SquareTerminal } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ListedSpace, Session } from "./model.ts";
+import { useShown } from "./use-shown.ts";
 import type { PhoneSection } from "./phone-route.ts";
 import { spaceSummary, spaceTabRows } from "./phone-space-rows.ts";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
@@ -35,7 +36,7 @@ export interface PhoneSpaceProps {
 export function PhoneSpace({ space, terminals, host, arrive, from, onOpen, onBack, onNew }: PhoneSpaceProps) {
   const now = useNow();
   const closing = useSpaceClosing();
-  const rows = spaceTabRows(space, terminals, now);
+  const rows = spaceTabRows(space, useShown(terminals), now);
   // A space whose layout takes no edits (its machine is offline) can take no new tab and no close: both wait, disabled,
   // with why, and come back by themselves (#2455).
   const waiting = closing.refusal(space.id);

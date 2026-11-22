@@ -8,6 +8,7 @@ import type { HostPlatform } from "../terminal/keys.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
 import { InputBox } from "./input-box.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
+import { useShown } from "./use-shown.ts";
 import type { StickyKeys } from "./use-sticky-keys.ts";
 
 export function keysBottom(inset: number): string {
@@ -118,6 +119,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
     browsing = false,
     onBrowse,
   } = props;
+  const named = useShown(terminals);
   const barRef = useHeightReport(onBarHeight);
   // Set as the menu closes: the focus went somewhere on its own (the terminal took it, or a pick opens another session).
   const settled = useRef(false);
@@ -183,7 +185,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
             onMenu(shown);
           }}
         >
-          {terminals.map((entry) => (
+          {named.map((entry) => (
             <MenuItem
               key={entry.address}
               aria-current={entry.address === current ? "true" : undefined}

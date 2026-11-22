@@ -1,4 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
+import { skillOnHost } from "./agent-skill-host.ts";
+import { E2E_HOST_ENV } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import {
@@ -35,9 +37,13 @@ const extraHeight = (row: Locator): Promise<number> =>
   });
 
 test("a row with no control is only its text: no empty control line under it", async ({ page }) => {
+  // With the agent skill installed the row offers nothing: no Install or Update (#2653).
+  await skillOnHost(E2E_HOST_ENV, "install");
   const list = await openMachines(page);
   const own = list.getByRole("listitem").filter({ hasText: "studio" });
   await expect(own).toContainText("Online");
+  await expect(own).toContainText("Agent skill installed", { timeout: STATE_BOUND_MS });
+  await expect(own.getByRole("button")).toHaveCount(0);
   expect(await extraHeight(own)).toBeCloseTo(0, 0);
 });
 

@@ -1,169 +1,24 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-
-const SCRIPT = join(import.meta.dir, "install.sh");
+import {
+  removeRigs,
+  SCRIPT,
+  USER,
+  stub,
+  lingering,
+  enabledLinger,
+  rig,
+  install,
+  LINK,
+  expectJoinedFromFile,
+} from "./install-rig.ts";
 
 // Each case runs the real installer, about 50 stub processes (counted with strace: the lingering cases spawn 50 and 46).
 // A loaded macOS runner spent about 100 ms per spawn, so one case took 5.1 s and passed bun's 5 s default by nothing
 // it did wrong (#2487). 15 s is three times that measured worst case; the two ~340-spawn cases keep their 30 s (#2006).
 setDefaultTimeout(15_000);
-// The name install.sh uses (`id -un`); userInfo() reads $USER first and answers "unknown" where it is unset (#2476).
-const USER = Bun.spawnSync(["id", "-un"]).stdout.toString().trim();
-
-interface Rig {
-  readonly root: string;
-  readonly home: string;
-  readonly release: string;
-  readonly stubs: string;
-  readonly log: string;
-}
-
-const rigs: string[] = [];
-afterEach(() => {
-  for (const dir of rigs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-const stub = (dir: string, name: string, body: string): void => {
-  writeFileSync(join(dir, name), `#!/bin/sh\n${body}\n`);
-  chmodSync(join(dir, name), 0o755);
-};
-
-/**
- * A launchd that remembers whether the agent is loaded: bootout unloads it, print finds it only while it is loaded, and
- * bootstrap loads it, except that the first `failures` bootstraps fail with 5 (EIO), as launchd's do for a while after
- * an agent it is still unloading has already left `print` (#1966).
- */
-function launchd(dir: string, log: string, failures = 0): string {
-  const state = join(dir, "launchd-state");
-  const left = join(dir, "launchd-failures");
-  writeFileSync(state, "gone");
-  writeFileSync(left, String(failures));
-  stub(
-    dir,
-    "launchctl",
-    [
-      `echo "launchctl $*" >> "${log}"`,
-      `case "$1" in`,
-      `  bootout) echo gone > "${state}" ;;`,
-      `  print) [ "$(cat "${state}")" = loaded ] || exit 113 ;;`,
-      `  bootstrap) n=$(cat "${left}"); if [ "$n" -gt 0 ]; then echo $((n - 1)) > "${left}"; echo "Bootstrap failed: 5: Input/output error" >&2; exit 5; fi; echo loaded > "${state}" ;;`,
-      `esac`,
-    ].join("\n"),
-  );
-  return state;
-}
-
-/**
- * A logind that remembers whether the user lingers: `show-user` answers it, and `enable-linger` turns it on when the
- * system grants that to the user, or fails as it does where an admin has to do it.
- */
-function lingering(dir: string, log: string, linger: "yes" | "no", enable: "granted" | "refused"): void {
-  const state = join(dir, "linger-state");
-  writeFileSync(state, linger);
-  stub(
-    dir,
-    "loginctl",
-    [
-      `case "$*" in`,
-      `  *show-user*) cat "${state}" ;;`,
-      `  *enable-linger*) echo "loginctl $*" >> "${log}"; ${enable === "granted" ? `printf yes > "${state}"` : "exit 1"} ;;`,
-      `esac`,
-    ].join("\n"),
-  );
-}
-
-const enabledLinger = (calls: readonly string[]): string[] => calls.filter((call) => call.startsWith("loginctl"));
-
-const sha256 = (bytes: string): string => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-
-/**
- * A HOME, a file:// release holding a fake doriface-host and its SHA256SUMS.txt, and stubs for uname and the service
- * managers that append every call to one log, so a test reads what the installer did in order.
- */
-function rig(system: "Linux" | "Darwin", machine = "x86_64"): Rig {
-  const root = mkdtempSync(join(tmpdir(), "df-install-"));
-  rigs.push(root);
-  const home = join(root, "home");
-  const release = join(root, "release");
-  const stubs = join(root, "stubs");
-  const log = join(root, "calls.log");
-  for (const dir of [home, release, stubs]) mkdirSync(dir, { recursive: true });
-  writeFileSync(log, "");
-  stub(stubs, "uname", `[ "$1" = -s ] && echo ${system} || echo ${machine}`);
-  stub(stubs, "systemctl", `echo "systemctl $*" >> "${log}"`);
-  // The user lingers already, so no test reaches the real loginctl and changes the machine it runs on.
-  lingering(stubs, log, "yes", "granted");
-  // No agent is loaded yet, as on a computer that never ran the host.
-  launchd(stubs, log);
-  const os = system === "Linux" ? "linux" : "mac";
-  const arch = machine === "x86_64" ? "x64" : "arm64";
-  const host = [
-    "#!/bin/sh",
-    `echo "doriface-host $*" >> "${log}"`,
-    `if [ "$1" = --install-hc ]; then mkdir -p "$HOME/.local/bin"; printf '#!/bin/sh\\necho 0.1.17\\n' > "$HOME/.local/bin/hc"; chmod 755 "$HOME/.local/bin/hc"; fi`,
-    `if [ "$1" = pair ]; then echo "doriface://pair#h=fake"; fi`,
-    // What mesh join read from --from-file, and the file's mode, as the host saw them while it ran.
-    `prev=""; for a in "$@"; do if [ "$prev" = --from-file ]; then echo "from-file $(cat "$a") $(stat -c %a "$a" 2>/dev/null || stat -f %Lp "$a")" >> "${log}"; fi; prev="$a"; done`,
-    "",
-  ].join("\n");
-  const asset = `doriface-host-${os}-${arch}`;
-  writeFileSync(join(release, asset), host);
-  writeFileSync(join(release, "SHA256SUMS.txt"), `${sha256(host)}  ${asset}\n${"0".repeat(64)}  other.zip\n`);
-  return { root, home, release, stubs, log };
-}
-
-function install(
-  r: Rig,
-  args: readonly string[] = [],
-  extraPath: readonly string[] = [],
-  extraEnv: Readonly<Record<string, string>> = {},
-  cwd?: string,
-) {
-  const proc = Bun.spawnSync(["/bin/sh", SCRIPT, "--from", `file://${r.release}`, ...args], {
-    cwd,
-    env: {
-      HOME: r.home,
-      PATH: [r.stubs, ...extraPath, "/usr/bin", "/bin"].join(":"),
-      SHELL: "/bin/zsh",
-      TMPDIR: r.root,
-      ...extraEnv,
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return {
-    code: proc.exitCode,
-    out: proc.stdout.toString(),
-    err: proc.stderr.toString(),
-    calls: readFileSync(r.log, "utf8").trim().split("\n").filter(Boolean),
-  };
-}
-
-const LINK = "doriface://pair#h=a&m=1";
-
-/**
- * The installer ran `mesh join` with the link in a file this user alone can read, and never with the link on any
- * command line, where other local users can read it (#1201); the spent file is gone once the installer exits.
- */
-function expectJoinedFromFile(calls: readonly string[], command: string): void {
-  const joinCall = calls.find((call) => call.startsWith(command));
-  expect(joinCall).toBeDefined();
-  const file = (joinCall ?? "").slice(command.length);
-  expect(calls).toContain(`from-file ${LINK} 600`);
-  expect(calls.filter((call) => call.startsWith("doriface-host") && call.includes(LINK))).toEqual([]);
-  expect(existsSync(file)).toBe(false);
-}
+afterEach(removeRigs);
 
 describe("install.sh on Linux", () => {
   test("installs the checked binary and herdr-core, registers the user service, then waits for it and pairs", () => {
@@ -403,103 +258,6 @@ describe("install.sh on Linux", () => {
     expect(run.calls).toContain("systemctl --user disable --now doriface-host.service");
     expect(existsSync(join(r.home, ".config", "systemd", "user", "doriface-host.service"))).toBe(false);
     expect(existsSync(join(r.home, ".local", "bin", "doriface-host"))).toBe(false);
-  });
-});
-
-describe("install.sh on macOS", () => {
-  test("running it again over a loaded agent waits for the old one to go before it registers the new one", () => {
-    const r = rig("Darwin", "arm64");
-    const state = join(r.root, "agent");
-    // launchd unloads asynchronously: after bootout, print still finds the job twice, and bootstrap fails with 5 meanwhile.
-    writeFileSync(state, "loaded");
-    stub(
-      r.stubs,
-      "launchctl",
-      [
-        `echo "launchctl $*" >> "${r.log}"`,
-        `s=$(cat "${state}")`,
-        `case "$1" in`,
-        `  bootout) echo 2 > "${state}" ;;`,
-        `  print) case "$s" in gone) exit 113 ;; loaded) exit 0 ;; 0) echo gone > "${state}"; exit 113 ;; *) echo $((s - 1)) > "${state}"; exit 0 ;; esac ;;`,
-        `  bootstrap) [ "$s" = gone ] || { echo "Bootstrap failed: 5: Input/output error" >&2; exit 5; }; echo loaded > "${state}" ;;`,
-        `esac`,
-      ].join("\n"),
-    );
-    const run = install(r, ["--no-pair"]);
-    expect(run.err).toBe("");
-    expect(run.code).toBe(0);
-    expect(readFileSync(state, "utf8").trim()).toBe("loaded");
-  });
-
-  // About 200 stub processes (101 `launchctl print`, 100 `sleep`): nothing is slept, but on a busy host the spawns alone
-  // can pass bun's default 5 s, so the test gets a bound sized to them (#2006).
-  test("an old agent that never unloads stops the install after 10 s and never bootstraps the new one (#834)", () => {
-    const r = rig("Darwin", "arm64");
-    stub(r.stubs, "launchctl", `echo "launchctl $*" >> "${r.log}"; exit 0`);
-    // The wait's own clock: each 0.1 s step is recorded instead of slept.
-    stub(r.stubs, "sleep", `echo "sleep $*" >> "${r.log}"`);
-    const run = install(r, ["--no-pair"]);
-    expect(run.code).toBe(1);
-    expect(run.calls.filter((call) => call.startsWith("launchctl print"))).toHaveLength(101);
-    expect(run.calls.filter((call) => call === "sleep 0.1")).toHaveLength(100);
-    expect(run.calls.some((call) => call.startsWith("launchctl bootstrap"))).toBe(false);
-  }, 30_000);
-
-  test("an upgrade keeps the agent's state dir and identity, and leaves the agent loaded (#1966)", () => {
-    const r = rig("Darwin", "arm64");
-    const custom = join(r.root, "mesh & <state>");
-    mkdirSync(custom);
-    writeFileSync(join(custom, "identity"), "host A");
-    expect(install(r, ["--no-pair"], [], { DORIFACE_HOST_STATE_DIR: custom }).code).toBe(0);
-    const plistFile = join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist");
-    const before = readFileSync(plistFile, "utf8");
-    expect(before).toContain(`<string>${r.root}/mesh &amp; &lt;state&gt;</string>`);
-
-    // The upgrade, as #1966 ran it; launchd refuses the first bootstrap after the old agent leaves `print`.
-    const agent = launchd(r.stubs, r.log, 1);
-    writeFileSync(agent, "loaded");
-    stub(r.stubs, "sleep", `echo "sleep $*" >> "${r.log}"`);
-    const run = install(r, ["--version", "v0.1.16", "--no-pair"]);
-    expect(run.err).toBe("");
-    expect(run.code).toBe(0);
-    expect(readFileSync(plistFile, "utf8")).toBe(before);
-    expect(readFileSync(join(custom, "identity"), "utf8")).toBe("host A");
-    expect(readFileSync(agent, "utf8").trim()).toBe("loaded");
-  });
-
-  // As many stub processes as the never-unloads test (100 bootstrap attempts through the launchd stub, each running its
-  // own `cat`, and 99 `sleep`), so the same bound (#2006).
-  test("a bootstrap launchd keeps refusing fails the install loudly instead of leaving the agent quietly unloaded", () => {
-    const r = rig("Darwin", "arm64");
-    launchd(r.stubs, r.log, 1000);
-    stub(r.stubs, "sleep", `echo "sleep $*" >> "${r.log}"`);
-    const run = install(r, ["--no-pair"]);
-    expect(run.code).toBe(1);
-    expect(run.err).toContain("Bootstrap failed: 5: Input/output error");
-    expect(run.err).toContain("launchctl bootstrap gui/");
-  }, 30_000);
-
-  test("registers a LaunchAgent that keeps the host running, then pairs", () => {
-    const r = rig("Darwin", "arm64");
-    const run = install(r);
-    expect(run.err).toBe("");
-    expect(run.code).toBe(0);
-    const uid = Bun.spawnSync(["id", "-u"]).stdout.toString().trim();
-    expect(run.calls).toEqual([
-      "doriface-host --install-hc",
-      "doriface-host --help",
-      `launchctl bootout gui/${uid}/dev.omo.doriface-host`,
-      `launchctl print gui/${uid}/dev.omo.doriface-host`,
-      `launchctl bootstrap gui/${uid} ${join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist")}`,
-      `launchctl print gui/${uid}/dev.omo.doriface-host`,
-      `doriface-host pair --wait-host 60 --state-dir ${join(r.home, ".local", "state", "doriface-host")}`,
-    ]);
-    const plist = readFileSync(join(r.home, "Library", "LaunchAgents", "dev.omo.doriface-host.plist"), "utf8");
-    expect(plist).toContain(`<string>${join(r.home, ".local", "bin", "doriface-host")}</string>`);
-    expect(plist).toContain("<key>RunAtLoad</key><true/>");
-    expect(plist).toContain("<key>KeepAlive</key><true/>");
-    expect(plist).toContain("<key>ProcessType</key><string>Interactive</string>");
-    expect(plist).not.toMatch(/LowPriority|<key>Nice<\/key>|Background/);
   });
 });
 

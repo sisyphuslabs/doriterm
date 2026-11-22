@@ -2,7 +2,9 @@
 // the machine off (the dial fails) or make it ask for a login (the dial prints ssh's refusal) with the page open.
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { E2E_MACHINE_DIR } from "./config.ts";
+import { startMachineHost } from "./machine-host.ts";
 
 export const MACHINE_NAME = "build-box";
 /** Holds `off` or `login`, or `slow` for a dial that answers late; absent means the machine answers. */
@@ -13,6 +15,7 @@ export const MACHINE_ENV = join(E2E_MACHINE_DIR, "env.json");
 export const MACHINE_LINE_PID = join(E2E_MACHINE_DIR, "line.pid");
 /** One line per `slow` dial, written before it sleeps: its pid, so a spec can tell a dial is still on its way. */
 export const MACHINE_DIALING = join(E2E_MACHINE_DIR, "dialing");
+const MACHINE_CONNECT = fileURLToPath(new URL("./machine-connect.ts", import.meta.url));
 
 const agent = (state: string, msg: string, line: string): string[] => [
   "sh",
@@ -47,7 +50,7 @@ export const DEMO_MACHINE: MachineSpec = {
 };
 
 /**
- * The `--via` command: refuses as the switch says, else runs hc's line against the second core. `slow` holds a dial past
+ * The `--via` command: refuses as the switch says, else attaches to the second core. `slow` holds a dial past
  * the switch for a moment before its line starts, as a dial on a loaded runner is, and records its pid in `dialing` first.
  */
 export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineSpec): string {
@@ -55,8 +58,7 @@ export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineS
     .map(([key, value]) => `${key}="${value}"`)
     .join(" ");
   const refusals = [
-    // The machine's stop removes its dir first: a dial that comes after (a line its dialing core started before it
-    // stopped) is refused, since its hc connect would start the stopped core again with nothing left to stop it (#2142).
+    // The machine's stop removes its dir first so new dials are refused before they try the socket.
     `[ -d "${spec.dir}" ] || { echo "${spec.name} is stopped" >&2; exit 1; }`,
     `m=$(cat "${join(spec.dir, "switch")}" 2>/dev/null)`,
     `[ "$m" = off ] && { echo "${spec.name} is switched off" >&2; exit 1; }`,
@@ -64,7 +66,8 @@ export function viaCommand(own: Readonly<Record<string, string>>, spec: MachineS
     // A held dial checks again once it wakes: the machine may have stopped while it slept (#2158).
     `[ "$m" = slow ] && { echo $$ >> "${join(spec.dir, "dialing")}"; sleep 10; [ -d "${spec.dir}" ] || { echo "${spec.name} is stopped" >&2; exit 1; }; }`,
   ];
-  return `sh -c '${refusals.join("; ")}; echo $$ >> "${MACHINE_LINE_PID}"; exec env ${env} sh -c "$1"' sh`;
+  // Ignore the appended hc connect command: an admitted dial can be paused here until after stop (#2525).
+  return `sh -c '${refusals.join("; ")}; echo $$ >> "${MACHINE_LINE_PID}"; exec env ${env} bun "${MACHINE_CONNECT}"' sh`;
 }
 
 /** Starts each seed with `hc run --bg` in `cwd`. */
@@ -182,13 +185,17 @@ async function gone(pid: number, withinMs: number): Promise<boolean> {
   return true;
 }
 
-/** Starts the second core (with its demo terminals when `withSeeds`) and adds it; resolves with its stop. */
+/**
+ * Starts the second core (with its demo terminals when `withSeeds`, and a doriface-host beside it when `withHost`) and
+ * adds it; resolves with its stop.
+ */
 export async function addMachine(
   hc: string,
   env: Record<string, string | undefined>,
   root: string,
   withSeeds: boolean,
   spec: MachineSpec = DEMO_MACHINE,
+  withHost = false,
 ): Promise<() => Promise<void>> {
   const session = `web-e2e-b-${crypto.randomUUID().slice(0, 8)}`;
   const own = {
@@ -207,7 +214,9 @@ export async function addMachine(
   rmSync(spec.dir, { recursive: true, force: true });
   mkdirSync(spec.dir, { recursive: true });
   const there = { ...env, ...own };
+  let stopHost: (() => Promise<void>) | undefined;
   const stop = async (): Promise<void> => {
+    await stopHost?.();
     rmSync(spec.dir, { recursive: true, force: true });
     const control = Bun.spawn([hc, "connect", "--session", session], { env: there, stdin: "pipe", stdout: "pipe" });
     // Read while it runs, so a stopping core can never wait on a full pipe; the status reply names the core's pid.
@@ -229,7 +238,12 @@ export async function addMachine(
   };
   try {
     writeFileSync(join(spec.dir, "env.json"), JSON.stringify({ hc, env: own }));
-    if (withSeeds) await runSeeds(hc, there, join(root, "infra"), spec.seeds);
+    if (withSeeds && spec.seeds.length > 0) {
+      await runSeeds(hc, there, join(root, "infra"), spec.seeds);
+    } else {
+      const start = Bun.spawn([hc, "server", "start"], { env: there, stdout: "ignore", stderr: "inherit" });
+      if ((await start.exited) !== 0) throw new Error(`hc server start for ${spec.name} failed`);
+    }
     const add = Bun.spawn([hc, "machine", "add", "--via", viaCommand(own, spec), "--name", spec.name], {
       env,
       stdout: "ignore",
@@ -242,6 +256,7 @@ export async function addMachine(
     const why = await said;
     if (code !== 0) throw new Error(`hc machine add for the second core failed (exit ${code}): ${why}`);
     if (withSeeds) await seedsListed(hc, env, spec);
+    if (withHost) stopHost = await startMachineHost(hc, there, session, root);
   } catch (error) {
     try {
       await stop();
