@@ -15,7 +15,9 @@
     "fmt:check": "bun fmt --check",
     "gen:api:check": "bun run --cwd packages/protocol gen:api:check",
     "test": "bun apps/host/scripts/test-run.ts && bun tests/relay/private-relay.ts notice",
-    "check": "bun run typecheck && bun run lint && bun run fmt:check && bun run gen:api:check && bun run test",
+    "check:fast": "bun run typecheck && bun run lint && bun run fmt:check && bun run gen:api:check",
+    "check": "bun run check:fast && bun run test",
+    "prepare": "husky",
     "relay:fetch": "bun tests/relay/private-relay.ts fetch",
     "relay:test": "bun tests/relay/private-relay.ts test",
     "relay:dev": "bun tests/relay/private-relay.ts dev",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
+    "husky": "9.1.7",
     "oxc-parser": "0.148.0",
     "oxfmt": "0.75.0",
     "oxlint": "1.90.0",

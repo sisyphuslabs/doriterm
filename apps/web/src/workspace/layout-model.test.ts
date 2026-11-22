@@ -64,6 +64,13 @@ test("an added machine's loose tab keeps its key when the machine is renamed, so
   expect(after?.panes.map((pane) => pane.address)).toEqual(["build-renamed/t1"]);
 });
 
+test("a terminal shown alone, or loose, takes edits as its machine's layout does: offline only with no layout for it (#2721)", () => {
+  expect(buildTabs([here], [live]).map((tab) => tab.readOnly)).toEqual([null]);
+  const loading = { ...here, readOnly: "the layout is loading" };
+  expect(buildTabs([loading], [], ["t1"]).map((tab) => tab.readOnly)).toEqual(["the layout is loading"]);
+  expect(buildTabs([here], [], ["box/t1"]).map((tab) => tab.readOnly)).toEqual(["the machine is offline"]);
+});
+
 test("a live terminal is shown alone only while the core has no layout; a layout whose tabs were all closed shows none (#354)", () => {
   expect(buildTabs([here], [live]).map((tab) => tab.transient)).toEqual([true]);
   expect(buildTabs([{ ...here, doc: { spaces: [] } }], [live])).toEqual([]);

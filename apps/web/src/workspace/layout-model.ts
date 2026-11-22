@@ -181,7 +181,8 @@ function looseTab(address: string, layouts: readonly MachineLayout[], ids: Machi
     root: { children: [terminalBlock(TRANSIENT, localOf(address))], id: "", type: "row" },
     pinned: false,
     panes: [{ id: TRANSIENT, address, mod: null }],
-    readOnly: owner?.readOnly ?? offlineReason(),
+    // A machine with no layout here is offline; one whose layout takes edits (null) is not (#2721).
+    readOnly: owner === undefined ? offlineReason() : owner.readOnly,
     transient: true,
   };
 }
