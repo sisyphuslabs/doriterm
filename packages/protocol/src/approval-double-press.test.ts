@@ -120,22 +120,27 @@ describe("the claimer's own fence", () => {
   });
 
   test("a claim another answer replaced before the press presses nothing", async () => {
-    // Between the claim and the press, another answer's record takes the prompt (as after an expiry on its side).
+    // Between the claim and the press, another answer's record takes the prompt (as after an expiry on its side): it
+    // lands right after the claim's write, before any read the answer makes to check its claim.
     class OvertakenCore extends MemoryApprovalCore {
       overtaken = false;
-      override async screen(address: string): Promise<string> {
-        if (!this.overtaken) {
+      override async setDoc(
+        name: string,
+        on: string | undefined,
+        value: Parameters<MemoryApprovalCore["setDoc"]>[2],
+        version: number,
+      ): Promise<"ok" | "conflict"> {
+        const written = await super.setDoc(name, on, value, version);
+        if (written === "ok" && !this.overtaken) {
           this.overtaken = true;
-          const current = await this.doc("approval.t3", undefined);
-          const value: unknown = current.value;
           const records: unknown = typeof value === "object" && value !== null ? Reflect.get(value, "records") : [];
           const theirs = { by: "tablet", client: "tablet-1", attempt: "tablet-attempt" };
           const taken = (Array.isArray(records) ? records : []).map((record: unknown) =>
             Object.assign({}, typeof record === "object" && record !== null ? record : {}, theirs),
           );
-          expect(await this.setDoc("approval.t3", undefined, { records: taken }, current.version)).toBe("ok");
+          expect(await super.setDoc(name, on, { records: taken }, version + 1)).toBe("ok");
         }
-        return super.screen(address);
+        return written;
       }
     }
     const { core, mark } = asking((terminal) => new OvertakenCore(terminal, CLAUDE_PROMPT_SCREEN));

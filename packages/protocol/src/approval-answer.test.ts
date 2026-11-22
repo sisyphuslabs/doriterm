@@ -135,8 +135,9 @@ describe("a claim is only as true as what happened after it", () => {
     let now = 0;
     const clock = approvalClock(() => now);
     core.failNext("screen");
-    core.failNext("doc", 1, 1);
-    // The claim lands (its doc.get passes); the re-read throws; recording `failed` cannot read the document.
+    core.failNext("doc", 1, 2);
+    // The claim lands (its doc.get passes), and so does the fence read beside the live screen; the screen read throws;
+    // recording `failed` cannot read the document.
     expect(await answerApproval(core, mark, ALLOW, phone, 1, { clock })).toMatchObject({ kind: "failed" });
     expect((await readApprovalRecord(core, mark))?.outcome).toBe("claimed");
     expect(await answerApproval(core, mark, ALLOW, phone, 2, { clock })).toMatchObject({ kind: "lost" });
@@ -148,7 +149,7 @@ describe("a claim is only as true as what happened after it", () => {
   test("a client that saw its own answer fail takes over exactly that claim at once, and nothing else does", async () => {
     const { core, mark } = claudeAt("t3");
     core.failNext("screen");
-    core.failNext("doc", 1, 1);
+    core.failNext("doc", 1, 2);
     const failed = await answerApproval(core, mark, ALLOW, phone, 1);
     if (failed.kind !== "failed") throw new Error(`expected failed, got ${failed.kind}`);
     expect(await answerApproval(core, mark, ALLOW, phone, 2, { retake: "not-that-attempt" })).toMatchObject({
@@ -162,7 +163,7 @@ describe("a claim is only as true as what happened after it", () => {
   test("another client's live claim is not taken over, and it does not read as answered", async () => {
     const { core, mark } = claudeAt("t3");
     core.failNext("screen");
-    core.failNext("doc", 1, 1);
+    core.failNext("doc", 1, 2);
     await answerApproval(core, mark, ALLOW, phone, 1_000);
     const taken = await answerApproval(core, mark, ALLOW, laptop, 1_000 + CLAIM_TTL_MS - 1);
     expect(taken).toMatchObject({ kind: "lost", record: { by: phone.by, outcome: "claimed" } });
@@ -174,7 +175,7 @@ describe("a claim is only as true as what happened after it", () => {
     let now = 0;
     const clock = approvalClock(() => now);
     core.failNext("screen");
-    core.failNext("doc", 1, 1);
+    core.failNext("doc", 1, 2);
     await answerApproval(core, mark, ALLOW, phone, 1_000);
     expect(await answerApproval(core, mark, DENY, laptop, 1_000 + CLAIM_TTL_MS, { clock })).toMatchObject({
       kind: "lost",

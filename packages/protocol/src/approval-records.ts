@@ -79,33 +79,42 @@ export const recordJson = (record: ApprovalRecord, outcome = record.outcome): Js
 /** The terminal's records with `change` applied, or undefined to leave the document as it is. */
 export type Change = (records: readonly ApprovalRecord[]) => readonly JsonValue[] | undefined;
 
+/** The terminal's records as one read of its approval document found them, and that document's version. */
+export interface RecordsRead {
+  readonly records: readonly ApprovalRecord[];
+  readonly version: number;
+}
+
 /**
  * The terminal's approval document, then `change` applied and written back at the version read, retried on a conflict.
- * Returns the records as read when `change` left the document alone, undefined once its write landed.
+ * Returns the records as read when `change` left the document alone, undefined once its write landed. `read` is a read
+ * the caller just made: the first write goes at its version without reading again, and a conflict reads afresh (#2718).
  */
 export async function update(
   core: ApprovalCore,
   address: string,
   change: Change,
+  read?: RecordsRead,
   attempt = 1,
 ): Promise<readonly ApprovalRecord[] | undefined> {
   const { name, on } = docOf(address);
-  const current = await core.doc(name, on);
-  const next = change(recordsIn(current.value));
-  if (next === undefined) return recordsIn(current.value);
+  const current = read ?? (await readRecords(core, address));
+  const next = change(current.records);
+  if (next === undefined) return current.records;
   if ((await core.setDoc(name, on, { records: next.slice(-KEPT) }, current.version)) === "ok") return undefined;
   if (attempt >= ATTEMPTS) throw new Error(`approval document ${name} kept moving: ${ATTEMPTS} conflicts in a row`);
-  return update(core, address, change, attempt + 1);
+  return update(core, address, change, undefined, attempt + 1);
 }
 
-/** Every record of the terminal that holds the marked prompt, as the core has them now. */
-export async function readRecords(core: ApprovalCore, address: string): Promise<readonly ApprovalRecord[]> {
+/** The terminal's records, as the core has them now. */
+export async function readRecords(core: ApprovalCore, address: string): Promise<RecordsRead> {
   const { name, on } = docOf(address);
-  return recordsIn((await core.doc(name, on)).value);
+  const doc = await core.doc(name, on);
+  return { records: recordsIn(doc.value), version: doc.version };
 }
 
 /** What was recorded for the marked prompt, by whichever client answered it. */
 export async function readApprovalRecord(core: ApprovalCore, mark: ApprovalMark): Promise<ApprovalRecord | undefined> {
   const key = approvalKey(mark);
-  return (await readRecords(core, mark.terminal)).findLast((record) => record.prompt === key);
+  return (await readRecords(core, mark.terminal)).records.findLast((record) => record.prompt === key);
 }
