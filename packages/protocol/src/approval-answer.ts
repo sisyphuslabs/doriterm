@@ -55,32 +55,6 @@ async function settle(
   );
 }
 
-/**
- * The claimer's fence, read right before its key press: the prompt's record is still this answer's own `claimed` one,
- * and both this client's own clocks (its monotonic clock and its wall clock, each read only against itself) say the
- * claim is younger than `CLAIM_TTL_MS - FENCE_MARGIN_MS`. The read it held on, or undefined when it does not hold.
- */
-async function fenced(
-  core: ApprovalCore,
-  address: string,
-  mine: ApprovalRecord,
-  clock: ApprovalClock,
-  claimedAt: number,
-  wall: () => number,
-  wallClaimedAt: number,
-): Promise<RecordsRead | undefined> {
-  const read = await readRecords(core, address);
-  const current = read.records.findLast((record) => record.prompt === mine.prompt);
-  const ours =
-    current?.client === mine.client &&
-    current.attempt === mine.attempt &&
-    current.outcome === "claimed" &&
-    clock.now() - claimedAt < CLAIM_TTL_MS - FENCE_MARGIN_MS &&
-    // A monotonic clock may stand still while the device sleeps; this device's own wall clock does not.
-    wall() - wallClaimedAt < CLAIM_TTL_MS - FENCE_MARGIN_MS;
-  return ours ? read : undefined;
-}
-
 /** How long a typed row is given to open after its keys, before the text is pasted: re-read after each wait. */
 const ENTRY_WAITS_MS = [50, 100, 200, 400, 800, 1600];
 
@@ -88,25 +62,27 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 
 /**
  * Waits for the typed row `option` to open on the live screen (the agent still waits, and its cursor's row takes text),
- * reading the fence beside each screen read, so the read that finds the row open comes with a fence as fresh as itself
- * (#2718). Undefined when the row never opened; else the fence's read, undefined when the fence did not hold.
+ * returning the document read alongside the open row for the caller's pre-paste fence.
  */
 async function entryOpen(
   core: ApprovalCore,
   address: string,
   option: string,
   pause: (ms: number) => Promise<void>,
-  fence: () => Promise<RecordsRead | undefined>,
   waits: readonly number[] = ENTRY_WAITS_MS,
-): Promise<{ readonly fence: RecordsRead | undefined } | undefined> {
+): Promise<RecordsRead | undefined> {
   const [ms, ...later] = waits;
   if (ms === undefined) return undefined;
   await pause(ms);
-  const [terminal, screen, held] = await Promise.all([core.terminal(address), core.screen(address), fence()]);
+  const [terminal, screen, read] = await Promise.all([
+    core.terminal(address),
+    core.screen(address),
+    readRecords(core, address),
+  ]);
   if (!waitsOnApproval(terminal)) return undefined;
   const now = readScreenPrompt(terminal.status?.app ?? "", screen);
-  if (now?.typing === true && now.cursor === option) return { fence: held };
-  return entryOpen(core, address, option, pause, fence, later);
+  if (now?.typing === true && now.cursor === option) return read;
+  return entryOpen(core, address, option, pause, later);
 }
 
 /**
@@ -122,9 +98,8 @@ async function entryOpen(
  *    cancel.
  * 3. Fence: re-read the document; press only if the prompt's record is still this answer's own claim and this client's
  *    monotonic and wall clocks both say the claim is younger than CLAIM_TTL_MS - FENCE_MARGIN_MS (a sleeping page's
- *    monotonic clock may stand still). Otherwise nothing is pressed (`failed`). The fence is read beside the screen
- *    re-read of step 2, not after it: the key still goes out one reply after the fence's read, and the answer waits on
- *    one reply fewer, which counts where every reply is slow (#2718).
+ *    monotonic clock may stand still). Otherwise nothing is pressed (`failed`). Read the document beside the screen
+ *    in step 2, but check ownership and age after both replies: a slow screen can outlive the claim.
  * 4. Press the keys, then record `sent`. A press that throws is `unknown`: it may have landed, so the prompt stays held
  *    until the screen moves. For typed text, the keys open its row; the text is pasted (one line, no control
  *    characters) only once the live screen shows that row open and the fence of step 3 still holds (read beside that
@@ -176,12 +151,21 @@ export async function answerApproval(
   if (taken !== undefined) return winner === undefined ? { kind: "stale" } : { kind: "lost", record: winner };
 
   const text = reply.kind === "text" ? typedAnswer(reply.text) : undefined;
-  const fence = () => fenced(core, mark.terminal, claim, clock, claimedAt, wall, wallClaimedAt);
+  const holdsFence = (read: RecordsRead): boolean => {
+    const current = read.records.findLast((record) => record.prompt === key);
+    return (
+      current?.client === claim.client &&
+      current.attempt === claim.attempt &&
+      current.outcome === "claimed" &&
+      clock.now() - claimedAt < CLAIM_TTL_MS - FENCE_MARGIN_MS &&
+      wall() - wallClaimedAt < CLAIM_TTL_MS - FENCE_MARGIN_MS
+    );
+  };
   let press: RecordsRead | undefined;
   let keys: readonly string[] | undefined;
   try {
     // The live screen and the fence are read together: each reply waits on the core, which may be slow (#2718).
-    const [checked, fencedRead] = await Promise.allSettled([livePrompt(core, mark), fence()]);
+    const [checked, fencedRead] = await Promise.allSettled([livePrompt(core, mark), readRecords(core, mark.terminal)]);
     if (checked.status === "rejected") throw checked.reason;
     const live = checked.value;
     // The keys are worked out on the live screen, and only for rows that still carry the words the card showed.
@@ -191,7 +175,7 @@ export async function answerApproval(
       return { kind: "stale" };
     }
     if (fencedRead.status === "rejected") throw fencedRead.reason;
-    press = fencedRead.value;
+    press = holdsFence(fencedRead.value) ? fencedRead.value : undefined;
   } catch (error) {
     // Nothing was pressed. Release the claim as `failed` if the document is reachable; if it is not, it lapses after
     // CLAIM_TTL_MS of every other client's watch.
@@ -209,15 +193,15 @@ export async function answerApproval(
   try {
     await core.keys(mark.terminal, keys);
     if (reply.kind === "text" && text !== undefined) {
-      const open = await entryOpen(core, mark.terminal, reply.option, options.pause ?? wait, fence);
+      const open = await entryOpen(core, mark.terminal, reply.option, options.pause ?? wait);
       if (open === undefined)
         throw new Error("the row for a typed answer did not open; its keys were pressed, the text was not sent");
       // The row took time to open: the claim is checked again, as before the keys, right before the text goes in.
-      if (open.fence === undefined)
+      if (!holdsFence(open))
         throw new Error(
           "the claim lapsed or was taken while the typed row opened; its keys were pressed, the text was not sent",
         );
-      press = open.fence;
+      press = open;
       await core.send(mark.terminal, text);
     }
   } catch (error) {
