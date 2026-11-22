@@ -3,6 +3,7 @@ import type { Terminal } from "@doriface/protocol";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { ListedSpace } from "./model.ts";
+import { NotNowLine } from "./not-now-line.tsx";
 import { closeCounts, closeRefusal, closeSpace, type SpaceCloseDrops } from "./space-close.ts";
 import { SpaceCloseContext, type SpaceClosing } from "./space-close-context.ts";
 import { sessionCalls } from "./session-actions.ts";
@@ -58,7 +59,13 @@ export function SpaceClose({
   // Read when the close runs, so a question opened before the latest lists still closes the space as it is now.
   const latest = useRef({ terminals, layouts, spaces });
   latest.current = { terminals, layouts, spaces };
-  const closing = useMemo<SpaceClosing>(() => ({ ask: onAsk }), [onAsk]);
+  // From this render's layouts, so the menu's Close follows the machine going and coming back.
+  const closing = useMemo<SpaceClosing>(
+    () => ({ ask: onAsk, refusal: (id) => closeRefusal(layouts, id) }),
+    [onAsk, layouts],
+  );
+  // A question opened before the machine went away cannot close it now: Close waits, disabled, and comes back by itself.
+  const refused = ask === null || busy ? null : closeRefusal(layouts, ask);
   const submit = (id: string): void => {
     const refusal = closeRefusal(latest.current.layouts, id);
     if (refusal !== null) return setError(refusal);
@@ -90,17 +97,19 @@ export function SpaceClose({
               <Button variant="ghost" onClick={() => onAsk(null)} disabled={busy}>
                 Cancel
               </Button>
-              <Button variant="destructive" loading={busy} onClick={() => submit(ask)}>
+              <Button variant="destructive" loading={busy} disabled={refused !== null} onClick={() => submit(ask)}>
                 Close
               </Button>
             </>
           }
         >
-          {error === null ? undefined : (
+          {error !== null ? (
             <Notice tone="error" title="The space was not closed">
               {error}
             </Notice>
-          )}
+          ) : refused !== null ? (
+            <NotNowLine action="Close" why={refused} />
+          ) : undefined}
         </Dialog>
       )}
     </SpaceCloseContext>

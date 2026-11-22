@@ -38,4 +38,5 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(Channel.dictationStart, (event, candidate: unknown) => handlers.dictationStart(event, candidate));
   ipcMain.handle(Channel.dictationStop, (event, candidate: unknown) => handlers.dictationStop(event, candidate));
   ipcMain.handle(Channel.dictationAbort, (event, candidate: unknown) => handlers.dictationAbort(event, candidate));
+  ipcMain.handle(Channel.pasteInvite, (event) => handlers.pasteInvite(event));
 }

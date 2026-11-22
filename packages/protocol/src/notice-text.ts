@@ -8,6 +8,7 @@ import type { Terminal } from "./__generated__/hc-api.ts";
 import type { ScreenPrompt } from "./approval-rows.ts";
 import { isJsonObject } from "./json.ts";
 import type { NoticeKind } from "./push.ts";
+import { terminalSpaceName } from "./space-name.ts";
 
 export interface NoticeContext {
   /** The machine the terminal runs on, as people name it: the host's own name, or an added machine's. */
@@ -102,8 +103,6 @@ function nameOf(terminal: Terminal): string | undefined {
   );
 }
 
-const lastSegment = (path: string): string | undefined => path.split("/").findLast((part) => part !== "");
-
 /** What the agent waits on, as its dialog says it: a permission's verb and command, a question's own text. */
 function askOf(prompt: ScreenPrompt): string | undefined {
   if (prompt.kind === "permission" && prompt.command !== "") return `${prompt.asks}: ${prompt.command}`;
@@ -120,7 +119,7 @@ export function noticeContextOf(terminal: Terminal, machine: string, prompt?: Sc
   return (
     cleaned({
       machine,
-      space: terminal.labels["space"] ?? lastSegment(terminal.foreground?.cwd ?? terminal.cwd),
+      space: terminalSpaceName(terminal),
       terminal: name,
       agent: nonEmpty(terminal.status?.app) ?? prompt?.agent,
       session: session === name ? undefined : session,

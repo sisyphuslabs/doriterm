@@ -6,6 +6,7 @@ export type ControlRequest =
   | { readonly op: "devices-changed" }
   | { readonly op: "mesh-changed" }
   | { readonly op: "mesh-status" }
+  | { readonly op: "skill-changed" }
   | {
       readonly op: "mesh-revoke";
       readonly member: string;
@@ -70,6 +71,7 @@ export function parseRequest(line: string): ControlRequest {
     case "mesh-changed":
     case "mesh-pending":
     case "mesh-status":
+    case "skill-changed":
       return { op };
     case "mesh-leave":
       return {

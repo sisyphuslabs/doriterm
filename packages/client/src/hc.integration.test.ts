@@ -46,7 +46,7 @@ function spawnConnect(bin: string) {
 describe("real herdr-core over hc connect", () => {
   test("runs a shell, attaches, sees its output, kills it and stops the core", async () => {
     if (hcBin === undefined || hcBin === null) {
-      throw new Error("no herdr-core binary: set HC_BIN or put hc on PATH (CI installs hc 0.1.20)");
+      throw new Error("no herdr-core binary: set HC_BIN or put hc on PATH (CI installs hc 0.1.21)");
     }
     const child = spawnConnect(hcBin);
     const stderr = new Response(child.stderr).text();

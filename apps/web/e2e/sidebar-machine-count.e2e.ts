@@ -49,7 +49,7 @@ test.afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("a machine's count is the sum of the counts of the spaces under it: a split tab counts once, a sub-agent not at all (#2122)", async ({
+test("a machine's count is the sum of the counts of the spaces under it: a split tab counts once, a sub-agent's own tab once (#2122, #2467)", async ({
   page,
 }) => {
   const split = join(dir, "split2122");
@@ -57,7 +57,7 @@ test("a machine's count is the sum of the counts of the spaces under it: a split
   const left = start("count-left", split);
   const right = start("count-right", split);
   const alone = start("count-alone", single);
-  // A sub-agent is a live terminal of this machine that no tab shows: the machine's row counted it, and no space row did.
+  // A sub-agent is adopted into a tab of its own like any live terminal (#2467), here in the space holding its folder.
   start("count-sub", split, left);
   seedSpaces([
     { id: "spc-split", name: "", folder: split, tabs: [{ id: "tb-split", name: "", terminal: left, beside: [right] }] },
@@ -66,11 +66,11 @@ test("a machine's count is the sum of the counts of the spaces under it: a split
   await page.goto("/");
   const spaces = page.getByRole("complementary", { name: "Workspace" }).getByRole("region", { name: "Spaces" });
   const thisMachine = spaces.locator("[data-drag-id]").filter({ has: page.locator('[data-machine-header="studio"]') });
-  // Four live terminals, three of them in the two tabs: each space row counts its one tab, and the header their sum.
-  await expect(thisMachine.locator("[data-row-meta]").getByLabel(/^\d+ tabs$/)).toHaveText(["1", "1"], {
+  // Four live terminals in three tabs: the split space counts its split tab and the sub-agent's, and the header the sum.
+  await expect(thisMachine.locator("[data-row-meta]").getByLabel(/^\d+ tabs$/)).toHaveText(["2", "1"], {
     timeout: 20_000,
   });
-  await expect(thisMachine.locator("[data-machine-header]").getByLabel(/^\d+ tabs$/)).toHaveText("2");
+  await expect(thisMachine.locator("[data-machine-header]").getByLabel(/^\d+ tabs$/)).toHaveText("3");
 });
 
 test.describe("on a phone", () => {

@@ -1,4 +1,12 @@
-import type { JsonObject, Terminal } from "@doriface/protocol";
+import {
+  folderSpaceName,
+  type JsonObject,
+  pathParts,
+  programName,
+  programSpaceName,
+  type Terminal,
+  terminalSpaceName,
+} from "@doriface/protocol";
 import { docSpaces, panesOf, tabsOf } from "@doriface/protocol/layout";
 import type { Agent, AgentStatus, Space } from "@doriface/ui";
 import { spaceKey } from "../layout/view.ts";
@@ -29,10 +37,6 @@ const SHELLS: ReadonlySet<string> = new Set([
   "ksh",
   "ion",
 ]);
-
-/** `/bin/zsh`, a login shell's `-zsh` and `cmd.exe` as the bare program name. */
-const programName = (path: string): string =>
-  (path.split(/[/\\]/).at(-1) ?? path).replace(/^-+/, "").replace(/\.exe$/i, "");
 
 /**
  * What runs in a terminal, as herdr-app's tab strip draws its icon: an agent (one that reports its state over OSC 7501),
@@ -100,26 +104,11 @@ export const idOfMachine = (name: string | undefined): string => (name === undef
 /** The id of the machine an address is on: this one for a bare `t7`, the named machine for `machine/t7`. */
 export const machineId = (address: string): string => idOfMachine(machineOf(address));
 
-function basename(path: string): string {
-  return path.split("/").findLast((part) => part !== "") ?? "/";
-}
-
-/**
- * The hc label that names a terminal's space. A loose terminal carrying it is adopted into the space of that name, and a
- * rename writes it on the space's live terminals too, so hc and the layout document agree (#395, #404).
- */
-export const SPACE_LABEL = "space";
-
-/** A space is the `space` label, else the working directory's last segment. */
-export function spaceName(terminal: Terminal): string {
-  return terminal.labels[SPACE_LABEL] ?? basename(terminal.foreground?.cwd ?? terminal.cwd);
-}
-
 const spaceDir = (terminal: Terminal): string => terminal.foreground?.cwd ?? terminal.cwd;
 
 /** The parent directory's name, to tell apart two spaces whose directories end the same way; the whole path at the root. */
 function parentName(path: string): string {
-  const parts = path.split("/").filter((part) => part !== "");
+  const parts = pathParts(path);
   return parts.length >= 2 ? (parts.at(-2) ?? path) : path;
 }
 
@@ -136,7 +125,7 @@ export function formatAge(sinceMs: number, nowMs: number): string {
 export function toAgent(terminal: Terminal, nowMs: number): Agent {
   const machine = machineOf(terminal.address);
   const said = terminal.status?.msg ?? terminal.status?.title;
-  const detail = said === undefined || said === "" ? spaceName(terminal) : said;
+  const detail = said === undefined || said === "" ? terminalSpaceName(terminal) : said;
   const agent: Agent = {
     id: terminal.address,
     name: terminalTitle(terminal),
@@ -204,8 +193,9 @@ export type ListedSpace = Space & {
 /**
  * The spaces as herdr-app lists them (#404): every space of every machine's layout document, this machine's first, then
  * each machine's in name order, each machine's in its document's order. A space is keyed by `spaceKey` and counts its
- * tabs; it is named as saved, else after its folder, else after where its first live terminal is, and two of one machine
- * that would read the same are told apart by the parent directory, as toSpaces does (#397).
+ * tabs; it is named as saved, else after its folder, else after where its first live terminal is, else (that directory
+ * being the root or a system one, #2658) after the program that terminal started; two of one machine whose folder
+ * names read the same are told apart by the parent directory (#397).
  */
 export function layoutSpaces(
   sources: readonly SpacesSource[],
@@ -240,11 +230,12 @@ export function layoutSpaces(
       });
       const first = live[0];
       const dir = space.folder !== "" ? space.folder : first === undefined ? "" : spaceDir(first);
+      const byFolder = folderSpaceName(dir);
       return {
         key: spaceKey(source.machineId, space.id),
         machine: source.machine ?? undefined,
-        name: space.name !== "" ? space.name : dir === "" ? "Space" : basename(dir),
-        labeled: space.name !== "",
+        name: space.name !== "" ? space.name : (byFolder ?? programSpaceName(first?.argv[0])),
+        byFolder: space.name === "" && byFolder !== undefined,
         dir,
         tabs: space.tabs.length,
         addresses,
@@ -259,7 +250,7 @@ export function layoutSpaces(
     const twin = entries.some(
       (other) => other.key !== entry.key && other.machine === entry.machine && other.name === entry.name,
     );
-    const name = twin && !entry.labeled && entry.dir !== "" ? `${entry.name} · ${parentName(entry.dir)}` : entry.name;
+    const name = twin && entry.byFolder ? `${entry.name} · ${parentName(entry.dir)}` : entry.name;
     const space: ListedSpace = {
       id: entry.key,
       name,

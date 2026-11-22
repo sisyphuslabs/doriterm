@@ -78,6 +78,8 @@ export function Dialog({
       <BaseDialog.Backdrop className={backdropClass} />
       <BaseDialog.Popup
         ref={panel}
+        // Modal (the page behind takes no input), and says so: a toast is a dialog too, but not a modal one (#2380).
+        aria-modal="true"
         initialFocus={initialFocus}
         {...(finalFocus === undefined ? {} : { finalFocus })}
         className={cn(

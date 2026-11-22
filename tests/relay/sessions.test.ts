@@ -5,22 +5,15 @@ import {
   type SessionLink,
   type WebSocketLink,
 } from "@doriface/relay-client";
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { runDeferred } from "./support/cleanup.ts";
 import { closedWith, received } from "./support/links.ts";
 import { Probe, socketFrom, testIp } from "./support/probe.ts";
 import { inOrder, times } from "./support/sequential.ts";
-import { type LocalRelay, startLocalRelay, RELAY_STOP_MS } from "./support/relay-dev.ts";
+import { useLocalRelay } from "./support/relay-fixture.ts";
 import { startTestHost } from "./support/test-host.ts";
-import { setUpOnce } from "./support/set-up-once.ts";
 
-let relay: LocalRelay;
-
-setUpOnce(async () => {
-  relay = await startLocalRelay();
-}, 120_000);
-
-afterAll(() => relay?.stop(), RELAY_STOP_MS);
+const relay = useLocalRelay();
 
 afterEach(runDeferred);
 

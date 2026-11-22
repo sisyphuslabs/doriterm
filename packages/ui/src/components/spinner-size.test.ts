@@ -22,7 +22,9 @@ describe("the spinner has one size", () => {
   test("the component defaults to the one size and marks itself so a container can leave it alone", () => {
     const spinner = readFileSync(join(ROOT, "packages/ui/src/components/spinner.tsx"), "utf8");
     expect(spinner).toContain('data-slot="spinner"');
-    expect(spinner).toContain('"size-3 shrink-0 animate-spin-status"');
+    // The size is the turning box's; the glyph fills it.
+    expect(spinner).toContain('"block size-3 shrink-0 animate-spin-status"');
+    expect(spinner).toContain('className="block size-full"');
   });
 
   test("no call site passes a size utility to a spinner", () => {
