@@ -1,9 +1,4 @@
-import {
-  type MeshMemberStatus,
-  type MeshRevokedStatus,
-  meshRevokeCommand,
-  replacedMachineText,
-} from "@doriface/protocol";
+import { type MeshMemberStatus, meshRevokeCommand, replacedMachineText } from "@doriface/protocol";
 import { IconButton, SettingRow, cn } from "@doriface/ui";
 import { Check, Copy, Monitor, Server } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
@@ -24,13 +19,6 @@ const LINE_LABEL: Readonly<Record<MeshMemberStatus["line"], string>> = {
   unknown: "a state this app does not know",
 };
 const NEEDS_CARE = new Set<MeshMemberStatus["line"]>(["unreachable", "hc_missing", "incompatible", "needs_login"]);
-
-const REVOKE_REASON: Readonly<Record<MeshRevokedStatus["reason"], string>> = {
-  revoke: "revoked",
-  compromised: "revoked as compromised",
-  leave: "left the mesh",
-  unknown: "revoked for a reason this app does not know",
-};
 
 type CopyState = "idle" | "copied" | "failed";
 
@@ -143,25 +131,6 @@ export function MemberRow({ member, nameOf, now }: MemberRowProps) {
             <span className="mt-1 block">{`R${replacedMachineText(member.replacedMachine).slice(1)}.`}</span>
           )}
           {revoke === undefined ? null : <Command command={revoke} label={`Copy the command that revokes ${name}`} />}
-        </>
-      }
-      control={null}
-    />
-  );
-}
-
-export function RevokedRow({ entry, nameOf }: { readonly entry: MeshRevokedStatus; readonly nameOf: NameOf }) {
-  const by = entry.revokedBy.map(nameOf).join(", ");
-  return (
-    <SettingRow
-      inline
-      title={entry.name}
-      description={
-        <>
-          <span className="block">
-            {by === "" ? REVOKE_REASON[entry.reason] : `${REVOKE_REASON[entry.reason]} by ${by}`}
-          </span>
-          <Key fingerprint={entry.fingerprint} hostId={entry.hostId} />
         </>
       }
       control={null}

@@ -3,14 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { relayDir } from "../../private-relay.ts";
 import { testIp } from "../probe.ts";
+import { onInterrupt } from "../process-group.ts";
 import { within } from "../watch.ts";
-import { adoptProcessGroup, stopProcessGroup } from "../process-group.ts";
+import { startRelayWorker } from "../worker-relay.ts";
 import { makeTap, type Tap } from "./tap.ts";
-import { withoutBunNodeShim } from "../node-path.ts";
 
 export type { Tap } from "./tap.ts";
 
-const READY = /Ready on (http:\/\/\S+)/;
 const START_TIMEOUT_MS = 90_000;
 const STOP_MS = 15_000;
 /** How long a started relay may take to answer its first `GET /healthz`. */
@@ -37,19 +36,6 @@ export interface MeshRelay {
   restart(): Promise<void>;
 }
 
-interface Launched {
-  readonly proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
-  /** Ends once every process of this launch has exited (they all inherit the pipes). */
-  readonly drained: Promise<unknown>;
-  readonly ready: Promise<string>;
-}
-
-/** Stops one launch's process group and waits until every process of it has exited. */
-async function stopLaunch({ proc, drained }: Launched): Promise<void> {
-  await stopProcessGroup(proc);
-  await within(drained, "the relay's processes exiting", STOP_MS);
-}
-
 /** Resolves once the relay at `url` answers `GET /healthz` with 200, not merely once wrangler printed its banner. */
 async function answers(url: string): Promise<void> {
   const response = await within(fetch(`${url}/healthz`), "the relay answering GET /healthz", ANSWER_MS);
@@ -74,7 +60,6 @@ function routeFreeConfig(dir: string): string {
 /** Runs the pinned private relay under `wrangler dev` with a route-free config, and hands out taps to it. */
 export async function startMeshRelay(): Promise<MeshRelay> {
   const dir = relayDir();
-  const wrangler = join(dir, "node_modules", ".bin", "wrangler");
   const scratch = mkdtempSync(join(tmpdir(), "mrelay-"));
   const config = join(scratch, "wrangler.json");
   writeFileSync(config, routeFreeConfig(dir));
@@ -91,86 +76,47 @@ export async function startMeshRelay(): Promise<MeshRelay> {
       scanned = end + 1;
     }
   };
-  const launch = (): Launched => {
-    const proc = Bun.spawn(
-      [
-        wrangler,
-        "dev",
-        "-c",
-        config,
-        "--ip",
-        "127.0.0.1",
-        "--port",
-        "0",
-        "--inspector-port",
-        "0",
-        "--persist-to",
-        join(scratch, "state"),
-      ],
-      {
-        cwd: dir,
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
-        // A group of its own, adopted: an interrupt of the test runner ends wrangler and every workerd it started.
-        detached: true,
-        env: {
-          ...withoutBunNodeShim(process.env),
-          WRANGLER_SEND_METRICS: "false",
-          XDG_CONFIG_HOME: join(scratch, "config"),
-          WRANGLER_LOG_PATH: join(scratch, "logs"),
-        },
-      },
-    );
-    adoptProcessGroup(proc, scratch);
-    const from = output.length;
-    const ready = Promise.withResolvers<string>();
-    const drain = async (stream: ReadableStream<Uint8Array>): Promise<void> => {
-      const decoder = new TextDecoder();
-      for await (const chunk of stream) {
-        output += decoder.decode(chunk, { stream: true });
-        scan();
-        const url = READY.exec(output.slice(from))?.[1];
-        if (url !== undefined) ready.resolve(url);
-      }
-    };
-    // Every process wrangler starts inherits these pipes, so they end only once the whole relay tree has exited.
-    const drained = Promise.all([drain(proc.stdout), drain(proc.stderr)]);
-    void proc.exited.then((code) => ready.reject(new Error(`wrangler dev exited ${code} before ready:\n${output}`)));
-    const timer = setTimeout(() => ready.reject(new Error(`wrangler dev not ready:\n${output}`)), START_TIMEOUT_MS);
-    void ready.promise.then(
-      () => clearTimeout(timer),
-      () => clearTimeout(timer),
-    );
-    return { proc, drained, ready: ready.promise };
-  };
+  const launch = () =>
+    startRelayWorker({ mesh: { config, persistTo: join(scratch, "state") } }, (chunk) => {
+      output += chunk;
+      scan();
+    });
   let current = launch();
   const taps: Tap[] = [front];
   const ip = testIp();
-  const stop = async (): Promise<void> => {
-    for (const tap of taps) tap.stop();
-    try {
-      await stopLaunch(current);
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
+  let stopping: Promise<void> | undefined;
+  const stop = (): Promise<void> =>
+    (stopping ??= (async () => {
+      for (const tap of taps) tap.stop();
+      try {
+        await within(current.stop(), "the relay's processes exiting", STOP_MS);
+      } finally {
+        rmSync(scratch, { recursive: true, force: true });
+      }
+    })());
+  const unhook = onInterrupt(stop);
+  const address = async () => {
+    const running = await current.ready;
+    upstreamPort = Number(new URL(running.url).port);
+    return running.pid;
   };
   try {
-    upstreamPort = Number(new URL(await current.ready).port);
+    let pid = await address();
     return {
       url: front.url,
       ip,
       get pid() {
-        return current.proc.pid;
+        return pid;
       },
       output: () => output,
       provenAt: () => provenAt,
       stop,
       async restart() {
         upstreamPort = 0;
-        await stopLaunch(current);
+        await within(current.stop(), "the relay's processes exiting", STOP_MS);
+        if (stopping !== undefined) throw new Error("the mesh relay was stopped during restart");
         current = launch();
-        upstreamPort = Number(new URL(await current.ready).port);
+        pid = await address();
         await answers(front.url);
       },
       tapFor() {
@@ -182,5 +128,7 @@ export async function startMeshRelay(): Promise<MeshRelay> {
   } catch (error) {
     await stop();
     throw error;
+  } finally {
+    unhook();
   }
 }

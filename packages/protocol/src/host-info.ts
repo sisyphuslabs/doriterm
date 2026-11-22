@@ -1,3 +1,4 @@
+import { parseSkillStatus, type SkillStatus } from "./agent-skill.ts";
 import { isJsonObject, type JsonValue } from "./json.ts";
 
 /** The herdr document each doriface-host writes on its own core, saying what that machine is. */
@@ -10,6 +11,8 @@ export type HostOs = "darwin" | "linux" | "win32";
 export interface HostInfo {
   readonly v: 1;
   readonly os: HostOs;
+  /** Where the Doriterm agent skill stands on this machine; absent from a host older than it. */
+  readonly skill?: SkillStatus;
 }
 
 const OSES: ReadonlySet<string> = new Set<HostOs>(["darwin", "linux", "win32"]);
@@ -24,5 +27,7 @@ export const hostInfoFor = (platform: string): HostInfo | undefined =>
 export function parseHostInfo(value: JsonValue): HostInfo | undefined {
   if (!isJsonObject(value) || value["v"] !== 1) return undefined;
   const os = value["os"];
-  return isHostOs(os) ? { v: 1, os } : undefined;
+  if (!isHostOs(os)) return undefined;
+  const skill = parseSkillStatus(value["skill"]);
+  return skill === undefined ? { v: 1, os } : { v: 1, os, skill };
 }

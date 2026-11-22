@@ -17,7 +17,8 @@ import { createHcSession, type HcSession, stopLeftoverCores } from "../../../app
 import { RecordingLink, type Tap, taps, tappedHc } from "./byte-tap.ts";
 import { onInterrupt } from "./process-group.ts";
 import { socketFrom, testIp } from "./probe.ts";
-import { type LocalRelay, RELAY_STOP_MS, startLocalRelay } from "./relay-dev.ts";
+import { type LocalRelay, RELAY_STOP_MS } from "./relay-dev.ts";
+import { startRelayWorker } from "./worker-relay.ts";
 
 /**
  * The host's stop: it releases its pairing slot and waits for the relay's reply (PAIR_SLOT_REPLY_TIMEOUT_MS) before
@@ -75,7 +76,7 @@ export interface RelayedHostOptions {
   readonly hostRelayUrl?: string;
   /** For tests of this helper: the CLI the pairing offer runs instead of doriface-host's, e.g. one that never exits. */
   readonly pairCli?: string;
-  /** For tests of this helper: starts the relay instead of startLocalRelay, e.g. a start that never finishes. */
+  /** For tests of this helper: starts the relay instead of the Worker-owned relay, e.g. a start that never finishes. */
   readonly startRelay?: () => Promise<LocalRelay>;
   readonly uplinkTimeoutMs?: number;
   /** How long the host keeps a session whose link dropped for a resume (the host's default, 120 s, otherwise). */
@@ -109,6 +110,7 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
   const logs: string[] = [];
   const connected = Promise.withResolvers<void>();
   let relay: LocalRelay | undefined;
+  let relayWorker: ReturnType<typeof startRelayWorker> | undefined;
   let session: HcSession | undefined;
   let host: Host | undefined;
   // Every step runs, whatever an earlier one threw: a host that fails to stop still has its core and relay stopped.
@@ -122,7 +124,7 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
       if (left.length > 0)
         throw new Error(`hc core outlived the relayed host's stop (now stopped): ${left.join(", ")}`);
     },
-    () => relay?.stop(),
+    () => relay?.stop() ?? relayWorker?.stop(),
     () => rmSync(scratch, { recursive: true, force: true }),
   ];
   let stopping: Promise<void> | undefined;
@@ -160,8 +162,8 @@ export async function startRelayedHost(prefix: string, options: RelayedHostOptio
   };
   try {
     // A relay start can take minutes (90 s per attempt): an interrupt ends start-up at once rather than wait for it, and
-    // a relay that comes up after that is stopped, as start-up has torn down without it (#2220).
-    const relayStarting = (options.startRelay ?? startLocalRelay)();
+    // teardown cancels its Worker launch. If an injected start resolves after the interrupt, its relay is stopped (#2220).
+    const relayStarting = options.startRelay?.() ?? (relayWorker = startRelayWorker()).ready;
     void relayStarting
       .then(
         (late) => (interrupted ? late.stop() : undefined),

@@ -120,7 +120,7 @@ export class LineGrants {
       }
       if (reserved) this.#dropReserved(member.signPub);
       const code = error instanceof Error ? closeCodeOf(error) : undefined;
-      policy.report(member.signPub, code === 4429 || code === 4412 ? code : 4404);
+      policy.report(member.signPub, code === 4429 || code === 4412 || code === 4401 ? code : 4404);
       return {
         ok: false,
         code: code ?? 4404,
@@ -173,6 +173,11 @@ export class LineGrants {
     if (grant.reason === "rate-limited") {
       const reason = `${member.name}: the relay is rate limiting this host (4429); next try in ${next} s`;
       return { ok: false, code: 4429, reason };
+    }
+    if (grant.reason === "reconnecting")
+      return { ok: false, code: 4404, reason: `${member.name} is reconnecting; next try in ${next} s` };
+    if (grant.reason === "refused") {
+      return { ok: false, code: 4404, reason: `${member.name} refused this host's handshake; next try in ${next} s` };
     }
     return {
       ok: false,

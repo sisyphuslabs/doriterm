@@ -1,11 +1,4 @@
-import type {
-  MachineView,
-  MeshMemberStatus,
-  MeshPendingJoin,
-  MeshRemovedStatus,
-  MeshRevokedStatus,
-  MeshStatus,
-} from "@doriface/protocol";
+import type { MachineView, MeshMemberStatus, MeshPendingJoin, MeshRemovedStatus, MeshStatus } from "@doriface/protocol";
 import { HOST_ID_PATTERN } from "@doriface/relay-client";
 
 /** What a pending join's row offers: the two answers, nothing (expired), or the answer this device gave. */
@@ -32,7 +25,11 @@ export interface MeshGroups {
   readonly removed: readonly MeshRemovedStatus[];
   readonly online: readonly MeshMemberStatus[];
   readonly offline: readonly MeshMemberStatus[];
-  readonly revoked: readonly MeshRevokedStatus[];
+  /**
+   * Revoked keys are counted, never listed: a removed machine is gone for the person, on every device at once. The
+   * signed revoke stays, and `doriface-host mesh status --json` still lists every one.
+   */
+  readonly revokedCount: number;
 }
 
 export const isOnline = (member: MeshMemberStatus): boolean =>
@@ -51,8 +48,8 @@ export function approvalConsequence(kind: "machine" | "client", name: string): s
 
 /**
  * The panel's groups, most urgent first: joins waiting for this device, members an undecidable revoke removed, then
- * the members by whether their line is up, then revoked keys. A member a fail-closed conflict removed is also revoked
- * in the view; it shows once, under the removal that explains it.
+ * the members by whether their line is up, then how many keys were revoked. A member a fail-closed conflict removed
+ * is also revoked in the view; it shows once, under the removal that explains it, and is not counted again.
  */
 export function meshGroups(status: MeshStatus, now: number): MeshGroups {
   const removed = new Set(status.removed.flatMap((group) => group.members.map((entry) => entry.hostId)));
@@ -63,7 +60,7 @@ export function meshGroups(status: MeshStatus, now: number): MeshGroups {
     removed: status.removed,
     online: status.members.filter(isOnline),
     offline: status.members.filter((member) => !isOnline(member)),
-    revoked: status.revoked.filter((entry) => !removed.has(entry.hostId)),
+    revokedCount: status.revoked.filter((entry) => !removed.has(entry.hostId)).length,
   };
 }
 

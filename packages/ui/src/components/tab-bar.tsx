@@ -26,6 +26,8 @@ export interface TabBarProps {
   /** "Close tabs to the right" and "Close other tabs" from a tab's menu; neither closes a pinned tab (#1561). */
   readonly onCloseSet?: (id: string, which: "right" | "others") => void;
   readonly onNew?: () => void;
+  /** New tab cannot start a terminal now (the space's machine is not reachable): it stays in place, disabled. */
+  readonly newDisabled?: boolean;
   /** herdr-app's new menu: given, the strip's New tab button opens it (#466 item 7); else the button is `onNew`. */
   readonly newMenu?: ReactNode;
   /** Asks for a tab's name: a double-click on it, as herdr-app's strip, and Rename tab in its menu. */
@@ -57,6 +59,7 @@ export function TabBar({
   onPin,
   onCloseSet,
   onNew,
+  newDisabled = false,
   newMenu,
   onRename,
   onMove,
@@ -76,13 +79,13 @@ export function TabBar({
   // Whether the open tab menu's item handed the keyboard to a question it opened. The choice decides, not who holds
   // the keyboard as the menu closes: the question's first paint can come after that, and the strip would take it back.
   const handedOn = useRef(false);
-  // The tabs the strip drew before its last change of tabs: they carry data-arrived, so the DOM move a reorder makes
-  // does not replay their arrival; a tab new to the list draws once without it and arrives. A pin or unpin is such a
-  // change too, even when the order stays: it moves the tab into the other group, a DOM move as well (#2013).
+  // Tabs the strip drew before its last change carry data-arrived, so reordering, pinning (#2013), or giving a
+  // provisional tab its saved id does not replay their arrival. Only a tab new to the strip arrives.
   const ids = tabs.map((tab) => tab.id);
+  const arrivals = tabs.map((tab) => tab.arrivalKey ?? tab.id);
   const key = tabs.map((tab) => (tab.pinned === true ? `${tab.id}*` : tab.id)).join("\n");
-  const [drawn, setDrawn] = useState(() => ({ key, before: new Set<string>(), now: new Set(ids) }));
-  if (drawn.key !== key) setDrawn({ key, before: drawn.now, now: new Set(ids) });
+  const [drawn, setDrawn] = useState(() => ({ key, before: new Set<string>(), now: new Set(arrivals) }));
+  if (drawn.key !== key) setDrawn({ key, before: drawn.now, now: new Set(arrivals) });
   // The strip owns a touch's long press: held and moved it drags the tab, held and let go it opens the tab's menu.
   const [menuFor, setMenuFor] = useState<string | null>(null);
   // Pinned tabs lead (#1561) and sit in a group of their own that never scrolls, so they stay in view while the other
@@ -153,7 +156,7 @@ export function TabBar({
         closesOthers={firstUnpinned !== -1 && (lastUnpinned !== index || firstUnpinned !== index)}
         dragging={drag?.id === tab.id}
         lifted={lifted === tab.id}
-        arrived={drawn.before.has(tab.id)}
+        arrived={drawn.before.has(tab.arrivalKey ?? tab.id)}
         offset={place.offset}
         placeClass={place.className}
         menuOpen={menuFor === tab.id}
@@ -225,14 +228,21 @@ export function TabBar({
           label="New tab"
           {...(newTabKeys === undefined ? {} : { keys: newTabKeys })}
           icon={<Plus />}
+          disabled={newDisabled}
           onClick={onNew}
         />
       ) : (
         <Menu
           trigger={
-            <IconButton label="New tab" {...(newTabKeys === undefined ? {} : { keys: newTabKeys })} icon={<Plus />} />
+            <IconButton
+              label="New tab"
+              {...(newTabKeys === undefined ? {} : { keys: newTabKeys })}
+              icon={<Plus />}
+              disabled={newDisabled}
+            />
           }
           className="w-[250px]"
+          disabled={newDisabled}
           onOpenChange={(open) => {
             if (!open) return;
             chose.current = false;

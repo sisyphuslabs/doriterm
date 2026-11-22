@@ -14,7 +14,7 @@ import { startWorkerHost } from "./worker-host.ts";
  * as its host stops, is checked for terminals left on that host's core (terminal-guard.ts).
  */
 export const test = base.extend<
-  { loopbackUrl: string; ownTerminals: undefined; macPage: boolean; pinnedFonts: boolean },
+  { loopbackUrl: string; ownTerminals: undefined; ownPages: undefined; macPage: boolean; pinnedFonts: boolean },
   { e2eHost: undefined }
 >({
   // Every page draws with the pinned faces unless a spec opts out to see the platform's own stack (#862).
@@ -35,6 +35,27 @@ export const test = base.extend<
       const before = beginTest(testInfo);
       await use(undefined);
       endTest(testInfo, before);
+    },
+    { auto: true },
+  ],
+  // Playwright closes only the page fixture's context: one a test opens with browser.newContext() stays open for the
+  // rest of the worker unless the test closes it, and a test that fails first does not. Its page stays connected to the
+  // worker's core and keeps its layout as a device would: a pane whose program ends out of that page's view is dropped
+  // for every device (#2122), so a later test's ended pane went before its own page could show it (#2412), and a close
+  // whose write the test refused went through from there instead (#2383). Every test therefore closes the contexts it
+  // opened, and only those: one a file's beforeAll shares across its tests was there before the test and stays open.
+  // Specs that import `test` from @playwright/test run in other workers (this file adds a worker fixture), so they
+  // never share a core with these.
+  ownPages: [
+    async ({ browser }, use) => {
+      const before = new Set(browser.contexts());
+      await use(undefined);
+      await Promise.all(
+        browser
+          .contexts()
+          .filter((context) => !before.has(context))
+          .map((own) => own.close()),
+      );
     },
     { auto: true },
   ],

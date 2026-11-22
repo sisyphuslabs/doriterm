@@ -7,40 +7,14 @@ import type { HcSession } from "../../apps/host/src/testing/hc-session.ts";
 import type { LocalRelay } from "./support/relay-dev.ts";
 import { stopLeftUnder } from "../../apps/host/src/testing/run-dir.ts";
 import { liveAmong, liveWithEnvironment } from "./support/processes.ts";
+import { earlyFailures, lineFrom, startupCases } from "./support/relayed-startup-cases.ts";
 import { startRelayedHost } from "./support/relayed-host.ts";
-
-/** Processes still running with this hc session in their environment: its core and any `hc connect` the host ran. */
-function processesOf(session: string): string[] {
-  const mine = `HC_SESSION=${session}`;
-  return readdirSync("/proc").filter((pid) => {
-    if (!/^\d+$/.test(pid)) return false;
-    try {
-      return readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").includes(mine);
-    } catch {
-      return false;
-    }
-  });
-}
 
 const refused = (url: string): Promise<boolean> =>
   fetch(url, { signal: AbortSignal.timeout(5_000) }).then(
     () => false,
     () => true,
   );
-
-/** Reads the fixture's stdout into `seen` until it holds the line `line`; fails if the stream ends first. */
-async function lineFrom(
-  reader: { read(): Promise<{ readonly done: boolean; readonly value?: string | undefined }> },
-  seen: { text: string },
-  line: string,
-): Promise<void> {
-  while (!seen.text.split("\n").includes(line)) {
-    // oxlint-disable-next-line no-await-in-loop -- one chunk at a time, until the line has arrived
-    const next = await reader.read();
-    if (next.done) throw new Error(`the fixture ended before printing ${line}: ${seen.text}`);
-    seen.text += next.value ?? "";
-  }
-}
 
 describe("startRelayedHost", () => {
   test("an uplink that never connects rejects within its bound and tears everything down", async () => {
@@ -78,7 +52,7 @@ describe("startRelayedHost", () => {
       if (relay === undefined || session === undefined || host === undefined) throw new Error("a part never started");
       expect(await refused(relay.url)).toBe(true);
       expect(await refused(`http://127.0.0.1:${host.port}/healthz`)).toBe(true);
-      expect(processesOf(session.name)).toEqual([]);
+      expect(await liveWithEnvironment(`HC_SESSION=${session.name}`)).toEqual([]);
       const sessionDir = dirname(session.env["XDG_STATE_HOME"] ?? "");
       expect(["state", "run"].filter((part) => existsSync(join(sessionDir, part)))).toEqual([]);
     } finally {
@@ -147,73 +121,6 @@ describe("startRelayedHost", () => {
     }
   }, 120_000);
 
-  const startupCases = [
-    ...(["relay", "session", "host"] as const).map((stage) => ({
-      stage,
-      title: `a SIGTERM while start-up holds after the ${stage} has started ends start-up there, and leaves nothing (#2080)`,
-      env: {},
-      settled: "interrupted",
-    })),
-    {
-      // An uplink wait longer than the interrupt hook's own budget (30 s): one that ran to its end would leave the hook
-      // to kill the groups and end the process before the host and its hc core had stopped.
-      stage: "uplink",
-      title:
-        "a SIGTERM during the uplink wait, to a relay that never answers, ends start-up at once and leaves nothing (#2131)",
-      env: { HOST_RELAY_URL: "http://127.0.0.1:9", UPLINK_MS: "60000" },
-      settled: "interrupted",
-    },
-    {
-      stage: "teardown",
-      title: "a SIGTERM while a failed start-up tears down waits for that teardown, and leaves nothing (#2131)",
-      env: {},
-      settled: "start-up failed on purpose",
-    },
-    {
-      // The pair CLI start-up runs last has no bound of its own: one that never exits must not hold the interrupt past
-      // the hook's budget either.
-      stage: "pair",
-      title:
-        "a SIGTERM while start-up waits on a pair CLI that never exits ends start-up at once, and leaves nothing (#2155)",
-      env: { PAIR_CLI: join(import.meta.dir, "fixtures", "pair-never-exits.fixture.ts") },
-      settled: "interrupted",
-    },
-    {
-      // A relay start that never finishes, as one that retries for minutes looks to the interrupt hook (#2220).
-      stage: "relay-start",
-      title: "a SIGTERM during a relay start that never finishes ends start-up at once, and leaves nothing (#2220)",
-      env: {},
-      settled: "interrupted",
-    },
-    {
-      // The relay start finishes on the SIGTERM itself, after start-up has seen the interrupt (#2232).
-      stage: "relay-late",
-      title: "a relay whose start finishes after a SIGTERM is stopped, and start-up ends as interrupted (#2232)",
-      env: {},
-      settled: "interrupted",
-    },
-    {
-      // The same, but stopping that late relay fails: start-up still ends as interrupted, and the failure is reported.
-      stage: "relay-late-fail",
-      title: "a late relay whose stop fails is reported, and start-up still ends as interrupted (#2239)",
-      env: {},
-      settled: "interrupted",
-    },
-  ];
-  const earlyFailures = [
-    {
-      title: "a start-up whose relay start fails before its hold ends the fixture, and the reason is on stderr (#2268)",
-      env: { STAGE: "relay-fail" },
-      reason: "the relay start failed on purpose",
-    },
-    {
-      // The pair stage also watches for its mark: that watch must not keep the fixture running either. No relay checkout
-      // fails start-up at its first step.
-      title: "a pair-stage start-up that fails before its hold ends the fixture, and the reason is on stderr (#2268)",
-      env: { STAGE: "pair" },
-      reason: "no installed relay checkout",
-    },
-  ];
   for (const { title, env, reason } of earlyFailures) {
     test(
       title,

@@ -6,7 +6,8 @@
 # One step: downloads doriface-host for this OS and CPU from get.doriterm.com (GitHub Releases when that fails), checks
 # it against the release's SHA256SUMS.txt and has it check that file's Ed25519 signature (#1969), installs
 # herdr-core when no `hc` is found, registers the host as a user service (systemd --user on Linux, a LaunchAgent on
-# macOS) so it starts at login and restarts if it stops, then waits for it and prints a pairing QR code, link and code.
+# macOS) so it starts at login and restarts if it stops, turns lingering on for the user on Linux so that it also
+# starts at boot, then waits for it and prints a pairing QR code, link and code.
 # Running it again upgrades the host in place and restarts the service; `--uninstall` removes the service and the
 # binary and keeps the host's keys and paired devices. The service updates itself from the signed stable manifest
 # (`--channel beta` for prereleases, `--no-auto-update` to leave updates to you).
@@ -261,12 +262,8 @@ cp "${work}/${asset}" "${host_bin}.new"
 mv -f "${host_bin}.new" "$host_bin"
 say "installed doriface-host at ${host_bin}"
 
-hc_path=""
-if have hc; then
-  hc_path="$(command -v hc)"
-elif [ -x "${HOME}/.local/bin/hc" ]; then
-  hc_path="${HOME}/.local/bin/hc"
-fi
+hc_path="$(command -v hc 2>/dev/null || true)"
+if [ -z "$hc_path" ] && [ -x "${HOME}/.local/bin/hc" ]; then hc_path="${HOME}/.local/bin/hc"; fi
 if [ -z "$hc_path" ]; then
   say "herdr-core (hc) is missing; installing it"
   "$host_bin" --install-hc
@@ -275,6 +272,11 @@ if [ -z "$hc_path" ]; then
 else
   say "using herdr-core at ${hc_path} ($("$hc_path" --version 2>/dev/null || echo 'version unknown'))"
 fi
+
+# What this host build offers, read once: an older host lacks the newer commands and options. The Doriterm agent skill
+# it carries goes into the agent skill directories found here (#2653); one that cannot be written does not stop this.
+host_help="$("$host_bin" --help 2>/dev/null || true)"
+case "$host_help" in *"skill install"*) "$host_bin" skill install --state-dir "$state_dir" || say "the agent skill was not installed; install it later with: ${host_bin} skill install" ;; esac
 
 # The link admits one machine into the mesh, so mesh join reads it from a file only this user can read, never from its
 # command line, where other local users can read it while it runs (#1201). The file is gone when the install exits.
@@ -296,7 +298,7 @@ fi
 
 # A host older than #1969 has no --auto-update; it is passed only to one that lists it.
 update_args=""
-if "$host_bin" --help 2>/dev/null | grep -q -- --auto-update; then update_args="$auto_update"; fi
+case "$host_help" in *--auto-update*) update_args="$auto_update" ;; esac
 
 # The service runs with this shell's PATH and SHELL, so the terminals it opens find the same tools.
 service_path="${bin_dir}:$(dirname "$hc_path"):${PATH}"
@@ -330,8 +332,17 @@ EOF
   systemctl --user enable doriface-host.service >/dev/null
   systemctl --user restart doriface-host.service
   say "doriface-host runs as the systemd user service doriface-host.service (logs: journalctl --user -u doriface-host)"
-  if have loginctl && [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
-    say "it stops when you log out; to keep it running after logout and start it at boot, run: loginctl enable-linger $(id -un)"
+  # Without linger systemd runs a user's services only while that user is logged in: the host would stop at logout and
+  # stay down after a reboot until the next login. A user may turn it on for themself; where the system wants an admin
+  # for it, the installer says so and never asks for a password or runs sudo.
+  lingers() { [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" = yes ]; }
+  if have loginctl && ! lingers; then
+    loginctl --no-ask-password enable-linger "$(id -un)" >/dev/null 2>&1 || true
+    if lingers; then
+      say "it starts at boot and keeps running after you log out (lingering is now on for $(id -un))"
+    else
+      say "it stops when you log out and does not start at boot, because lingering could not be turned on here; an admin can turn it on with: sudo loginctl enable-linger $(id -un)"
+    fi
   fi
 else
   xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
