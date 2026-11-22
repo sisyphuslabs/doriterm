@@ -14,6 +14,7 @@ import {
   TRANSIENT,
   type LayoutTab,
 } from "./layout-model.ts";
+import { NO_VIEW } from "../layout/view.ts";
 import { HOME_SPACE } from "./placement.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
@@ -98,6 +99,19 @@ test("closing a space's last tab shows the space that takes its place, else the 
   expect(afterClosing(tabs, "b1", { c: "c2" })).toBe("c2");
   expect(afterClosing(tabs, "b1")).toBe("c1");
   expect(afterClosing(tabs.slice(0, 2), "b1")).toBe("a1");
+});
+
+test("closing the tab in view onto a loose tab that inherited a refused write's view keeps it selected once it is saved", () => {
+  const [alone] = buildTabs([here], [live]);
+  if (alone === undefined) throw new Error("no tab for the live terminal");
+  const doc: LayoutTab = { ...alone, key: "doc", spaceKey: "a", transient: false };
+  const loose: LayoutTab = { ...alone, key: "loose:t1", spaceKey: "loose:t1", mount: "refused" };
+  const other: LayoutTab = { ...doc, key: "other", spaceKey: "c" };
+  const next = afterClosing([doc, loose, other], "doc");
+  expect(pick([loose, other], { ...NO_VIEW, active: next }).active?.key).toBe("loose:t1");
+  // The tab that saves it takes over the same view (keepMounts), so it is found by that mount, not by the loose key.
+  const saved: LayoutTab = { ...doc, key: "saved", spaceKey: "b", mount: "refused" };
+  expect(pick([other, saved], { ...NO_VIEW, active: next }).active?.key).toBe("saved");
 });
 
 const alone = (address: string): LayoutTab => ({
