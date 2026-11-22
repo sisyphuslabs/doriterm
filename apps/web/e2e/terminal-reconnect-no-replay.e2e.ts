@@ -269,7 +269,15 @@ test("a reconnect under a full-screen program keeps the output behind it, once (
     "printf '\\033[?1049h\\033[H\\033[2Jfullscreen-top\\033[10;5Hfullscreen-mid\\033[12;1H'; read x; printf '\\033[?1049l'",
   );
   await page.keyboard.press("Enter");
-  await expect.poll(() => screenText(terminal)).toContain("fullscreen-mid");
+  // The command line shows "fullscreen-mid" too, before the program runs: the program is on its screen once a row starts
+  // with its text and the prompt is gone. A reconnect before that is not one under a full-screen program: the view is
+  // still on the prompt screen, which its clear before the repaint wipes.
+  await expect
+    .poll(async () => {
+      const screen = await screenText(terminal);
+      return /^fullscreen-top/mu.test(screen) && !screen.includes("marked$");
+    })
+    .toBe(true);
 
   await dropAndReconnect(page, link);
   // What the program echoes comes behind the repaint on the same stream: once it shows, the repaint has been drawn.
