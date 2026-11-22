@@ -198,3 +198,11 @@ test("a layout whose last read failed still takes an edit: the edit reads it aga
   );
   expect(readOnlyOf(undefined, "the machine is not connected")).toBe("the machine is not connected");
 });
+
+test("a layout read that failed because the link is down takes no edits until the link is back (#2455, #2436)", () => {
+  // No read can succeed over a dropped link, so every action is offered disabled, with the read's own reason, rather
+  // than enabled and then refused; only a live link lets an edit read the document again.
+  const failed = { phase: "unavailable", reason: "the connection closed" } as const;
+  expect(readOnlyOf(failed, "unused", false)).toBe("the connection closed");
+  expect(readOnlyOf(failed, "unused", true)).toBeNull();
+});

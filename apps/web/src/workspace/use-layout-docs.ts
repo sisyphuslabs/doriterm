@@ -61,17 +61,18 @@ export function docEdit(
  */
 /**
  * Why a machine's layout takes no edits now, in the words its refusal shows; null when an edit may go ahead. `why` is
- * the reason when the machine has no live document at all.
+ * the reason when the machine has no live document at all; `linkUp` is false while the link to it is down.
  */
-export function readOnlyOf(state: DocState | undefined, why: string): string | null {
+export function readOnlyOf(state: DocState | undefined, why: string, linkUp = true): string | null {
   if (state === undefined) return why;
   if (state.phase === "ready") return null;
   if (state.phase === "unreadable")
     return `this layout has ${state.reason}, which this version of Doriterm cannot edit`;
   if (state.phase === "loading") return LAYOUT_LOADING;
-  // "unavailable" is only how the last read ended: the edit itself reads the document again, then writes, or rejects with
-  // the read's own reason (LayoutDoc, #2436). Refusing here instead parked pane drops silently until a later read.
-  return null;
+  // "unavailable" is only how the last read ended: over a live link the edit itself reads the document again, then
+  // writes, or rejects with the read's own reason (LayoutDoc, #2436); refusing then parked pane drops silently until a
+  // later read. Over a dropped link no read can succeed, so every action stays disabled with that reason (#2455).
+  return linkUp ? null : state.reason;
 }
 
 export function useLayoutDocs(
@@ -94,7 +95,8 @@ export function useLayoutDocs(
     // The page's own reading first (it holds a redialing machine as reconnecting through the grace), else hc's.
     const machineState = view === null ? undefined : (shown.find((one) => one.id === machineId)?.state ?? view.state);
     const gone = machineState !== undefined && machineState !== "connected" && machineState !== "reconnecting";
-    const readOnly = gone ? why : readOnlyOf(state, why);
+    const linkUp = !connection.closed && machineState !== "reconnecting";
+    const readOnly = gone ? why : readOnlyOf(state, why, linkUp);
     return {
       machine,
       machineId,
