@@ -48,8 +48,8 @@ import { useTerminalCore } from "./use-terminal-core.ts";
 import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { type PaintHold, useTerminalAttach } from "./use-terminal-attach.ts";
-import { useMachineLine } from "./use-machine-line.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
+import { useCursor } from "./use-cursor.ts";
 
 /**
  * Gives a focus event's focus back to the element that had it, unless that sits in a pane no longer focused (focus
@@ -118,8 +118,7 @@ export function TerminalView(props: TerminalViewProps) {
 
   const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed, softKeyboard);
 
-  // The default cursor shape is the terminal's own state, set locally; programs still override it.
-  useEffect(() => handle.current?.write(options.cursorSequence), [wt, options.cursorSequence]);
+  useCursor(wt, handle, options.cursorSequence);
 
   // After the stylesheet or the system's light/dark changes, tell libghostty and the core the colors programs
   // may query. The colors set last are inline on the element and would shadow the page's new ones, so they go first.
@@ -209,7 +208,6 @@ export function TerminalView(props: TerminalViewProps) {
   }, [wt]);
   const shown = usePaneVisibility(wt, pacer);
   useTerminalActions(wt, input, focused, shown, openFind);
-  const away = useMachineLine(connection, address, shown);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
   useTouchWheel(wt);
@@ -280,6 +278,7 @@ export function TerminalView(props: TerminalViewProps) {
         data-slot="terminal-viewport"
         data-terminal={address}
         data-ready={wt !== null}
+        data-predictor-ready={seam !== null || predictor !== null}
         className={cn("min-h-0 flex-1 bg-term-bg", options.hollowCursor && "cursor-hollow", className)}
         onReady={(ready) => {
           // The renderer no longer focuses itself as it starts (patches/@wterm%2Fdom@0.5.9.patch); the view decides.
@@ -311,15 +310,6 @@ export function TerminalView(props: TerminalViewProps) {
       {attachment.opening ? (
         <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
       ) : null}
-      {away === null ? null : (
-        // Keys typed now wait for the machine (HeldInput, #1489); the line overlays the top row and takes no room.
-        <p
-          role="status"
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-muted/95 px-3 py-1 text-center text-prose text-muted-foreground"
-        >
-          Reconnecting to {away}. Your typing will be sent.
-        </p>
-      )}
       {wt === null ? null : (
         <>
           <TerminalScrollbar wt={wt} scroll={scroll} />

@@ -23,8 +23,8 @@ export function SpaceActions({
 }
 
 /**
- * What can be done with a space: its "..." menu and its right-click menu hold the same items, and on a phone the space
- * screen's own "..." (its rows hold none).
+ * What can be done with a space: its "..." menu and its right-click menu hold the same items, on a phone its list row's
+ * "..." and the space screen's own "..." too.
  */
 export function SpaceMenuItems({
   space,
@@ -37,7 +37,7 @@ export function SpaceMenuItems({
   const closing = useSpaceClosing();
   return (
     <>
-      <MenuItem icon={<Pencil />} onClick={() => renaming.ask(space.id)}>
+      <MenuItem icon={<Pencil />} disabled={renaming.refusal(space.id) !== null} onClick={() => renaming.ask(space.id)}>
         Rename space…
       </MenuItem>
       {reorder === undefined ? null : (
@@ -60,7 +60,12 @@ export function SpaceMenuItems({
           </MenuItem>
         </>
       )}
-      <MenuItem icon={<X />} destructive onClick={() => closing.ask(space.id)}>
+      <MenuItem
+        icon={<X />}
+        destructive
+        disabled={closing.refusal(space.id) !== null}
+        onClick={() => closing.ask(space.id)}
+      >
         Close space…
       </MenuItem>
     </>

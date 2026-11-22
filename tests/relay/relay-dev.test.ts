@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -19,6 +19,14 @@ function scratchTmp(): string {
 }
 
 const relayDirsIn = (dir: string): string[] => readdirSync(dir).filter((name) => name.startsWith("relay-"));
+
+const timeoutFixture = (tmp: string) => {
+  const fixture = join(import.meta.dir, "fixtures", "relay-test-timeout.fixture.ts");
+  return Bun.spawn(
+    [process.execPath, "test", "--path-ignore-patterns", ".relay/**", `./${relative(process.cwd(), fixture)}`],
+    { env: { ...process.env, TMPDIR: tmp }, stdout: "pipe", stderr: "pipe" },
+  );
+};
 
 /** A port another process holds, as one that took a picked port before wrangler bound it would. */
 function takenPort(): number {
@@ -137,4 +145,61 @@ describe("startLocalRelay", () => {
     expect(await liveAmong(pids)).toEqual([]);
     expect(relayDirsIn(tmp)).toEqual([]);
   }, 180_000);
+
+  describe("shared relay after a test timeout", () => {
+    let result: { code: number; stdout: string; stderr: string; dirs: string[] };
+    beforeAll(async () => {
+      const tmp = scratchTmp();
+      const proc = timeoutFixture(tmp);
+      const [code, stdout, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      result = { code, stdout, stderr, dirs: relayDirsIn(tmp) };
+    }, 180_000);
+
+    test("a timed-out relay test does not take the next test's relay down", () => {
+      expect(result.stdout).toContain("waiting for the authenticated socket to close");
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("(fail) a test blocked on an open socket times out");
+      expect(result.stderr).toContain("this test timed out after 5000ms");
+      expect(result.stderr).toContain("(pass) the next test can reach its relay");
+      expect(result.dirs).toEqual([]);
+    });
+  });
+
+  describe("shared relay after an interrupt", () => {
+    let result: {
+      signal: ReturnType<typeof timeoutFixture>["signalCode"];
+      started: number[];
+      live: number[];
+      dirs: string[];
+    };
+    beforeAll(async () => {
+      const tmp = scratchTmp();
+      const proc = timeoutFixture(tmp);
+      const stderr = new Response(proc.stderr).text();
+      const reader = proc.stdout.getReader();
+      const untilReady = async (output: string): Promise<void> => {
+        if (output.includes("waiting for the authenticated socket to close")) return;
+        const next = await reader.read();
+        if (next.done) throw new Error(`fixture exited before ready: ${await stderr}`);
+        return untilReady(output + new TextDecoder().decode(next.value));
+      };
+      await untilReady("");
+      const started = await liveDescendants(proc.pid);
+      proc.kill("SIGTERM");
+      await proc.exited;
+      await stderr;
+      result = { signal: proc.signalCode, started, live: await liveAmong(started), dirs: relayDirsIn(tmp) };
+    }, 120_000);
+
+    test("interrupting a test runner stops its worker-owned shared relay", () => {
+      expect(result.started.length).toBeGreaterThanOrEqual(3);
+      expect(result.signal).toBe("SIGTERM");
+      expect(result.live).toEqual([]);
+      expect(result.dirs).toEqual([]);
+    });
+  });
 });

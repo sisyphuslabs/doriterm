@@ -111,7 +111,9 @@ describe("join command", () => {
     expect(calls.some((call) => call.startsWith("sh"))).toBe(true);
     expect(calls.some((call) => call.startsWith("mktemp "))).toBe(true);
     expect(calls.filter((call) => !call.startsWith("from-file ") && call.includes(link))).toEqual([]);
-  });
+    // One run spawns install.sh and every helper it calls, as install.test.ts's cases do: 15 s, the measure #2488 took for
+    // those, instead of bun's 5 s default, which a loaded runner exceeds on every run.
+  }, 15_000);
 
   test("reads only the answer to this request", () => {
     expect(offerFor({ request: "r1" }, "r1")).toBeUndefined();

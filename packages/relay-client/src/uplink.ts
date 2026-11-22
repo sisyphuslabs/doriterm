@@ -1,4 +1,4 @@
-import { backoffDelay } from "./backoff.ts";
+import { redialDelay } from "./backoff.ts";
 import { AckCounter, keepAlive } from "./flow-control.ts";
 import { rethrowAfter } from "./inbox.ts";
 import { LinkClosedError } from "./link.ts";
@@ -33,7 +33,8 @@ export type UplinkState =
   | { readonly state: "connecting"; readonly attempt: number }
   /** The challenge answer is sent; the relay closes with 4403 if it is wrong. */
   | { readonly state: "answered" }
-  | { readonly state: "waiting"; readonly code: number; readonly retryInMs: number }
+  /** The uplink closed and redials; `reason` is the close frame's text, empty when the socket died without one. */
+  | { readonly state: "waiting"; readonly code: number; readonly reason: string; readonly retryInMs: number }
   | { readonly state: "stopped"; readonly code: number };
 
 /**
@@ -74,7 +75,7 @@ const FINAL_CODES: ReadonlySet<number> = new Set([CloseCode.RelayAuthFailed, Clo
 const CONNECTING = 0;
 /** How long a pair-slot request waits for the relay's reply; a host's stop waits this long to release its slot. */
 export const PAIR_SLOT_REPLY_TIMEOUT_MS = 10_000;
-/** An uplink that stayed up this long after answering starts the next backoff from the bottom again. */
+/** An uplink that stayed up this long after answering redials within one backoff floor, then backs off from the bottom. */
 const STABLE_MS = 30_000;
 
 /** The host's one connection to the relay, carrying every client session multiplexed by sessionId. */
@@ -93,6 +94,8 @@ export class Uplink {
   #stopPings: (() => void) | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #attempt = 0;
+  /** The backoff step for the next failure; a stable uplink's quick redial does not use one up. */
+  #step = 0;
   #answeredAt: number | undefined;
   #pairSlot: string | undefined;
   /** Whether this connection already told onUnsignedPairSlot. */
@@ -220,7 +223,7 @@ export class Uplink {
       this.#passes?.challenged();
       this.#answer(ws, bytes).catch(() => closeSocket(ws, CloseCode.InternalError, "signing failed"));
     });
-    ws.addEventListener("close", (event: CloseEvent) => this.#lost(ws, event.code));
+    ws.addEventListener("close", (event: CloseEvent) => this.#lost(ws, event.code, event.reason));
   }
 
   async #answer(ws: WebSocket, challenge: Uint8Array): Promise<void> {
@@ -293,16 +296,22 @@ export class Uplink {
     return active;
   }
 
-  #lost(ws: WebSocket, code: number): void {
+  #lost(ws: WebSocket, code: number, reason: string): void {
     if (ws !== this.#socket) return;
     this.#socket = undefined;
     this.#pairSlots.failAll(`the uplink closed with ${code} before the relay answered`);
     if (FINAL_CODES.has(code)) return this.#finish(code);
     const stable = this.#answeredAt !== undefined && Date.now() - this.#answeredAt >= STABLE_MS;
-    if (stable) this.#attempt = 0;
-    const retryInMs = this.#passes?.reconnectDelay(code) ?? backoffDelay(this.#attempt, this.#options.random);
+    if (stable) {
+      this.#attempt = 0;
+      this.#step = 0;
+    }
+    const rateLimited = code === CloseCode.RateLimited;
+    const retryInMs =
+      this.#passes?.reconnectDelay(code) ?? redialDelay(stable, rateLimited, this.#step, this.#options.random);
     this.#attempt += 1;
-    this.#options.onState?.({ state: "waiting", code, retryInMs });
+    if (!stable || rateLimited) this.#step += 1;
+    this.#options.onState?.({ state: "waiting", code, reason, retryInMs });
     this.#timer = setTimeout(() => this.#connect(), retryInMs);
     // Last, so a session's throwing close listener cannot cancel the reconnect.
     this.#endSessions(code);

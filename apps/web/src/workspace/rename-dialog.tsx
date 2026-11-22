@@ -1,5 +1,6 @@
 import { Button, Dialog, Field, Input } from "@doriface/ui";
 import { useId, useState } from "react";
+import { NotNowLine } from "./not-now-line.tsx";
 
 export interface RenameDialogProps {
   readonly title: string;
@@ -7,6 +8,8 @@ export interface RenameDialogProps {
   readonly value?: string;
   readonly busy: boolean;
   readonly error: string | null;
+  /** Why the name cannot be written now (its layout takes no edits), or null: Rename waits, disabled, and says why. */
+  readonly refused?: string | null;
   readonly description?: string;
   readonly onRename: (name: string) => void;
   readonly onCancel: () => void;
@@ -17,12 +20,15 @@ export function RenameDialog({
   value = title,
   busy,
   error,
+  refused = null,
   description = "Every device shows the new name. Leave it empty to show the program's own title again.",
   onRename,
   onCancel,
 }: RenameDialogProps) {
   const id = useId();
   const [name, setName] = useState(value);
+  /** Why the name waits, while it does: a write in flight shows its own busy state instead. */
+  const waiting = busy ? null : refused;
   return (
     <Dialog
       open
@@ -36,7 +42,7 @@ export function RenameDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (busy) return;
+          if (busy || waiting !== null) return;
           onRename(name);
         }}
         className="flex flex-col gap-5"
@@ -44,11 +50,12 @@ export function RenameDialog({
         <Field label="Name" htmlFor={id} {...(error === null ? {} : { error })}>
           <Input id={id} value={name} maxLength={80} autoFocus onValueChange={(next: string) => setName(next)} />
         </Field>
+        {waiting === null ? null : <NotNowLine action="Rename" why={waiting} />}
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" loading={busy}>
+          <Button variant="primary" type="submit" loading={busy} disabled={waiting !== null}>
             Rename
           </Button>
         </div>

@@ -20,7 +20,8 @@ const STORED = JSON.stringify({
 
 test.skip(process.env["CAPTURE"] !== "1", "captures run only with CAPTURE=1");
 
-const SHOTS = ["bar", "input", "select", "paste"] as const;
+// bar: the keys with the soft keyboard up; down: the same keys once it is put down (#2499).
+const SHOTS = ["bar", "down", "input", "select", "paste"] as const;
 
 for (const theme of ["day", "night"] as const) {
   for (const shot of SHOTS) {
@@ -40,6 +41,10 @@ for (const theme of ["day", "night"] as const) {
         const terminal = await openPhoneTerminal(page);
         await page.keyboard.type("printf 'keys-%s\\n' 'a line to select from'\r");
         await expect(terminal).toContainText("keys-a line to select from", { timeout: 15_000 });
+        if (shot === "down") {
+          await key(page, "Hide keyboard").click();
+          await expect(key(page, "Show keyboard")).toBeVisible();
+        }
         if (shot === "input") {
           await page.getByLabel("Type into the terminal").click();
           await expect(page.getByLabel("Type into the terminal")).toBeFocused();

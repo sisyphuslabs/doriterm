@@ -7,6 +7,8 @@ import { StatusIndicator, type AgentStatus } from "./status.tsx";
 
 export interface WorkspaceTab {
   readonly id: string;
+  /** The same visible tab can take a saved id without arriving again. Defaults to id. */
+  readonly arrivalKey?: string;
   readonly title: string;
   readonly icon?: ReactNode;
   readonly status?: AgentStatus;

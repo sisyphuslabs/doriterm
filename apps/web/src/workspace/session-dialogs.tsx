@@ -1,19 +1,22 @@
 import type { HcConnection } from "@doriface/client";
-import type { Terminal } from "@doriface/protocol";
+import type { MachineView, Terminal } from "@doriface/protocol";
 import { Button, Dialog, Notice } from "@doriface/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
 import { single } from "../ghostty/config.ts";
 import { terminalInput } from "./focus-targets.ts";
 import { asksBeforeClosing, terminalTitle } from "./model.ts";
+import { titleAndProgram, useShown } from "./use-shown.ts";
 import { RenameDialog } from "./rename-dialog.tsx";
-import { pendingEnds } from "./pending-ends.ts";
+import { routedPendingEnds } from "./pending-ends.ts";
 import { recordedEnd } from "./resume-ends.ts";
 import { endSession, renameSession, sessionCalls, takeBackEnd } from "./session-actions.ts";
 import type { SessionAsk } from "./session-context.ts";
 
 export interface SessionDialogsProps {
   readonly connection: HcConnection;
+  /** The machines as last listed, read when End runs (#2314): a prop, so this dialog never re-renders on a machines update of its own (#2076). */
+  readonly views: readonly MachineView[];
   readonly terminals: readonly Terminal[];
   readonly ask: SessionAsk | null;
   readonly onDone: () => void;
@@ -39,13 +42,14 @@ const ENDED = {
  * question into a statement that it ended, with only OK: the question never disappears on its own, and nothing is
  * answered for the user. A question asked about a session that had already ended needs no answer and closes.
  */
-export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onKept }: SessionDialogsProps) {
+export function SessionDialogs({ connection, views, terminals, ask, onDone, onDrop, onKept }: SessionDialogsProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The question open now: an action settles into the question that started it, never into a later one.
   const askNow = useRef(ask);
   askNow.current = ask;
-  const terminal = ask === null ? undefined : terminals.find((entry) => entry.address === ask.address);
+  const listed = ask === null ? undefined : terminals.find((entry) => entry.address === ask.address);
+  const [terminal] = useShown(listed === undefined ? [] : [listed], titleAndProgram);
   const live = terminal?.state === "live";
   const current = terminal === undefined ? null : terminalTitle(terminal);
   // Read while the question renders, before it takes focus: the element it gives focus back to when it closes, and the
@@ -101,7 +105,11 @@ export function SessionDialogs({ connection, terminals, ask, onDone, onDrop, onK
     const ending = (): Promise<void> =>
       record === null
         ? endSession(calls, address)
-        : recordedEnd(pendingEnds(connection.hello.core.id), { ...record, at: Date.now() }, calls);
+        : recordedEnd(
+            routedPendingEnds({ core: connection.hello.core.id, machines: views }),
+            { ...record, at: Date.now() },
+            calls,
+          );
     const closing = ask.kind === "close";
     run(
       () =>

@@ -201,7 +201,9 @@ export function createGateway(options: GatewayOptions): Gateway {
       return;
     }
     if (isResumeRequest(first)) {
-      if (!resumes.accept(wire, first, wire.drain())) wire.close(CloseCode.ResumeRefused, "cannot resume this session");
+      const allows = (session: SecureLink): boolean => e2ee.sessions.allows(session);
+      if (!resumes.accept(wire, first, wire.drain(), allows))
+        wire.close(CloseCode.ResumeRefused, "cannot resume this session");
       return;
     }
     const secure = await acceptE2ee(wire, { ...e2ee, speculative: options.speculative }, transport);
@@ -225,7 +227,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     resumes.register(secure);
     const link = gate(plaintextLink(secure, wire));
     const answered = options.speculative?.settle(secure) === "answered";
-    const hc = answered ? withoutFirstLine(link) : link;
+    const hc = e2ee.sessions.guardHc(secure, answered ? withoutFirstLine(link) : link);
     const close = (code: number, reason: string): void => secure.close(code, reason);
     if (room === undefined || room.allowed) return pipeTo(hc, close);
     log(`plan: a pairing session ends after its hello: ${room.message}`);
@@ -250,7 +252,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     else {
       const key = base64urlEncode(secure.remoteStatic);
       e2ee.mesh?.recordClientSession(key);
-      options.push(secure, key);
+      options.push(e2ee.sessions.guardPush(secure), key);
     }
   };
 

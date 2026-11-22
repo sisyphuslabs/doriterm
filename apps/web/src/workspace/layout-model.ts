@@ -1,8 +1,10 @@
 import type { JsonObject, Terminal } from "@doriface/protocol";
-import { addTab, docSpaces, freshId, type Node, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
+import { addTab, freshId, type Node, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
 import { spaceKey, tabKey, type View } from "../layout/view.ts";
 import { looseTerminals } from "./adoption.ts";
-import { machineOf, SPACE_LABEL } from "./model.ts";
+import { offlineReason } from "./machine-state.ts";
+import { machineOf } from "./model.ts";
+import { placeOf } from "./placement.ts";
 import { type MachineIds, tabKey as terminalKey } from "./tab-keys.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
@@ -179,7 +181,8 @@ function looseTab(address: string, layouts: readonly MachineLayout[], ids: Machi
     root: { children: [terminalBlock(TRANSIENT, localOf(address))], id: "", type: "row" },
     pinned: false,
     panes: [{ id: TRANSIENT, address, mod: null }],
-    readOnly: owner?.readOnly ?? "the machine is not connected",
+    // A machine with no layout here is offline; one whose layout takes edits (null) is not (#2721).
+    readOnly: owner === undefined ? offlineReason() : owner.readOnly,
     transient: true,
   };
 }
@@ -238,6 +241,13 @@ export function pick(tabs: readonly LayoutTab[], view: View): Picked {
   return { active, focused, zoomed: active.panes.some((pane) => pane.id === zoomed) ? (zoomed ?? null) : null };
 }
 
+/**
+ * What `view.active` holds while `tab` is in view. A tab of no document that inherited the view of a refused write
+ * (keepMounts) is held by that mount: the document tab that saves it inherits the same mount, not its key, so `pick`
+ * finds it before and after that save.
+ */
+export const selectionOf = (tab: LayoutTab): string => (tab.transient ? (tab.mount ?? tab.key) : tab.key);
+
 /** The pane `pick` focuses once the tab `key` is the one in view; null when no tab is `key`. */
 export function landingPane(tabs: readonly LayoutTab[], focused: View["focused"], key: string): string | null {
   const tab = tabs.find((each) => each.key === key) ?? tabs.find((each) => each.mount === key);
@@ -265,7 +275,7 @@ export function keepTransient(
  * The tab shown once this screen closes `closed`, the tab in view, as herdr-app's `remove_tab` picks it: the tab that
  * slides into its place in its space, else that space's last. A space left with no tab goes (`remove_space`): the space
  * that slides into its place, else the last one, is shown on the tab it showed last (`remembered`), else its first.
- * Null when no other tab is open.
+ * Returned as `view.active` holds it (selectionOf); null when no other tab is open.
  */
 export function afterClosing(
   tabs: readonly LayoutTab[],
@@ -279,13 +289,14 @@ export function afterClosing(
   const slot = same.findIndex((tab) => tab.key === closed);
   const kept = same.filter((tab) => tab.key !== closed);
   const inSpace = kept[slot] ?? kept.at(-1);
-  if (inSpace !== undefined) return inSpace.key;
+  if (inSpace !== undefined) return selectionOf(inSpace);
   const order = [...new Set(tabs.map((tab) => tab.spaceKey))];
   const left = order.filter((key) => key !== space);
   const next = order.slice(order.indexOf(space ?? "") + 1).find((key) => key !== space) ?? left.at(-1);
   if (next === undefined) return null;
   const shown = others.filter((tab) => tab.spaceKey === next);
-  return (shown.find((tab) => tab.key === remembered[next]) ?? shown[0])?.key ?? null;
+  const landed = shown.find((tab) => tab.key === remembered[next]) ?? shown[0];
+  return landed === undefined ? null : selectionOf(landed);
 }
 
 export function findTerminal(tabs: readonly LayoutTab[], address: string): { tab: LayoutTab; pane: LayoutPane } | null {
@@ -296,18 +307,10 @@ export function findTerminal(tabs: readonly LayoutTab[], address: string): { tab
   return null;
 }
 
-/** Whether a space's folder holds the directory: the folder itself, or one inside it. */
-const holds = (folder: string, dir: string): boolean =>
-  folder !== "" && (dir === folder || dir.startsWith(folder.endsWith("/") ? folder : `${folder}/`));
-
-/** The space adopted terminals with no space of their own go to, as herdr-app names its fallback. */
-export const HOME_SPACE = "Home";
-
 /**
  * The document with every terminal of its machine that is loose (`looseTerminals`: live, no tab shows it, and it gets a
- * tab of its own) adopted as one (#404): in the space its `space` label names (made when there is none, as that label
- * named its space before #404), else in the space whose folder holds its working directory (the deepest such folder),
- * else in the machine's Home space, made when there is none. Tabs are added in the order the terminals started (#1269).
+ * tab of its own) adopted as one (#404), each in the space `placeOf` names. Tabs are added in the order the terminals
+ * started (#1269).
  * Null when every terminal has a tab, so nothing is written; read inside the document's edit, so a reload or a second
  * device adopts nothing twice.
  */
@@ -318,30 +321,15 @@ export function adoptLoose(
 ): JsonObject | null {
   const loose = looseTerminals(doc, terminals);
   if (loose.length === 0) return null;
-  const spaces = doc === null ? [] : docSpaces(doc);
-  let home = spaces.find((space) => space.name === HOME_SPACE && space.folder === "")?.id;
   let next = doc;
   for (const terminal of loose) {
-    const dir = terminal.foreground?.cwd ?? terminal.cwd;
-    const owner = spaces
-      .filter((space) => holds(space.folder, dir))
-      .toSorted((a, b) => b.folder.length - a.folder.length)[0];
     const id = makeId("tb");
     const tab: JsonObject = {
       id,
       name: "",
       root: { children: [terminalBlock(makeId("p"), localOf(terminal.address))], id, type: "row" },
     };
-    const label = terminal.labels[SPACE_LABEL] ?? "";
-    if (label !== "") {
-      const named = next === null ? undefined : docSpaces(next).find((space) => space.name === label);
-      next = addTab(next, { id: named?.id ?? makeId("spc"), folder: named?.folder ?? "", name: label }, tab);
-    } else if (owner !== undefined) {
-      next = addTab(next, { id: owner.id, folder: owner.folder }, tab);
-    } else {
-      home ??= makeId("spc");
-      next = addTab(next, { id: home, folder: "", name: HOME_SPACE }, tab);
-    }
+    next = addTab(next, placeOf(next, terminal, makeId), tab);
   }
   return next;
 }

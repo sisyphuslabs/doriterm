@@ -36,6 +36,8 @@ export interface Machines {
   readonly views: readonly MachineView[];
   /** Dials a machine now (`machine.connect`) instead of at hc's next retry, then reads machine.list again. */
   readonly retry: (machine: string) => Promise<void>;
+  /** Takes an added machine off the core's machine list (`machine.rm`), so it leaves every device's lists (#2456). */
+  readonly remove: (machine: string) => Promise<void>;
   /**
    * Moves a machine (by its permanent core id) to index `to` of `entries` and saves the order for every device;
    * resolves true once saved, false when the move no longer applies or was not saved (the person was told why).
@@ -55,6 +57,7 @@ export const MachinesContext = createContext<Machines>({
   openAddMachine: () => {},
   views: [],
   retry: async () => {},
+  remove: async () => {},
   moveMachine: async () => false,
 });
 
@@ -72,6 +75,8 @@ export interface MachineState {
   /** The machines as machine.list last said, with no grace: for checks that must not act on a held state. */
   readonly heard: readonly MachineView[];
   readonly retry: (machine: string) => Promise<void>;
+  /** Removes the machine, then reads machine.list again before it settles, so this page drops it at once; rejects as hc refused. */
+  readonly remove: (machine: string) => Promise<void>;
   /** How many machine.list reads have come back: a tab waits one read before taking a gone terminal as removed. */
   readonly listed: number;
 }
@@ -102,6 +107,16 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
     (machine: string) => connection.call("machine.connect", { machine }).then(refresh, refresh),
     [connection, refresh],
   );
+  const remove = useCallback(
+    async (machine: string) => {
+      try {
+        await connection.call("machine.rm", { machine });
+      } finally {
+        await roster.refreshMachines();
+      }
+    },
+    [connection, roster],
+  );
   return {
     entries,
     terminals: reached,
@@ -110,6 +125,7 @@ export function useMachines(connection: HcConnection, terminals: readonly Termin
     views,
     heard: read.views,
     retry,
+    remove,
     listed: read.listed,
   };
 }

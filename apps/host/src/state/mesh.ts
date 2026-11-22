@@ -12,11 +12,10 @@ import {
   viewOf,
 } from "@doriface/mesh";
 import { cardBodyFor, JoinRefused, type OwnCard } from "@doriface/mesh/join";
-import { statSync } from "node:fs";
 import { join } from "node:path";
 import { AuthorizeIndex, indexOf } from "../mesh/authorize-index.ts";
 import { DeviceStore } from "./devices.ts";
-import { createPrivateJson, ensureStateDir, readJson, writePrivateJson } from "./files.ts";
+import { createPrivateJson, ensureStateDir, fileStamp, readJson, writePrivateJson } from "./files.ts";
 import { KnownHosts } from "./known-hosts.ts";
 import { SubscriptionStore } from "../push/subscriptions.ts";
 import { DEFAULT_LOCK_TIMEOUT_MS, withStateLock } from "./lock.ts";
@@ -113,7 +112,7 @@ export class MeshStore {
    * 1). A file whose index is missing or stale is refused rather than evaluated.
    */
   authorizeIndex(): AuthorizeIndex | undefined {
-    const stamp = this.#stamp();
+    const stamp = fileStamp(this.#path);
     const cached = this.#cache;
     if (stamp !== undefined && cached?.stamp === stamp) return cached.index;
     const file = stamp === undefined ? undefined : this.read();
@@ -319,12 +318,6 @@ export class MeshStore {
     const file = this.read();
     if (file === undefined) throw new Error("this host is in no mesh");
     return file;
-  }
-
-  /** Identifies one written file: every write renames a new one into place, so its inode and times change. */
-  #stamp(): string | undefined {
-    const stat = statSync(this.#path, { bigint: true, throwIfNoEntry: false });
-    return stat === undefined ? undefined : `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
   }
 
   #locked<T>(fn: () => T): T {

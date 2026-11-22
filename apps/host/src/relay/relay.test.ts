@@ -13,7 +13,7 @@ import {
   SessionKind,
 } from "@doriface/crypto";
 import { pairSlotVerdict, encodeData } from "@doriface/relay-client";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,9 +26,9 @@ import { FakeRelay } from "../testing/fake-relay.ts";
 import { createHcSession, HELLO, type HcSession, rpcFrame } from "../testing/hc-session.ts";
 
 const CLI = join(import.meta.dir, "..", "cli.ts");
-const stateDir = mkdtempSync(join(tmpdir(), "dh-relay-"));
-const identity = loadHostIdentity(stateDir);
-const devices = new DeviceStore(stateDir);
+let stateDir: string;
+let identity: ReturnType<typeof loadHostIdentity>;
+let devices: DeviceStore;
 const phone = generateX25519();
 let relay: FakeRelay;
 let session: HcSession;
@@ -99,7 +99,10 @@ async function pairOffer(): Promise<{ readonly code: string; readonly linkSecret
   return { code: `${code[1]}${code[2]}`, linkSecret: parsePairingUrl(url).linkSecret };
 }
 
-beforeAll(async () => {
+beforeEach(async () => {
+  stateDir = mkdtempSync(join(tmpdir(), "dh-relay-"));
+  identity = loadHostIdentity(stateDir);
+  devices = new DeviceStore(stateDir);
   relay = new FakeRelay();
   session = createHcSession("relay-uplink");
   devices.add(phone.publicKey, "phone");
@@ -116,7 +119,7 @@ beforeAll(async () => {
   firstAnswer = await relay.answers.next();
 }, 30_000);
 
-afterAll(async () => {
+afterEach(async () => {
   await host.stop();
   await relay.stop();
   await session.dispose();
@@ -173,14 +176,14 @@ describe("the host's relay uplink", () => {
 });
 
 describe("pairing through the relay", () => {
-  let code = "";
-
   test("doriface-host pair registers the code's slot and the host's Noise key over the uplink", async () => {
-    ({ code } = await pairOffer());
+    const { code } = await pairOffer();
     await expectSignedRegistration(pairingSlotOf(code));
   });
 
   test("a typed-code pairing on an ordinary session or another slot's session is refused with 4401", async () => {
+    const { code } = await pairOffer();
+    await expectSignedRegistration(pairingSlotOf(code));
     const pairing = { mode: "code", code, name: "guesser" } as const;
     const otherSlot = pairingSlotOf(code) === "ZZZ" ? "YYY" : "ZZZ";
     expect(await refusal(dial(relay.open(21), generateX25519(), pairing))).toBe(CloseCode.UnknownDevice);
@@ -188,6 +191,8 @@ describe("pairing through the relay", () => {
   });
 
   test("on the code's slot the device pairs, is stored, and the slot is released", async () => {
+    const { code } = await pairOffer();
+    await expectSignedRegistration(pairingSlotOf(code));
     const tablet = generateX25519();
     const paired = await dial(relay.open(23, pairingSlotOf(code)), tablet, { mode: "code", code, name: "tablet" });
     expect(paired.kind).toBe(SessionKind.PairCode);
