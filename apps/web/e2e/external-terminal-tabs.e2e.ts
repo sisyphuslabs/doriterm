@@ -69,10 +69,9 @@ test("a child agent that dies with its parent takes both tabs with it when the p
   await expect(count).toHaveText("2");
 
   endAgent("host", lead);
-  for (const address of [lead, worker]) {
-    const at = started.findIndex((entry) => entry.address === address);
-    if (at >= 0) started.splice(at, 1);
-  }
+  const at = started.findIndex((entry) => entry.address === lead);
+  if (at >= 0) started.splice(at, 1);
+  // hc retains the child's finished record. afterEach removes it even if a tab assertion fails.
 
   await expect.poll(() => spacesShowing(worker), { timeout: 30_000 }).toEqual([]);
   await expect.poll(() => spacesShowing(lead), { timeout: 30_000 }).toEqual([]);
