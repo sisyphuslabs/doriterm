@@ -1,3 +1,4 @@
+import { type ApprovalClock, clockOf, holds } from "./approval-clock.ts";
 import type { ApprovalCore } from "./approval-live.ts";
 import { type ApprovalMark, approvalKey } from "./approval-prompt.ts";
 import type { ApprovalAnswer } from "./approval-screen.ts";
@@ -30,7 +31,7 @@ export interface ApprovalRecord extends Answerer {
   readonly outcome: ApprovalOutcome;
 }
 
-/** Records kept per terminal: newest last. Older prompts' records drop off; they only ever serve "answered on ...". */
+/** Hard limit per terminal, newest last. History may make room for a claim; a live claim may not. */
 const KEPT = 16;
 const ATTEMPTS = 8;
 
@@ -65,7 +66,7 @@ function recordsIn(value: JsonValue): ApprovalRecord[] {
   return Array.isArray(list) ? list.filter(isRecord) : [];
 }
 
-export const recordJson = (record: ApprovalRecord, outcome = record.outcome): JsonValue => ({
+const recordJson = (record: ApprovalRecord): JsonValue => ({
   prompt: record.prompt,
   answer: record.answer,
   ...(record.choice === undefined ? {} : { choice: record.choice }),
@@ -73,11 +74,27 @@ export const recordJson = (record: ApprovalRecord, outcome = record.outcome): Js
   client: record.client,
   atMs: record.atMs,
   ...(record.attempt === undefined ? {} : { attempt: record.attempt }),
-  outcome,
+  outcome: record.outcome,
 });
 
 /** The terminal's records with `change` applied, or undefined to leave the document as it is. */
-export type Change = (records: readonly ApprovalRecord[]) => readonly JsonValue[] | undefined;
+export type Change = (records: readonly ApprovalRecord[]) => readonly ApprovalRecord[] | undefined;
+
+function retained(records: readonly ApprovalRecord[], clock: ApprovalClock): readonly ApprovalRecord[] {
+  let excess = records.length - KEPT;
+  if (excess <= 0) return records;
+  // Never drop the new record to make its own write succeed. An abandoned claim is eligible only after this
+  // writer has observed it for a full TTL; another device's atMs does not establish its age.
+  const kept = records.filter((record, index) => {
+    if (excess === 0 || index === records.length - 1 || (record.outcome === "claimed" && holds(record, clock))) {
+      return true;
+    }
+    excess -= 1;
+    return false;
+  });
+  if (excess > 0) throw new Error("approval document is full of live claims; retry after a claim settles or lapses");
+  return kept;
+}
 
 /** The terminal's records as one read of its approval document found them, and that document's version. */
 export interface RecordsRead {
@@ -95,15 +112,17 @@ export async function update(
   address: string,
   change: Change,
   read?: RecordsRead,
+  clock = clockOf(core),
   attempt = 1,
 ): Promise<readonly ApprovalRecord[] | undefined> {
   const { name, on } = docOf(address);
   const current = read ?? (await readRecords(core, address));
   const next = change(current.records);
   if (next === undefined) return current.records;
-  if ((await core.setDoc(name, on, { records: next.slice(-KEPT) }, current.version)) === "ok") return undefined;
+  const records = retained(next, clock).map(recordJson);
+  if ((await core.setDoc(name, on, { records }, current.version)) === "ok") return undefined;
   if (attempt >= ATTEMPTS) throw new Error(`approval document ${name} kept moving: ${ATTEMPTS} conflicts in a row`);
-  return update(core, address, change, undefined, attempt + 1);
+  return update(core, address, change, undefined, clock, attempt + 1);
 }
 
 /** The terminal's records, as the core has them now. */

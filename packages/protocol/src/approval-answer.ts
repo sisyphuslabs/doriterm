@@ -8,7 +8,6 @@ import {
   type ApprovalRecord,
   readRecords,
   type RecordsRead,
-  recordJson,
   update,
 } from "./approval-records.ts";
 import { readScreenPrompt } from "./approval-screen.ts";
@@ -48,9 +47,7 @@ async function settle(
     core,
     mark.terminal,
     (records) =>
-      records.some(ours)
-        ? records.map((record) => recordJson(record, ours(record) ? outcome : record.outcome))
-        : undefined,
+      records.some(ours) ? records.map((record) => (ours(record) ? { ...record, outcome } : record)) : undefined,
     read,
   );
 }
@@ -142,10 +139,15 @@ export async function answerApproval(
     attempt: crypto.randomUUID(),
     outcome: "claimed",
   };
-  const taken = await update(core, mark.terminal, (records) =>
-    records.some((record) => record.prompt === key && holds(record, clock, options.retake, who.client))
-      ? undefined
-      : [...records.filter((record) => record.prompt !== key), claim].map((record) => recordJson(record)),
+  const taken = await update(
+    core,
+    mark.terminal,
+    (records) =>
+      records.some((record) => record.prompt === key && holds(record, clock, options.retake, who.client))
+        ? undefined
+        : [...records.filter((record) => record.prompt !== key), claim],
+    undefined,
+    clock,
   );
   const winner = taken?.findLast((record) => record.prompt === key);
   if (taken !== undefined) return winner === undefined ? { kind: "stale" } : { kind: "lost", record: winner };
