@@ -198,8 +198,12 @@ export function useLayout(
   // Read when a start answers, which can be after the person picked another tab: the tab in view now, not then.
   const activeNow = useRef(active);
   activeNow.current = active;
-  // A document tab that took over the selected loose tab's view is the selected tab from now on, also after a reload.
-  const takenOver = active !== null && active.key !== view.active && active.mount === view.active ? active.key : null;
+  // A loose tab can inherit the mount of a refused write. Keep selecting it by that mount: the saved tab will inherit
+  // the same mount, not the loose key. Only the saved tab has a new key worth remembering across reloads.
+  const takenOver =
+    active !== null && !active.transient && active.key !== view.active && active.mount === view.active
+      ? active.key
+      : null;
   useEffect(() => {
     if (takenOver !== null) setView((prev) => ({ ...prev, active: takenOver }));
   }, [takenOver]);
@@ -232,6 +236,8 @@ export function useLayout(
   const show = useCallback((key: string, pane: string | null, select = true): void => {
     // Picking a tab claims the pane it focuses, so that terminal takes the keyboard from the tab left behind (#1704).
     const landing = pane ?? landingPane(picked.current.tabs, picked.current.focused, key);
+    const tab = select ? picked.current.tabs.find((each) => each.key === key) : undefined;
+    const selected = tab?.transient === true ? (tab.mount ?? key) : key;
     if (landing !== null && !placingQuietly) setClaimed(landing);
     if (pane !== null) {
       const visited = (history.current.get(key) ?? []).filter((id) => id !== pane);
@@ -243,7 +249,7 @@ export function useLayout(
       const { [key]: inTab, ...others } = prev.zoomed;
       return {
         ...prev,
-        active: select ? key : prev.active,
+        active: select ? selected : prev.active,
         focused: pane === null ? prev.focused : { ...prev.focused, [key]: pane },
         zoomed: pane === null || inTab === undefined || inTab === pane ? prev.zoomed : others,
       };
