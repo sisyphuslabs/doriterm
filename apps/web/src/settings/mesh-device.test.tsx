@@ -20,7 +20,7 @@ test("This device names the browser itself, without a host row", () => {
   );
   expect(html).toContain("Pixel 9");
   expect(html).toContain("Member of My mesh");
-  expect(html).toContain("1 machines online");
+  expect(html).toContain("1 machine online");
   expect(html).not.toContain("This machine");
   expect(html).not.toContain("Host");
 });
