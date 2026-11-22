@@ -57,6 +57,7 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
   const status = URGENCY.find((each) => statuses.has(each));
   return {
     id: tab.key,
+    arrivalKey: tab.mount ?? tab.key,
     title: tabTitle(tab.name, position, agent),
     controls: panelId(tab.key),
     pinned: tab.pinned,

@@ -20,7 +20,9 @@ export function startAgent(
   space = "api",
   parent?: string,
 ): string {
-  const report = `printf '\\033]7501;state=${state}\\033\\\\'; exec sleep 600`;
+  // Keep the foreground shell's -c argv stable after it reports. Across an exec, hc can sample the old shell name
+  // without its command args and clear the status as if the agent had returned to an interactive prompt (#2710).
+  const report = `printf '\\033]7501;state=${state}\\033\\\\'; sleep 600; :`;
   const from = parent === undefined ? [] : ["--parent", parent];
   const out = hcOn(core, [
     "run",
