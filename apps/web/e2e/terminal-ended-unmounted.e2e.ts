@@ -28,13 +28,16 @@ const savedPane = (terminal: string, on?: string) =>
 
 /**
  * The program is started through hc, not typed: a wait-for line names this test's output path, and typed key by key on a
- * loaded runner it alone took most of a 60 s budget before the test reached what it checks (#1739). Each wait below has
- * its own bound; if every one ran to its limit they would add up to about 155 s, so 120 s is not their sum. It is a test
- * budget with room for a slow runner in a passing run, while a hang still fails here rather than at the default.
+ * loaded runner it alone took most of a 60 s budget before the test reached what it checks (#1739). Each wait has its
+ * own bound; the budget leaves room for a slow runner while a hang still fails here rather than at the default.
  */
 const ENDED_TEST_TIMEOUT_MS = 120_000;
 
-test("a terminal whose program ends while the page is closed shows as ended after a reload, and closes from there", async ({
+// A tab whose terminal's program ended while no view of it was attached goes by itself once the app looks again, as
+// herdr-app's reconcile removes it: the tabs mirror the core's terminals (Q, 2026-11-15), so no pane is left saying
+// "This session ended" (superseding #164 and #1593 for a program that exited or was killed).
+
+test("a terminal whose program ends while the page is closed loses its tab after a reload, with no ended pane", async ({
   page,
 }) => {
   test.setTimeout(ENDED_TEST_TIMEOUT_MS);
@@ -55,18 +58,18 @@ test("a terminal whose program ends while the page is closed shows as ended afte
     await expect.poll(() => stateOn("host", address), { timeout: 15_000 }).toBe("finished");
     await page.goto("/");
 
-    await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("This terminal didn't open")).toHaveCount(0);
-    await expect(tabs).toHaveCount(tabsBefore);
-    await page.getByRole("button", { name: "Close tab" }).click();
-    await expect(tabs).toHaveCount(tabsBefore - 1, { timeout: 15_000 });
+    await expect(tabs).toHaveCount(tabsBefore - 1, { timeout: 30_000 });
+    await expect
+      .poll(() => JSON.stringify(getCoreDoc(LAYOUT_DOC)), { timeout: 15_000 })
+      .not.toContain(`"terminal":"${address}"`);
     await expect(page.getByText("This session ended")).toHaveCount(0);
+    await expect(page.getByText("This terminal didn't open")).toHaveCount(0);
   } finally {
     removeTerminal("host", address, go);
   }
 });
 
-test("a terminal on an added machine whose program ends while the machine is offline shows as ended once it is back", async ({
+test("a terminal on an added machine whose program ends while the machine is offline loses its tab once it is back", async ({
   page,
 }) => {
   test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
@@ -98,12 +101,9 @@ test("a terminal on an added machine whose program ends while the machine is off
     reconnect();
     await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
 
-    await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("This terminal didn't open")).toHaveCount(0);
-    await expect(tabs).toHaveCount(tabsBefore);
-    await page.getByRole("button", { name: "Close tab" }).click();
-    // The close is a layout write to a machine that has just come back: it settles within the bound for its state.
-    await expect(tabs).toHaveCount(tabsBefore - 1, { timeout: STATE_BOUND_MS });
+    // An added machine's absent pane waits two machine.list reads before it is asked about, then goes.
+    await expect(tabs).toHaveCount(tabsBefore - 1, { timeout: OFFLINE_BOUND_MS });
+    await expect(page.getByText("This session ended")).toHaveCount(0);
   } finally {
     reconnect();
     removeTerminal("machine", local, go);

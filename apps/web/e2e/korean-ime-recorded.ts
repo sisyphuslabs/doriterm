@@ -37,6 +37,59 @@ export interface RecordedTyping {
   readonly bytes: string;
 }
 
+/**
+ * Synthetic orders for #2640, modeled on the reporter's byte-level capture (Doriterm 0.1.20 desktop, macOS 26.6.2,
+ * 2-Set Korean): typing 가나다라마바사 with no spaces reached the program as 가나라바⏎, and typing 가나다 as 가다. A
+ * syllable next to a space survives, and a Ctrl chord clears the broken state, so the loss sits in the boundary where
+ * the previous syllable's commit races the next composition's start. Each order below is that boundary, one shape to a
+ * recording: the commit as an insertText into the live composition, and the previous composition's end after the next
+ * one's start. Recorded-event replays of both orders must reach the program as typed.
+ */
+export const KOREAN_RACE_ORDERS: readonly RecordedTyping[] = [
+  {
+    name: "ganada, the previous syllable committed as insertText into the next composition",
+    platform: "synthetic order modeled on #2640 (macOS Electron 45, 2-Set Korean)",
+    steps: [
+      { kind: "keydown", key: "\u{3131}", code: "KeyR", keyCode: 229, composing: false },
+      { kind: "compositionstart" },
+      { kind: "compositionupdate", data: "\u{3131}" },
+      { kind: "edit", inputType: "insertCompositionText", data: "\u{3131}", composing: true, from: 0, to: 0 },
+      { kind: "keyup", key: "\u{3131}", code: "KeyR", keyCode: 82, composing: true },
+      { kind: "keydown", key: "\u{314F}", code: "KeyK", keyCode: 229, composing: true },
+      { kind: "compositionupdate", data: "\u{AC00}" },
+      { kind: "edit", inputType: "insertCompositionText", data: "\u{AC00}", composing: true, from: 0, to: 1 },
+      { kind: "keyup", key: "\u{314F}", code: "KeyK", keyCode: 75, composing: true },
+      { kind: "keydown", key: "\u{3134}", code: "KeyS", keyCode: 229, composing: true },
+      { kind: "compositionend", data: "\u{AC00}" },
+      { kind: "edit", inputType: "insertText", data: "\u{AC00}", composing: false, from: 0, to: 1 },
+      { kind: "compositionstart" },
+      { kind: "compositionupdate", data: "\u{3134}" },
+      { kind: "edit", inputType: "insertCompositionText", data: "\u{3134}", composing: true, from: 0, to: 0 },
+      { kind: "keyup", key: "\u{3134}", code: "KeyS", keyCode: 83, composing: true },
+      { kind: "keydown", key: "\u{314F}", code: "KeyK", keyCode: 229, composing: true },
+      { kind: "compositionupdate", data: "\u{B098}" },
+      { kind: "edit", inputType: "insertCompositionText", data: "\u{B098}", composing: true, from: 0, to: 1 },
+      { kind: "keyup", key: "\u{314F}", code: "KeyK", keyCode: 75, composing: true },
+      { kind: "keydown", key: "\u{3137}", code: "KeyE", keyCode: 229, composing: true },
+      { kind: "compositionstart" },
+      { kind: "compositionupdate", data: "\u{3137}" },
+      { kind: "edit", inputType: "insertCompositionText", data: "\u{3137}", composing: true, from: 0, to: 0 },
+      { kind: "edit", inputType: "insertText", data: "\u{B098}", composing: true, from: 0, to: 1 },
+      { kind: "keyup", key: "\u{3137}", code: "KeyE", keyCode: 69, composing: true },
+      { kind: "keydown", key: "\u{314F}", code: "KeyK", keyCode: 229, composing: true },
+      { kind: "compositionupdate", data: "\u{B2E4}" },
+      { kind: "edit", inputType: "insertCompositionText", data: "\u{B2E4}", composing: true, from: 0, to: 1 },
+      { kind: "keyup", key: "\u{314F}", code: "KeyK", keyCode: 75, composing: true },
+      { kind: "keydown", key: "Enter", code: "Enter", keyCode: 229, composing: true },
+      { kind: "compositionend", data: "\u{B2E4}" },
+      { kind: "keyup", key: "Enter", code: "Enter", keyCode: 13, composing: false },
+      { kind: "keydown", key: "Enter", code: "Enter", keyCode: 13, composing: false },
+      { kind: "keyup", key: "Enter", code: "Enter", keyCode: 13, composing: false },
+    ],
+    bytes: "ea b0 80 eb 82 98 eb 8b a4 0d",
+  },
+];
+
 export const KOREAN_SPACE_RECORDINGS: readonly RecordedTyping[] = [
   {
     name: "han geul han Enter, keys 20 ms apart",

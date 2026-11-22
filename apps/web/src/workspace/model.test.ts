@@ -132,6 +132,27 @@ describe("spaces from the layout documents (#404)", () => {
       ["srv", 1, undefined, ["box/t9"]],
     ]);
   });
+
+  test("a space whose terminal starts in a system directory is named after its shell, never the path (#2658)", () => {
+    const spaces = layoutSpaces(
+      [
+        here(
+          docOf([
+            { id: "win", tabs: [["t1"]] },
+            { id: "root", tabs: [["t2"]] },
+            { id: "none", tabs: [["t3"]] },
+          ]),
+        ),
+        on("box", docOf([{ id: "twin", tabs: [["t4"]] }])),
+      ],
+      [
+        terminal({ address: "t1", cwd: "C:\\Windows\\System32", argv: ["C:\\Program Files\\PowerShell\\7\\pwsh.exe"] }),
+        terminal({ address: "t2", cwd: "/", argv: ["/bin/bash"] }),
+        terminal({ address: "box/t4", cwd: "/usr/bin", argv: ["/bin/bash"] }),
+      ],
+    );
+    expect(spaces.map((space) => space.name)).toEqual(["PowerShell", "Bash", "Space", "Bash"]);
+  });
 });
 
 describe("tabPosition", () => {
@@ -177,6 +198,7 @@ describe("tabPosition", () => {
       ],
       terminals,
     );
+    expect(both.map((space) => space.name)).toEqual(["a", "b"]);
     expect(spaceOfAddress(both, "t1")?.name).toBe(both[0]?.name);
     expect(spaceOfAddress(both, "t1")).toBe(both[0]);
     expect(tabPosition(both, terminals, "t1")).toEqual({ index: 2, count: 2 });

@@ -1,6 +1,6 @@
-import type { Terminal } from "@doriface/protocol";
+import { SPACE_LABEL, type Terminal } from "@doriface/protocol";
 import { renameSpace as renamedIn } from "@doriface/protocol/layout";
-import { type ListedSpace, SPACE_LABEL } from "./model.ts";
+import type { ListedSpace } from "./model.ts";
 import { isGone, type SessionCalls } from "./session-actions.ts";
 import { spacePlace } from "./space-place.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";

@@ -155,7 +155,7 @@ const isDirection = (value: string): value is Direction =>
 
 function openAgent(layout: Layout, address: string | null): boolean {
   if (address === null || !shouldSelect(address, layout.focused?.address ?? null)) return false;
-  layout.openTerminal(address);
+  layout.placeTerminal(address);
   return true;
 }
 

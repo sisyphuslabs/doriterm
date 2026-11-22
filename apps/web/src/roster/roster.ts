@@ -15,9 +15,10 @@ import { docCalls } from "./doc-calls.ts";
 import { LayoutDocs } from "./docs.ts";
 import { RosterFeed, type Schedule } from "./feed.ts";
 import { LineWatch } from "./line-watch.ts";
+import { LiveTerminals } from "./live-terminals.ts";
 import type { RosterLink } from "./link.ts";
 import { MachineRoster, type MachinesRead } from "./machines.ts";
-import { NO_TERMINALS, type TerminalsState } from "./terminals-state.ts";
+import { NO_TERMINALS, sameShape, type TerminalsState } from "./terminals-state.ts";
 
 /**
  * hc sends no event when a machine's line comes up, drops or wants a login; `missed` covers a line that comes back
@@ -29,6 +30,11 @@ import { NO_TERMINALS, type TerminalsState } from "./terminals-state.ts";
 export const MACHINE_REFRESH_MS = 10_000;
 
 export interface RosterSnapshot {
+  /**
+   * The terminals as of their last change of shape: a `title` or a `foreground` that keeps its directory is not one, so
+   * a burst of either leaves this snapshot (and every surface that reads it) as it is (#2607). What a terminal shows
+   * right now is read from `roster.live`.
+   */
   readonly terminals: TerminalsState;
   readonly machines: MachinesRead;
   /** This core's machine order document (`doriface`). */
@@ -78,6 +84,8 @@ export class Roster {
   readonly pins: LayoutDocs;
   readonly order: LayoutDoc;
   readonly #options: RosterOptions;
+  /** Every terminal as it stands now; `snapshot.terminals` holds them as of their last change of shape. */
+  readonly live: LiveTerminals;
   readonly #listeners = new Set<() => void>();
   readonly #changes = new Set<(change: RosterChange) => void>();
   /** Doc events heard for a machine the last list did not hold a document for, by the name hc used: versions. */
@@ -94,6 +102,7 @@ export class Roster {
   constructor(connection: RosterLink, options: RosterOptions = {}) {
     this.#connection = connection;
     this.#options = options;
+    this.live = new LiveTerminals(() => this.subscribe(() => undefined));
     const call: RosterLink["call"] = (method, ...args) => this.#connection.call(method, ...args);
     this.machines = new MachineRoster(
       () => call("machine.list"),
@@ -227,6 +236,8 @@ export class Roster {
   }
 
   #terminals(state: TerminalsState): void {
+    this.live.publish(state);
+    if (sameShape(this.#snapshot.terminals, state)) return;
     this.#snapshot = { ...this.#snapshot, terminals: state };
     this.#emit();
     if (!state.loaded) return;

@@ -110,7 +110,7 @@ test("closing Switch session gives the terminal the focus inside the closing tap
   }
 });
 
-test("the keys bar and its Type field stay closed until the keyboard button is tapped, which opens them focused", async ({
+test("the keyboard stays down under the keys and their Type field until the keyboard button is tapped, which raises it focused", async ({
   page,
 }) => {
   const shell = startShell("host", "kbdfresh");
@@ -119,8 +119,11 @@ test("the keys bar and its Type field stay closed until the keyboard button is t
     await recordFocusAfterTaps(page, { buttonsTakeFocus: true });
     await openTerminal(page, /kbdfresh/);
     const field = page.getByLabel("Type into the terminal");
-    await expect(keysBar(page)).toHaveCount(0);
-    await expect(field).toHaveCount(0);
+    // The panel is there with the keyboard down (#2499), its field unfocused.
+    await expect(keysBar(page)).toBeVisible();
+    await expect(field).toBeVisible();
+    await expect(field).not.toBeFocused();
+    await expect(key(page, "Hide keyboard")).toHaveCount(0);
     await expect(page.locator("[data-terminal] textarea")).not.toBeFocused();
 
     await key(page, "Show keyboard").tap();
@@ -151,7 +154,7 @@ test("a session picked from Switch session opens with the keyboard down: only th
     const picked = page.locator(`[data-terminal="${second}"]`);
     await expect(picked).toContainText("$", { timeout: 15_000 });
     await expect(key(page, "Show keyboard")).toBeVisible();
-    await expect(keysBar(page)).toHaveCount(0);
+    await expect(key(page, "Hide keyboard")).toHaveCount(0);
     await expect(picked.locator("textarea")).not.toBeFocused();
   } finally {
     endAgent("host", first);

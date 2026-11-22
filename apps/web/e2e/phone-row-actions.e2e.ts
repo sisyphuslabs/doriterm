@@ -87,10 +87,16 @@ test("on the phone an agent row draws More alone, which takes a tap just inside 
       }),
     );
 
-    // A space row, on the Spaces tab, is its own signal: its status dot and tab count stay in its name, and it draws no "...".
+    // A space row, on the Spaces tab, draws its own More too (#2658): its status dot, tab count and chevron stay drawn, and
+    // nothing the row draws runs under the More.
     await page.getByRole("navigation", { name: "Sections" }).getByRole("button", { name: "Spaces", exact: true }).tap();
-    await expect(page.getByRole("button", { name: /\d+ tabs/ }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "More for api" })).toHaveCount(0);
+    const spaceRow = page.getByRole("button", { name: /^api\b/ }).first();
+    const spaceMore = page.getByRole("button", { name: "More for api" });
+    await expect(spaceMore).toBeVisible();
+    const [spaceEdge, spaceMoreBox] = await Promise.all([drawnEdge(spaceRow), spaceMore.boundingBox()]);
+    if (spaceMoreBox === null) throw new Error("no box for the space's More");
+    expect(spaceEdge, "nothing the space row draws runs under its More").toBeLessThanOrEqual(spaceMoreBox.x);
+    await expect(spaceRow.locator("[data-row-meta]")).toHaveCSS("visibility", "visible");
     await page.goBack();
     await expect(more).toBeVisible();
 

@@ -31,7 +31,7 @@ function desktopVersion(): string {
 const args = Bun.argv.slice(2);
 const dateAt = args.indexOf("--date");
 const date = dateAt === -1 ? new Date().toISOString().slice(0, 10) : args[dateAt + 1];
-const positional = args.filter((_, index) => index !== dateAt && index !== dateAt + 1);
+const positional = dateAt === -1 ? args : args.filter((_, index) => index !== dateAt && index !== dateAt + 1);
 if (date === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(date) || positional.length > 1) {
   console.error(USAGE);
   process.exit(2);

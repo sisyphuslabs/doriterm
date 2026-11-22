@@ -1,5 +1,6 @@
-// The phone's round buttons (the keyboard button and, on a touch device, Read-only beside it) float level with the tabs
-// bar; the bar keeps its right end clear of both, so every one of its targets and theirs takes a tap (#1396).
+// The phone's round button (Read-only on a touch device: its keys panel carries the keyboard's toggle, #2499) floats
+// level with the tabs bar; the bar keeps its right end clear of it, so every one of its targets and its own takes a tap
+// (#1396).
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,7 +63,7 @@ for (const inset of insets) {
     await expect(heading(page, "r-one")).toBeVisible({ timeout: 15_000 });
     const bar = page.getByRole("navigation", { name: "Tabs in this space" });
     const readOnly = key(page, "Read-only");
-    const round = [readOnly, key(page, "Show keyboard")];
+    const round = [readOnly];
     const controls = [
       bar.getByRole("button", { name: "Previous tab" }),
       bar.getByRole("button", { name: /^Switch tab, / }),

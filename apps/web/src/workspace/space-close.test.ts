@@ -129,10 +129,10 @@ describe("closing a space", () => {
   });
 
   test("a layout that takes no edits is refused before anything ends", async () => {
-    const { here, layouts, spaces, id } = setup("the machine is not connected");
+    const { here, layouts, spaces, id } = setup("the machine is offline");
     const hc = hcEnds();
     await expect(closeSpace(hc.calls, layouts, spaces, TERMINALS, id("api"))).rejects.toThrow(
-      "The layout cannot take changes now: the machine is not connected",
+      "The layout cannot take changes now: the machine is offline",
     );
     expect(hc.ended).toEqual([]);
     expect(here.state.writes).toBe(0);
