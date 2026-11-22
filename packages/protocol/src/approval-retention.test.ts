@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { answerApproval, approvalClock, CLAIM_TTL_MS, readApprovalRecord } from "./approval-answer.ts";
-import { markApproval } from "./approval-prompt.ts";
+import { approvalKey, markApproval } from "./approval-prompt.ts";
 import { type ApprovalOutcome, type ApprovalRecord, readRecords, update } from "./approval-records.ts";
 import { MemoryApprovalCore } from "./testing/approval-core.ts";
 import { CLAUDE_PROMPT_SCREEN } from "./testing/approval-screens.ts";
@@ -9,10 +9,10 @@ import { ALLOW, CLAUDE_BLOCKED, DENY, terminalAt } from "./testing/approval-term
 const terminal = terminalAt("t3", CLAUDE_BLOCKED);
 const owner = { by: "phone", client: "a" };
 const peer = { by: "tablet", client: "b" };
-const history = (outcome: ApprovalOutcome): ApprovalRecord[] =>
+const history = (outcome: ApprovalOutcome, firstPrompt = "other-0"): ApprovalRecord[] =>
   Array.from({ length: 16 }, (_, i) => ({
     ...peer,
-    prompt: `other-${i}`,
+    prompt: i === 0 ? firstPrompt : `other-${i}`,
     attempt: `attempt-${i}`,
     answer: "deny",
     atMs: -1_000_000,
@@ -56,7 +56,8 @@ test("a full document refuses a new claim until a slot lapses on the writer's ow
   const core = new MemoryApprovalCore(terminal, CLAUDE_PROMPT_SCREEN);
   const mark = markApproval(terminal, CLAUDE_PROMPT_SCREEN);
   if (!mark) throw new Error("fixture did not mark");
-  const full = history("claimed");
+  const otherMark = { ...mark, turn: mark.turn + 1 };
+  const full = history("claimed", approvalKey(otherMark));
   await update(core, mark.terminal, () => full);
   let now = 0;
   const clock = approvalClock(() => now);
@@ -65,6 +66,8 @@ test("a full document refuses a new claim until a slot lapses on the writer's ow
   expect((await readRecords(core, mark.terminal)).records).toEqual(full);
   expect(core.pressed).toEqual([]);
   now = CLAIM_TTL_MS;
+  // Trimming history watched this claim for eviction. A first answer to its prompt still starts its own watch.
+  expect(await answerApproval(core, otherMark, ALLOW, owner, now, { clock })).toMatchObject({ kind: "lost" });
   expect(await answer()).toEqual({ kind: "sent" });
   const { records } = await readRecords(core, mark.terminal);
   expect(records.slice(0, -1)).toEqual(full.slice(1));

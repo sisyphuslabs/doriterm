@@ -1,4 +1,4 @@
-import { type ApprovalClock, clockOf, holds } from "./approval-clock.ts";
+import { type ApprovalClock, clockOf, liveForRetention } from "./approval-clock.ts";
 import type { ApprovalCore } from "./approval-live.ts";
 import { type ApprovalMark, approvalKey } from "./approval-prompt.ts";
 import type { ApprovalAnswer } from "./approval-screen.ts";
@@ -86,7 +86,7 @@ function retained(records: readonly ApprovalRecord[], clock: ApprovalClock): rea
   // Never drop the new record to make its own write succeed. An abandoned claim is eligible only after this
   // writer has observed it for a full TTL; another device's atMs does not establish its age.
   const kept = records.filter((record, index) => {
-    if (excess === 0 || index === records.length - 1 || (record.outcome === "claimed" && holds(record, clock))) {
+    if (excess === 0 || index === records.length - 1 || liveForRetention(record, clock)) {
       return true;
     }
     excess -= 1;
@@ -113,7 +113,9 @@ export async function update(
   change: Change,
   read?: RecordsRead,
   clock = clockOf(core),
-  attempt = 1,
+  // A cached fence version can already be stale before settlement starts. On conflict give the fresh read/write
+  // loop its normal eight attempts, just as if there had been no cached version.
+  attempt = read === undefined ? 1 : 0,
 ): Promise<readonly ApprovalRecord[] | undefined> {
   const { name, on } = docOf(address);
   const current = read ?? (await readRecords(core, address));

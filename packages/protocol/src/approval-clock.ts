@@ -44,13 +44,18 @@ const sighting = (record: ApprovalRecord): string =>
 const FORGET_MS = 10 * CLAIM_TTL_MS;
 
 /** How long this client has watched this `claimed` record, starting its watch now if it never saw it. */
-function watched(record: ApprovalRecord, clock: ApprovalClock): number {
+function watched(record: ApprovalRecord, clock: ApprovalClock, scope = ""): number {
   const now = clock.now();
   for (const [key, at] of clock.firstSeen) if (now - at > FORGET_MS) clock.firstSeen.delete(key);
-  const key = sighting(record);
+  const key = scope + sighting(record);
   const since = clock.firstSeen.get(key);
   if (since === undefined) clock.firstSeen.set(key, now);
   return now - (since ?? now);
+}
+
+/** A history trim observes a claim for eviction, not on behalf of a later answer to that prompt. */
+export function liveForRetention(record: ApprovalRecord, clock: ApprovalClock): boolean {
+  return record.outcome === "claimed" && watched(record, clock, "retention:") < CLAIM_TTL_MS;
 }
 
 /**

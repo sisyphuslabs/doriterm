@@ -57,6 +57,16 @@ const ENTRY_WAITS_MS = [50, 100, 200, 400, 800, 1600];
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Start the read beside the screen. Observe its rejection immediately, but use its result only if input is needed. */
+function prefetchFence(core: ApprovalCore, address: string) {
+  const settled = Promise.allSettled([readRecords(core, address)]);
+  return async () => {
+    const [read] = await settled;
+    if (read.status === "rejected") throw read.reason;
+    return read.value;
+  };
+}
+
 /**
  * Waits for the typed row `option` to open on the live screen (the agent still waits, and its cursor's row takes text),
  * returning the document read alongside the open row for the caller's pre-paste fence.
@@ -71,15 +81,13 @@ async function entryOpen(
   const [ms, ...later] = waits;
   if (ms === undefined) return undefined;
   await pause(ms);
-  const [terminal, screen, read] = await Promise.all([
-    core.terminal(address),
-    core.screen(address),
-    readRecords(core, address),
-  ]);
+  const checking = Promise.all([core.terminal(address), core.screen(address)]);
+  const fence = prefetchFence(core, address);
+  const [terminal, screen] = await checking;
   if (!waitsOnApproval(terminal)) return undefined;
   const now = readScreenPrompt(terminal.status?.app ?? "", screen);
-  if (now?.typing === true && now.cursor === option) return read;
-  return entryOpen(core, address, option, pause, later);
+  if (now?.typing !== true || now.cursor !== option) return entryOpen(core, address, option, pause, later);
+  return fence();
 }
 
 /**
@@ -166,18 +174,17 @@ export async function answerApproval(
   let press: RecordsRead | undefined;
   let keys: readonly string[] | undefined;
   try {
-    // The live screen and the fence are read together: each reply waits on the core, which may be slow (#2718).
-    const [checked, fencedRead] = await Promise.allSettled([livePrompt(core, mark), readRecords(core, mark.terminal)]);
-    if (checked.status === "rejected") throw checked.reason;
-    const live = checked.value;
+    const checking = livePrompt(core, mark);
+    const fence = prefetchFence(core, mark.terminal);
+    const live = await checking;
     // The keys are worked out on the live screen, and only for rows that still carry the words the card showed.
     keys = live.now === undefined || !replyShown(mark.prompt, live.now, reply) ? undefined : replyKeys(live.now, reply);
     if (live.check !== "pending" || keys === undefined || (reply.kind === "text" && text === undefined)) {
       await settle(core, mark, claim, "stale");
       return { kind: "stale" };
     }
-    if (fencedRead.status === "rejected") throw fencedRead.reason;
-    press = holdsFence(fencedRead.value) ? fencedRead.value : undefined;
+    const read = await fence();
+    press = holdsFence(read) ? read : undefined;
   } catch (error) {
     // Nothing was pressed. Release the claim as `failed` if the document is reachable; if it is not, it lapses after
     // CLAIM_TTL_MS of every other client's watch.
