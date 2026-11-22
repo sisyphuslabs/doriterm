@@ -1,5 +1,4 @@
 import {
-  encodeCredit,
   FrameKind,
   LineDecoder,
   parseJsonRpc,
@@ -10,6 +9,7 @@ import {
   type JsonRpcNotification,
 } from "@doriface/protocol";
 import { HcLinkSilentError, HcProtocolError } from "./errors.ts";
+import { CreditReturn } from "./credit-return.ts";
 import { Listeners, type Unsubscribe } from "./listeners.ts";
 import type { StreamWire } from "./terminal-stream.ts";
 import type { ChannelHandler } from "./wire.ts";
@@ -32,6 +32,7 @@ type Delivery =
 export class EventFeed implements ChannelHandler {
   readonly channel: number;
   readonly #wire: StreamWire;
+  readonly #credit: CreditReturn;
   readonly #lines = new LineDecoder();
   readonly #events = new Listeners<HcEvent>();
   readonly #snapshots = new Listeners<HcSnapshot>();
@@ -48,6 +49,7 @@ export class EventFeed implements ChannelHandler {
   constructor(wire: StreamWire, channel: number, snapshot: HcSnapshot, heartbeatTimeoutMs: number) {
     this.#wire = wire;
     this.channel = channel;
+    this.#credit = new CreditReturn(channel, (frame) => wire.sendBytes(frame));
     this.#snapshot = snapshot;
     this.#seq = snapshot.seq;
     this.#heartbeatTimeoutMs = heartbeatTimeoutMs;
@@ -78,7 +80,7 @@ export class EventFeed implements ChannelHandler {
     for (const delivery of queued ?? []) this.#emit(delivery);
     const held = this.#heldCredit;
     this.#heldCredit = 0;
-    if (held > 0 && this.#closeInfo === undefined) this.#wire.sendBytes(encodeCredit(this.channel, held));
+    if (held > 0 && this.#closeInfo === undefined) this.#credit.add(held);
     return unsubscribe;
   }
 
@@ -134,7 +136,7 @@ export class EventFeed implements ChannelHandler {
       return;
     }
     if (this.#closeInfo !== undefined || payload.byteLength === 0) return;
-    if (this.#queue === undefined) this.#wire.sendBytes(encodeCredit(this.channel, payload.byteLength));
+    if (this.#queue === undefined) this.#credit.add(payload.byteLength);
     else this.#heldCredit += payload.byteLength;
   }
 
@@ -200,6 +202,7 @@ export class EventFeed implements ChannelHandler {
   #end(info: FeedClose, sendClose: boolean): void {
     if (this.#closeInfo !== undefined) return;
     this.#closeInfo = info;
+    this.#credit.discard();
     if (this.#timer !== undefined) clearTimeout(this.#timer);
     this.#wire.unregister(this.channel);
     if (sendClose) this.#wire.sendClose(this.channel);

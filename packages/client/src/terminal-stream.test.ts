@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { FrameKind, readCredit, type Frame } from "@doriface/protocol";
 import { HcConnection, type AttachOptions } from "./connection.ts";
 import type { StreamClose } from "./stream-close.ts";
@@ -44,6 +44,63 @@ async function attached(
 const isOnChannel = (kind: number) => (f: Frame) => f.channel === CHANNEL && f.kind === kind;
 
 describe("TerminalStream", () => {
+  test("detaching a viewer cancels unreturned credit for its channel", async () => {
+    const { core, stream } = await attached();
+    jest.useFakeTimers();
+    try {
+      const paint = await next<Uint8Array>((resolve) => stream.onData(resolve));
+      expect(paint.byteLength).toBe(PAINT_BYTES);
+      const closing = stream.close();
+      await core.waitFrame(isOnChannel(FrameKind.Close));
+      jest.advanceTimersByTime(1_000);
+      await Promise.resolve();
+      expect(core.frames.some(isOnChannel(FrameKind.Credit))).toBe(false);
+      core.pushFrame(CHANNEL, FrameKind.Close);
+      await closing;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("delivers a burst immediately but returns one credit for its small frames", async () => {
+    const { core, stream } = await attached();
+    const chunks: string[] = [];
+    const delivered = Promise.withResolvers<void>();
+    stream.onData((chunk) => {
+      chunks.push(text(chunk));
+      if (chunks.length === 4) delivered.resolve();
+    });
+    await core.waitFrame(isOnChannel(FrameKind.Credit));
+    const start = core.frames.length;
+    core.push(concatBytes(frame(CHANNEL, 0, "a"), frame(CHANNEL, 0, "bb"), frame(CHANNEL, 0, "ccc")));
+    await delivered.promise;
+    expect(chunks.slice(1)).toEqual(["a", "bb", "ccc"]);
+    const first = await core.waitFrame(isOnChannel(FrameKind.Credit), start);
+    expect(readCredit(first.payload)).toBe(6);
+  });
+
+  test("returns a full credit step without waiting for the quiet flush", async () => {
+    const { core, stream } = await attached({ autoCredit: false });
+    const delivered = Promise.withResolvers<void>();
+    const size = 64 * 1024;
+    stream.onData((chunk) => {
+      if (chunk.byteLength === size) {
+        stream.consumed(size);
+        stream.focus(true);
+        delivered.resolve();
+      }
+    });
+    const start = core.frames.length;
+    core.pushFrame(CHANNEL, FrameKind.Data, new Uint8Array(size));
+    await delivered.promise;
+    await core.waitFrame(isOnChannel(FrameKind.Focus), start);
+    const frames = core.frames.slice(start).filter((f) => f.channel === CHANNEL);
+    expect(frames.map((f) => f.kind)).toEqual([FrameKind.Credit, FrameKind.Focus]);
+    const credit = frames[0];
+    if (credit === undefined) throw new Error("no credit returned before focus");
+    expect(readCredit(credit.payload)).toBe(size);
+  });
+
   test("holds the first paint that shares a chunk with the attach reply, then credits it", async () => {
     const { core, stream } = await attached();
     expect([stream.channel, stream.terminal.address, stream.size]).toEqual([CHANNEL, "t1", { cols: 100, rows: 30 }]);

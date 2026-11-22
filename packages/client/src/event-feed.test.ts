@@ -42,7 +42,7 @@ function collect(feed: EventFeed, count: number): Promise<HcEvent[]> {
 }
 
 describe("EventFeed", () => {
-  test("starts from the snapshot and delivers events split across frames, crediting each frame", async () => {
+  test("starts from the snapshot and delivers split events before returning their combined credit", async () => {
     const { core, feed } = await subscribed();
     expect([feed.channel, feed.snapshot.seq, feed.snapshot.terminals.map((t) => t.address)]).toEqual([
       CHANNEL,
@@ -58,9 +58,8 @@ describe("EventFeed", () => {
       [3, "size"],
       [5, "finished"],
     ]);
-    const creditOf = (amount: number) =>
-      core.waitFrame((f) => f.channel === CHANNEL && f.kind === FrameKind.Credit && readCredit(f.payload) === amount);
-    await Promise.all([creditOf(50), creditOf(stream.byteLength - 50)]);
+    const credit = await core.waitFrame((f) => f.channel === CHANNEL && f.kind === FrameKind.Credit);
+    expect(readCredit(credit.payload)).toBe(stream.byteLength);
     expect(feed.seq).toBe(5);
   });
 
