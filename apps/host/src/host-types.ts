@@ -4,6 +4,7 @@ import type { PlanPolicy } from "@doriface/policy";
 import type { CreateSocket } from "@doriface/relay-client";
 import type { ListenAddress } from "./listen.ts";
 import type { MeshHooks } from "./mesh/host-hooks.ts";
+import type { AgentSkill } from "./skill/skill-host.ts";
 import type { PairingSlotRegistrar } from "./pairing-slots.ts";
 
 /** Set by apps/desktop/scripts/build-host.ts (`bun build --define`) to the version a release builds, prerelease included. */
@@ -59,6 +60,11 @@ export interface HostOptions {
   readonly log: (line: string) => void;
   /** The OS this host reports on its core (`process.platform` unless a test names another). */
   readonly platform?: string;
+  /**
+   * The agent skill this host manages: its status goes on the core, a client's Install request is answered, and copies
+   * an older host wrote are updated at start. Unset (tests), the host leaves agent skills alone.
+   */
+  readonly skill?: AgentSkill | undefined;
 }
 
 export interface E2eeEndpoint {
@@ -79,7 +85,7 @@ export interface Host {
   /** The relay this host keeps its uplink to, when it does. */
   readonly relayUrl: string | undefined;
   /**
-   * Settles once the write of this host's OS on its core is done and its one-shot `hc connect` child has exited; at once
+   * Settles once the latest write of this host's facts on its core is done and its one-shot `hc connect` child has exited; at once
    * if no client has opened a pipe yet, since that write starts with the first pipe.
    */
   hostInfoSettled(): Promise<void>;

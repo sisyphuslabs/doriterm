@@ -1,0 +1,110 @@
+// Terminals another client starts while the app is open (`hc run --bg` from another terminal, a script, an agent) get
+// a tab of their own, in the space their label names, on this core and on an added machine, without anyone clicking
+// them. A change another client saves to the layout shows without a reload.
+import { agentRow, endAgent, startAgent } from "./agents.ts";
+import { getCoreDoc, updateCoreDoc } from "./core-doc.ts";
+import { spaceRow, spacesShowing } from "./core-tabs.ts";
+import { routeHcSocket } from "./hc-socket.ts";
+import { tabs } from "./tab-strip.ts";
+import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { LAYOUT_DOC } from "./layout-doc.ts";
+import { MACHINE_NAME } from "./machine.ts";
+import { STATE_BOUND_MS } from "./machine-switch.ts";
+
+test.use({ serviceWorkers: "block" });
+
+const started: { core: "host" | "machine"; address: string }[] = [];
+test.afterEach(() => {
+  for (const { core, address } of started.splice(0)) endAgent(core, address);
+});
+
+function startOutside(core: "host" | "machine", name: string, space: string, parent?: string): string {
+  const address = startAgent(core, name, "working", space, parent);
+  started.push({ core, address });
+  return address;
+}
+
+test("an agent started outside the app on this core gets one tab in its labelled space without a click", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  const address = startOutside("host", "outside-lane", "lanes");
+  await expect.poll(() => spacesShowing(address), { timeout: 20_000 }).toEqual(["lanes"]);
+});
+
+test("an agent started outside the app on an added machine gets one tab in its labelled space without a click", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  await expect(page.getByText(MACHINE_NAME).first()).toBeVisible({ timeout: STATE_BOUND_MS });
+  const address = startOutside("machine", "remote-lane", "lanes");
+  await expect.poll(() => spacesShowing(address, MACHINE_NAME), { timeout: 30_000 }).toEqual(["lanes"]);
+});
+
+test("an agent another agent started (hc records its parent) gets its own tab in its labelled space without a click", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  const lead = startOutside("host", "lead-lane", "lanes");
+  await expect.poll(() => spacesShowing(lead), { timeout: 20_000 }).toEqual(["lanes"]);
+  const count = spaceRow(page, "lanes").getByLabel(/^\d+ tabs$/);
+  await expect(count).toHaveText("1");
+  const worker = startOutside("host", "worker-lane", "lanes", lead);
+  await expect.poll(() => spacesShowing(worker), { timeout: 20_000 }).toEqual(["lanes"]);
+  // The space's count follows without anyone clicking the worker's row in the Agents list.
+  await expect(count).toHaveText("2");
+});
+
+test("an agent opened from the Agents list before it has a tab goes to the space its label names", async ({ page }) => {
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  await openNewTerminal(page);
+  await expect(tabs(page)).toHaveCount(1, { timeout: 20_000 });
+  // Every layout write is held, so an adoption, which shows only once saved, cannot place the agent: what the page shows
+  // is the click's own placement.
+  const release = link.hold("doc.set");
+  const address = startOutside("host", "clicked-lane", "lanes");
+  await agentRow(page, "clicked-lane", false).click();
+  await expect(page.locator(`[data-terminal="${address}"]`)).toBeVisible({ timeout: 20_000 });
+  await expect(spaceRow(page, "lanes")).toBeVisible({ timeout: 20_000 });
+  await expect(tabs(page)).toHaveCount(1);
+  release();
+  await expect.poll(() => spacesShowing(address), { timeout: 20_000 }).toEqual(["lanes"]);
+});
+
+test("a space of that name another client saves while the click's write waits is the one the tab joins", async ({
+  page,
+}) => {
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  await openNewTerminal(page);
+  await expect(tabs(page)).toHaveCount(1, { timeout: 20_000 });
+  const release = link.hold("doc.set");
+  const address = startOutside("host", "raced-lane", "lanes");
+  await agentRow(page, "raced-lane", false).click();
+  await expect(spaceRow(page, "lanes")).toBeVisible({ timeout: 20_000 });
+  updateCoreDoc(LAYOUT_DOC, (current) => {
+    const doc = structuredClone(current) as { spaces: object[] };
+    doc.spaces.push({ folder: "", id: "spc-made-elsewhere", name: "lanes", tabs: [] });
+    return doc;
+  });
+  release();
+  await expect.poll(() => spacesShowing(address), { timeout: 20_000 }).toEqual(["lanes"]);
+  const doc = getCoreDoc(LAYOUT_DOC) as { spaces: readonly { id: string; name: string }[] };
+  expect(doc.spaces.filter((space) => space.name === "lanes").map((space) => space.id)).toEqual(["spc-made-elsewhere"]);
+});
+
+test("a tab name another client saves shows without a reload", async ({ page }) => {
+  await page.goto("/");
+  await openNewTerminal(page);
+  await expect(tabs(page)).toHaveCount(1, { timeout: 20_000 });
+  updateCoreDoc(LAYOUT_DOC, (current) => {
+    const doc = structuredClone(current) as { spaces: { tabs: { name: string }[] }[] };
+    for (const tab of doc.spaces.flatMap((space) => space.tabs)) tab.name = "renamed-outside";
+    return doc;
+  });
+  await expect(tabs(page)).toHaveText(["renamed-outside"], { timeout: 20_000 });
+});

@@ -1,5 +1,6 @@
 import type { UpdateChannel, UpdateStatus } from "./update.ts";
 import type { NoticeContext } from "@doriface/protocol";
+import type { PasteInviteAnswer } from "./paste-invite.ts";
 
 /** IPC channels between the preload and the main process. */
 export const Channel = {
@@ -72,6 +73,8 @@ export const Channel = {
   dictationAbort: "doriface:dictation-abort",
   /** Main to renderer: one event of the session this page started. */
   dictationEvent: "doriface:dictation-event",
+  /** Renderer to main: Paste invite, the clipboard's invite link read by the shell on the person's click (#2656). */
+  pasteInvite: "doriface:paste-invite",
 } as const;
 
 /** The main process hands the app version to the sandboxed preload through this argv entry. */
@@ -427,6 +430,11 @@ export interface DorifaceBridge {
   dictationAbort?(session: number): Promise<boolean>;
   /** Calls `listener` with every event of the sessions this page started. */
   onDictationEvent?(listener: (event: DictationEvent) => void): void;
+  /**
+   * Paste invite: the shell reads the clipboard itself, only right after the person's own click or key in this page,
+   * and answers only an invite link; the page holds no clipboard read permission (#2656).
+   */
+  pasteInvite(): Promise<PasteInviteAnswer>;
 }
 
 export function parsePlatform(value: string): DesktopPlatform {

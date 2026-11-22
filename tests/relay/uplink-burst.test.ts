@@ -11,21 +11,14 @@ import {
   RELAY_MESSAGE_CAP,
   SESSION_WINDOW_BYTES,
 } from "@doriface/relay-client";
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { defer, runDeferred } from "./support/cleanup.ts";
 import { Probe, testIp } from "./support/probe.ts";
 import { type RawHost, startRawHost } from "./support/raw-host.ts";
-import { type LocalRelay, startLocalRelay, RELAY_STOP_MS } from "./support/relay-dev.ts";
+import { useLocalRelay } from "./support/relay-fixture.ts";
 import { inOrder, times } from "./support/sequential.ts";
-import { setUpOnce } from "./support/set-up-once.ts";
 
-let relay: LocalRelay;
-
-setUpOnce(async () => {
-  relay = await startLocalRelay();
-}, 120_000);
-
-afterAll(() => relay?.stop(), RELAY_STOP_MS);
+const relay = useLocalRelay();
 
 afterEach(runDeferred);
 

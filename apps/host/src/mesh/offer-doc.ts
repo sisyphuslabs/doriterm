@@ -1,9 +1,16 @@
 import type { HcConnection } from "@doriface/client";
-import { HcRpcError, type JsonValue, MESH_APPROVAL_DOC, MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
+import {
+  HcRpcError,
+  type JsonValue,
+  MESH_APPROVAL_DOC,
+  MESH_OFFER_DOC,
+  parseMeshOfferDoc,
+  SKILL_REQUEST_DOC,
+} from "@doriface/protocol";
 import { type Clock, monotonicClock } from "./clock.ts";
 import { type ChildByteLink, type HcTarget, openOnCore, spawnHcLink } from "./hc-machines.ts";
 import { answerMeshApproval, type MeshDecision } from "./approval-doc.ts";
-import { docStoreOf } from "./status-doc.ts";
+import { type DocStore, docStoreOf } from "./status-doc.ts";
 
 export const RETRY_MS = 5_000;
 
@@ -70,6 +77,8 @@ export function serveMeshOffers(
   openLink: (core: HcTarget) => OfferLink = spawnHcLink,
   time: MeshOfferTime = systemTime,
   decide?: MeshDecision,
+  /** Answers an agent skill request (`doriface-skill`), which a client writes on this core as it writes an offer request. */
+  skillRequest?: (store: DocStore) => Promise<void>,
 ): MeshOfferService {
   const first = Promise.withResolvers<void>();
   let stopped = false;
@@ -198,9 +207,17 @@ export function serveMeshOffers(
             log(`mesh: cannot answer an approval: ${String(error)}`),
           );
       };
+      const install = (): void => {
+        if (skillRequest !== undefined)
+          void skillRequest(docStoreOf(connection)).catch((error: unknown) =>
+            log(`agent skill: cannot answer a request: ${String(error)}`),
+          );
+      };
       feed.onEvent((event) => {
-        if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_OFFER_DOC) handle();
-        if (event.type === "doc" && event.machine === undefined && event.data.name === MESH_APPROVAL_DOC) approve();
+        if (event.type !== "doc" || event.machine !== undefined) return;
+        if (event.data.name === MESH_OFFER_DOC) handle();
+        if (event.data.name === MESH_APPROVAL_DOC) approve();
+        if (event.data.name === SKILL_REQUEST_DOC) install();
       });
       feed.onClose(() => {
         if (live === connection) live = undefined;
@@ -211,6 +228,7 @@ export function serveMeshOffers(
       // A request written while the host was away is answered now.
       handle();
       approve();
+      install();
     } catch (error) {
       child.close();
       if (stopped) return;

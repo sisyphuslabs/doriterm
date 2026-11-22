@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { generateX25519 } from "@doriface/crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +14,7 @@ let session: HcSession;
 let host: Host;
 let stateDir: string;
 
-beforeAll(async () => {
+beforeEach(async () => {
   stateDir = mkdtempSync(join(tmpdir(), "dh-device-route-"));
   session = createHcSession("doriface-device-route-test");
   host = await startHost({
@@ -30,7 +30,7 @@ beforeAll(async () => {
   });
 });
 
-afterAll(async () => {
+afterEach(async () => {
   await host.stop();
   await session.dispose();
   rmSync(stateDir, { recursive: true, force: true });
@@ -56,8 +56,7 @@ describe("this computer's paired devices on the loopback gateway", () => {
   });
 
   test("revoking answers what was revoked and leaves the store without it", async () => {
-    const device = new DeviceStore(stateDir).list()[0];
-    if (device === undefined) throw new Error("no device was paired");
+    const device = new DeviceStore(stateDir).add(generateX25519().publicKey, "phone");
     const answer: unknown = await (await request("DELETE", deviceIdOf(device))).json();
     expect(answer).toEqual({ revoked: [{ name: device.name, id: deviceIdOf(device), pairedAt: device.pairedAt }] });
     expect(new DeviceStore(stateDir).list()).toEqual([]);
@@ -78,21 +77,12 @@ describe("this computer's paired devices on the loopback gateway", () => {
   });
 
   test("a short id two devices share is refused as a conflict, and neither is revoked", async () => {
-    // The short id is the first eight hex characters of SHA-256(key): a birthday collision turns up in about 2^16 keys.
-    const seen = new Map<string, Uint8Array>();
-    let collision: readonly [Uint8Array, Uint8Array] | undefined;
-    for (let attempt = 0; attempt < 400_000 && collision === undefined; attempt += 1) {
-      const key = crypto.getRandomValues(new Uint8Array(32));
-      const id = deviceIdOf({ clientStaticPub: Buffer.from(key).toString("base64url"), name: "", pairedAt: "" });
-      const earlier = seen.get(id);
-      if (earlier === undefined) seen.set(id, key);
-      else collision = [earlier, key];
-    }
-    if (collision === undefined) throw new Error("no short-id collision turned up in 400000 keys");
+    // Two distinct 32-byte keys with the same SHA-256 prefix (12BF2ED8).
+    const firstKey = Buffer.from("9014000000000000000000000000000000000000000000000000000000000000", "hex");
+    const secondKey = Buffer.from("36e1000000000000000000000000000000000000000000000000000000000000", "hex");
     const store = new DeviceStore(stateDir);
-    store.add(collision[0], "first");
-    store.add(collision[1], "second");
-    const id = deviceIdOf(store.list()[0] ?? { clientStaticPub: "", name: "", pairedAt: "" });
+    const id = deviceIdOf(store.add(firstKey, "first"));
+    expect(deviceIdOf(store.add(secondKey, "second"))).toBe(id);
     const answer = await request("DELETE", id);
     expect(answer.status).toBe(409);
     const body: unknown = await answer.json();

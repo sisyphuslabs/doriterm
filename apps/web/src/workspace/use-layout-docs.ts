@@ -3,6 +3,7 @@ import type { JsonObject, MachineView } from "@doriface/protocol";
 import { type DocEdit, type DocState, type EditShown, type LayoutDoc, storedPins } from "@doriface/protocol/layout";
 import { docCalls } from "../roster/doc-calls.ts";
 import { useRoster } from "../roster/use-roster.ts";
+import { offlineReason, stateReason } from "./machine-state.ts";
 
 export { docCalls };
 
@@ -26,23 +27,28 @@ export interface MachineLayout {
 /** Why a machine's layout takes no edits while it is still being read. */
 export const LAYOUT_LOADING = "the layout is loading";
 
-const NOT_CONNECTED = "the machine is not connected";
+/** Connected layouts must answer before restoration finishes; an unavailable layout need not hold the page up. */
+export function layoutsRestored(
+  machinesListed: boolean,
+  layouts: readonly Pick<MachineLayout, "loaded" | "readOnly">[],
+): boolean {
+  return machinesListed && layouts.every((layout) => layout.loaded || layout.readOnly !== LAYOUT_LOADING);
+}
 
 /**
- * Why a machine with no live document takes no edits, in the words its row uses: one the page holds as connected
- * through a redial (the grace from #904) is reconnecting, and its edits are refused as reconnecting rather than as
- * disconnected while its row reads connected or reconnecting (#918); anything else is not connected. An edit is never
- * queued for later.
+ * Why a machine with no live document takes no edits: a connected machine waits for its layout, while any other
+ * machine is named with its row's state, including reconnecting only during the page's grace (#918).
  */
 export function noEditsWhy(id: string | null, shown: readonly MachineView[]): string {
   const view = shown.find((machine) => machine.id === id);
-  return view?.state === "connected" || view?.state === "reconnecting" ? "the machine is reconnecting" : NOT_CONNECTED;
+  if (view === undefined) return offlineReason();
+  return view.state === "connected" ? LAYOUT_LOADING : stateReason(view.state, view.name);
 }
 
 /** A machine's edits: through its live document, or refused with `why` when it has none. */
 export function docEdit(
   live: Pick<LayoutDoc, "edit"> | undefined,
-  why: string = NOT_CONNECTED,
+  why: string = offlineReason(),
 ): (change: DocEdit, shown?: EditShown) => Promise<boolean> {
   if (live === undefined) return () => Promise.reject(new Error(`The layout cannot take changes now: ${why}`));
   return (change, shown) => live.edit(change, shown);
@@ -55,17 +61,18 @@ export function docEdit(
  */
 /**
  * Why a machine's layout takes no edits now, in the words its refusal shows; null when an edit may go ahead. `why` is
- * the reason when the machine has no live document at all.
+ * the reason when the machine has no live document at all; `linkUp` is false while the link to it is down.
  */
-export function readOnlyOf(state: DocState | undefined, why: string): string | null {
+export function readOnlyOf(state: DocState | undefined, why: string, linkUp = true): string | null {
   if (state === undefined) return why;
   if (state.phase === "ready") return null;
   if (state.phase === "unreadable")
     return `this layout has ${state.reason}, which this version of Doriterm cannot edit`;
   if (state.phase === "loading") return LAYOUT_LOADING;
-  // "unavailable" is only how the last read ended: the edit itself reads the document again, then writes, or rejects with
-  // the read's own reason (LayoutDoc, #2436). Refusing here instead parked pane drops silently until a later read.
-  return null;
+  // "unavailable" is only how the last read ended: over a live link the edit itself reads the document again, then
+  // writes, or rejects with the read's own reason (LayoutDoc, #2436); refusing then parked pane drops silently until a
+  // later read. Over a dropped link no read can succeed, so every action stays disabled with that reason (#2455).
+  return linkUp ? null : state.reason;
 }
 
 export function useLayoutDocs(
@@ -83,7 +90,13 @@ export function useLayoutDocs(
     const state = live?.state;
     const kept = roster.docs.kept(machineId);
     const why = machineId === null ? LAYOUT_LOADING : noEditsWhy(machineId, shown);
-    const readOnly = readOnlyOf(state, why);
+    // A machine past its reconnect grace takes no edits even while its last document is still held: every action on
+    // it is offered disabled at once, not refused after the click (#2455).
+    // The page's own reading first (it holds a redialing machine as reconnecting through the grace), else hc's.
+    const machineState = view === null ? undefined : (shown.find((one) => one.id === machineId)?.state ?? view.state);
+    const gone = machineState !== undefined && machineState !== "connected" && machineState !== "reconnecting";
+    const linkUp = !connection.closed && machineState !== "reconnecting";
+    const readOnly = gone ? why : readOnlyOf(state, why, linkUp);
     return {
       machine,
       machineId,

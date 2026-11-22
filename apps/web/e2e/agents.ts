@@ -13,9 +13,30 @@ import { hcOn } from "./machine-switch.ts";
 export const AGENT_SHELL = ["sh", "-c", `while printf '$ ' && IFS= read -r line; do eval "$line"; done`] as const;
 
 /** A program that reports `state` over OSC 7501 and then waits, started straight on one core. */
-export function startAgent(core: "host" | "machine", name: string, state: string, space = "api"): string {
-  const report = `printf '\\033]7501;state=${state}\\033\\\\'; exec sleep 600`;
-  const out = hcOn(core, ["run", "--bg", "--name", name, "--label", `space=${space}`, "--", "sh", "-c", report]);
+export function startAgent(
+  core: "host" | "machine",
+  name: string,
+  state: string,
+  space = "api",
+  parent?: string,
+): string {
+  // Keep the foreground shell's -c argv stable after it reports. Across an exec, hc can sample the old shell name
+  // without its command args and clear the status as if the agent had returned to an interactive prompt (#2710).
+  const report = `printf '\\033]7501;state=${state}\\033\\\\'; sleep 600; :`;
+  const from = parent === undefined ? [] : ["--parent", parent];
+  const out = hcOn(core, [
+    "run",
+    "--bg",
+    ...from,
+    "--name",
+    name,
+    "--label",
+    `space=${space}`,
+    "--",
+    "sh",
+    "-c",
+    report,
+  ]);
   const started: unknown = JSON.parse(out);
   if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
   return String(started.address);

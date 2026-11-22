@@ -70,11 +70,22 @@ export interface LayoutStopOptions {
 
 /**
  * Whether the layout host has exited, as the host's exit event rather than as a wall clock: this process is its parent,
- * so its SIGCHLD says so at once, and the host itself writes `stoppedFile` as its last step before it goes (for a host
- * whose exit is not this process's to observe). `withinMs` bounds a host that does neither.
+ * so its SIGCHLD says so at once, and the host itself writes its PID to `stoppedFile` as its last step before it goes
+ * (for a host whose exit is not this process's to observe). `withinMs` bounds a host that does neither.
  */
 async function exited(pid: number, stoppedFile: string, withinMs: number): Promise<boolean> {
-  const gone = (): boolean => existsSync(stoppedFile) || !alive(pid);
+  const gone = (): boolean => {
+    if (!alive(pid)) return true;
+    try {
+      const marker: unknown = JSON.parse(readFileSync(stoppedFile, "utf8"));
+      return typeof marker === "object" && marker !== null && "pid" in marker && marker.pid === pid;
+    } catch (error) {
+      // A watch notification can arrive before the write completes; keep waiting for this host's marker or its exit.
+      if (error instanceof SyntaxError || (error instanceof Error && "code" in error && error.code === "ENOENT"))
+        return false;
+      throw error;
+    }
+  };
   if (gone()) return true;
   return await new Promise<boolean>((resolve) => {
     let watcher: FSWatcher | undefined;
@@ -101,7 +112,7 @@ async function exited(pid: number, stoppedFile: string, withinMs: number): Promi
       // No watch on this platform or dir: the host's exit signal and the bound below still end the wait.
       watcher = undefined;
     }
-    bound = setTimeout(() => finish(!alive(pid)), withinMs);
+    bound = setTimeout(() => finish(gone()), withinMs);
     // Not the wait's decision, and not a wall clock: a once-a-second liveness sample, so a host that died without
     // either signal (a SIGKILL) costs a second rather than the whole bound. Every ordinary stop ends on the exit above.
     heartbeat = setInterval(check, 1_000);

@@ -138,6 +138,22 @@ describe("control socket", () => {
     expect(JSON.parse(answer)).toEqual({ ok: false, error: "request too large" });
   });
 
+  // A reply past the socket's send buffer used to be cut short by `end(data)`, so the socket never closed and the client
+  // waited forever. macOS's Unix-socket buffer is about 8 KB, so `mesh status` hung there on an ordinary mesh (#2387).
+  test("a reply larger than the socket's send buffer reaches the client whole", async () => {
+    const payload = "x".repeat(2_000_000);
+    listeners.push(listenControl(dir, () => Promise.resolve(payload)));
+    expect(await requestControl(dir, { op: "mesh-status" })).toBe(payload);
+  });
+
+  // A reply that arrives in several chunks splits multi-byte characters (a Korean machine name) across chunk edges; each
+  // chunk decoded on its own turned the halves into U+FFFD (#2450 review).
+  test("a reply of multi-byte characters past the send buffer reaches the client unchanged", async () => {
+    const payload = `a${"\uAC00".repeat(700_001)}`;
+    listeners.push(listenControl(dir, () => Promise.resolve(payload)));
+    expect(await requestControl(dir, { op: "mesh-status" })).toBe(payload);
+  });
+
   test("a live socket is reported as live, a stale or missing one is not", async () => {
     expect(await controlIsLive(dir)).toBe(false);
     const listener = listenControl(dir, () => Promise.resolve(undefined));

@@ -27,7 +27,7 @@ const layout = process.argv[2] === "layout";
 const port = layout ? E2E_LAYOUT_PORT : E2E_HOST_PORT;
 
 const hc = process.env["HC_BIN"] || Bun.which("hc");
-if (hc === null || hc === undefined || hc === "") throw new Error("set HC_BIN to an hc 0.1.20 binary");
+if (hc === null || hc === undefined || hc === "") throw new Error("set HC_BIN to an hc 0.1.21 binary");
 // Resolved, since a process is seen holding resolved paths (macOS: /var and /tmp are links into /private).
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "dw-")));
 const session = `web-e2e-${layout ? "layout-" : ""}${crypto.randomUUID().slice(0, 8)}`;
@@ -43,6 +43,9 @@ const env = {
   // A plain shell and a neutral core name keep captures free of this machine's identity.
   ...shellEnv(dir),
 };
+// The host installs the agent skill under a HOME of its own, so a run never touches the account's skill directories.
+const hostHome = join(dir, "home");
+mkdirSync(hostHome, { recursive: true });
 const coreDir = join(dir, "state", "herdr-core", session);
 mkdirSync(coreDir, { recursive: true });
 writeFileSync(
@@ -78,7 +81,7 @@ const host = Bun.spawn(
     "--push-test-origin",
     E2E_PUSH_ORIGIN,
   ],
-  { env, stdout: "inherit", stderr: "inherit" },
+  { env: { ...env, HOME: hostHome }, stdout: "inherit", stderr: "inherit" },
 );
 
 async function stopCore(): Promise<void> {
@@ -110,7 +113,12 @@ async function shutdown(code = 0): Promise<void> {
   host.kill("SIGTERM");
   await host.exited;
   await stopCore();
-  await stopMachine?.();
+  try {
+    await stopMachine?.();
+  } catch (error) {
+    // The rest of the teardown still runs: the leftovers check, the stopped word and the run dir's removal (#2527 review).
+    console.error(error);
+  }
   if (layout) {
     await stopLeftovers();
     // The run's teardown waits for this rather than for a fixed time: the host's own word that its cores are stopped,
@@ -141,7 +149,7 @@ try {
     if (capture) await seed(hc, env, join(dir, "work"));
     await seedMeshDoc(hc, session, env);
     if (process.env["E2E_SKIP_MACHINE"] !== "1") {
-      stopMachine = await addMachine(hc, env, join(dir, "machine"), capture);
+      stopMachine = await addMachine(hc, env, join(dir, "machine"), capture, undefined, true);
     }
     writeSavedEnv(E2E_HOST_ENV, { ...saved, ready: true });
   }

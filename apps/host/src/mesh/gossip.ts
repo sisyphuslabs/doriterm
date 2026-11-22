@@ -85,6 +85,7 @@ export class Gossip implements SyncHost {
       dial: options.dial,
       flushOpen: (peer) => this.#flushOpen(peer),
       attach: (member, link, sweeping) => void this.attach(member.signPub, this.self, link, sweeping),
+      revoked: (member) => this.#view.revoked.includes(member),
       log: options.log,
     });
     this.meshId = options.meshId;
