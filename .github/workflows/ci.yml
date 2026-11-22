@@ -123,24 +123,55 @@ jobs:
         if: failure()
         run: tail -100 ~/Library/Logs/doriface-host.log || true
 
+  shard-plan:
+    # The per-file times both e2e jobs balance their shards by, restored once per run and handed to every shard as an
+    # artifact. A shard that restored the cache itself could, when re-run after a newer push to dev saved a newer record,
+    # plan a different split from its siblings, and a file would then run twice or not at all (#2688 review).
+    name: Shard plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Restore the e2e file times
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/plan/e2e-timings.json
+          key: e2e-timings-${{ github.run_id }}
+          restore-keys: e2e-timings-
+      - name: Restore the relay suite file times
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/plan/relay-timings.json
+          key: relay-timings-${{ github.run_id }}
+          restore-keys: relay-timings-
+      # Without a record (the first run, or an expired cache) each file still exists, empty: the plans split by count.
+      - name: Pin this run's records
+        run: |
+          mkdir -p "$RUNNER_TEMP/plan"
+          for f in e2e-timings.json relay-timings.json; do
+            [ -s "$RUNNER_TEMP/plan/$f" ] || echo '{"version":1,"files":{}}' > "$RUNNER_TEMP/plan/$f"
+            echo "$f: $(jq '.files | length' "$RUNNER_TEMP/plan/$f") files"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-plan
+          path: ${{ runner.temp }}/plan
+
   relay-e2e-part:
     # The relay and mesh suites (tests/relay) and the browser specs that need the relay checkout: real hosts, hc cores and
     # the private relay under wrangler dev. They ran one after the other in one job for ~26 min (#2027: suites ~12 min,
-    # browser specs ~13 min); now each part has its own runner, the suites as three `bun test --shard` shards, so the
-    # slowest part sets the time. `Relay e2e` below is the required context and reports their sum.
+    # browser specs ~13 min). Now two parts each run half the suites (`bun test --shard`, balanced by the per-file times
+    # the last push to dev recorded), and part 1 also runs the browser specs: two runner slots, not four, under the
+    # org's 20-job cap (#2689). `Relay e2e` below is the required context and reports their sum.
     # A pull request from a fork gets no secrets, so no part runs for it (see `Relay e2e`).
-    name: "Relay e2e (${{ matrix.part == 'suites' && format('suites {0}/3', matrix.shard) || 'browser specs' }})"
+    name: Relay e2e (${{ matrix.shard }}/2)
+    needs: shard-plan
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { part: suites, shard: 1 }
-          - { part: suites, shard: 2 }
-          - { part: suites, shard: 3 }
-          - { part: browser, shard: 0 }
+        shard: [1, 2]
     env:
       RELAY_TOKEN_SET: ${{ secrets.DORIFACE_RELAY_READ_TOKEN != '' }}
     steps:
@@ -190,17 +221,22 @@ jobs:
           GIT_CONFIG_KEY_0: credential.https://github.com.helper
           GIT_CONFIG_VALUE_0: '!f() { test "$1" = get && printf "username=x-access-token\npassword=%s\n" "$RELAY_READ_TOKEN"; }; f'
         run: bun run relay:fetch
+      # This run's pinned per-file times (shard-plan); `bun test --timings` balances the shards by them.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: shard-plan
+          path: ${{ runner.temp }}
       - name: Relay suites against the private relay
-        if: matrix.part == 'suites'
         # A mesh scenario whose capability is missing fails instead of being skipped.
         env:
           DORIFACE_MESH_E2E: require
         # The JUnit report is what the next step and `Relay e2e` count: a green run of nothing is not a pass.
-        run: >-
-          bun run relay:test -- --shard=${{ matrix.shard }}/3 --reporter=junit
-          --reporter-outfile="$RUNNER_TEMP/relay-suites-${{ matrix.shard }}.xml"
+        run: |
+          timings="$RUNNER_TEMP/relay-timings.json"
+          bun run relay:test -- --shard=${{ matrix.shard }}/2 --timings="$timings" --update-timings --reporter=junit \
+            --reporter-outfile="$RUNNER_TEMP/relay-suites-${{ matrix.shard }}.xml"
       - name: This shard's relay suites ran
-        if: matrix.part == 'suites'
+        if: ${{ !cancelled() }}
         # Every case of this shard must have run (no skip) and nothing may fail; `Relay e2e` checks the shards together
         # for the mesh specs and tests/relay/e2e.test.ts.
         run: |
@@ -226,11 +262,13 @@ jobs:
             echo "::error::this shard ran no case."
             exit 1
           fi
-      - if: always() && matrix.part == 'suites'
+      - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: relay-suites-${{ matrix.shard }}
-          path: ${{ runner.temp }}/relay-suites-${{ matrix.shard }}.xml
+          path: |
+            ${{ runner.temp }}/relay-suites-${{ matrix.shard }}.xml
+            ${{ runner.temp }}/relay-timings.json
           if-no-files-found: ignore
       # mesh-attach.e2e.ts, mesh-input-hold.e2e.ts and mesh-join-browser.e2e.ts are browser specs that need this job's relay
       # checkout: the web app paired with one mesh member attaches to a terminal on another, through the mesh (G009 C004);
@@ -239,21 +277,21 @@ jobs:
       # skips all three. They run one worker after the other: each starts two hosts, the relay and Chromium, and two of
       # those at once do not fit one runner's cores.
       - name: Playwright version
-        if: matrix.part == 'browser'
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         id: playwright
         working-directory: apps/web
         run: |
           echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
           echo "distro=$(. /etc/os-release && echo "$ID-$VERSION_ID")" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: matrix.part == 'browser'
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('bun.lock') }}
       # The .deb files of the system packages Chromium is missing on the image (doriterm#1012); the install step decides
       # whether they are enough, so this only restores them.
       - name: Restore the Playwright system packages
-        if: matrix.part == 'browser'
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         id: playwright-apt
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -262,7 +300,7 @@ jobs:
           key: playwright-apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.distro }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('.github/scripts/playwright-linux-deps.sh') }}-${{ github.run_id }}
           restore-keys: playwright-apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.distro }}-${{ steps.playwright.outputs.version }}-${{ hashFiles('.github/scripts/playwright-linux-deps.sh') }}-
       - name: Install Chromium
-        if: matrix.part == 'browser'
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         id: chromium
         working-directory: apps/web
         timeout-minutes: 12
@@ -280,7 +318,7 @@ jobs:
             timeout 600 bunx playwright install chromium
           fi
       - name: Save the Playwright system packages
-        if: matrix.part == 'browser' && steps.chromium.outputs.save-debs == 'true'
+        if: ${{ !cancelled() && matrix.shard == 1 && steps.chromium.outputs.save-debs == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/playwright-apt
@@ -289,13 +327,13 @@ jobs:
       # specs above and those that go through the real relay code. A name that matches no file yet runs nothing and fails
       # nothing.
       - name: Browser spec through the mesh
-        if: matrix.part == 'browser'
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts --workers=1
         working-directory: apps/web
         env:
           CI: "1"
           DORIFACE_RELAY_DIR: ${{ github.workspace }}/.relay
-      - if: always() && matrix.part == 'browser'
+      - if: always() && matrix.shard == 1
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: relay-web-e2e
@@ -331,38 +369,63 @@ jobs:
             exit 1
           fi
       - if: env.FROM_FORK != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # One directory per part: each holds its JUnit report and the file times it recorded.
+      - if: env.FROM_FORK != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: relay-suites-*
           path: ${{ runner.temp }}/relay-suites
-          merge-multiple: true
-      - name: The relay and mesh suites ran
+      - name: The relay and mesh suites ran, every file once
         if: env.FROM_FORK != 'true'
-        # The required "Relay e2e" context may only be green when the shards together ran the suites this check exists
-        # for: three reports, the mesh specs among them, and tests/relay/e2e.test.ts.
+        # The required "Relay e2e" context may only be green when the parts together ran the suites this check exists
+        # for: two reports that between them name every test file under tests/relay exactly once, the mesh specs and
+        # tests/relay/e2e.test.ts among them.
         run: |
           set -euo pipefail
-          reports=("$RUNNER_TEMP"/relay-suites/relay-suites-*.xml)
-          if [ "${#reports[@]}" -ne 3 ] || [ ! -s "${reports[0]}" ]; then
-            echo "::error::expected 3 relay suite reports, found: ${reports[*]}"
+          reports=("$RUNNER_TEMP"/relay-suites/*/relay-suites-*.xml)
+          if [ "${#reports[@]}" -ne 2 ] || [ ! -s "${reports[0]}" ]; then
+            echo "::error::expected 2 relay suite reports, found: ${reports[*]}"
             exit 1
           fi
-          mesh=$(cat "${reports[@]}" | grep -oE 'file="tests/relay/mesh-[^"]+\.test\.ts"' | sort -u | wc -l || true)
+          git ls-files 'tests/relay/*.test.ts' | sort > "$RUNNER_TEMP/relay-all.txt"
+          for report in "${reports[@]}"; do
+            grep -oE 'file="tests/relay/[^"]+\.test\.ts"' "$report" | sed -E 's/^file="//; s/"$//' | sort -u
+          done | sort > "$RUNNER_TEMP/relay-ran.txt"
+          echo "test files: $(wc -l < "$RUNNER_TEMP/relay-all.txt"), ran: $(wc -l < "$RUNNER_TEMP/relay-ran.txt")"
+          twice=$(uniq -d "$RUNNER_TEMP/relay-ran.txt")
+          missing=$(comm -23 "$RUNNER_TEMP/relay-all.txt" <(sort -u "$RUNNER_TEMP/relay-ran.txt"))
+          if [ -n "$twice" ] || [ -n "$missing" ]; then
+            [ -z "$twice" ] || echo "::error::run by both parts: $twice"
+            [ -z "$missing" ] || echo "::error::run by no part: $missing"
+            exit 1
+          fi
+          mesh=$(grep -c '^tests/relay/mesh-' "$RUNNER_TEMP/relay-ran.txt" || true)
           echo "mesh specs: $mesh"
           if [ "$mesh" -lt 1 ]; then
             echo "::error::the relay suites ran no mesh spec, so they are not the suites this check exists for."
             exit 1
           fi
-          if ! cat "${reports[@]}" | grep -q 'file="tests/relay/e2e.test.ts"'; then
+          if ! grep -qx 'tests/relay/e2e.test.ts' "$RUNNER_TEMP/relay-ran.txt"; then
             echo "::error::tests/relay/e2e.test.ts did not run."
             exit 1
           fi
+          # Each part rewrote only its own files' times (`--update-timings` under `--shard`); together they are the record.
+          jq -s '{version: 1, files: (map(.files) | add)}' "$RUNNER_TEMP"/relay-suites/*/relay-timings.json \
+            > "$RUNNER_TEMP/relay-timings.json"
+      - name: Record the relay suite file times for the next runs
+        if: env.FROM_FORK != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/relay-timings.json
+          key: relay-timings-${{ github.run_id }}
 
   web-e2e-shard:
     # The browser suite against a real hc, in four shards on four runners. As one job it took 25 to 29 minutes of its
     # 30-minute limit and was cancelled at that limit on slower runners (#2627); a shard is a quarter of the files. `Web
     # e2e` below is the required context and reports the shards together.
     name: Web e2e (${{ matrix.shard }}/4)
+    needs: shard-plan
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -441,11 +504,33 @@ jobs:
         run: |
           echo "cores: $(nproc)"
           free -m
+      # This run's pinned per-file times (shard-plan), recorded by the last push to dev; a pull request reads dev's caches.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: shard-plan
+          path: ${{ runner.temp }}
+      # Longest files first onto the lightest shard (scripts/e2e-shard-plan.ts); without a record, an even split by count.
+      - name: This shard's spec files
+        working-directory: apps/web
+        run: bun scripts/e2e-shards.ts pick ${{ matrix.shard }} 4 "$RUNNER_TEMP/e2e-timings.json" > "$RUNNER_TEMP/shard-files.txt"
       - name: Playwright e2e against a real hc
-        run: bun run test:e2e --shard=${{ matrix.shard }}/4
+        run: bun run test:e2e $(cat "$RUNNER_TEMP/shard-files.txt")
         working-directory: apps/web
         env:
           CI: "1"
+          E2E_JSON_REPORT: ${{ runner.temp }}/e2e-report.json
+      - name: The files this shard ran and their times
+        if: always()
+        working-directory: apps/web
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e-ran"
+          bun scripts/e2e-shards.ts record "$RUNNER_TEMP/e2e-report.json" > "$RUNNER_TEMP/e2e-ran/shard-${{ matrix.shard }}.json"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-ran-${{ matrix.shard }}
+          path: ${{ runner.temp }}/e2e-ran/shard-${{ matrix.shard }}.json
+          if-no-files-found: ignore
       # Once per run, not per shard: it starts two short suites of its own.
       - name: Two e2e runs at once, each on its own ports (#37)
         if: matrix.shard == 1
@@ -479,6 +564,25 @@ jobs:
             echo "::error::a Web e2e shard ended '$SHARDS'; its own job names the failing tests."
             exit 1
           fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: e2e-ran-*
+          path: ${{ runner.temp }}/e2e-ran
+          merge-multiple: true
+      # Green only when the four shards together ran every spec file exactly once; their merged times plan the next run.
+      - name: The shards ran every spec file once
+        working-directory: apps/web
+        run: bun scripts/e2e-shards.ts cover "$RUNNER_TEMP/e2e-timings.json" "$RUNNER_TEMP"/e2e-ran/shard-*.json
+      - name: Record the e2e file times for the next runs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/e2e-timings.json
+          key: e2e-timings-${{ github.run_id }}
 
   android:
     # After the merge, like the other platform jobs: the Android app (#704) builds from the web build, and its JVM tests

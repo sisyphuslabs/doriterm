@@ -13,11 +13,15 @@ interface Fiber {
 
 /**
  * Counts, in the page, the React components that run in each commit from the moment a message carrying a
- * `render-proof-N` marker arrives until `frames` animation frames later, and notes whether an element matching
- * `shownIn` then reads the marker. A bailed-out subtree keeps its fibers and their old flags, so only fibers new in a
+ * `render-proof-N` marker arrives. Checks `shownIn` after `frames` frames, measured from receipt for metadata or from
+ * the row draw for paced output. A bailed-out subtree keeps its fibers and their old flags, so only fibers new in a
  * commit count as having run.
  */
-function countRenders([frames, shownIn]: readonly [frames: number, shownIn: string]): void {
+function countRenders([frames, shownIn, waitForPaint = false]: readonly [
+  frames: number,
+  shownIn: string,
+  waitForPaint?: boolean,
+]): void {
   const counts: number[] = [];
   const freshCounts: number[] = [];
   const painted: boolean[] = [];
@@ -74,12 +78,21 @@ function countRenders([frames, shownIn]: readonly [frames: number, shownIn: stri
       if (marker !== undefined && !marked.has(marker)) {
         marked.add(marker);
         armed = true;
+        const showsMarker = (): boolean =>
+          [...document.querySelectorAll(shownIn)].some((node) => node.textContent?.trim() === marker);
         const close = (left: number): void => {
           if (left > 0) return void requestAnimationFrame(() => close(left - 1));
-          painted.push([...document.querySelectorAll(shownIn)].some((node) => node.textContent?.trim() === marker));
+          painted.push(showsMarker());
           armed = false;
         };
-        close(frames);
+        if (waitForPaint) {
+          const observer = new MutationObserver(() => {
+            if (!showsMarker()) return;
+            observer.disconnect();
+            close(frames);
+          });
+          observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+        } else close(frames);
       }
       return value;
     },
@@ -168,29 +181,50 @@ for (const type of ["foreground", "title"] as const) {
 // A terminal's output is written and drawn by wterm outside React. What React draws of it is the scrollbar and the
 // jump-to-bottom button; the terminal's own view, with its dialogs and menus, has nothing to draw again (#2607).
 test("a terminal's output runs only the components that read its scroll position (#2607)", async ({ page }) => {
-  // Output is drawn the frame after it is written, and the scroll position is read the frame after that.
-  await page.addInitScript(countRenders, [4, ".term-row"] as const);
+  // The paced write can outlast any frame budget measured from receipt. Keep counting through the row draw and the
+  // frames in which its scroll subscribers read and commit.
+  await page.addInitScript(countRenders, [2, "[data-terminal] .term-row", true] as const);
   const socket = await routeHcSocket(page);
+  // Git-facts document reads also redraw the workspace. Hold their replies from the first read, including one already
+  // in flight when sampling starts; holding machine.list alone does not stop them.
+  const releaseFacts = socket.holdFromHost('"dirs":');
   await page.goto("/");
   const terminal = await openNewTerminal(page);
+  // Renderer readiness and predictor initialization each redraw the view. Finish them in every pane before output
+  // opens a sample; those commits are not work caused by output.
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("[data-terminal]")].every(
+      (pane) => pane.getAttribute("data-ready") === "true" && pane.getAttribute("data-predictor-ready") === "true",
+    ),
+  );
   await terminal.getByRole("textbox").focus();
   // No process, title or status event reaches the page meanwhile, and the roster's ten-second machine read, which
   // draws the workspace again, is not sent: only the terminal's own output arrives.
   socket.holdFromHost('"method":"event"');
   const release = socket.hold("machine.list");
   const LINES = 6;
-  await page.keyboard.type(`for i in $(seq 1 ${LINES}); do sleep 0.3; echo render-proof-$i; done`);
+  await page.keyboard.type(
+    `stty -echo; printf 'render-sampler-%s\\n' ready; for i in $(seq 1 ${LINES}); do IFS= read -r line; printf 'render-proof-%s\\n' "$line"; done; stty echo`,
+  );
   await page.keyboard.press("Enter");
-  await expect
-    .poll(() => page.evaluate(() => Reflect.get(window, "__terminalPainted").length), { timeout: 20_000 })
-    .toBe(LINES);
+  await expect(terminal.locator(".term-row").filter({ hasText: /^render-sampler-ready\s*$/ })).toBeVisible();
+  // Each trigger prints just one marker, so a later marker cannot open or close a sample still in progress.
+  const sample = async (i: number): Promise<void> => {
+    await page.keyboard.type(String(i));
+    await page.keyboard.press("Enter");
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, "__terminalPainted").length)).toBe(i);
+    if (i < LINES) await sample(i + 1);
+  };
+  await sample(1);
   const evidence = await page.evaluate(() => ({
     painted: Reflect.get(window, "__terminalPainted"),
     runs: Reflect.get(window, "__terminalFreshRuns"),
   }));
   release();
+  releaseFacts();
   console.log(`output render evidence ${JSON.stringify(evidence)}`);
   expect(evidence.painted).toEqual(Array.from({ length: LINES }, () => true));
+  expect(evidence.runs.length).toBeGreaterThanOrEqual(LINES);
   // The scrollbar and the jump button run, each a component or two; the view around them ran twelve (#2607).
   expect(Math.max(0, ...evidence.runs)).toBeLessThanOrEqual(4);
 });
