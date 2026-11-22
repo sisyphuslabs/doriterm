@@ -165,6 +165,9 @@ logouts and reboots, follow [docs/install.md](docs/install.md), or hand the
 writes the service, installs herdr-core if needed, waits for the relay and is safe to re-run. The service keeps its own state
 dir (`~/.local/state/doriface-host-mesh`), so it never shares keys or devices with the desktop app's own host.
 
+The [doriterm skill](skills/doriterm/SKILL.md) teaches a coding agent to use all of this: running and steering agents and
+long commands with `hc`, here and on other machines, and the host's relay, mesh and pairing commands.
+
 ## Pairing, and how the relay fits
 
 A client reaches another machine's host through the relay, in a Noise session the relay cannot read:
@@ -243,7 +246,8 @@ after that, with a ChaCha20-Poly1305 record layer that rekeys every 2^20 message
   same-origin use of the key.
 - **No plaintext listener.** `/v1/hc` is loopback-only unless you pass `--unsafe-listen`, and its token is compared in constant
   time. The LAN listener serves `/v1/e2ee` and never plaintext `/v1/hc`.
-- **No telemetry in the default build.**
+- **No telemetry in the default build.** The reference relay keeps anonymous daily counts and, as its only per-host rows,
+  each month's mesh pool pseudonyms (kept until day 7 of the following month), and sends numbers only to its operator's product analytics ([`docs/transport.md`](docs/transport.md), Relay passes).
 - **Out of scope:** a host or a client compromised while it runs, and keystroke timing — traffic is not padded.
 
 The boundaries, and the citation for each, are in [docs/architecture.md §12](docs/architecture.md#12-security-model).
@@ -265,7 +269,7 @@ This table describes `dev`. [Download the latest release](https://get.doriterm.c
 
 ## Development
 
-Requires [Bun](https://bun.sh) 1.4.4 or newer, and [herdr-core](https://github.com/herdrdev/herdr-core) (`hc`) 0.1.20 on
+Requires [Bun](https://bun.sh) 1.4.4 or newer, and [herdr-core](https://github.com/herdrdev/herdr-core) (`hc`) 0.1.21 on
 `PATH` to run the host, the desktop app, `bun run check` and the end-to-end tests. Starting on a machine with neither,
 follow [CONTRIBUTING.md, "From zero"](CONTRIBUTING.md#from-zero): every step is public, and the `From zero` workflow
 runs it as written on a clean runner with no secrets.
@@ -288,7 +292,7 @@ bun run capture:readme                        # the README's app screenshots, 12
 Pull requests into `dev` are gated by `Check`, `Relay e2e` and `Web e2e`. [CONTRIBUTING.md](CONTRIBUTING.md) covers what each
 one runs, and what a pull request from a fork does about `Relay e2e`, which needs a secret that forks never receive. The
 platform jobs — `Desktop`, `Desktop (macOS)`, `Windows private state` on both architectures — run after the merge, on the push
-to `dev`, and never on a pull request; `Ghostty wasm provenance` runs on every event.
+to `dev`, and never on a pull request; `Install (Linux) and wasm provenance` runs on every event.
 
 ## Contributing
 

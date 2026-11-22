@@ -9,9 +9,9 @@ test.use({ serviceWorkers: "block", viewport: { width: 1280, height: 800 } });
 const agents = (page: Page) =>
   page.getByRole("complementary", { name: "Workspace" }).getByRole("region", { name: "Agents", exact: true });
 
-/** Each visible spinner's point in its cycle (ms into the turn) and its drawn size. */
+/** Each visible spinner's point in its cycle (ms into the turn) and its drawn size, read from the box that turns. */
 const spinners = (page: Page) =>
-  page.locator('[data-slot="spinner"]:visible').evaluateAll((els) =>
+  page.locator('[data-slot="spinner-turn"]:visible').evaluateAll((els) =>
     els.map((el) => {
       const [animation] = el.getAnimations();
       const box = el.getBoundingClientRect();
@@ -67,7 +67,7 @@ test("a spinner whose animation CSS recreates is put back in step", async ({ pag
     await page.emulateMedia({ reducedMotion: "reduce" });
     const startTimes = () =>
       page
-        .locator('[data-slot="spinner"]:visible')
+        .locator('[data-slot="spinner-turn"]:visible')
         .evaluateAll((els) =>
           els.flatMap((el) => el.getAnimations().map((a) => `${(a as CSSAnimation).animationName}@${a.startTime}`)),
         );

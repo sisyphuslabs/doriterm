@@ -205,6 +205,15 @@ test("the CLI writes the section for apps/desktop/package.json's version, delete
   expect(readFileSync(join(dir, "CHANGELOG.md"), "utf8")).toBe(expected());
 });
 
+test("the CLI takes a version given without --date over apps/desktop/package.json's, which may be a prerelease (#2471)", async () => {
+  const dir = checkout();
+  writeFileSync(join(dir, "apps", "desktop", "package.json"), '{ "version": "1.3.0-beta.1" }\n');
+  const result = await assemble(dir, "1.3.0");
+  expect(result.out).not.toContain("is not a release version");
+  expect(result.code).toBe(0);
+  expect(readFileSync(join(dir, "CHANGELOG.md"), "utf8")).toContain("## v1.3.0");
+});
+
 test("the CLI writes nothing and deletes nothing when a fragment is refused", async () => {
   const dir = checkout();
   writeFileSync(join(dir, FRAGMENT_DIR, "99.md"), "- No heading. (#99)\n");

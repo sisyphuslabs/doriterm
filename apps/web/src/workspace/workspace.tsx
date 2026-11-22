@@ -34,7 +34,7 @@ import { findTerminal, type LayoutTab } from "./layout-model.ts";
 import { useLayout, withoutClaim, type PaneTarget } from "./use-layout.ts";
 import { chainedSplit, SplitChain } from "./split-chain.ts";
 import { afterEnd } from "./session-actions.ts";
-import { useDeadPanes } from "./use-dead-panes.ts";
+import { afterGrace, useDeadPanes } from "./use-dead-panes.ts";
 import { useDropOnce } from "./use-drop-once.ts";
 import { useLayoutDocs } from "./use-layout-docs.ts";
 import { GitFactsContext, useGitFacts } from "./git-facts.ts";
@@ -48,6 +48,8 @@ import { useAttention } from "./use-attention.ts";
 import { orderNotSaved } from "./machine-order.ts";
 import { useMachineOrder } from "./use-machine-order.ts";
 import { useTerminals } from "./use-terminals.ts";
+import { LiveTerminalsContext } from "./use-shown.ts";
+import { rosterFor } from "../roster/roster.ts";
 import { useForgetEndedHistoryGaps } from "../terminal/history-gap-notice.ts";
 import { useResumeEnds } from "./resume-ends.ts";
 import { useRedrawNotice } from "./use-redraw-notice.ts";
@@ -64,6 +66,16 @@ export interface WorkspaceProps {
 
 /** The live terminals of one core: the desktop shell from `md` up, the phone navigation below. */
 export function Workspace({ connection }: WorkspaceProps) {
+  // What each terminal shows is read where it is shown, so the workspace renders only for a change of shape (#2607).
+  const live = useMemo(() => rosterFor(connection).live, [connection]);
+  return (
+    <LiveTerminalsContext value={live}>
+      <WorkspaceScreen connection={connection} />
+    </LiveTerminalsContext>
+  );
+}
+
+function WorkspaceScreen({ connection }: WorkspaceProps) {
   const fed = useTerminals(connection);
   useRedrawNotice(connection);
   useForgetEndedHistoryGaps(fed.loaded, fed.terminals);
@@ -75,6 +87,7 @@ export function Workspace({ connection }: WorkspaceProps) {
     views,
     heard: heardMachines,
     retry,
+    remove,
     listed: machineReads,
   } = useMachines(connection, fed.terminals);
   // Opened and re-read on what hc said: a document read while its line was down is read again once the line is back.
@@ -137,46 +150,22 @@ export function Workspace({ connection }: WorkspaceProps) {
     machineReads > 0,
   );
   // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
-  const { dropEnded, closing: closingSessions, kept, dropped } = useDropOnce(terminals, layout.dropPane);
+  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useNarrow();
   const ids = useMemo(() => machineIds(views), [views]);
+  // New tab starts its terminal on the machine of the tab in view: offered disabled while that tab's layout takes no
+  // edits (use-layout-docs.ts, which also reads a machine past its reconnect grace), never offered and then refused
+  // (#2455).
+  const newDisabled = (layout.active?.readOnly ?? null) !== null;
   const phone = usePhoneRoute(narrow, ids);
   const { open: phoneOpen, show: showOnPhone } = phone;
   const phoneTab = phoneOpen === null ? null : findTerminal(layout.tabs, phoneOpen);
   const phonePanes = phoneTab?.tab.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
-  // The panes on screen: the open tab's on a phone, the selected tab's on a desktop. A terminal that ended in one of
-  // them is its view's to say ("This session ended"); every other pane goes once its terminal is over (#2122).
-  const onScreen = narrow
-    ? phonePanes
-    : (layout.active?.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? []);
   // As a view's end does: an End of the session drops its pane only once it has removed the terminal (see afterEnd).
   const dropDead = useCallback((address: string) => afterEnd(address, () => dropEnded(address)), [dropEnded]);
-  // An ended pane this screen showed went from its tab with no drop of its own while its document stayed: another
-  // device, which had it out of view, took it (#2146, #2231). The person looking at it is told why, here only.
-  const endedElsewhere = useCallback(
-    (address: string): void => {
-      if (dropped(address)) return;
-      toasts.add({
-        type: "info",
-        title: "This session ended",
-        description: "Another device removed its pane once its program had finished.",
-      });
-    },
-    [dropped, toasts],
-  );
   // A pane is asked about only on what hc said: a machine held connected through a redial may have no terminals listed.
-  useDeadPanes(
-    connection,
-    layout.tabs,
-    fed.loaded ? terminals : null,
-    heardMachines,
-    machineReads,
-    dropDead,
-    onScreen,
-    endedElsewhere,
-    layouts,
-  );
+  useDeadPanes(connection, layout.tabs, fed.loaded ? terminals : null, heardMachines, machineReads, dropDead);
   const [palette, setPalette] = useState(false);
   const [ask, setAsk] = useState<SessionAsk | null>(null);
   const [spaceAsk, setSpaceAsk] = useState<string | null>(null);
@@ -235,6 +224,11 @@ export function Workspace({ connection }: WorkspaceProps) {
         opened(address);
       },
     );
+  };
+  // Every New tab of the shells, its button and its key alike: while it is offered disabled the key does nothing either,
+  // rather than asking the core and reporting the refusal (#2466 review).
+  const newTab = (): void => {
+    if (!newDisabled) newTerminal();
   };
   // The latest `opened`, into a named space: a tab started from a space screen goes after that space's selected tab once
   // it is the selected one (addTab's `near`), and into that space even when it has no tab to select.
@@ -304,8 +298,11 @@ export function Workspace({ connection }: WorkspaceProps) {
     else for (const tab of closing) layout.closeTab(tab.key);
   };
   const onEnd = (address: string, end: TerminalEnd): void => {
-    // An End of this session drops its pane only once it has removed the terminal (see afterEnd).
-    if (closesTab(end)) afterEnd(address, () => dropEnded(address));
+    // An End of this session drops its pane only once it has removed the terminal (see afterEnd), and a program that
+    // ended in its first seconds keeps its pane for the just-born grace, so its failure shows (afterGrace).
+    if (!closesTab(end)) return;
+    const created = terminals.find((terminal) => terminal.address === address)?.created_ms;
+    afterGrace(created, () => afterEnd(address, () => dropEnded(address)));
   };
   // A tab's only pane closes as its tab, as herdr-app's pane.close does.
   const closePane = (address: string): void => {
@@ -378,6 +375,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       openAddMachine,
       views,
       retry,
+      remove,
       moveMachine,
       start: (params: TerminalRunParams) => runs.start(params, inNewSpaceNow.current),
       newTerminalOn: (machine: string) => runs.start({ on: machine }, inNewSpaceNow.current),
@@ -392,6 +390,7 @@ export function Workspace({ connection }: WorkspaceProps) {
       openAddMachine,
       views,
       retry,
+      remove,
       moveMachine,
       runs,
     ],
@@ -474,7 +473,8 @@ export function Workspace({ connection }: WorkspaceProps) {
                         pushed={phone.pushed}
                         section={phone.section}
                         onSection={phone.showSection}
-                        onNew={() => newTerminal()}
+                        onNew={newTab}
+                        newDisabled={newDisabled}
                         onNewInSpace={newTabIn}
                         onCloseTab={(address) => {
                           const found = findTerminal(layout.tabs, address);
@@ -510,7 +510,8 @@ export function Workspace({ connection }: WorkspaceProps) {
                         layout={layout}
                         spaceKeys={spaceKeys}
                         onSelectSpace={selectSpace}
-                        onNew={() => newTerminal()}
+                        onNew={newTab}
+                        newDisabled={newDisabled}
                         onNewAgent={(template) => newTerminal(template)}
                         onNewSpace={() => runs.start({}, inNewSpace)}
                         onSplit={split}

@@ -151,9 +151,7 @@ function cursorRules(config: TerminalConfig): string[] {
         color: "var(--term-cell-fg, inherit)",
         outline: "1px solid var(--term-app-cursor, var(--term-cursor))",
         "outline-offset": "-1px",
-        "--term-cursor-animation": "doriface-hollow-blink",
       }),
-      "@keyframes doriface-hollow-blink { 50% { outline-color: transparent; } }\n",
     );
   }
   return rules;

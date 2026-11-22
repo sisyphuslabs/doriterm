@@ -5,7 +5,6 @@ import {
   adoptLoose,
   afterClosing,
   buildTabs,
-  HOME_SPACE,
   keepMounts,
   keepTransient,
   layoutIds,
@@ -15,6 +14,7 @@ import {
   TRANSIENT,
   type LayoutTab,
 } from "./layout-model.ts";
+import { HOME_SPACE } from "./placement.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
 const here: MachineLayout = {
@@ -62,6 +62,13 @@ test("an added machine's loose tab keeps its key when the machine is renamed, so
   const [after] = buildTabs([here, box("build-renamed")], [], ["build-renamed/t1"]);
   expect(after?.key).toBe(before?.key ?? "");
   expect(after?.panes.map((pane) => pane.address)).toEqual(["build-renamed/t1"]);
+});
+
+test("a terminal shown alone, or loose, takes edits as its machine's layout does: offline only with no layout for it (#2721)", () => {
+  expect(buildTabs([here], [live]).map((tab) => tab.readOnly)).toEqual([null]);
+  const loading = { ...here, readOnly: "the layout is loading" };
+  expect(buildTabs([loading], [], ["t1"]).map((tab) => tab.readOnly)).toEqual(["the layout is loading"]);
+  expect(buildTabs([here], [], ["box/t1"]).map((tab) => tab.readOnly)).toEqual(["the machine is offline"]);
 });
 
 test("a live terminal is shown alone only while the core has no layout; a layout whose tabs were all closed shows none (#354)", () => {
@@ -281,14 +288,21 @@ describe("adoptLoose (#404)", () => {
     expect(adopted === null ? null : docSpaces(adopted).at(-1)?.name).toBe(HOME_SPACE);
   });
 
-  test("nothing to adopt writes nothing: shown, finished and started-by-another terminals stay as they are", () => {
-    expect(
-      adoptLoose(saved, [
-        loose("t1", "/w"),
-        loose("t6", "/w", { state: "finished" }),
-        loose("t7", "/w", { parent: "t1" }),
-      ]),
-    ).toBeNull();
+  test("nothing to adopt writes nothing: shown and finished terminals stay as they are", () => {
+    expect(adoptLoose(saved, [loose("t1", "/w"), loose("t6", "/w", { state: "finished" })])).toBeNull();
+  });
+
+  test("a terminal another one started (an agent's worker, on this machine or from another) is adopted like any (#2467)", () => {
+    const adopted = adoptLoose(
+      saved,
+      [loose("t7", "/tmp", { parent: "t1", labels: { space: "lanes" } }), loose("t8", "/w", { parent: "box/t3" })],
+      ids(),
+    );
+    expect(where(adopted)).toEqual([
+      ["spc-w", ["t1"]],
+      ["spc-w", ["t8"]],
+      ["spc3", ["t7"]],
+    ]);
   });
 
   test("a terminal that End is ending is not adopted back: its closed tab stays closed while its program goes (#2122)", () => {
@@ -310,6 +324,29 @@ describe("adoptLoose (#404)", () => {
       ["", 0],
       ["api-x", 2],
       [HOME_SPACE, 1],
+    ]);
+  });
+
+  test("a terminal labelled with herdr-app's space id goes to that space when the document has it, else by its space name", () => {
+    const adopted = adoptLoose(
+      saved,
+      [
+        loose("t2", "/tmp", { labels: { "herdr.space": "spc-api", space: "other" } }),
+        loose("t3", "/tmp", { labels: { "herdr.space": "spc-gone", space: "other" } }),
+      ],
+      ids(),
+    );
+    expect(adopted === null ? null : docSpaces(adopted).map((space) => [space.name, space.tabs.length])).toEqual([
+      ["", 1],
+      ["", 1],
+      ["other", 1],
+    ]);
+  });
+
+  test("a Home space made in this adoption for a terminal labelled Home is the one unlabelled terminals join", () => {
+    const adopted = adoptLoose(null, [loose("t1", "/a", { labels: { space: HOME_SPACE } }), loose("t2", "/b")], ids());
+    expect(adopted === null ? null : docSpaces(adopted).map((space) => [space.name, space.tabs.length])).toEqual([
+      [HOME_SPACE, 2],
     ]);
   });
 

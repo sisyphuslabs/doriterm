@@ -1,0 +1,8 @@
+# bun from PATH, else the default install; a push from a minimal PATH (a wrapper, a GUI client) still runs the checks.
+bun_bin="$(command -v bun || true)"
+[ -n "$bun_bin" ] || { [ -x "$HOME/.bun/bin/bun" ] && bun_bin="$HOME/.bun/bin/bun"; }
+if [ -z "$bun_bin" ]; then
+  echo "pre-push: refused: bun is not on PATH or at ~/.bun/bin/bun; install Bun 1.4.4 as CONTRIBUTING.md says" >&2
+  exit 1
+fi
+"$bun_bin" .github/scripts/pre-push.ts "$@"

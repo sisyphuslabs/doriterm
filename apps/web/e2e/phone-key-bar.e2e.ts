@@ -57,7 +57,9 @@ for (const width of [390, 320]) {
   });
 }
 
-test("the bar rides on the soft keyboard; with the keyboard down only a keyboard button stays", async ({ page }) => {
+test("the bar rides on the soft keyboard; with the keyboard down it stays under the terminal (#2499)", async ({
+  page,
+}) => {
   await openPhoneTerminal(page);
   const bar = keysBar(page);
   await expect(bar).toBeVisible();
@@ -67,22 +69,22 @@ test("the bar rides on the soft keyboard; with the keyboard down only a keyboard
   };
   await expect.poll(bottom).toBe(844 - 336);
 
-  // The keyboard closes on its own (its hide key): the bar falls with it.
+  // The keyboard closes on its own (its hide key): the bar falls with it, to under the terminal, its last key now the
+  // one that raises the keyboard.
   await showKeyboard(page, 0);
-  await expect(bar).toHaveCount(0);
-  const show = key(page, "Show keyboard");
+  const show = bar.getByRole("button", { name: "Show keyboard", exact: true });
   await expect(show).toBeVisible();
-  const round = await show.boundingBox();
-  expect(round?.width ?? 0).toBeGreaterThanOrEqual(44);
-  expect((round?.x ?? 0) + (round?.width ?? 0)).toBeGreaterThan(390 - 40);
-  expect((round?.y ?? 0) + (round?.height ?? 0)).toBeGreaterThan(844 - 80);
+  await expect.poll(bottom).toBeGreaterThan(844 - 336);
+  const toggle = await show.boundingBox();
+  expect(toggle?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect((toggle?.x ?? 0) + (toggle?.width ?? 0)).toBeGreaterThan(390 - 60);
 
   await show.click();
   await expect(bar).toBeVisible();
   await expect.poll(bottom).toBe(844 - 336);
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await key(page, "Hide keyboard").click();
-  await expect(bar).toHaveCount(0);
+  await expect(bar).toBeVisible();
   await expect(show).toBeVisible();
 });
 
@@ -90,19 +92,19 @@ test("a browser that shrinks the layout viewport for the keyboard shows the bar 
   await openPhoneTerminal(page, 390, "resize");
   const bar = keysBar(page);
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
-  await expect(bar).toHaveCount(0);
+  await expect(key(page, "Hide keyboard")).toHaveCount(0);
 
   // The keyboard button raises it: the page itself is 336 px shorter, and the visual viewport is all of it (#1375).
   await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: 390, height: 844 - 336 });
-  await expect(bar).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toBeVisible();
   const box = await bar.boundingBox();
   expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBe(844 - 336);
 
-  // It closes by its own key: the page grows back and the bar goes with it.
+  // It closes by its own key: the page grows back and the bar stays, under the terminal (#2499).
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(bar).toHaveCount(0);
   await expect(key(page, "Show keyboard")).toBeVisible();
+  await expect(bar).toBeVisible();
 });
 
 test("the D-pad toggle lays a 3x3 pad over the terminal", async ({ page }) => {

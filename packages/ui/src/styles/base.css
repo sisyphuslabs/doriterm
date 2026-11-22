@@ -140,7 +140,7 @@
   }
 
   /* Ongoing work stays perceivable without rotation, including compact status glyphs. */
-  [data-slot="spinner"] {
+  [data-slot="spinner-turn"] {
     animation: progress-opacity 1.8s ease-in-out infinite !important;
   }
 }
