@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
+import { HcConnection } from "@doriface/client";
 import { renderToStaticMarkup } from "react-dom/server";
+import { FakeCore } from "../../../../packages/client/src/testing/fake-core.ts";
+import { HELLO_REPLY_LINE } from "../../../../packages/client/src/testing/fixtures.ts";
 import type { MemberEntry } from "../connection/mesh-connections.ts";
 import { MeshDevice, MeshMachineList } from "./mesh-device.tsx";
 
@@ -55,19 +58,26 @@ test("one settling member changes only its own row", () => {
   expect(html).toContain("Beta");
 });
 
-type OpenState = Extract<MemberEntry["state"], { readonly phase: "open" }>;
-
-const openMember = (hostName: string, resuming: boolean): MemberEntry => ({
+const openMember = (hostName: string, resuming: boolean, connection: HcConnection): MemberEntry => ({
   target: { hostId: hostName.toLowerCase(), hostName, hostKey: "", directUrl: "" },
-  state: { phase: "open", connection: {} as OpenState["connection"], path: "relay", resuming },
+  state: { phase: "open", connection, path: "relay", resuming },
 });
 
 const rowOf = (entry: MemberEntry): string =>
   renderToStaticMarkup(<MeshMachineList entries={[entry]} ownComputer={undefined} retry={() => {}} />);
 
-test("a member whose session is being carried on reads Reconnecting, as the status bar does, not Online (#2421)", () => {
-  const carriedOn = rowOf(openMember("Gamma", true));
-  expect(carriedOn).toContain("Reconnecting · Relay");
-  expect(carriedOn).not.toContain("Online");
-  expect(rowOf(openMember("Delta", false))).toContain("Online · Relay");
+test("a member whose session is being carried on reads Reconnecting, as the status bar does, not Online (#2421)", async () => {
+  const core = new FakeCore();
+  const opening = HcConnection.open(core.client);
+  await core.waitHello();
+  core.push(`${HELLO_REPLY_LINE}\n`);
+  const connection = await opening;
+  try {
+    const carriedOn = rowOf(openMember("Gamma", true, connection));
+    expect(carriedOn).toContain("Reconnecting · Relay");
+    expect(carriedOn).not.toContain("Online");
+    expect(rowOf(openMember("Delta", false, connection))).toContain("Online · Relay");
+  } finally {
+    connection.close();
+  }
 });
