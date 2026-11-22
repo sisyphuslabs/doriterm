@@ -53,9 +53,17 @@ async function startSampler(terminal: Locator): Promise<void> {
 const stopSampler = (page: Page): Promise<Sample[]> =>
   page.evaluate(() => (Reflect.get(window, "__stopSampler") as () => Sample[])());
 
-/** Rows of history above the screen, from the scroller's height: the scrollback renders only the rows in view. */
+/** Rows and virtual spacers above the screen in the grid, excluding the scroller's other children. */
 const historyRows = (terminal: Locator, rowHeight: number): Promise<number> =>
-  terminal.evaluate((element, height) => Math.round((element.scrollHeight - element.clientHeight) / height), rowHeight);
+  terminal
+    .locator(".term-grid > .term-row:not(.term-scrollback-row)")
+    .first()
+    .evaluate((row, height) => {
+      const grid = row.parentElement;
+      if (grid === null) throw new Error("The terminal screen row has no grid");
+      // A hidden input left at the old cursor position can extend the scroller past the grid.
+      return Math.round((row.getBoundingClientRect().top - grid.getBoundingClientRect().top) / height);
+    }, rowHeight);
 
 /**
  * The oldest line the history holds: the first row that starts `line-N` once the view is at its top (the command that
@@ -247,11 +255,9 @@ const screenText = (terminal: Locator): Promise<string> =>
   );
 
 /**
- * A full-screen program (vim, less, htop) draws on the alternate screen and keeps the prompt screen behind it. The core's
- * repaint leaves the alternate screen, starts with ESC[2J on the primary one, which over the marked prompt scrolls that
- * screen into history, and does not draw the primary screen again: once the program exits, the history is the only place
- * that output is, so the view must not erase the primary screen first. A second reconnect finds the primary screen
- * blank, with nothing to scroll, so the output is not added again.
+ * A full-screen program draws on the alternate screen with the prompt screen behind it. Older cores scroll that prompt
+ * screen into history on the first repaint; newer cores redraw it behind the program. Either way a second reconnect
+ * must not add a copy, and all the output must still be there when the program exits.
  */
 test("a reconnect under a full-screen program keeps the output behind it, once (#1997)", async ({ page }) => {
   const link = await routeHcSocket(page);
@@ -263,7 +269,15 @@ test("a reconnect under a full-screen program keeps the output behind it, once (
     "printf '\\033[?1049h\\033[H\\033[2Jfullscreen-top\\033[10;5Hfullscreen-mid\\033[12;1H'; read x; printf '\\033[?1049l'",
   );
   await page.keyboard.press("Enter");
-  await expect.poll(() => screenText(terminal)).toContain("fullscreen-mid");
+  // The command line shows "fullscreen-mid" too, before the program runs: the program is on its screen once a row starts
+  // with its text and the prompt is gone. A reconnect before that is not one under a full-screen program: the view is
+  // still on the prompt screen, which its clear before the repaint wipes.
+  await expect
+    .poll(async () => {
+      const screen = await screenText(terminal);
+      return /^fullscreen-top/mu.test(screen) && !screen.includes("marked$");
+    })
+    .toBe(true);
 
   await dropAndReconnect(page, link);
   // What the program echoes comes behind the repaint on the same stream: once it shows, the repaint has been drawn.
@@ -280,7 +294,7 @@ test("a reconnect under a full-screen program keeps the output behind it, once (
   await page.keyboard.type("-again");
   await expect.poll(() => screenText(terminal), { timeout: 30_000 }).toContain("typed-after-again");
   expect(await screenText(terminal)).not.toContain("marked$");
-  // The primary screen is blank since the first repaint: the second one scrolls nothing into history.
+  // Both echoes landed on the alternate screen; the repaint must not add visible history there.
   expect((await historyRows(terminal, row.height)) - historyAfterFirst).toBe(0);
 
   await page.keyboard.press("Enter");

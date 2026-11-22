@@ -1,5 +1,5 @@
-import { ContextMenu, MenuItem, cn, skipMenuHandler } from "@doriface/ui";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ContextMenu, MenuItem, MenuSeparator, cn, skipMenuHandler } from "@doriface/ui";
+import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import {
   type FocusEvent,
   type KeyboardEvent,
@@ -10,11 +10,13 @@ import {
   type RefObject,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import type { Keymap } from "../keys/defaults.ts";
 import { resolveKeymap } from "../keys/keymap.ts";
 import { useOverrides } from "../keys/keymap-store.ts";
 import { currentPlatform } from "../keys/trigger.ts";
+import { RemoveMachineDialog, removeLabel } from "./remove-machine.tsx";
 import { reorderKeys, reorderStep } from "./reorder-keys.ts";
 
 /** What a machine's group needs to move: present only when more than one machine is listed. */
@@ -53,6 +55,8 @@ export interface MachineGroupProps {
   readonly reorder: RowReorder | undefined;
   /** The machine's header row, given its button's reorder part (undefined when the group cannot move). */
   readonly header: (button: HeaderButton | undefined) => ReactNode;
+  /** Removes the machine, offered last in its menu; left out for this machine and a mesh member (#2456). */
+  readonly onRemove?: ((machine: string) => Promise<void>) | undefined;
   readonly children: ReactNode;
 }
 
@@ -60,8 +64,9 @@ export interface MachineGroupProps {
  * One machine's spaces under its header. With `reorder` the header drags the whole group to a new place, and its menu
  * and keys move it too, as the Machines list's rows did before the spaces lived under their machines.
  */
-export function MachineGroup({ core, name, reorder, header, children }: MachineGroupProps) {
+export function MachineGroup({ core, name, reorder, header, onRemove, children }: MachineGroupProps) {
   const button = useRef<HTMLButtonElement | null>(null);
+  const [removing, setRemoving] = useState(false);
   const overrides = useOverrides();
   const keymap = useMemo(() => resolveKeymap(currentPlatform(), overrides), [overrides]);
   if (reorder === undefined) {
@@ -118,7 +123,16 @@ export function MachineGroup({ core, name, reorder, header, children }: MachineG
         reorder.className,
       )}
     >
-      <GroupMenu handle={handle} reorder={reorder} button={button} keymap={keymap} />
+      <GroupMenu
+        handle={handle}
+        reorder={reorder}
+        button={button}
+        keymap={keymap}
+        {...(onRemove === undefined ? {} : { remove: { name, ask: () => setRemoving(true) } })}
+      />
+      {onRemove === undefined ? null : (
+        <RemoveMachineDialog name={removing ? name : null} onClose={() => setRemoving(false)} onRemove={onRemove} />
+      )}
       {children}
     </section>
   );
@@ -129,9 +143,10 @@ interface GroupMenuProps {
   readonly reorder: RowReorder;
   readonly button: RefObject<HTMLButtonElement | null>;
   readonly keymap: Keymap;
+  readonly remove?: { readonly name: string; readonly ask: () => void };
 }
 
-function GroupMenu({ handle, reorder, button, keymap }: GroupMenuProps) {
+function GroupMenu({ handle, reorder, button, keymap, remove }: GroupMenuProps) {
   const keys = reorderKeys(currentPlatform(), keymap);
   return (
     <ContextMenu trigger={handle} open={reorder.menuOpen} onOpenChange={reorder.onMenuOpen} finalFocus={button}>
@@ -151,6 +166,14 @@ function GroupMenu({ handle, reorder, button, keymap }: GroupMenuProps) {
       >
         Move down
       </MenuItem>
+      {remove === undefined ? null : (
+        <>
+          <MenuSeparator />
+          <MenuItem icon={<Trash2 />} destructive onClick={remove.ask}>
+            {removeLabel(remove.name)}
+          </MenuItem>
+        </>
+      )}
     </ContextMenu>
   );
 }

@@ -262,12 +262,8 @@ cp "${work}/${asset}" "${host_bin}.new"
 mv -f "${host_bin}.new" "$host_bin"
 say "installed doriface-host at ${host_bin}"
 
-hc_path=""
-if have hc; then
-  hc_path="$(command -v hc)"
-elif [ -x "${HOME}/.local/bin/hc" ]; then
-  hc_path="${HOME}/.local/bin/hc"
-fi
+hc_path="$(command -v hc 2>/dev/null || true)"
+if [ -z "$hc_path" ] && [ -x "${HOME}/.local/bin/hc" ]; then hc_path="${HOME}/.local/bin/hc"; fi
 if [ -z "$hc_path" ]; then
   say "herdr-core (hc) is missing; installing it"
   "$host_bin" --install-hc
@@ -276,6 +272,11 @@ if [ -z "$hc_path" ]; then
 else
   say "using herdr-core at ${hc_path} ($("$hc_path" --version 2>/dev/null || echo 'version unknown'))"
 fi
+
+# What this host build offers, read once: an older host lacks the newer commands and options. The Doriterm agent skill
+# it carries goes into the agent skill directories found here (#2653); one that cannot be written does not stop this.
+host_help="$("$host_bin" --help 2>/dev/null || true)"
+case "$host_help" in *"skill install"*) "$host_bin" skill install --state-dir "$state_dir" || say "the agent skill was not installed; install it later with: ${host_bin} skill install" ;; esac
 
 # The link admits one machine into the mesh, so mesh join reads it from a file only this user can read, never from its
 # command line, where other local users can read it while it runs (#1201). The file is gone when the install exits.
@@ -297,7 +298,7 @@ fi
 
 # A host older than #1969 has no --auto-update; it is passed only to one that lists it.
 update_args=""
-if "$host_bin" --help 2>/dev/null | grep -q -- --auto-update; then update_args="$auto_update"; fi
+case "$host_help" in *--auto-update*) update_args="$auto_update" ;; esac
 
 # The service runs with this shell's PATH and SHELL, so the terminals it opens find the same tools.
 service_path="${bin_dir}:$(dirname "$hc_path"):${PATH}"

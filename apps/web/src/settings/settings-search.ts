@@ -22,7 +22,6 @@ const SECTION_WORDS: Readonly<Record<SectionId, readonly string[]>> = {
     "advanced connection",
     "connect through",
     "relay",
-    "direct",
     "loopback",
   ],
   machines: [

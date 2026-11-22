@@ -72,7 +72,8 @@ test("scrolled-in keys and the fixed slots both reach the terminal", async ({ pa
   await page.getByLabel("Type into the terminal").click();
   await expect(page.getByLabel("Type into the terminal")).toBeFocused();
   await key(page, "Hide keyboard").click();
-  await expect(keysBar(page)).toHaveCount(0);
+  await expect(key(page, "Show keyboard")).toBeVisible();
+  await expect(key(page, "Hide keyboard")).toHaveCount(0);
 });
 
 test("ctrl and shift stay latched for the arrow that follows them", async ({ page }) => {
