@@ -52,11 +52,17 @@ test("a session on a machine that just dropped shows the didn't-open screen, and
 
   reconnect();
   release();
+  // Let the reattach and input run before the core saves the tab that takes over this loose one.
+  const saveLayout = socket.hold("doc.set");
   await expect.poll(() => hcOn("host", ["machine", "ls"]), { timeout: 25_000 }).not.toContain("unreachable");
+  const looseTab = page.locator('[data-tab-id^="loose:"]');
+  await expect(looseTab).toBeVisible({ timeout: 15_000 });
   await pane.getByRole("button", { name: "Try again" }).click();
   const terminal = pane.locator(`[data-terminal="${MACHINE_NAME}/${remote}"]`);
   await expect(terminal).toContainText("$", { timeout: 15_000 });
   await terminal.click();
   await page.keyboard.type("echo again-$((40+2))\r");
+  saveLayout();
+  await expect(looseTab).toHaveCount(0, { timeout: 15_000 });
   await expect(terminal).toContainText("again-42", { timeout: 15_000 });
 });
