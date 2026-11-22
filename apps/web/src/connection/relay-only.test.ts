@@ -161,7 +161,7 @@ describe("the direct path is off (#2070): the desktop shell dials no saved addre
     } finally {
       shell.restore();
     }
-  }, 30_000);
+  });
 
   test("no socket is opened to a saved address at all, and the relay carries the session", async () => {
     const shell = installShellForwarder();
@@ -179,7 +179,7 @@ describe("the direct path is off (#2070): the desktop shell dials no saved addre
       canary.stop();
       shell.restore();
     }
-  }, 30_000);
+  });
 
   test("an address that is not even an address is left alone too: nothing is parsed, and nothing fails", async () => {
     const shell = installShellForwarder();
@@ -191,7 +191,7 @@ describe("the direct path is off (#2070): the desktop shell dials no saved addre
     } finally {
       shell.restore();
     }
-  }, 30_000);
+  });
 });
 
 describe("the desktop shell's direct path stays behind the switch (#446, #2070)", () => {

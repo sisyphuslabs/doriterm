@@ -202,7 +202,7 @@ describe("the desktop shell's direct push race stays behind the switch (#446, #2
       canary.stop();
       shell.restore();
     }
-  }, 30_000);
+  });
 
   test("switched on for this test, the push session opens on the host's own listener, and the relay is not dialled", async () => {
     const shell = installShellForwarder();
