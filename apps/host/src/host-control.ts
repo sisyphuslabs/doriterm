@@ -21,6 +21,8 @@ export function openControl(
         e2ee.hostMesh.sweepRoster();
         push?.prune();
         return e2ee.sessions.closeRevoked();
+      case "mcp-changed":
+        return e2ee.sessions.closeRevoked();
       case "mesh-changed":
         e2ee.sync.changed();
         meshJoined?.();
