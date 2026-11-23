@@ -20,7 +20,7 @@ const discover = (id: number) => ({
   result: {
     resultType: "complete",
     supportedVersions: [VERSION],
-    capabilities: {},
+    capabilities: { tools: {} },
     _meta: { "io.modelcontextprotocol/serverInfo": { name: "doriterm", version: "1.2.3" } },
   },
 });
@@ -69,9 +69,9 @@ test("a request without a protocol version gets -32022 and requested null", () =
   ]);
 });
 
-test("a non-discovery method gets Method not found rather than reaching a tool", () => {
+test("a method this host does not serve gets Method not found", () => {
   const { client, answers } = open();
-  client.send(encode(request(12, "tools/call")));
+  client.send(encode(request(12, "resources/list")));
   expect(answers()).toEqual([{ jsonrpc: "2.0", id: 12, error: { code: -32601, message: "Method not found" } }]);
 });
 

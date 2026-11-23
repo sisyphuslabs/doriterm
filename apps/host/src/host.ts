@@ -17,6 +17,7 @@ import { type Host, HOST_VERSION, type HostOptions } from "./host-types.ts";
 import { listenError, StartupError } from "./startup-error.ts";
 import { type StartedPart, stopStarted } from "./stop-started.ts";
 import { assertListenAllowed, formatHost } from "./listen.ts";
+import { openOnCore, spawnHcLink } from "./mesh/hc-machines.ts";
 import { serveMcpLines } from "./mcp/serve.ts";
 import { HostUplink } from "./relay/host-uplink.ts";
 import { openRelayPasses } from "./relay/relay-passes.ts";
@@ -141,7 +142,26 @@ async function serve(
     e2ee,
     speculative,
     push: push?.serve,
-    mcp: (link) => serveMcpLines(link, { hostVersion: HOST_VERSION }),
+    mcp: (link) =>
+      serveMcpLines(link, {
+        hostVersion: HOST_VERSION,
+        // Each MCP session gets its own connection to this host's core, as an hc session gets its own pipe.
+        openHc: async () => {
+          const target = {
+            hc: options.hc,
+            session: options.session,
+            env: options.env,
+            handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
+          };
+          const child = spawnHcLink(target);
+          try {
+            return await openOnCore(child, target);
+          } catch (error) {
+            child.close();
+            throw error;
+          }
+        },
+      }),
     pair:
       e2ee === undefined
         ? undefined

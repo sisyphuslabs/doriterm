@@ -1,46 +1,124 @@
 import { CloseCode } from "@doriface/crypto";
+import { HcRpcError, type HcMethod } from "@doriface/protocol";
 import type { PushLink } from "../push/push-stream.ts";
-import { MAX_MCP_LINE, replyToMcpLine } from "./lines.ts";
+import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine } from "./lines.ts";
 
 const encoder = new TextEncoder();
 
-/** One LF-delimited JSON-RPC message at a time, with a byte bound independent of the chunk boundaries. */
-export function serveMcpLines(link: PushLink, { hostVersion }: { readonly hostVersion: string }): void {
+/** What the MCP server needs of a herdr-core connection; an HcConnection is one. */
+export interface HcCaller {
+  callByName(method: HcMethod, params: object, options: { readonly signal: AbortSignal }): Promise<unknown>;
+  onClose(listener: (error: Error | undefined) => void): unknown;
+  close(): void;
+}
+
+export interface McpServeDeps {
+  readonly hostVersion: string;
+  /** Opens this session's own connection to the core, on its first tool call. */
+  readonly openHc?: (() => Promise<HcCaller>) | undefined;
+}
+
+const toolResult = (value: unknown, isError: boolean) => ({
+  resultType: "complete",
+  content: [{ type: "text", text: JSON.stringify(value) }],
+  structuredContent: value,
+  isError,
+});
+
+/** One LF-delimited JSON-RPC message at a time; tool calls run concurrently and each reply is one whole line. */
+export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
   let pending: Uint8Array | undefined;
   let length = 0;
   let closed = false;
-  const refuse = (reason: string): void => {
+  let dying = false;
+  let hc: Promise<HcCaller> | undefined;
+  const calls = new Map<Id, AbortController>();
+  const close = (code: number, reason: string): void => {
+    if (closed) return;
     closed = true;
-    link.close(CloseCode.CryptoFailure, reason);
+    link.close(code, reason);
+  };
+  const send = (reply: object): void => {
+    if (closed) return;
+    const output = encoder.encode(`${JSON.stringify(reply)}\n`);
+    if (output.length > MAX_MCP_LINE) return close(CloseCode.CryptoFailure, "an MCP reply is too long");
+    link.send(output);
+  };
+  // The pipe to the core died: calls in flight answer "unavailable", then the session ends so the client reconnects.
+  const settleDying = (): void => {
+    if (dying && calls.size === 0) close(1011, "the connection to the core closed");
+  };
+  const openHc = (): Promise<HcCaller> => {
+    if (deps.openHc === undefined) return Promise.reject(new Error("this host serves no MCP tools"));
+    hc ??= deps.openHc().then(
+      (connection) => {
+        connection.onClose(() => {
+          dying = !closed;
+          settleDying();
+        });
+        if (closed) connection.close();
+        return connection;
+      },
+      (error: unknown) => {
+        hc = undefined;
+        throw error;
+      },
+    );
+    return hc;
+  };
+  const run = async (line: Extract<McpLine, { kind: "call" }>): Promise<void> => {
+    const abort = new AbortController();
+    calls.set(line.id, abort);
+    try {
+      const connection = await openHc();
+      const value = await connection.callByName(line.tool.method, line.args, { signal: abort.signal });
+      send({ jsonrpc: "2.0", id: line.id, result: toolResult(value, false) });
+    } catch (error) {
+      if (abort.signal.aborted) return;
+      const failure =
+        error instanceof HcRpcError
+          ? { kind: error.kind, message: error.message }
+          : { kind: "unavailable", message: error instanceof Error ? error.message : String(error) };
+      send({ jsonrpc: "2.0", id: line.id, result: toolResult(failure, true) });
+    } finally {
+      calls.delete(line.id);
+      settleDying();
+    }
   };
   link.onClose(() => {
     closed = true;
+    for (const abort of calls.values()) abort.abort();
+    void hc?.then(
+      (connection) => connection.close(),
+      () => undefined,
+    );
   });
   link.onData((bytes) => {
     for (let start = 0; start < bytes.length;) {
       if (closed) return;
       const lf = bytes.indexOf(10, start);
       const part = bytes.subarray(start, lf === -1 ? bytes.length : lf);
-      if (length + part.length >= MAX_MCP_LINE) return refuse("an MCP line is too long");
+      if (length + part.length >= MAX_MCP_LINE) return close(CloseCode.CryptoFailure, "an MCP line is too long");
       if (lf === -1 || length > 0) {
         pending ??= new Uint8Array(MAX_MCP_LINE - 1);
         pending.set(part, length);
         length += part.length;
       }
       if (lf === -1) return;
-      const line = length > 0 ? (pending?.subarray(0, length) ?? part) : part;
+      const bytesOfLine = length > 0 ? (pending?.subarray(0, length) ?? part) : part;
       length = 0;
       start = lf + 1;
-      let reply: object | undefined;
+      let line: McpLine;
       try {
-        reply = replyToMcpLine(line, hostVersion);
+        line = readMcpLine(bytesOfLine, deps.hostVersion);
       } catch {
-        return refuse("an MCP line is not a UTF-8 JSON object");
+        return close(CloseCode.CryptoFailure, "an MCP line is not a UTF-8 JSON object");
       }
-      if (reply === undefined) continue;
-      const output = encoder.encode(`${JSON.stringify(reply)}\n`);
-      if (output.length > MAX_MCP_LINE) return refuse("an MCP reply is too long");
-      link.send(output);
+      if (line.kind === "reply") send(line.reply);
+      else if (line.kind === "cancel") {
+        const key = line.requestId;
+        if (typeof key === "string" || typeof key === "number") calls.get(key)?.abort();
+      } else if (line.kind === "call") void run(line);
     }
   });
 }
