@@ -40,6 +40,9 @@ export function sessionPeer(
   index: AuthorizeIndex | undefined,
   devices: DeviceStore,
 ): Peer {
+  // The mcp stream (contract v1.12) admits only a key that holds an MCP grant, and this host keeps none: a member's,
+  // a client's and a paired device's key are owner keys, and an owner key never opens the stream of a weaker one.
+  if (stream === "mcp") return { kind: "refused", reason: "this host serves no mcp stream" };
   const mesh = meshPeer(index, base64urlEncode(key));
   // Each stream decides explicitly, per kind: a client is a member of the roster but not a dialer, so the mesh stream
   // must never admit one, and the push stream keeps serving only a device entry (design of #942).

@@ -56,9 +56,10 @@ function splitLine(payload: Uint8Array): {
 /**
  * What the plaintext of a session carries (contract v1.7): absent or `"hc"` is the `hc connect` stream, `"mesh"` the
  * mesh stream, `"push"` a device's push stream (web push subscriptions and notice answers). On a pairing, absent is a
- * device pairing and `"mesh"` a machine join.
+ * device pairing and `"mesh"` a machine join. `"mcp"` (contract v1.12) is a session's Model Context Protocol stream:
+ * JSON-RPC lines served by the host to a key that holds an MCP grant, and to no other key.
  */
-export type Stream = "hc" | "mesh" | "push" | "roster";
+export type Stream = "hc" | "mesh" | "push" | "roster" | "mcp";
 
 /** The mesh and push streams start with their own lines, so their message 1 carries no early bytes. */
 const takesEarly = (stream: Stream | undefined): boolean => stream === undefined || stream === "hc";
@@ -86,7 +87,7 @@ function streamOf(value: unknown, pairing: boolean): Stream | undefined {
   if (
     value === undefined ||
     value === "mesh" ||
-    ((value === "hc" || value === "push" || value === "roster") && !pairing)
+    ((value === "hc" || value === "push" || value === "roster" || value === "mcp") && !pairing)
   )
     return value;
   throw new PayloadError(`stream ${JSON.stringify(value)} is not valid on a ${pairing ? "pairing" : "session"}`);
