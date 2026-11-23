@@ -13,7 +13,9 @@ function confirm(window: BrowserWindow, offer: CoreUpdateOffer): Promise<boolean
       type: "warning",
       title: "Update local herdr-core?",
       message: `Update herdr-core from ${offer.current} to ${offer.version}?`,
-      detail: "Terminals keep running during the core restart. Their connections briefly drop and then reconnect.",
+      detail:
+        "Terminals keep running during the core restart. Their connections briefly drop and then reconnect. " +
+        "Open terminals can keep using the old core's terminal processes, so some fixes apply only to new terminals.",
       buttons: ["Cancel", "Update and restart core"],
       defaultId: 0,
       cancelId: 0,

@@ -7,7 +7,7 @@ function description(status: CoreUpdateStatus | undefined): string {
     case undefined:
       return "Checks for a newer herdr-core on this computer.";
     case "available":
-      return `Installed: ${status.current}. Available: ${status.version}. Terminals stay open while the core reconnects.`;
+      return `Installed: ${status.current}. Available: ${status.version}. Terminals stay open during the restart. Some fixes apply only to new terminals.`;
     case "current":
       return `herdr-core ${status.version} is up to date.`;
     case "updated":
