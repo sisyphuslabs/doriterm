@@ -1,4 +1,5 @@
 import {
+  encodeCredit,
   encodeResize,
   FrameKind,
   readResize,
@@ -131,7 +132,8 @@ export class TerminalStream implements ChannelHandler {
       throw new RangeError(`consumed(${bytes}) exceeds the ${this.#uncredited} uncredited bytes on this stream`);
     }
     this.#uncredited -= bytes;
-    if (bytes > 0 && this.#state === "open") this.#returned.add(bytes);
+    // Keep manual credit on the consumer's draw schedule (#560), not on the automatic quiet timer.
+    if (bytes > 0 && this.#state === "open") this.#sent(() => this.#wire.sendBytes(encodeCredit(this.channel, bytes)));
   }
 
   /** Detaches this viewer; resolves when the core confirms with its own CLOSE. */

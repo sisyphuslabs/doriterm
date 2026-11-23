@@ -80,16 +80,16 @@ describe("TerminalStream", () => {
   });
 
   test("returns a full credit step without waiting for the quiet flush", async () => {
-    const { core, stream } = await attached({ autoCredit: false });
+    const { core, stream } = await attached();
     const delivered = Promise.withResolvers<void>();
     const size = 64 * 1024;
     stream.onData((chunk) => {
       if (chunk.byteLength === size) {
-        stream.consumed(size);
         stream.focus(true);
         delivered.resolve();
       }
     });
+    await core.waitFrame(isOnChannel(FrameKind.Credit));
     const start = core.frames.length;
     core.pushFrame(CHANNEL, FrameKind.Data, new Uint8Array(size));
     await delivered.promise;
@@ -149,7 +149,7 @@ describe("TerminalStream", () => {
     );
   });
 
-  test("with autoCredit off, credits only what the consumer reports", async () => {
+  test("with autoCredit off, immediately credits only what the consumer reports", async () => {
     const { core, stream } = await attached({ autoCredit: false });
     const chunks: Uint8Array[] = [];
     const output = next<void>((resolve) =>
@@ -166,7 +166,9 @@ describe("TerminalStream", () => {
     expect(core.frames.some(isOnChannel(FrameKind.Credit))).toBe(false);
     expect(() => stream.consumed(PAINT_BYTES + OUTPUT_OK.length + 1)).toThrow(RangeError);
     stream.consumed(PAINT_BYTES);
-    expect(readCredit((await core.waitFrame(isOnChannel(FrameKind.Credit))).payload)).toBe(PAINT_BYTES);
+    stream.focus(true);
+    await core.waitFrame((f) => isOnChannel(FrameKind.Focus)(f) && f.payload[0] === 1);
+    expect(core.frames.filter(isOnChannel(FrameKind.Credit)).map((f) => readCredit(f.payload))).toEqual([PAINT_BYTES]);
   });
 
   test("lets an onData listener report consumption of the chunk it is rendering", async () => {
