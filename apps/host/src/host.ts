@@ -17,6 +17,7 @@ import { type Host, HOST_VERSION, type HostOptions } from "./host-types.ts";
 import { listenError, StartupError } from "./startup-error.ts";
 import { type StartedPart, stopStarted } from "./stop-started.ts";
 import { assertListenAllowed, formatHost } from "./listen.ts";
+import { serveMcpLines } from "./mcp/serve.ts";
 import { HostUplink } from "./relay/host-uplink.ts";
 import { openRelayPasses } from "./relay/relay-passes.ts";
 import { RelaySessionWire } from "./relay/session-wire.ts";
@@ -140,6 +141,7 @@ async function serve(
     e2ee,
     speculative,
     push: push?.serve,
+    mcp: (link) => serveMcpLines(link, { hostVersion: HOST_VERSION }),
     pair:
       e2ee === undefined
         ? undefined

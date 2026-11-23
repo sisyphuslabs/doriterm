@@ -1,10 +1,11 @@
-import { rawStaticKey, type SecureLink, secureLink } from "@doriface/crypto";
+import { rawStaticKey, type SecureLink, secureLink, type Stream } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
 import { OPEN_POLICY } from "@doriface/policy";
-import { type ChildLink, createGateway } from "../gateway.ts";
+import { type ChildLink, createGateway, type GatewayOptions } from "../gateway.ts";
 import type { E2eeWire } from "../e2ee/links.ts";
 import { LiveSessions } from "../e2ee/sessions.ts";
 import { DeviceStore } from "../state/devices.ts";
+import type { McpGrantStore } from "../state/mcp-grants.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import { PairingStore } from "../state/pairing.ts";
 import { type Machine, MeshFixture } from "./mesh-history.ts";
@@ -45,6 +46,7 @@ export interface GatewaySetup {
   readonly openPipe?: (() => ChildLink) | undefined;
   /** The store the gateway reads instead of the fixture's own. */
   readonly mesh?: MeshStore | undefined;
+  readonly mcp?: { readonly store: McpGrantStore; readonly now: () => number; readonly serve: GatewayOptions["mcp"] };
 }
 
 /** A gateway on a mesh of `founder` (this host) and `member`. */
@@ -57,12 +59,14 @@ export function gatewayOn(founder: Machine, member: Machine, setup: GatewaySetup
   let opened = 0;
   const logs: string[] = [];
   const log = (line: string): void => void logs.push(line);
-  const sessions = new LiveSessions(devices, log, mesh);
+  const mcp = setup.mcp;
+  const sessions = new LiveSessions(devices, log, mesh, mcp?.store, mcp?.now);
   const deps = { identity: founder.identity, devices, pairing: new PairingStore(setup.dir), mesh, log };
   const gateway = createGateway({
     token: "t".repeat(32),
     hostVersion: "0",
     hcVersion: "0",
+    mcp: mcp?.serve,
     openPipe: () => {
       opened++;
       return setup.openPipe?.() ?? pipe.child;
@@ -70,13 +74,14 @@ export function gatewayOn(founder: Machine, member: Machine, setup: GatewaySetup
     log,
     e2ee: {
       ...deps,
+      ...(mcp === undefined ? {} : { grants: mcp.store, wallNow: mcp.now }),
       lanUrls: [],
       sessions,
       policy: OPEN_POLICY,
       live: { count: () => sessions.count() },
     },
   });
-  return { gateway, devices, logs, pipe, opened: () => opened };
+  return { gateway, devices, logs, pipe, sessions, opened: () => opened };
 }
 
 /** Dials `setup`'s gateway with `key` over a real Noise handshake; `early` rides in message 1. */
@@ -85,6 +90,7 @@ export async function dial(
   key: Machine["identity"]["noise"],
   founder: Machine,
   early?: string,
+  stream?: Stream,
 ) {
   const [clientEnd, hostEnd] = memoryLinkPair();
   const wire: E2eeWire = {
@@ -101,6 +107,7 @@ export async function dial(
     hostId: founder.identity.hostId,
     staticKey: rawStaticKey(key),
     remoteStatic: founder.identity.noise.publicKey,
+    stream,
     early: early === undefined ? undefined : encoder.encode(early),
   });
   await served;

@@ -1,15 +1,48 @@
 import { type Authorization, base64urlEncode, type ClientHello, CloseCode, type Stream } from "@doriface/crypto";
 import type { AuthorizeIndex, MemberEntry } from "../mesh/authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
+import type { McpGrant, McpGrantStore } from "../state/mcp-grants.ts";
 
 const refuse = (reason: string): Authorization => ({ accept: false, closeCode: CloseCode.UnknownDevice, reason });
 
-/** Who a session's key is: a machine member that dials, a client member that connects, a paired device, or nobody. */
+/** Who a session's key is: a machine member, client member, paired device, scoped agent, or nobody. */
 export type Peer =
   | { readonly kind: "member"; readonly member: MemberEntry }
   | { readonly kind: "client"; readonly member: MemberEntry }
   | { readonly kind: "device" }
+  | { readonly kind: "agent"; readonly grant: McpGrant }
   | { readonly kind: "refused"; readonly reason: string };
+
+export const MCP_ONLY = "an MCP grant opens only the mcp stream";
+
+interface GrantAuthorization {
+  readonly store: McpGrantStore;
+  readonly now: () => number;
+  readonly log?: (line: string) => void;
+}
+
+function mcpPeer(
+  key: string,
+  index: AuthorizeIndex | undefined,
+  devices: DeviceStore,
+  grants: GrantAuthorization | undefined,
+): Peer {
+  if (grants === undefined) return { kind: "refused", reason: "this host serves no mcp stream" };
+  let enabled: boolean;
+  let grant: McpGrant | undefined;
+  try {
+    enabled = grants.store.enabled();
+    grant = enabled ? grants.store.live(key, grants.now()) : undefined;
+  } catch (error) {
+    grants.log?.(`cannot read the MCP grants: ${String(error)}`);
+    return { kind: "refused", reason: "cannot read the MCP grants" };
+  }
+  if (!enabled) return { kind: "refused", reason: "MCP is off on this host" };
+  if (meshPeer(index, key) !== undefined || devices.pairedKeys().has(key)) {
+    return { kind: "refused", reason: "an owner key does not open the mcp stream" };
+  }
+  return grant === undefined ? { kind: "refused", reason: "no MCP grant for this key" } : { kind: "agent", grant };
+}
 
 /**
  * The mesh check (section 9.2, first column steps 1 and 2): a current member's Noise key is a machine; a client member's
@@ -39,11 +72,17 @@ export function sessionPeer(
   key: Uint8Array,
   index: AuthorizeIndex | undefined,
   devices: DeviceStore,
+  grants?: GrantAuthorization,
 ): Peer {
-  // The mcp stream (contract v1.12) admits only a key that holds an MCP grant, and this host keeps none: a member's,
-  // a client's and a paired device's key are owner keys, and an owner key never opens the stream of a weaker one.
-  if (stream === "mcp") return { kind: "refused", reason: "this host serves no mcp stream" };
-  const mesh = meshPeer(index, base64urlEncode(key));
+  const encoded = base64urlEncode(key);
+  if (stream === "mcp") return mcpPeer(encoded, index, devices, grants);
+  try {
+    if (grants?.store.holds(encoded) === true) return { kind: "refused", reason: MCP_ONLY };
+  } catch (error) {
+    // A broken grant file disables MCP, not the owner's streams.
+    grants?.log?.(`cannot read the MCP grants: ${String(error)}`);
+  }
+  const mesh = meshPeer(index, encoded);
   // Each stream decides explicitly, per kind: a client is a member of the roster but not a dialer, so the mesh stream
   // must never admit one, and the push stream keeps serving only a device entry (design of #942).
   if (stream === "mesh") {

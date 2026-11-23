@@ -4,20 +4,32 @@ import type { Link } from "../link.ts";
 import type { PushLink } from "../push/push-stream.ts";
 import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
+import type { McpGrantStore } from "../state/mcp-grants.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import { REVOKED } from "./accept.ts";
 
-/** Live E2EE sessions by remote key, so a device or mesh revocation closes them with 4401. */
+/** Live E2EE sessions by remote key, so a device, mesh or MCP revocation closes them with 4401. */
 export class LiveSessions {
   readonly #devices: DeviceStore;
   readonly #mesh: MeshStore | undefined;
+  readonly #grants: McpGrantStore | undefined;
+  readonly #now: () => number;
   readonly #byKey = new Map<string, Set<SecureLink>>();
   readonly #log: (line: string) => void;
+  #grantFailure: string | undefined;
 
-  constructor(devices: DeviceStore, log: (line: string) => void, mesh?: MeshStore) {
+  constructor(
+    devices: DeviceStore,
+    log: (line: string) => void,
+    mesh?: MeshStore,
+    grants?: McpGrantStore,
+    now: () => number = Date.now,
+  ) {
     this.#devices = devices;
     this.#mesh = mesh;
     this.#log = log;
+    this.#grants = grants;
+    this.#now = now;
   }
 
   /** Whether an authenticated session from the remote static key `key` (base64url) is open now. */
@@ -32,8 +44,23 @@ export class LiveSessions {
     return total;
   }
 
+  /** How many MCP sessions this host serves, optionally restricted to one grant key. */
+  countMcp(key?: string): number {
+    const groups = key === undefined ? this.#byKey.values() : [this.#byKey.get(key) ?? []];
+    let total = 0;
+    for (const sessions of groups) {
+      for (const session of sessions) if (session.stream === "mcp") total++;
+    }
+    return total;
+  }
+
   /** Re-checks session room and revocation before hc admission. */
   admitHc(session: SecureLink, policy: PlanPolicy): boolean {
+    return this.admitLimited(session, policy);
+  }
+
+  /** A second plan check after the handshake: another session may have opened in the meantime. */
+  admitLimited(session: SecureLink, policy: PlanPolicy): boolean {
     if (session.kind === SessionKind.Session) {
       const room = requireWithin(policy, "sessions", this.count());
       if (!room.allowed) {
@@ -61,11 +88,7 @@ export class LiveSessions {
     return !this.#closeRevoked().has(session);
   }
 
-  /**
-   * Closes every session whose key is neither a current machine member's, a current client member's, nor a paired
-   * device's, and every one whose key the mesh refuses as a device (a revoked member, a machine's device key). When a
-   * store cannot be read, no session can be shown to be authorized, so every one is closed.
-   */
+  /** Closes sessions no longer authorized on their stream, including MCP sessions if the grant file is unreadable. */
   closeRevoked(): void {
     this.#closeRevoked();
   }
@@ -92,6 +115,15 @@ export class LiveSessions {
    * another subscription line nor gets another reply or notice on it.
    */
   guardPush(session: SecureLink): PushLink {
+    return this.#guardStream(session);
+  }
+
+  /** A grant that stops being live cannot send or receive any more MCP bytes. */
+  guardMcp(session: SecureLink): PushLink {
+    return this.#guardStream(session);
+  }
+
+  #guardStream(session: SecureLink): PushLink {
     const allowed = this.#check(session);
     return {
       send: (bytes) => (allowed() ? session.send(bytes) : undefined),
@@ -126,10 +158,26 @@ export class LiveSessions {
    */
   #authorizedNow(session: SecureLink, key: string): boolean {
     if (this.#byKey.get(key)?.has(session) !== true) return false;
+    if (!this.#grantAllows(session, key)) return false;
+    if (session.stream === "mcp") return true;
     try {
       return authorizes(key, this.#devices.pairedKeys(), this.#mesh?.authorizeIndex());
     } catch {
       return false;
+    }
+  }
+
+  #grantAllows(session: SecureLink, key: string): boolean {
+    const mcp = session.stream === "mcp";
+    try {
+      const allowed = mcp ? this.#grants?.live(key, this.#now()) !== undefined : this.#grants?.holds(key) !== true;
+      this.#grantFailure = undefined;
+      return allowed;
+    } catch (error) {
+      const failure = String(error);
+      if (this.#grantFailure !== failure) this.#log(`cannot read the MCP grants: ${failure}`);
+      this.#grantFailure = failure;
+      return !mcp;
     }
   }
 
@@ -142,14 +190,15 @@ export class LiveSessions {
       paired = this.#devices.pairedKeys();
       index = this.#mesh?.authorizeIndex();
     } catch (error) {
-      this.#log(`cannot read the devices or mesh file, closing every session: ${String(error)}`);
+      this.#log(`cannot read the devices or mesh file, closing owner sessions: ${String(error)}`);
       paired = new Set();
       index = undefined;
       unreadable = true;
     }
     for (const [key, sessions] of this.#byKey) {
-      if (authorizes(key, paired, index)) continue;
+      const owner = authorizes(key, paired, index);
       for (const session of sessions) {
+        if ((session.stream === "mcp" || owner) && this.#grantAllows(session, key)) continue;
         closed.add(session);
         const reason = unreadable
           ? "authorization stores could not be read"
