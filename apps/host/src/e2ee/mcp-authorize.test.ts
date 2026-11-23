@@ -7,7 +7,7 @@ import { cardBody } from "../state/mesh.ts";
 import { ownOf, removeSides, side } from "../testing/join-harness.ts";
 import { mcpGrantFor } from "../testing/mcp-grant.ts";
 import { noiseOf, signPubOf } from "../testing/mesh-history.ts";
-import { type Peer, sessionPeer } from "./authorize.ts";
+import { MCP_ONLY, type Peer, sessionPeer } from "./authorize.ts";
 
 afterEach(removeSides);
 
@@ -90,6 +90,28 @@ test("a live grant accidentally entered for an owner key still cannot open MCP",
     kind: "refused",
     reason: "an owner key does not open the mcp stream",
   });
+});
+
+test("a key that holds a grant, live or revoked, opens no owner stream even when it is also a paired device", () => {
+  const a = side("alpha");
+  const store = new McpGrantStore(a.dir);
+  const devices = new DeviceStore(a.dir);
+  const live = generateX25519().publicKey;
+  const revoked = generateX25519().publicKey;
+  devices.add(live, "phone");
+  devices.add(revoked, "tablet");
+  store.setEnabled(true);
+  store.add(mcpGrantFor(live));
+  store.add(mcpGrantFor(revoked));
+  store.revoke(mcpGrantFor(revoked).key);
+  const grants = { store, now: () => 1 };
+  // Without the grant file both keys are ordinary paired devices: the refusal below is the grant's, not the fixture's.
+  expect(sessionPeer("hc", live, undefined, devices).kind).toBe("device");
+  for (const key of [live, revoked]) {
+    for (const stream of [undefined, "hc", "push", "roster"] as const) {
+      expect(sessionPeer(stream, key, undefined, devices, grants)).toEqual({ kind: "refused", reason: MCP_ONLY });
+    }
+  }
 });
 
 test("a caller with no grant store still refuses the MCP stream", () => {

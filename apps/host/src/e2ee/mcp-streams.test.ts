@@ -115,6 +115,18 @@ test("a corrupt grant file closes MCP while an existing owner's hc line still re
   expect(hc.hostEnd.closeCode).toBeUndefined();
 });
 
+test("an open hc session is closed with 4401 once its key holds a grant: one key has one role", async () => {
+  const { connect, store, gateway } = fixture();
+  const phone = generateX25519();
+  gateway.devices.add(phone.publicKey, "phone");
+  const hc = await connect(phone, "hc");
+  store.add(mcpGrantFor(phone.publicKey));
+  hc.send(CLIENT);
+  await hc.closed;
+  expect(hc.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
+  expect(gateway.pipe.text()).toBe("");
+});
+
 test("closing revoked sessions after an MCP revoke leaves an existing owner session open", async () => {
   const { connect, owner, grant, store, gateway } = fixture();
   const hc = await owner();
