@@ -46,7 +46,7 @@ import { applyMacTitlebar } from "./titlebar.ts";
 import { readSaved, rememberPlacement, placedWindow, savedPlacement, writeSaved } from "./window-state.ts";
 import { revealWhenReady } from "./window-reveal.ts";
 import { UPDATE_ORIGIN, UPDATE_ORIGINS, UpdateWatch } from "./updater.ts";
-import { registerUpdateIpc } from "./ipc-update.ts";
+import { registerDesktopUpdates } from "./desktop-update-ipc.ts";
 import { isUpdateChannel, type UpdateChannel } from "../shared/update.ts";
 
 const platform = parsePlatform(process.platform);
@@ -216,9 +216,10 @@ const revealWindow = () => (app.isReady() ? showWindow().webContents : undefined
 
 function ready(): void {
   const context = hostContext();
+  const hc = () => findHc(context, usualHcDirs(context), savedHc(savedFile("hc.json")));
   const localHost = new LocalHost({
     command: hostCommand(context),
-    hc: () => findHc(context, usualHcDirs(context), savedHc(savedFile("hc.json"))),
+    hc,
     searched: () => usualHcDirs(context),
     // A new terminal with no directory opens in the home folder, not where the app was launched from (#2047).
     cwd: context.home,
@@ -259,18 +260,7 @@ function ready(): void {
       openSettings();
     };
   }
-  registerUpdateIpc({
-    origin,
-    status: () => updates?.status ?? null,
-    channel: () => updates?.channel ?? null,
-    setChannel: (channel) => {
-      if (updates === undefined) return false;
-      writeSaved(updateChannelFile(), { channel });
-      updates.setChannel(channel);
-      return true;
-    },
-    check: () => updates?.check(),
-  });
+  registerDesktopUpdates(origin, updates, updateChannelFile(), context, hc);
   lockPermissions(session.defaultSession, origin);
   if (devUrl === undefined) serveApp(webRoot(), csp);
   else applyDevCsp(session.defaultSession, origin, csp);

@@ -1,4 +1,5 @@
-import type { UpdateChannel, UpdateStatus } from "./update.ts";
+import type { DesktopAppUpdateBridge } from "./update.ts";
+import type { CoreUpdateBridge } from "./core-update.ts";
 import type { NoticeContext } from "@doriface/protocol";
 import type { PasteInviteAnswer } from "./paste-invite.ts";
 
@@ -358,7 +359,7 @@ export interface LocalHostStartFailed {
 }
 
 /** What the desktop shell exposes to the renderer as `window.doriface`. */
-export interface DorifaceBridge {
+export interface DorifaceBridge extends DesktopAppUpdateBridge, CoreUpdateBridge {
   readonly version: string;
   readonly platform: DesktopPlatform;
   /** Opens an allowlisted https link in the system browser; resolves false when the link is refused. */
@@ -402,13 +403,6 @@ export interface DorifaceBridge {
   onUpdateReady(listener: (update: UpdateReady) => void): void;
   /** Quits and installs the staged update; resolves false when none is staged. */
   installUpdate(): Promise<boolean>;
-  /** What the updater is doing now, then every change, until the answered function is called; null outside a packaged app. */
-  onUpdateStatus(listener: (status: UpdateStatus | null) => void): () => void;
-  /** The update channel, and choosing one; resolves false when the choice was not kept. */
-  updateChannel(): Promise<UpdateChannel | null>;
-  setUpdateChannel(channel: UpdateChannel): Promise<boolean>;
-  /** Checks for an update now; the answer arrives as a status. */
-  checkForUpdates(): Promise<void>;
   /** Whether this system shows native notifications at all (a Linux desktop may run no notification service). */
   noticesSupported(): Promise<boolean>;
   /** The OS's standing answer about this app's notifications; `unknown` where this shell cannot read one. */
