@@ -5,7 +5,7 @@ import { type ChildLink, createGateway, type GatewayOptions } from "../gateway.t
 import type { E2eeWire } from "../e2ee/links.ts";
 import { LiveSessions } from "../e2ee/sessions.ts";
 import { DeviceStore } from "../state/devices.ts";
-import type { McpGrantStore } from "../state/mcp-grants.ts";
+import type { McpSwitch } from "../state/mcp-switch.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import { PairingStore } from "../state/pairing.ts";
 import { type Machine, MeshFixture } from "./mesh-history.ts";
@@ -46,7 +46,9 @@ export interface GatewaySetup {
   readonly openPipe?: (() => ChildLink) | undefined;
   /** The store the gateway reads instead of the fixture's own. */
   readonly mesh?: MeshStore | undefined;
-  readonly mcp?: { readonly store: McpGrantStore; readonly now: () => number; readonly serve: GatewayOptions["mcp"] };
+  readonly mcp?: McpSwitch;
+  readonly serveMcp?: GatewayOptions["mcp"];
+  readonly push?: GatewayOptions["push"];
 }
 
 /** A gateway on a mesh of `founder` (this host) and `member`. */
@@ -60,13 +62,14 @@ export function gatewayOn(founder: Machine, member: Machine, setup: GatewaySetup
   const logs: string[] = [];
   const log = (line: string): void => void logs.push(line);
   const mcp = setup.mcp;
-  const sessions = new LiveSessions(devices, log, mesh, mcp?.store, mcp?.now);
+  const sessions = new LiveSessions(devices, log, mesh, mcp);
   const deps = { identity: founder.identity, devices, pairing: new PairingStore(setup.dir), mesh, log };
   const gateway = createGateway({
     token: "t".repeat(32),
     hostVersion: "0",
     hcVersion: "0",
-    mcp: mcp?.serve,
+    mcp: setup.serveMcp,
+    push: setup.push,
     openPipe: () => {
       opened++;
       return setup.openPipe?.() ?? pipe.child;
@@ -74,7 +77,7 @@ export function gatewayOn(founder: Machine, member: Machine, setup: GatewaySetup
     log,
     e2ee: {
       ...deps,
-      ...(mcp === undefined ? {} : { grants: mcp.store, wallNow: mcp.now }),
+      mcp,
       lanUrls: [],
       sessions,
       policy: OPEN_POLICY,

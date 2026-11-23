@@ -5,6 +5,7 @@ export type ControlRequest =
   | { readonly op: "pair" }
   | { readonly op: "devices-changed" }
   | { readonly op: "mcp-changed" }
+  | { readonly op: "mcp-status" }
   | { readonly op: "mesh-changed" }
   | { readonly op: "mesh-status" }
   | { readonly op: "skill-changed" }
@@ -70,6 +71,7 @@ export function parseRequest(line: string): ControlRequest {
     case "pair":
     case "devices-changed":
     case "mcp-changed":
+    case "mcp-status":
     case "mesh-changed":
     case "mesh-pending":
     case "mesh-status":

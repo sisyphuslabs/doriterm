@@ -1,24 +1,23 @@
-import { generateX25519, type Stream } from "@doriface/crypto";
+import { base64urlEncode, generateX25519, type Stream } from "@doriface/crypto";
 import { signCard } from "@doriface/mesh";
 import { afterEach, expect, test } from "bun:test";
 import { DeviceStore } from "../state/devices.ts";
-import { McpGrantStore } from "../state/mcp-grants.ts";
 import { cardBody } from "../state/mesh.ts";
 import { ownOf, removeSides, side } from "../testing/join-harness.ts";
-import { mcpGrantFor } from "../testing/mcp-grant.ts";
 import { noiseOf, signPubOf } from "../testing/mesh-history.ts";
-import { MCP_ONLY, type Peer, sessionPeer } from "./authorize.ts";
+import { type Peer, sessionPeer } from "./authorize.ts";
 
 afterEach(removeSides);
 
-test("stream and key matrix keeps grant keys out of owner streams and owner keys out of MCP", () => {
+const refuse = (reason: string): Peer => ({ kind: "refused", reason });
+
+test("the MCP switch gates push-equivalent keys on MCP only, including when the switch throws", () => {
   const a = side("alpha");
   const browser = side("browser");
   const devices = new DeviceStore(a.dir);
-  const store = new McpGrantStore(a.dir);
   const phone = generateX25519().publicKey;
   const machineDevice = generateX25519().publicKey;
-  a.mesh.found(a.m.identity, { ...ownOf(a), devicePub: Buffer.from(machineDevice).toString("base64url") });
+  a.mesh.found(a.m.identity, { ...ownOf(a), devicePub: base64urlEncode(machineDevice) });
   const mesh = a.mesh.read()?.meshId;
   if (mesh === undefined) throw new Error("missing mesh in test fixture");
   const card = signCard(
@@ -42,83 +41,54 @@ test("stream and key matrix keeps grant keys out of owner streams and owner keys
     subject: { card },
   }));
   devices.add(phone, "phone");
-  const liveKey = generateX25519().publicKey;
-  const burnedKey = generateX25519().publicKey;
-  const expiredKey = generateX25519().publicKey;
-  const grant = mcpGrantFor(liveKey);
-  const burned = mcpGrantFor(burnedKey);
-  store.setEnabled(true);
-  store.add(grant);
-  store.add(burned);
-  store.revoke(burned.key);
-  store.add({ ...mcpGrantFor(expiredKey), expiresAt: 1 });
+  devices.add(machineDevice, "machine device");
 
   const index = a.mesh.authorizeIndex();
   const streams: readonly (Stream | undefined)[] = [undefined, "hc", "mesh", "push", "roster", "mcp"];
-  const refused = streams.map((): Peer["kind"] => "refused");
-  const rows: readonly { readonly key: Uint8Array; readonly kinds: readonly Peer["kind"][] }[] = [
-    { key: a.m.identity.noise.publicKey, kinds: ["member", "member", "member", "refused", "refused", "refused"] },
-    { key: browser.m.identity.noise.publicKey, kinds: ["client", "client", "refused", "client", "client", "refused"] },
-    { key: phone, kinds: ["device", "device", "refused", "device", "device", "refused"] },
-    { key: liveKey, kinds: ["refused", "refused", "refused", "refused", "refused", "agent"] },
-    { key: machineDevice, kinds: refused },
-    { key: burnedKey, kinds: refused },
-    { key: expiredKey, kinds: refused },
-    { key: generateX25519().publicKey, kinds: refused },
+  const keys = [
+    a.m.identity.noise.publicKey,
+    browser.m.identity.noise.publicKey,
+    phone,
+    machineDevice,
+    generateX25519().publicKey,
   ];
-  const grants = { store, now: () => 1 };
-  for (const { key, kinds } of rows) {
-    expect(streams.map((stream) => sessionPeer(stream, key, index, devices, grants).kind)).toEqual([...kinds]);
-  }
-  expect(sessionPeer("mcp", liveKey, index, devices, grants)).toEqual({ kind: "agent", grant });
-  store.setEnabled(false);
-  expect(sessionPeer("mcp", liveKey, index, devices, grants)).toEqual({
-    kind: "refused",
-    reason: "MCP is off on this host",
+  const logs: string[] = [];
+  let reads = 0;
+  const switchFor = (enabled: boolean) => ({
+    enabled: () => {
+      reads++;
+      return enabled;
+    },
   });
-});
-
-test("a live grant accidentally entered for an owner key still cannot open MCP", () => {
-  const a = side("alpha");
-  const store = new McpGrantStore(a.dir);
-  const devices = new DeviceStore(a.dir);
-  const key = generateX25519().publicKey;
-  devices.add(key, "phone");
-  store.setEnabled(true);
-  store.add(mcpGrantFor(key));
-  expect(sessionPeer("mcp", key, undefined, devices, { store, now: () => 1 })).toEqual({
-    kind: "refused",
-    reason: "an owner key does not open the mcp stream",
-  });
-});
-
-test("a key that holds a grant, live or revoked, opens no owner stream even when it is also a paired device", () => {
-  const a = side("alpha");
-  const store = new McpGrantStore(a.dir);
-  const devices = new DeviceStore(a.dir);
-  const live = generateX25519().publicKey;
-  const revoked = generateX25519().publicKey;
-  devices.add(live, "phone");
-  devices.add(revoked, "tablet");
-  store.setEnabled(true);
-  store.add(mcpGrantFor(live));
-  store.add(mcpGrantFor(revoked));
-  store.revoke(mcpGrantFor(revoked).key);
-  const grants = { store, now: () => 1 };
-  // Without the grant file both keys are ordinary paired devices: the refusal below is the grant's, not the fixture's.
-  expect(sessionPeer("hc", live, undefined, devices).kind).toBe("device");
-  for (const key of [live, revoked]) {
-    for (const stream of [undefined, "hc", "push", "roster"] as const) {
-      expect(sessionPeer(stream, key, undefined, devices, grants)).toEqual({ kind: "refused", reason: MCP_ONLY });
+  const on = switchFor(true);
+  const off = switchFor(false);
+  const broken = {
+    enabled: () => {
+      ++reads;
+      throw new Error("bad mcp.json");
+    },
+    log: (line: string) => void logs.push(line),
+  };
+  for (const key of keys) {
+    for (const stream of streams) {
+      const baseline = sessionPeer(stream, key, index, devices);
+      if (stream !== "mcp") {
+        expect(sessionPeer(stream, key, index, devices, on)).toEqual(baseline);
+        expect(sessionPeer(stream, key, index, devices, off)).toEqual(baseline);
+        expect(sessionPeer(stream, key, index, devices, broken)).toEqual(baseline);
+        continue;
+      }
+      const push = sessionPeer("push", key, index, devices);
+      expect(sessionPeer(stream, key, index, devices, on)).toEqual(
+        push.kind === "refused" && push.reason === "a mesh member has no push stream"
+          ? refuse("a mesh member has no mcp stream")
+          : push,
+      );
+      expect(sessionPeer(stream, key, index, devices, off)).toEqual(refuse("MCP is off on this host"));
+      expect(sessionPeer(stream, key, index, devices, broken)).toEqual(refuse("cannot read the MCP switch"));
+      expect(baseline).toEqual(refuse("this host serves no mcp stream"));
     }
   }
-});
-
-test("a caller with no grant store still refuses the MCP stream", () => {
-  const a = side("alpha");
-  const devices = new DeviceStore(a.dir);
-  expect(sessionPeer("mcp", generateX25519().publicKey, undefined, devices)).toEqual({
-    kind: "refused",
-    reason: "this host serves no mcp stream",
-  });
+  expect(reads).toBe(keys.length * 3);
+  expect(logs).toEqual(keys.map(() => "cannot read the MCP switch: Error: bad mcp.json"));
 });

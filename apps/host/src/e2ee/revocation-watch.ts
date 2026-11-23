@@ -1,9 +1,9 @@
 import { watch } from "node:fs/promises";
 import { DEVICES_FILE } from "../state/devices.ts";
-import { MCP_GRANTS_FILE } from "../state/mcp-grants.ts";
+import { MCP_SWITCH_FILE } from "../state/mcp-switch.ts";
 import { MESH_FILE } from "../state/mesh-file.ts";
 
-const AUTHORIZATION_FILES: ReadonlySet<string> = new Set([DEVICES_FILE, MESH_FILE, MCP_GRANTS_FILE]);
+const AUTHORIZATION_FILES: ReadonlySet<string> = new Set([DEVICES_FILE, MESH_FILE, MCP_SWITCH_FILE]);
 
 /**
  * Calls `closeRevoked` whenever an authorization file changes, whoever wrote it (#2530), so a session that sends

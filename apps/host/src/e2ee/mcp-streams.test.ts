@@ -1,12 +1,12 @@
-import { CloseCode, generateX25519, type SecureLink } from "@doriface/crypto";
+import { base64urlEncode, CloseCode, generateX25519, type SecureLink } from "@doriface/crypto";
 import { afterEach, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serveMcpLines } from "../mcp/serve.ts";
-import { MCP_GRANTS_FILE, McpGrantStore } from "../state/mcp-grants.ts";
+import { DeviceStore } from "../state/devices.ts";
+import { MCP_SWITCH_FILE, McpSwitch } from "../state/mcp-switch.ts";
 import { CLIENT, dial, gatewayOn } from "../testing/gateway-harness.ts";
 import { removeSides, side } from "../testing/join-harness.ts";
-import { GRANT_EXPIRY, mcpGrantFor } from "../testing/mcp-grant.ts";
 import { machine } from "../testing/mesh-history.ts";
 
 type Connection = Awaited<ReturnType<typeof dial>>;
@@ -23,143 +23,94 @@ const DISCOVER = `${JSON.stringify({
   params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
 })}\n`;
 
-function fixture() {
+function fixture(enabled = true) {
   const { dir, m: founder } = side("alpha");
-  const store = new McpGrantStore(dir);
-  store.setEnabled(true);
-  let now = GRANT_EXPIRY - 1;
-  const gateway = gatewayOn(founder, machine("beta"), {
+  const member = machine("beta");
+  const mcp = new McpSwitch(dir);
+  if (enabled) mcp.setEnabled(true);
+  const gateway = gatewayOn(founder, member, {
     dir,
-    mcp: { store, now: () => now, serve: (link) => serveMcpLines(link, { hostVersion: "0" }) },
+    mcp,
+    serveMcp: (link) => serveMcpLines(link, { hostVersion: "0" }),
+    push: (link) => link.onData((bytes) => link.send(bytes)),
   });
   const key = generateX25519();
-  const grant = mcpGrantFor(key.publicKey);
-  store.add(grant);
-
-  const connect = async (remote = key, stream: "mcp" | "hc" = "mcp") => {
+  gateway.devices.add(key.publicKey, "phone");
+  const connect = async (stream: "mcp" | "hc" | "push" = "mcp", remote = key) => {
     const connection = await dial(gateway, remote, founder, undefined, stream);
     clients.push(connection.client);
     return connection;
   };
-  const owner = async () => {
-    const phone = generateX25519();
-    gateway.devices.add(phone.publicKey, "phone");
-    return connect(phone, "hc");
-  };
-  return {
-    dir,
-    store,
-    grant,
-    connect,
-    owner,
-    gateway,
-    expire: () => {
-      now = GRANT_EXPIRY;
-    },
-  };
-}
-
-async function discover(connection: Connection): Promise<void> {
-  connection.send(DISCOVER);
-  await connection.answered;
+  return { dir, key, member, connect, gateway };
 }
 
 async function expectRevoked(connection: Connection): Promise<void> {
-  const before = connection.received.length;
   connection.send(DISCOVER);
-  await connection.closed;
+  await Promise.race([connection.closed, connection.answered]);
   expect(connection.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
-  expect(connection.received).toHaveLength(before);
+  expect(connection.received).toHaveLength(0);
 }
 
-test("an MCP session answers discovery over Noise without opening an hc pipe", async () => {
+test("a paired device's MCP session answers discovery without opening an hc pipe", async () => {
   const { connect, gateway } = fixture();
   const connection = await connect();
-  await discover(connection);
+  connection.send(DISCOVER);
+  await connection.answered;
   const reply: unknown = JSON.parse(new TextDecoder().decode(connection.received[0]));
   expect(reply).toMatchObject({ id: 1, result: { resultType: "complete", capabilities: {} } });
   expect(gateway.opened()).toBe(0);
 });
 
-test("a revoke written by a second store drops the next MCP line and closes with 4401", async () => {
-  const { dir, grant, connect } = fixture();
+test("a device revoke from a second store closes MCP with 4401 instead of serving the next line", async () => {
+  const { dir, key, connect } = fixture();
   const connection = await connect();
-  await discover(connection);
-  new McpGrantStore(dir).revoke(grant.key);
+  new DeviceStore(dir).revoke(base64urlEncode(key.publicKey));
   await expectRevoked(connection);
 });
 
-test("switching MCP off drops the next line of an existing session", async () => {
+test("turning MCP off from a second store closes the open session instead of serving the next line", async () => {
   const { dir, connect } = fixture();
   const connection = await connect();
-  new McpGrantStore(dir).setEnabled(false);
+  new McpSwitch(dir).setEnabled(false);
   await expectRevoked(connection);
 });
 
-test("a session cannot answer the next line once the injected clock reaches expiry", async () => {
-  const { connect, expire } = fixture();
-  const connection = await connect();
-  expire();
-  await expectRevoked(connection);
-});
-
-test("a corrupt grant file closes MCP while an existing owner's hc line still reaches its pipe", async () => {
-  const { dir, connect, owner, gateway } = fixture();
-  const hc = await owner();
+test("a corrupt switch closes MCP without dropping the same device's hc line", async () => {
+  const { dir, connect, gateway } = fixture();
+  const hc = await connect("hc");
   const mcp = await connect();
-  writeFileSync(join(dir, MCP_GRANTS_FILE), "{");
+  writeFileSync(join(dir, MCP_SWITCH_FILE), "{");
   await expectRevoked(mcp);
   hc.send(CLIENT);
-  await gateway.pipe.reached;
+  await Promise.race([gateway.pipe.reached, hc.closed]);
   expect(gateway.pipe.text()).toBe(CLIENT);
   expect(hc.hostEnd.closeCode).toBeUndefined();
 });
 
-test("an open hc session is closed with 4401 once its key holds a grant: one key has one role", async () => {
-  const { connect, store, gateway } = fixture();
-  const phone = generateX25519();
-  gateway.devices.add(phone.publicKey, "phone");
-  const hc = await connect(phone, "hc");
-  store.add(mcpGrantFor(phone.publicKey));
-  hc.send(CLIENT);
-  await hc.closed;
-  expect(hc.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
-  expect(gateway.pipe.text()).toBe("");
-});
-
-test("closing revoked sessions after an MCP revoke leaves an existing owner session open", async () => {
-  const { connect, owner, grant, store, gateway } = fixture();
-  const hc = await owner();
+test("the revocation sweep after switching off closes idle MCP, not the same device's hc or push streams", async () => {
+  const { dir, connect, gateway } = fixture();
+  const hc = await connect("hc");
+  const push = await connect("push");
   const mcp = await connect();
-  store.revoke(grant.key);
+  new McpSwitch(dir).setEnabled(false);
   gateway.sessions.closeRevoked();
-  await mcp.closed;
   expect(mcp.hostEnd.closeCode).toBe(CloseCode.UnknownDevice);
-  hc.send(CLIENT);
-  await gateway.pipe.reached;
-  expect(gateway.pipe.text()).toBe(CLIENT);
   expect(hc.hostEnd.closeCode).toBeUndefined();
+  expect(push.hostEnd.closeCode).toBeUndefined();
 });
 
-test("an MCP grant's third session is closed with 4429", async () => {
-  const { connect } = fixture();
-  const first = await connect();
-  const second = await connect();
-  const third = await connect();
-  expect(third.hostEnd.closeCode).toBe(CloseCode.RateLimited);
-  await Promise.all([discover(first), discover(second)]);
+test("a machine member's key cannot open MCP even with the switch on", async () => {
+  const { connect, member } = fixture();
+  await expect(connect("mcp", member.identity.noise)).rejects.toMatchObject({
+    code: CloseCode.UnknownDevice,
+    cause: { message: "a mesh member has no mcp stream" },
+  });
 });
 
-test("a host's ninth MCP session is closed with 4429 even with different keys", async () => {
-  const { store, connect } = fixture();
-  const newKey = () => {
-    const key = generateX25519();
-    store.add(mcpGrantFor(key.publicKey));
-    return key;
-  };
-  const keys = Array.from({ length: 8 }, newKey);
-  const admitted = await Promise.all(keys.map((key) => connect(key)));
-  const ninth = await connect(newKey());
-  expect(ninth.hostEnd.closeCode).toBe(CloseCode.RateLimited);
-  await Promise.all(admitted.map(discover));
+test("a paired key cannot finish the MCP handshake when no switch file exists", async () => {
+  const { connect } = fixture(false);
+  await expect(connect()).rejects.toMatchObject({
+    code: CloseCode.UnknownDevice,
+    cause: { message: "MCP is off on this host" },
+  });
 });

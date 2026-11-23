@@ -23,6 +23,8 @@ export function openControl(
         return e2ee.sessions.closeRevoked();
       case "mcp-changed":
         return e2ee.sessions.closeRevoked();
+      case "mcp-status":
+        return { sessions: e2ee.sessions.mcpSessions() };
       case "mesh-changed":
         e2ee.sync.changed();
         meshJoined?.();

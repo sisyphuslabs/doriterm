@@ -35,8 +35,7 @@ import { defaultStateDir } from "./state/files.ts";
 const USAGE = `usage: doriface-host [options]
        doriface-host pair [options]
        doriface-host devices list|revoke <id>
-       doriface-host mcp on|off|grants [--state-dir <dir>]
-       doriface-host mcp revoke <id>|--all [--state-dir <dir>]
+       doriface-host mcp on|off|status [--state-dir <dir>]
        doriface-host fingerprint
        doriface-host connect <hostId | pairing link | code>
        doriface-host mesh pair | mesh join <mesh link | code> | mesh join --from-file <file>
