@@ -267,3 +267,64 @@ export const VOICE_TRANSCRIPT = "마이그레이션 롤백 스크립트부터 �
 
 /** What the recognizer has heard so far, mid-sentence, for a still frame of listening. */
 export const VOICE_HEARD = "마이그레이션 롤백 스크립트부터 보여줘. Then run the";
+
+interface SampleMcpGrant {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: "browser" | "assistant";
+  readonly rights: string;
+  readonly state: "active" | "in-use" | "suspended" | "ended";
+  readonly ends: string;
+  readonly lastUsed?: string;
+  readonly sessions?: number;
+  readonly fingerprint: string;
+  readonly approvedBy: string;
+}
+
+/** Sample attached MCP clients covering every grant row state for Settings > Agents. */
+export const MCP_GRANTS: readonly SampleMcpGrant[] = [
+  {
+    id: "g1",
+    name: "Work laptop",
+    kind: "browser",
+    rights: "Reads 2 spaces · Send asks you",
+    state: "active",
+    ends: "Ends in 12 days",
+    lastUsed: "Last used 3 minutes ago",
+    fingerprint: "3fa94c0e7b21d8559e04a6c17f3bd2a08c4e6f19",
+    approvedBy: "Approved by MacBook Pro on 11 Dec",
+  },
+  {
+    id: "g2",
+    name: "Safari assistant",
+    kind: "assistant",
+    rights: "Reads all spaces · Starts templates",
+    state: "in-use",
+    ends: "Ends in 19 days",
+    lastUsed: "Active now",
+    sessions: 1,
+    fingerprint: "7b21d8559e04a6c17f3bd2a08c4e6f193fa94c0e",
+    approvedBy: "Approved by MacBook Pro on 18 Dec",
+  },
+  {
+    id: "g3",
+    name: "Home desktop",
+    kind: "browser",
+    rights: "Reads api-server",
+    state: "suspended",
+    ends: "Ends in 16 days",
+    lastUsed: "Unused for 14 days",
+    fingerprint: "9e04a6c17f3bd2a08c4e6f193fa94c0e7b21d855",
+    approvedBy: "Approved by iPhone on 2 Dec",
+  },
+  {
+    id: "g4",
+    name: "Old tablet",
+    kind: "browser",
+    rights: "Reads 1 space",
+    state: "ended",
+    ends: "Ended 3 Dec",
+    fingerprint: "a6c17f3bd2a08c4e6f193fa94c0e7b21d8559e04",
+    approvedBy: "Approved by MacBook Pro on 19 Nov",
+  },
+];

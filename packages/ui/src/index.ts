@@ -29,6 +29,7 @@ export { DEFAULT_EXTRA_KEYS } from "./components/extra-keys-defaults.tsx";
 export { FIND_CURRENT_CLASS, FIND_MATCH_CLASS, FindBar, type FindBarProps } from "./components/find-bar.tsx";
 export { Fingerprint, type FingerprintProps } from "./components/fingerprint.tsx";
 export { FontFamilyList, type FontFamilyListProps } from "./components/font-family-list.tsx";
+export { GrantRow, type GrantRowProps } from "./components/grant-row.tsx";
 export { IconButton, type IconButtonProps } from "./components/icon-button.tsx";
 export {
   Field,
@@ -95,6 +96,8 @@ export { SpaceRow, type Space, type SpaceGit, type SpaceRowProps } from "./compo
 export { AVATAR_COLORS, SpaceAvatar, type AvatarColor, type SpaceAvatarProps } from "./components/space-avatar.tsx";
 export { RowWithActions, type RowWithActionsProps } from "./components/row-actions.tsx";
 export { MachineHeader, type MachineHeaderProps } from "./components/machine-header.tsx";
+export { MatchCode, type MatchCodeProps } from "./components/match-code.tsx";
+export { RightRow, type RightRowProps } from "./components/right-row.tsx";
 export { SidebarFooter, SidebarFooterItem, type SidebarFooterItemProps } from "./components/sidebar-footer.tsx";
 export { Spinner, DelayedSpinner, type SpinnerProps } from "./components/spinner.tsx";
 export {
