@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { BLINK_PHASE_MS } from "../src/terminal/cursor-blink.ts";
 import { pickFile } from "./file-input.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 
@@ -238,6 +239,46 @@ test("a blinking bar and underline keep the configured cursor-text colour in bot
   await expectLineKeepsCursorText(terminal, "3", "4", "underline");
 });
 
+/**
+ * Lets the real blink turn off, then cancels just that phase's expiry. CursorBlink marks the cursor off and books its
+ * next timer in the same stack. The pending mutation record identifies that timer before any observer or I/O can run.
+ * Leave animation frames (including the output pacer) and all other timers live.
+ */
+function holdCursorOff(terminal: Locator): Promise<void> {
+  return terminal.evaluate(
+    (element, { phase, within }) =>
+      new Promise<void>((resolve, reject) => {
+        const browser: Window = window;
+        const schedule = browser.setTimeout;
+        const off = new MutationObserver(() => undefined);
+        off.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"], attributeOldValue: true });
+        const give = schedule(() => {
+          restore();
+          reject(new Error(`no off phase with an expiry timer within ${within} ms`));
+        }, within);
+        const restore = (): void => {
+          browser.setTimeout = schedule;
+          off.disconnect();
+          browser.clearTimeout(give);
+        };
+        browser.setTimeout = (handler, ms, ...args) => {
+          const timer = schedule(handler, ms, ...args);
+          if (
+            ms === phase &&
+            element.hasAttribute("data-cursor-off") &&
+            off.takeRecords().some((record) => record.oldValue === null)
+          ) {
+            browser.clearTimeout(timer);
+            restore();
+            resolve();
+          }
+          return timer;
+        };
+      }),
+    { phase: BLINK_PHASE_MS, within: FLIP_WITHIN_MS },
+  );
+}
+
 // A DECSCUSR from a block to a bar renamed wterm's animation (cursor-blink to cursor-line-blink), which started it over:
 // vim entering insert mode showed its bar at once, never hidden for what was left of the block's off phase.
 test("a block switched to a bar while it is off shows the bar on at once", async ({ page }) => {
@@ -248,45 +289,30 @@ test("a block switched to a bar while it is off shows the bar on at once", async
   // The marker is the shell's last output before it waits, so nothing else moves the cursor until Enter.
   await run(terminal, String.raw`stty -echo; echo waiting-$((6*7)); read line; printf '\033[5 q'; sleep 30`);
   await expect(terminal).toContainText("waiting-42", { timeout: 15_000 });
-  await terminal.evaluate(
-    (element, within) =>
-      new Promise<void>((resolve, reject) => {
-        const grid = element.querySelector(".term-grid");
-        if (grid === null) throw new Error("the terminal has no grid");
-        // Armed at the start of an off phase. The app's own observers were made first, so within the batch that brings
-        // the new shape they have already run: the phase is read after whatever they did about it.
-        const arm = (): void => {
-          const span = grid.querySelector(".term-cursor");
-          let offBefore = true;
-          const atSwitch = new Promise<object>((settle, fail) => {
-            const give = setTimeout(() => fail(new Error(`the shape did not change within ${within} ms`)), within);
-            const watch = new MutationObserver((records) => {
-              const off = element.hasAttribute("data-cursor-off");
-              if (!records.some((record) => record.attributeName === "data-cursor-shape")) {
-                offBefore = off;
-                return;
-              }
-              watch.disconnect();
-              clearTimeout(give);
-              settle({ offBefore, off, rebuilt: grid.querySelector(".term-cursor") !== span });
-            });
-            watch.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
-            watch.observe(grid, { attributes: true, attributeFilter: ["data-cursor-shape"] });
-          });
-          Reflect.set(element, "atSwitch", atSwitch);
-          resolve();
-        };
-        const give = setTimeout(() => reject(new Error(`no off phase within ${within} ms`)), within);
-        const off = new MutationObserver(() => {
-          if (!element.hasAttribute("data-cursor-off")) return;
-          off.disconnect();
-          clearTimeout(give);
-          arm();
-        });
-        off.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
-      }),
-    FLIP_WITHIN_MS,
-  );
+  await holdCursorOff(terminal);
+  await terminal.evaluate((element, within) => {
+    const grid = element.querySelector(".term-grid");
+    if (grid === null) throw new Error("the terminal has no grid");
+    const span = grid.querySelector(".term-cursor");
+    let offBefore = element.hasAttribute("data-cursor-off");
+    const atSwitch = new Promise<object>((settle, fail) => {
+      const give = setTimeout(() => fail(new Error(`the shape did not change within ${within} ms`)), within);
+      // The app's observers were registered first, so read the phase after they reacted to the new shape.
+      const watch = new MutationObserver((records) => {
+        const off = element.hasAttribute("data-cursor-off");
+        if (!records.some((record) => record.attributeName === "data-cursor-shape")) {
+          offBefore = off;
+          return;
+        }
+        watch.disconnect();
+        clearTimeout(give);
+        settle({ offBefore, off, rebuilt: grid.querySelector(".term-cursor") !== span });
+      });
+      watch.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
+      watch.observe(grid, { attributes: true, attributeFilter: ["data-cursor-shape"] });
+    });
+    Reflect.set(element, "atSwitch", atSwitch);
+  }, FLIP_WITHIN_MS);
   await terminal.getByRole("textbox").press("Enter");
   const atSwitch: unknown = await terminal.evaluate((element) => Reflect.get(element, "atSwitch"));
   expect(atSwitch, "the bar came while the block was off, its span kept, and is drawn on").toEqual({
@@ -302,46 +328,30 @@ test("a block switched to a bar while it is off shows the bar on at once", async
 test("typing while the cursor is off draws it on as soon as it moves", async ({ page }) => {
   await page.goto("/");
   const terminal = await focusedTerminal(page);
-  // Armed at the start of an off phase, so the key lands within it; a key that came after the phase had ended would
-  // find the cursor on whether or not anything started it over, and proves nothing. The app's own observers were made
-  // first, so within the batch that rebuilds the span they have already run: the phase is read after what they did.
-  await terminal.evaluate(
-    (element, within) =>
-      new Promise<void>((resolve, reject) => {
-        const grid = element.querySelector(".term-grid");
-        if (grid === null) throw new Error("the terminal has no grid");
-        const arm = (): void => {
-          const span = grid.querySelector(".term-cursor");
-          let offBefore = true;
-          const atRebuild = new Promise<object>((settle, fail) => {
-            const give = setTimeout(() => fail(new Error(`the cursor did not move within ${within} ms`)), within);
-            const watch = new MutationObserver(() => {
-              const off = element.hasAttribute("data-cursor-off");
-              if (grid.querySelector(".term-cursor") === span) {
-                offBefore = off;
-                return;
-              }
-              watch.disconnect();
-              clearTimeout(give);
-              settle({ offBefore, off });
-            });
-            watch.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
-            watch.observe(grid, { childList: true, subtree: true });
-          });
-          Reflect.set(element, "atRebuild", atRebuild);
-          resolve();
-        };
-        const give = setTimeout(() => reject(new Error(`no off phase within ${within} ms`)), within);
-        const off = new MutationObserver(() => {
-          if (!element.hasAttribute("data-cursor-off")) return;
-          off.disconnect();
-          clearTimeout(give);
-          arm();
-        });
-        off.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
-      }),
-    FLIP_WITHIN_MS,
-  );
+  await holdCursorOff(terminal);
+  await terminal.evaluate((element, within) => {
+    const grid = element.querySelector(".term-grid");
+    if (grid === null) throw new Error("the terminal has no grid");
+    const span = grid.querySelector(".term-cursor");
+    let offBefore = element.hasAttribute("data-cursor-off");
+    const atRebuild = new Promise<object>((settle, fail) => {
+      const give = setTimeout(() => fail(new Error(`the cursor did not move within ${within} ms`)), within);
+      // Read the phase after the app's earlier observer reacted to the rebuilt span.
+      const watch = new MutationObserver(() => {
+        const off = element.hasAttribute("data-cursor-off");
+        if (grid.querySelector(".term-cursor") === span) {
+          offBefore = off;
+          return;
+        }
+        watch.disconnect();
+        clearTimeout(give);
+        settle({ offBefore, off });
+      });
+      watch.observe(element, { attributes: true, attributeFilter: ["data-cursor-off"] });
+      watch.observe(grid, { childList: true, subtree: true });
+    });
+    Reflect.set(element, "atRebuild", atRebuild);
+  }, FLIP_WITHIN_MS);
   await terminal.getByRole("textbox").press("x");
   const rebuilt: unknown = await terminal.evaluate((element) => Reflect.get(element, "atRebuild"));
   expect(rebuilt, "the key came while the cursor was off, and it is drawn on the moment its span is rebuilt").toEqual({
