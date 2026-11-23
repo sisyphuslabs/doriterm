@@ -1,4 +1,5 @@
 export * from "./__generated__/hc-api.ts";
+export * from "./__generated__/mcp-tools.ts";
 export * from "./frame.ts";
 export * from "./json.ts";
 export * from "./jsonrpc.ts";
