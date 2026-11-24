@@ -27,6 +27,10 @@
 
 - In the phone's text field, Enter now starts a new line, on the phone's keyboard and a hardware keyboard alike, and
   only the Send button sends. A message can be written over several lines before it goes. (#2766, #2767)
+- The terminal's keys on a phone now sit in two pills in one row, as in the Herdr app: the keys on the left in pages you
+  swipe through, with a dot per page, and Return, the keyboard toggle and the text field's toggle on the right. The text
+  field moved into its own card above the row, which opens and closes with its toggle; Enter there still starts a new
+  line and only Send sends. The arrow keys open as a small inverted-T bubble over their key. (#2778)
 
 ### Connection and offline wording
 
@@ -43,6 +47,14 @@
 - An MCP client can follow terminals as they change: terminals are MCP resources it can read and subscribe to
   (`subscriptions/listen`), and the MCP Events extension delivers `terminal.changed` with what changed
   (`events/stream`). Each subscription ends when it is cancelled or the session closes. (#2735)
+
+### Pairing and adding machines
+
+- Add a machine and Pair a host are one flow. The same place shows the line to run on the other machine and takes an
+  invite from another machine: a link, its code, or the whole install line as it was pasted. (#2795, #2803)
+- This app's own install line pasted back into its invite field is refused with a note to run it on the other machine,
+  and the invite still works there. Before, it read as a different kind of invite, the host refused it, and every retry
+  said it was used already. (#2795, #2803)
 
 ## v0.1.23 - 2026-11-24
 
