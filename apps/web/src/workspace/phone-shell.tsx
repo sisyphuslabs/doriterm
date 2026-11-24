@@ -182,6 +182,7 @@ export function PhoneShell(props: PhoneShellProps) {
     // Keyed by session: a switch starts with no latched modifier, no open pad and no open menu.
     <PhoneTerminal
       key={terminal.address}
+      arrive={pushed}
       connection={connection}
       terminal={terminal}
       terminals={terminals}

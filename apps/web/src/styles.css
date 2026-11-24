@@ -14,11 +14,12 @@
   scrollbar-width: none;
 }
 
-/* One finger pans the scrollback and two pinch-zoom, but a double tap does nothing: the base's `touch-action:
-   manipulation` (#1382) would also allow horizontal panning, which the grid never needs. Read-only browsing relies on the
-   vertical pan, and the held-press drag cancels `touchmove` itself once it has picked (use-long-press-select.ts). */
+/* One finger pans the scrollback; two change the terminal's font size (pinch-zoom.ts), never the page's zoom; a double
+   tap does nothing. The base's `touch-action: manipulation` (#1382) would also allow horizontal panning and page zoom.
+   Read-only browsing relies on the vertical pan, and the held-press drag cancels `touchmove` itself once it has picked
+   (use-long-press-select.ts). */
 .wterm.wterm {
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-y;
 }
 
 .wterm.wterm::-webkit-scrollbar {
@@ -217,4 +218,35 @@
 .wterm .term-wide {
   text-align: center;
   letter-spacing: 0;
+}
+
+/* Phone Back view transition (phone-back-motion.ts): the leaving screen slides off over the destination. Separate rules
+   so an engine without :active-view-transition-type() still honours the data-back-motion fallback. */
+@keyframes phone-back-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+html:active-view-transition-type(phone-back)::view-transition-old(root) {
+  z-index: 1;
+  animation: phone-back-out var(--duration-back) var(--ease-exit) both;
+}
+
+html:active-view-transition-type(phone-back)::view-transition-new(root) {
+  z-index: 0;
+  animation: none;
+}
+
+html[data-back-motion]::view-transition-old(root) {
+  z-index: 1;
+  animation: phone-back-out var(--duration-back) var(--ease-exit) both;
+}
+
+html[data-back-motion]::view-transition-new(root) {
+  z-index: 0;
+  animation: none;
 }

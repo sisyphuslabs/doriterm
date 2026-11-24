@@ -2,7 +2,7 @@ import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import type { ReactElement, ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
-import { backdropClass, modalLayer, wrapAnywhere } from "./overlay.ts";
+import { modalLayer, sheetBackdropClass, wrapAnywhere } from "./overlay.ts";
 
 const SIDE = {
   right:
@@ -56,13 +56,13 @@ export function Sheet({ title, side = "right", children, trigger, open, onOpenCh
     >
       {trigger === undefined ? null : <BaseDialog.Trigger render={trigger} />}
       <BaseDialog.Portal>
-        <BaseDialog.Backdrop className={backdropClass} />
+        <BaseDialog.Backdrop className={sheetBackdropClass} />
         <BaseDialog.Popup
           className={cn(
             modalLayer,
             "fixed flex flex-col border-border bg-popover text-popover-foreground shadow-overlay outline-none",
             wrapAnywhere,
-            "transition-transform duration-(--duration-standard) ease-out motion-reduce:transition-opacity",
+            "transition-transform duration-(--duration-sheet-in) ease-standard data-ending-style:duration-(--duration-sheet-out) data-ending-style:ease-exit motion-reduce:transition-opacity",
             SIDE[side],
           )}
         >

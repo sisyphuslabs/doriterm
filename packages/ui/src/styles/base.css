@@ -118,8 +118,8 @@
 @layer components {
   :root[data-ready] .motion-arrive {
     transition:
-      opacity var(--arrive-duration, var(--duration-standard)) var(--ease-out),
-      transform var(--arrive-duration, var(--duration-standard)) var(--ease-out);
+      opacity var(--arrive-duration, var(--duration-standard)) var(--arrive-ease, var(--ease-out)),
+      transform var(--arrive-duration, var(--duration-standard)) var(--arrive-ease, var(--ease-out));
   }
 
   :root[data-ready] .motion-arrive:not([data-arrived]) {

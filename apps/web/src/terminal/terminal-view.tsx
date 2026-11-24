@@ -3,7 +3,6 @@ import { cn } from "@doriface/ui";
 import { Terminal, type TerminalHandle, type WTerm } from "@wterm/react";
 import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScreenAwake } from "../device/keep-awake.ts";
-import { useTerminalConfig } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { isBrowsing, useBrowseMode } from "./browse-mode.ts";
 import { readDisplay } from "./display.ts";
@@ -50,6 +49,7 @@ import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { type PaintHold, useTerminalAttach } from "./use-terminal-attach.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
 import { useCursor } from "./use-cursor.ts";
+import { useTerminalSizing } from "./use-terminal-sizing.ts";
 
 /**
  * Gives a focus event's focus back to the element that had it, unless that sits in a pane no longer focused (focus
@@ -74,11 +74,12 @@ export function TerminalView(props: TerminalViewProps) {
     typesComposition = false,
   } = props;
   const { browsing = false } = props;
-  const config = useTerminalConfig();
+  const [wt, setWt] = useState<WTerm | null>(null);
+  const stream = useRef<TerminalStream | null>(null);
+  const { config, hostSize, inputStarts } = useTerminalSizing(wt, address, stream);
   const options = useMemo(() => rendererOptions(config), [config]);
   const dark = useDarkScheme();
   useScreenAwake();
-  const [wt, setWt] = useState<WTerm | null>(null);
   const [paste, setPaste] = useState<PendingPaste | null>(null);
   /** Where a held touch lifted, while its menu of Copy and Paste is open. */
   const [selectAt, setSelectAt] = useState<Point | null>(null);
@@ -92,7 +93,6 @@ export function TerminalView(props: TerminalViewProps) {
    * when it moves (#1207).
    */
   const written = useRef(0);
-  const stream = useRef<TerminalStream | null>(null);
   // The program's output reaches the core through this: Kitty images sent as PNG are decoded to RGBA on the way.
   const output = useMemo(
     () =>
@@ -148,6 +148,7 @@ export function TerminalView(props: TerminalViewProps) {
     transformInput,
     typesComposition,
     predict,
+    inputStarts,
   });
   const { pending, typedInto, typed, pasteFiles, linkReady } = input;
   const scroll = useTerminalScroll(wt);
@@ -236,6 +237,7 @@ export function TerminalView(props: TerminalViewProps) {
     onEnded,
     onStream: streamStarted,
     holdPaint,
+    hostSize,
   });
 
   if (error !== null) return <p className="p-4 text-prose text-destructive">{error}</p>;
@@ -292,7 +294,7 @@ export function TerminalView(props: TerminalViewProps) {
         onResize={(cols, rows) => {
           // The core reflows its rows to the new width, with no output: the cells a find read have moved.
           written.current += 1;
-          stream.current?.resize(cols, rows);
+          hostSize.resize(stream.current, cols, rows);
         }}
         onFocus={(event) => {
           // The field taken again for the soft keyboard never left the terminal, as far as the program knows (#1519).
@@ -301,10 +303,10 @@ export function TerminalView(props: TerminalViewProps) {
           // arrive for a pane the view did not choose. Only the focused pane's keeps it; any other hands it back to
           // where it was, so a pane another device adds never takes the keyboard.
           if (wt === null && !isFocused.current) return handBack(event);
-          stream.current?.focus(true);
+          hostSize.focus(stream.current, true);
         }}
         onBlur={(event) => {
-          if (!regainingFocus(event.target)) stream.current?.focus(false);
+          if (!regainingFocus(event.target)) hostSize.focus(stream.current, false);
         }}
       />
       {attachment.opening ? (
