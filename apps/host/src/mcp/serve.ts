@@ -1,6 +1,7 @@
 import { CloseCode } from "@doriface/crypto";
 import { HcRpcError, type HcMethod } from "@doriface/protocol";
 import type { PushLink } from "../push/push-stream.ts";
+import type { MeshToolDeps } from "./mesh-tools.ts";
 import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine, toolResult, type ToolsShown } from "./lines.ts";
 
 const encoder = new TextEncoder();
@@ -16,6 +17,8 @@ export interface McpServeDeps {
   readonly hostVersion: string;
   /** Opens this session's own connection to the core, on its first tool call. */
   readonly openHc?: (() => Promise<HcCaller>) | undefined;
+  /** The running host's mesh and devices; a host without stored state has none. */
+  readonly mesh?: MeshToolDeps | undefined;
 }
 
 /** One LF-delimited JSON-RPC message at a time; tool calls run concurrently and each reply is one whole line. */
@@ -79,6 +82,16 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
       settleDying();
     }
   };
+  // A mesh tool runs in this host, not on the core; what it refuses comes back as a tool error with its words.
+  const runMesh = async (line: Extract<McpLine, { kind: "mesh" }>): Promise<void> => {
+    try {
+      if (deps.mesh === undefined) throw new Error("this host keeps no state, so it has no mesh or devices");
+      send({ jsonrpc: "2.0", id: line.id, result: toolResult(await line.tool.run(line.args, deps.mesh), false) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      send({ jsonrpc: "2.0", id: line.id, result: toolResult({ kind: "refused", message }, true) });
+    }
+  };
   link.onClose(() => {
     closed = true;
     for (const abort of calls.values()) abort.abort();
@@ -114,6 +127,7 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
         const key = line.requestId;
         if (typeof key === "string" || typeof key === "number") calls.get(key)?.abort();
       } else if (line.kind === "call") void run(line);
+      else if (line.kind === "mesh") void runMesh(line);
     }
   });
 }

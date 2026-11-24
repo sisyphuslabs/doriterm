@@ -1,7 +1,10 @@
 import { HcRpcError, MCP_EXCLUDED_METHODS, MCP_TOOLS } from "@doriface/protocol";
 import { expect, test } from "bun:test";
 import type { PushLink } from "../push/push-stream.ts";
+import { MESH_TOOLS } from "./mesh-tools.ts";
 import { type HcCaller, serveMcpLines } from "./serve.ts";
+
+const CATALOG_NAMES = [...MCP_TOOLS, ...MESH_TOOLS].map((tool) => tool.name);
 
 const META = { "io.modelcontextprotocol/protocolVersion": "2026-07-28" };
 const enc = new TextEncoder();
@@ -106,7 +109,7 @@ test("tools/list shows two tools until the session asks for more: a group adds t
   ]);
   r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: "all" } });
   list(3);
-  expect(namesIn(r.replies[2])).toEqual(MCP_TOOLS.map((tool) => tool.name));
+  expect(namesIn(r.replies[2])).toEqual(CATALOG_NAMES);
   r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: 7 } });
   list(4);
   expect(namesIn(r.replies[3])).toEqual(["doriterm_tools", "doriterm_call"]);
@@ -122,7 +125,7 @@ test("doriterm_tools answers the catalog without the core: names alone, or the m
   r.call(4, "doriterm_tools", { query: 5 });
   const content = (index: number): { tools: { name: string; inputSchema?: object }[]; more?: number } =>
     Reflect.get(Reflect.get(r.replies[index] ?? {}, "result") ?? {}, "structuredContent");
-  expect(content(0).tools.map((tool) => tool.name)).toEqual(MCP_TOOLS.map((tool) => tool.name));
+  expect(content(0).tools.map((tool) => tool.name)).toEqual(CATALOG_NAMES);
   expect(content(0).tools.every((tool) => tool.inputSchema === undefined)).toBe(true);
   expect(content(1).tools.map((tool) => tool.name)).toEqual(["terminal_kill"]);
   expect(content(1).tools[0]?.inputSchema).toEqual(
@@ -165,14 +168,14 @@ test("doriterm_call runs the named tool as a direct call would, and refuses what
   expect(r.calls).toHaveLength(1);
 });
 
-test("the full list is the generated table: 25 of herdr-core's methods, none of the seven left out", () => {
+test("the full list is the generated table, 25 of herdr-core's methods and none of the seven left out, then the mesh tools", () => {
   const r = rig();
   r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: "all" } });
   r.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: META } });
   const [answer] = r.replies;
   expect(answer).toMatchObject({ id: 1, result: { resultType: "complete", ttlMs: 300_000, cacheScope: "private" } });
   const names: readonly string[] = JSON.stringify(answer).match(/"name":"[a-z_]+"/g) ?? [];
-  expect(names).toEqual(MCP_TOOLS.map((tool) => `"name":"${tool.name}"`));
+  expect(names).toEqual(CATALOG_NAMES.map((name) => `"name":"${name}"`));
   expect(MCP_TOOLS).toHaveLength(25);
   for (const method of MCP_EXCLUDED_METHODS) expect(MCP_TOOLS.some((tool) => tool.method === method)).toBe(false);
   expect(r.opened()).toBe(0);

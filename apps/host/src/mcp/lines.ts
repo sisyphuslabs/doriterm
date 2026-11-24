@@ -1,4 +1,5 @@
 import { isJsonObject, type JsonObject, MCP_TOOLS, type McpToolRow } from "@doriface/protocol";
+import { MESH_TOOLS, type MeshTool } from "./mesh-tools.ts";
 
 export const MAX_MCP_LINE = 256 * 1024;
 const VERSION = "2026-07-28";
@@ -20,7 +21,7 @@ const CORE_TOOLS = [
   {
     name: "doriterm_tools",
     description:
-      "Find Doriterm tools (terminals, machines, files, docs). Without a query: every tool's name and what it does. " +
+      "Find Doriterm tools (terminals, machines, files, docs, the mesh and its devices). Without a query: every tool's name and what it does. " +
       `With a query: up to ${SEARCH_LIMIT} matching tools with their input schemas. Call one with doriterm_call.`,
     inputSchema: {
       type: "object",
@@ -41,20 +42,27 @@ const CORE_TOOLS = [
 ] as const;
 
 const groupOf = (name: string): string => name.slice(0, name.indexOf("_"));
-const listed = ({ name, description, inputSchema }: McpToolRow) => ({ name, description, inputSchema });
+interface Listed {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: JsonObject;
+}
+const listed = ({ name, description, inputSchema }: Listed): Listed => ({ name, description, inputSchema });
+/** Every tool a session can call: herdr-core's methods, then this host's mesh tools. */
+const CATALOG: readonly Listed[] = [...MCP_TOOLS, ...MESH_TOOLS];
 
 function shownTools(shown: ToolsShown): readonly object[] {
-  if (shown === "all") return MCP_TOOLS.map(listed);
+  if (shown === "all") return CATALOG.map(listed);
   if (shown === "core") return CORE_TOOLS;
-  return [...CORE_TOOLS, ...MCP_TOOLS.filter((row) => shown.includes(groupOf(row.name))).map(listed)];
+  return [...CORE_TOOLS, ...CATALOG.filter((row) => shown.includes(groupOf(row.name))).map(listed)];
 }
 
 function findTools(query: string | undefined): object {
   if (query === undefined || query.trim() === "") {
-    return { tools: MCP_TOOLS.map(({ name, description }) => ({ name, description })) };
+    return { tools: CATALOG.map(({ name, description }) => ({ name, description })) };
   }
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const matches = MCP_TOOLS.filter((row) => {
+  const matches = CATALOG.filter((row) => {
     const text = `${row.name} ${row.description}`.toLowerCase();
     return words.every((word) => text.includes(word));
   });
@@ -82,7 +90,8 @@ export type McpLine =
   | { readonly kind: "reply"; readonly reply: object }
   | { readonly kind: "none" }
   | { readonly kind: "cancel"; readonly requestId: unknown }
-  | { readonly kind: "call"; readonly id: Id; readonly tool: McpToolRow; readonly args: JsonObject };
+  | { readonly kind: "call"; readonly id: Id; readonly tool: McpToolRow; readonly args: JsonObject }
+  | { readonly kind: "mesh"; readonly id: Id; readonly tool: MeshTool; readonly args: JsonObject };
 
 export const rpcError = (id: Id, code: number, message: string, data?: object) => ({
   jsonrpc: "2.0",
@@ -91,6 +100,7 @@ export const rpcError = (id: Id, code: number, message: string, data?: object) =
 });
 const result = (id: Id, value: object): McpLine => ({ kind: "reply", reply: { jsonrpc: "2.0", id, result: value } });
 const toolByName = new Map(MCP_TOOLS.map((row) => [row.name, row]));
+const meshToolByName = new Map(MESH_TOOLS.map((tool) => [tool.name, tool]));
 
 /** Decodes one complete line without its LF and decides what it asks for; only the methods this host serves exist. */
 export function readMcpLine(bytes: Uint8Array, hostVersion: string, shown: ToolsShown = "core"): McpLine {
@@ -137,9 +147,11 @@ export function readMcpLine(bytes: Uint8Array, hostVersion: string, shown: Tools
       // doriterm_call is the same call one level in: the named tool and its arguments.
       const name = asked === "doriterm_call" ? given["tool"] : asked;
       const args = asked === "doriterm_call" ? (given["arguments"] ?? {}) : given;
+      if (!isJsonObject(args)) return invalid("Invalid params: arguments must be an object");
+      const meshTool = typeof name === "string" ? meshToolByName.get(name) : undefined;
+      if (meshTool !== undefined) return { kind: "mesh", id, tool: meshTool, args };
       const tool = typeof name === "string" ? toolByName.get(name) : undefined;
       if (tool === undefined) return invalid(`Unknown tool: ${String(name)}`);
-      if (!isJsonObject(args)) return invalid("Invalid params: arguments must be an object");
       return { kind: "call", id, tool, args };
     }
     default:

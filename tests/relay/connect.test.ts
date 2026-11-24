@@ -278,6 +278,13 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     const through = JSON.parse(decoder.decode(await within(run.reader.line(), "the doriterm_call answer")));
     expect(Array.isArray(through.result.structuredContent.terminals)).toBe(true);
 
+    // A mesh tool answers from the running host itself: this very device is in its list, under the name it paired as.
+    await run.write(mcpLine(5, "tools/call", { name: "mesh_status", arguments: {} }));
+    const mesh = JSON.parse(decoder.decode(await within(run.reader.line(), "the mesh_status answer")));
+    expect(mesh.result.isError).toBe(false);
+    expect(mesh.result.structuredContent.devices.map((device: { name: string }) => device.name)).toContain("assistant");
+    expect(mesh.result.structuredContent.joins).toEqual([]);
+
     new McpSwitch(stateDir).setEnabled(false);
     expect(await within(run.exited, "the session ending once MCP is off")).toBe(1);
   });

@@ -18,6 +18,7 @@ import { listenError, StartupError } from "./startup-error.ts";
 import { type StartedPart, stopStarted } from "./stop-started.ts";
 import { assertListenAllowed, formatHost } from "./listen.ts";
 import { openOnCore, spawnHcLink } from "./mesh/hc-machines.ts";
+import { meshToolDeps } from "./mcp/mesh-deps.ts";
 import { serveMcpLines } from "./mcp/serve.ts";
 import { HostUplink } from "./relay/host-uplink.ts";
 import { openRelayPasses } from "./relay/relay-passes.ts";
@@ -138,6 +139,19 @@ async function serve(
         : new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log }),
   });
   started("speculative hello", () => speculative.stop());
+  // A revoke from the app or an MCP client is the same act as `devices revoke` on the control socket: the file loses
+  // the device, the sessions of its key close, and its push subscription goes.
+  const deviceSurface =
+    e2ee === undefined
+      ? undefined
+      : new DeviceSurface({
+          devices: e2ee.devices,
+          changed: async () => {
+            e2ee.hostMesh.sweepRoster();
+            await e2ee.sessions.closeRevoked();
+            push?.prune();
+          },
+        });
   const gateway = createGateway({
     e2ee,
     speculative,
@@ -145,6 +159,18 @@ async function serve(
     mcp: (link) =>
       serveMcpLines(link, {
         hostVersion: HOST_VERSION,
+        mesh:
+          e2ee === undefined || deviceSurface === undefined
+            ? undefined
+            : meshToolDeps({
+                e2ee,
+                devices: deviceSurface,
+                status: async () => {
+                  await refreshMeshLines();
+                  return meshStatus?.();
+                },
+                relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
+              }),
         // Each MCP session gets its own connection to this host's core, as an hc session gets its own pipe.
         openHc: async () => {
           const target = {
@@ -172,19 +198,7 @@ async function serve(
             open: () => e2ee.hostMesh.pairDevice(),
             relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
           }),
-    // A revoke from the app is the same act as `devices revoke` on the control socket: the file loses the device, the
-    // sessions of its key close, and its push subscription goes.
-    devices:
-      e2ee === undefined
-        ? undefined
-        : new DeviceSurface({
-            devices: e2ee.devices,
-            changed: async () => {
-              e2ee.hostMesh.sweepRoster();
-              await e2ee.sessions.closeRevoked();
-              push?.prune();
-            },
-          }),
+    devices: deviceSurface,
     token: options.token,
     hostVersion: HOST_VERSION,
     hcVersion,
