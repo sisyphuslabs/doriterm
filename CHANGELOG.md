@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+## v0.1.24 - 2026-11-24
+
+### Workspace
+
+- An agent started from the tab strip's + menu (such as omo) opens as a tab of the selected space, instead of in a new
+  space when it takes a few seconds to get ready. (#2748)
+- The Agents list keeps an agent's helpers with it: a terminal another agent started is listed right under that agent,
+  and the agent is placed by the most urgent of itself and its helpers, so a helper that needs you brings its agent to
+  Needs you. A helper that finished does not move a working agent out of Working. (#2752)
+- The Agents list draws helpers as an indented tree with a fold control that shows the hidden count and whether any
+  helper needs you, on desktop and phone. (#2755)
+- Agent rows and tabs show a single-colour mark for what they run: the agent's own for Claude, Cursor, Copilot, Gemini,
+  OpenCode, Kimi and Qwen, a distinct glyph for Codex, Grok, Amp, Antigravity, omo, omp and Droid, and the generic
+  agent, shell and program glyphs for everything else. The agent is read from its own report, else from the program it
+  runs. (#2757)
+
+### Keys
+
+- Next agent and Previous agent step through the agents in the order the Agents list draws them, so a helper comes
+  right after the agent that started it and the keys follow the filter and the folds on screen. (#2756)
+
+### Phone
+
+- In the phone's text field, Enter now starts a new line, on the phone's keyboard and a hardware keyboard alike, and
+  only the Send button sends. A message can be written over several lines before it goes. (#2766, #2767)
+
+### Connection and offline wording
+
+- Loading and reconnecting messages no longer flash for short waits. "Connecting to your host", "Loading the
+  workspace…", "Loading agents…", "Reconnecting…" in the status bar, the phone's line and a pane's header show only
+  once a wait has taken a second, and then stay at least half a second, so a quick reload or a quick return to the
+  app shows nothing, and none blinks. Being offline is still said at once. (#2768, #2769)
+
+### MCP clients
+
+- MCP is on by default: a paired device can open an MCP session on a host that never set the switch, new installs
+  and existing hosts alike. `doriface-host mcp off` still turns it off, and that setting survives updates; an unpaired
+  or revoked device is still refused. (#2735)
+- An MCP client can follow terminals as they change: terminals are MCP resources it can read and subscribe to
+  (`subscriptions/listen`), and the MCP Events extension delivers `terminal.changed` with what changed
+  (`events/stream`). Each subscription ends when it is cancelled or the session closes. (#2735)
+
 ## v0.1.23 - 2026-11-24
 
 v0.1.22 was prepared but never published; everything listed under v0.1.22 below ships in this release.
