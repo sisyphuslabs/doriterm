@@ -32,6 +32,15 @@ describe("runParamsFor", () => {
     expect(runParamsFor(terminal("t1"), { dir: "/srv/api" })).toEqual({ cwd: "/work/api" });
   });
 
+  test("the space it is started for is named by herdr.space, so an adoption before its run answers puts it there", () => {
+    expect(runParamsFor(undefined, { dir: "", space: "spc1" })).toEqual({ labels: { "herdr.space": "spc1" } });
+    expect(runParamsFor(terminal("build/t3", { labels: { space: "infra" } }), { dir: "", space: "spc2" })).toEqual({
+      cwd: "/work/api",
+      on: "build",
+      labels: { space: "infra", "herdr.space": "spc2" },
+    });
+  });
+
   test("an active terminal on an added machine starts the new one there, and a named space carries over", () => {
     expect(runParamsFor(terminal("build/t3", { labels: { space: "infra" } }))).toEqual({
       cwd: "/work/api",

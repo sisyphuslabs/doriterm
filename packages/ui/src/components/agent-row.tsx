@@ -1,8 +1,49 @@
 import { Pin } from "lucide-react";
 import { useRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
+import { AgentMark } from "./agent-mark.tsx";
+import { hasAgentMark } from "./agent-marks.ts";
 import { useRowFloors } from "./row-floors.ts";
 import { STATUS_LABEL, StatusChip, StatusIndicator, type AgentStatus } from "./status.tsx";
+
+/** One cell of a row's tree guides: "│" a continuing ancestor, "├" / "└" the row's own joint, "" a spent ancestor. */
+export type AgentTreeGuide = "│" | "├" | "└" | "";
+
+/** Width of one tree guide column in pixels. */
+export const AGENT_TREE_GUIDE_PX = 14;
+
+/** Width of the reserved fold-control column in pixels. */
+export const AGENT_TREE_DISCLOSURE_PX = 18;
+
+/** Left padding of an AgentRow (`px-2`), in pixels. */
+const ROW_PADDING_LEFT_PX = 8;
+
+/** X offset in pixels where the disclosure column starts for a row at `depth`, capped at `depthCap`. */
+export const agentRowLead = (depth: number, depthCap = 3): number =>
+  ROW_PADDING_LEFT_PX + AGENT_TREE_GUIDE_PX * Math.min(Math.max(0, depth), Math.max(0, depthCap));
+
+function guideCells(guides: readonly AgentTreeGuide[] | undefined, drawn: number): readonly AgentTreeGuide[] {
+  if (drawn <= 0) return [];
+  const raw = guides ?? [];
+  if (raw.length >= drawn) return raw.slice(raw.length - drawn);
+  return [...Array.from<AgentTreeGuide>({ length: drawn - raw.length }).fill(""), ...raw];
+}
+
+function TreeGuideCell({ guide }: { readonly guide: AgentTreeGuide }) {
+  return (
+    <span className="relative h-full w-[14px] shrink-0">
+      {guide === "│" || guide === "├" ? (
+        <span className="absolute top-0 -bottom-px left-1/2 w-[1.5px] -translate-x-1/2 bg-border" />
+      ) : null}
+      {guide === "└" ? (
+        <span className="absolute top-0 left-1/2 h-[calc(50%+0.75px)] w-[1.5px] -translate-x-1/2 bg-border" />
+      ) : null}
+      {guide === "├" || guide === "└" ? (
+        <span className="absolute top-1/2 right-0 left-[calc(50%+0.75px)] h-[1.5px] -translate-y-1/2 bg-border" />
+      ) : null}
+    </span>
+  );
+}
 
 export interface Agent {
   readonly id: string;
@@ -15,9 +56,19 @@ export interface Agent {
   /** Pre-formatted age: "<1m", "4m", "2h". */
   readonly age?: string;
   readonly icon?: ReactNode;
+  /** The key of the mark drawn for what the agent runs. */
+  readonly kind?: string;
   readonly pinned?: boolean;
   /** How far the agent's own todo list has got, when it draws one: `done` of `total`. */
   readonly todo?: { readonly done: number; readonly total: number };
+  /** How deep the row sits under the agent that started it; absent or 0 for a top-level row. */
+  readonly depth?: number;
+  /** One cell per level above the row, as the list it is drawn in shapes them. */
+  readonly guides?: readonly AgentTreeGuide[];
+  /** The rows of the agent's subtree in the list it is drawn in: what a folded row counts. */
+  readonly descendants?: number;
+  /** The most urgent of the agent and its live sub-agents, a sub-agent's done read as idle. */
+  readonly urgency?: AgentStatus;
 }
 
 /** The todo progress in words, for the label and the tooltip. */
@@ -32,6 +83,12 @@ export interface AgentRowProps extends Omit<ComponentProps<"button">, "onSelect"
   readonly onSelect?: (id: string) => void;
   /** The sidebar is an icon rail: the status glyph alone, the name and state as its label and tooltip. */
   readonly rail?: boolean;
+  /** Maximum number of indented guide levels to draw (3 on desktop, 2 on phone). */
+  readonly depthCap?: number;
+  /** Reserve the 18 px disclosure column for the fold control. */
+  readonly disclosure?: boolean;
+  /** Name of the immediate parent agent, announced visually hidden after the name. */
+  readonly parentName?: string;
   readonly className?: string;
 }
 
@@ -47,15 +104,33 @@ export function AgentRow({
   compactBlocked = false,
   onSelect,
   rail = false,
+  depthCap = 3,
+  disclosure = false,
+  parentName,
   className,
   ref,
   ...props
 }: AgentRowProps) {
   const quiet = agent.status === "idle" && !selected;
   const row = useRef<HTMLButtonElement | null>(null);
-  // The age is in the key too: a wider age (59m after <1m) leaves less room for the parts.
+  const drawn = Math.min(Math.max(0, agent.depth ?? 0), Math.max(0, depthCap));
+  const cells = guideCells(agent.guides, drawn);
+  // The age and tree indent are in the key too: wider ages or deeper indents leave less room for the parts.
   const todo = agent.todo === undefined ? undefined : `${agent.todo.done}/${agent.todo.total}`;
-  useRowFloors(row, [agent.name, agent.detail, agent.machine, agent.age, todo].join("\u0000"));
+  useRowFloors(
+    row,
+    [
+      agent.name,
+      agent.detail,
+      agent.machine,
+      agent.age,
+      agent.kind,
+      todo,
+      drawn,
+      disclosure ? "1" : "0",
+      cells.join(""),
+    ].join("\u0000"),
+  );
   if (rail) {
     const label = [
       agent.name,
@@ -101,6 +176,16 @@ export function AgentRow({
         className,
       )}
     >
+      {drawn > 0 || disclosure ? (
+        <span aria-hidden className="-mr-1.5 flex shrink-0 items-center self-stretch">
+          <span aria-hidden data-tree-guides data-depth={drawn} className="flex h-full shrink-0">
+            {cells.map((guide, index) => (
+              <TreeGuideCell key={index} guide={guide} />
+            ))}
+          </span>
+          {disclosure ? <span aria-hidden className="h-full w-[18px] shrink-0" /> : null}
+        </span>
+      ) : null}
       <span className="flex size-4 shrink-0 items-center justify-center">
         {agent.status === "blocked" && !compactBlocked ? (
           <StatusIndicator status="blocked" decorative />
@@ -108,7 +193,13 @@ export function AgentRow({
           <StatusIndicator status={agent.status} />
         )}
       </span>
-      {agent.icon}
+      {agent.icon ??
+        (agent.kind !== undefined && hasAgentMark(agent.kind) ? (
+          // 14 px, held 2 px after the status glyph rather than the row's 10 px gap: the glyph draws inside its 16 px box, so
+          // the two read as one cluster, and the mark costs the row's texts 16 px, which a narrow row with a long machine
+          // name can give and still keep five characters of each (#2746).
+          <AgentMark kind={agent.kind} size={14} className="-ml-2 text-muted-foreground" />
+        ) : null)}
       <span
         title={agent.name}
         data-floor="name"
@@ -116,6 +207,7 @@ export function AgentRow({
       >
         {agent.name}
       </span>
+      {parentName === undefined ? null : <span className="sr-only">, sub-agent of {parentName}</span>}
       {agent.detail === undefined ? null : (
         <>
           <span aria-hidden className="-mx-1.5 shrink-0 text-muted-foreground">
