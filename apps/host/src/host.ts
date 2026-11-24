@@ -26,6 +26,9 @@ import { openRelayPasses } from "./relay/relay-passes.ts";
 import { RelaySessionWire } from "./relay/session-wire.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
 import { startHostPush } from "./push/host-push.ts";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
+import { hcCli } from "./mcp/hc-cli.ts";
 
 export { HOST_VERSION, type E2eeEndpoint, type Host, type HostOptions } from "./host-types.ts";
 
@@ -153,6 +156,8 @@ async function serve(
             push?.prune();
           },
         });
+  // The skill reaches MCP sessions as their manual; it is loaded here, as the skill command loads it, not at import.
+  const skill = (await import("./commands/skill.ts")).BUNDLED_SKILL.files;
   const gateway = createGateway({
     e2ee,
     speculative,
@@ -160,6 +165,9 @@ async function serve(
     mcp: (link) =>
       serveMcpLines(link, {
         hostVersion: HOST_VERSION,
+        runHc: hcCli({ hc: options.hc, session: options.session, env: options.env }),
+        skill,
+        plan: { stateDirs: stateDir === undefined ? [] : [resolve(stateDir)], home: homedir(), cwd: process.cwd() },
         mesh:
           e2ee === undefined || deviceSurface === undefined
             ? undefined

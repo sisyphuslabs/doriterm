@@ -1,4 +1,4 @@
-# Doriterm transport contract v1.12.5
+# Doriterm transport contract v1.12.6
 
 This is the binding wire contract for every Doriterm package. Each rule below is the current one; the change log at the end records what each revision changed.
 
@@ -374,6 +374,7 @@ One more stream for a device (v1.12): the Model Context Protocol in place of her
 
 ## Change log
 
+- v1.12.6 (host behaviour, no relay change; #2789): `tools/list` shows one tool, `doriterm`, which takes `{args, stdin?, timeoutSeconds?}`. It runs an hc CLI command on the host's own session and answers `{exitCode, stdout, stderr, truncated, timedOut}`; `doc`, `machine connect`, the extra `file` verbs, `mesh`, `devices` and `host status` reach the host's own tools. It refuses `attach`, `connect`, `events`, `update`, `server stop|restart`, `machine rm` and `machine login`, and any file path inside the host's state directory, symlinks included. The skill the host carries is served as resources `doriterm://skill/<path>` and as the prompt `doriterm`, and `["skill"]` answers SKILL.md. The search tools, `doriterm_tools` and `doriterm_call`, and the `notifications/doriterm/tools` notification are gone.
 - v1.12.5 (host behaviour, no relay change; #2735): the catalog gains the host's file tools `file_list`, `file_stat`, `file_glob`, `file_grep` and `file_read_bytes` (base64, at most 128 KiB per call, `offset` and `length` for larger files), each run as one `machine.exec` of `sh` on the session's own core connection with the same `on` and `cwd` as hc's `file.*`, and `host_status` (version, host id, relay, paired devices). A machine without `sh` answers them as a tool error.
 - v1.12.4 (host behaviour, no relay change; #2735): MCP is on by default. A missing `mcp.json` now means on instead of off; a written `{"enabled":false}` still turns it off and survives an update.
 - v1.12.3 (host behaviour, no relay change; #2735): hc's event stream over MCP. Terminals are resources (`doriterm://terminal/<address>`, `resources/list`, `resources/read` returns the screen). `subscriptions/listen` acknowledges, then sends `notifications/resources/updated` for subscribed terminals and `notifications/resources/list_changed` when one is created or removed. The Events extension (`io.modelcontextprotocol/events`) offers one event type, `terminal.changed`, by push (`events/stream`): `active`, then one `event` per hc event with its payload, a heartbeat, and a fresh `active` with `truncated` after the core dropped events; cursors are null (no replay). Each subscription is one `events.subscribe` on the session's own core connection and ends on cancel or when the session closes. `terminal.attach` stays excluded.

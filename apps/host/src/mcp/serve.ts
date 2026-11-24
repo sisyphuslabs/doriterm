@@ -2,9 +2,12 @@ import { CloseCode } from "@doriface/crypto";
 import { type EventsSubscribeParams, HcRpcError, type HcMethod } from "@doriface/protocol";
 import type { PushLink } from "../push/push-stream.ts";
 import { FileToolRefused } from "./file-tools.ts";
-import type { MeshToolDeps } from "./mesh-tools.ts";
+import type { RunHcCli } from "./hc-cli.ts";
+import { type MeshToolDeps, MeshToolRefused } from "./mesh-tools.ts";
+import { type PlanContext, planCall, type Scope } from "./one-tool.ts";
 import { ended, type HcFeed, realEvery, serveListen, serveStream, terminalUri, type Every } from "./subscriptions.ts";
-import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine, toolResult, type ToolsShown, rpcError } from "./lines.ts";
+import type { SkillFile } from "../skill/bundle-macro.ts";
+import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine, rpcError, skillResources, toolResult } from "./lines.ts";
 
 const encoder = new TextEncoder();
 
@@ -32,7 +35,18 @@ export interface McpServeDeps {
   readonly openHc?: (() => Promise<HcCaller>) | undefined;
   /** The running host's mesh and devices; a host without stored state has none. */
   readonly mesh?: MeshToolDeps | undefined;
+  /** Runs an hc CLI command on this host's core; without it, hc commands are refused. */
+  readonly runHc?: RunHcCli | undefined;
+  /** Where file paths resolve and which state they must not reach. */
+  readonly plan?: PlanContext | undefined;
+  /** The Doriterm skill this host carries: served as resources and a prompt, and answered by ["skill"]. */
+  readonly skill?: readonly SkillFile[] | undefined;
+  /** The scopes this session holds; a paired device holds all three. */
+  readonly scopes?: readonly Scope[] | undefined;
 }
+
+const ALL_SCOPES: readonly Scope[] = ["read", "act", "mesh"];
+const NO_PLAN: PlanContext = { stateDirs: [], home: "/", cwd: "/" };
 
 /** One LF-delimited JSON-RPC message at a time; tool calls run concurrently and each reply is one whole line. */
 export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
@@ -40,7 +54,6 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
   let length = 0;
   let closed = false;
   let dying = false;
-  let shown: ToolsShown = "core";
   let hc: Promise<HcCaller> | undefined;
   const calls = new Map<Id, AbortController>();
   const close = (code: number, reason: string): void => {
@@ -76,39 +89,53 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
     );
     return hc;
   };
-  const run = async (line: Extract<McpLine, { kind: "call" | "file" }>): Promise<void> => {
+  // The one tool: the plan decides what runs and which scope it needs before anything is opened.
+  const runOne = async (line: Extract<McpLine, { kind: "one" }>): Promise<void> => {
     const abort = new AbortController();
     calls.set(line.id, abort);
+    const answer = (value: unknown, isError: boolean): void => {
+      send({ jsonrpc: "2.0", id: line.id, result: toolResult(value, isError) });
+    };
     try {
+      const plan = planCall(line.args, deps.plan ?? NO_PLAN);
+      if (plan.kind === "refused") return answer({ kind: "refused", message: plan.message }, true);
+      if (!(deps.scopes ?? ALL_SCOPES).includes(plan.scope)) {
+        return answer({ kind: "refused", message: `this needs the ${plan.scope} scope` }, true);
+      }
+      if (plan.kind === "skill") {
+        const text = deps.skill?.find((file) => file.path === "SKILL.md")?.text ?? "";
+        return answer({ exitCode: 0, stdout: text, stderr: "" }, false);
+      }
+      if (plan.kind === "mesh") {
+        if (deps.mesh === undefined) throw new Error("this host keeps no state, so it has no mesh or devices");
+        return answer(await plan.tool.run(plan.args, deps.mesh), false);
+      }
+      if (plan.kind === "hc") {
+        if (deps.runHc === undefined) throw new Error("this host runs no hc commands");
+        const options = { stdin: line.stdin, timeoutMs: line.timeoutMs, signal: abort.signal };
+        const result = await deps.runHc(plan.argv, options);
+        if (abort.signal.aborted) return;
+        return answer(result, result.exitCode !== 0);
+      }
       const connection = await openHc();
       const signal = abort.signal;
       const value =
-        line.kind === "file"
-          ? await line.tool.run(line.args, (params) => connection.callByName("machine.exec", params, { signal }))
-          : await connection.callByName(line.tool.method, line.args, { signal });
-      send({ jsonrpc: "2.0", id: line.id, result: toolResult(value, false) });
+        plan.kind === "file"
+          ? await plan.tool.run(plan.args, (params) => connection.callByName("machine.exec", params, { signal }))
+          : await connection.callByName(plan.method, plan.args, { signal });
+      answer(value, false);
     } catch (error) {
       if (abort.signal.aborted) return;
       const failure =
         error instanceof HcRpcError
           ? { kind: error.kind, message: error.message }
-          : error instanceof FileToolRefused
+          : error instanceof FileToolRefused || error instanceof MeshToolRefused
             ? { kind: "refused", message: error.message }
             : { kind: "unavailable", message: error instanceof Error ? error.message : String(error) };
-      send({ jsonrpc: "2.0", id: line.id, result: toolResult(failure, true) });
+      answer(failure, true);
     } finally {
       calls.delete(line.id);
       settleDying();
-    }
-  };
-  // A mesh tool runs in this host, not on the core; what it refuses comes back as a tool error with its words.
-  const runMesh = async (line: Extract<McpLine, { kind: "mesh" }>): Promise<void> => {
-    try {
-      if (deps.mesh === undefined) throw new Error("this host keeps no state, so it has no mesh or devices");
-      send({ jsonrpc: "2.0", id: line.id, result: toolResult(await line.tool.run(line.args, deps.mesh), false) });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      send({ jsonrpc: "2.0", id: line.id, result: toolResult({ kind: "refused", message }, true) });
     }
   };
   const readResource = async (line: Extract<McpLine, { kind: "resources" | "read" }>): Promise<void> => {
@@ -135,7 +162,12 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
         send({
           jsonrpc: "2.0",
           id: line.id,
-          result: { resultType: "complete", resources, ttlMs: 0, cacheScope: "private" },
+          result: {
+            resultType: "complete",
+            resources: [...skillResources(deps.skill ?? []), ...resources],
+            ttlMs: 0,
+            cacheScope: "private",
+          },
         });
         return;
       }
@@ -209,17 +241,15 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
       start = lf + 1;
       let line: McpLine;
       try {
-        line = readMcpLine(bytesOfLine, deps.hostVersion, shown);
+        line = readMcpLine(bytesOfLine, deps.hostVersion, deps.skill);
       } catch {
         return close(CloseCode.CryptoFailure, "an MCP line is not a UTF-8 JSON object");
       }
       if (line.kind === "reply") send(line.reply);
-      else if (line.kind === "show") shown = line.shown;
       else if (line.kind === "cancel") {
         const key = line.requestId;
         if (typeof key === "string" || typeof key === "number") calls.get(key)?.abort();
-      } else if (line.kind === "call" || line.kind === "file") void run(line);
-      else if (line.kind === "mesh") void runMesh(line);
+      } else if (line.kind === "one") void runOne(line);
       else if (line.kind === "resources" || line.kind === "read") void readResource(line);
       else if (line.kind === "listen" || line.kind === "stream") void subscribe(line);
     }

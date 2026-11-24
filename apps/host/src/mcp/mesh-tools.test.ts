@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { RevokeRequest } from "../mesh/commands.ts";
 import type { PushLink } from "../push/push-stream.ts";
-import { MESH_TOOLS, type MeshToolDeps } from "./mesh-tools.ts";
+import { HOST_TOOLS, MESH_TOOLS, type MeshToolDeps } from "./mesh-tools.ts";
 import { serveMcpLines } from "./serve.ts";
 
 const META = { "io.modelcontextprotocol/protocolVersion": "2026-07-28" };
@@ -66,17 +66,35 @@ function session(over: Partial<MeshToolDeps> = {}, withMesh = true) {
     ...over,
   };
   serveMcpLines(link, { hostVersion: "0.0.0-test", mesh: withMesh ? mesh : undefined });
-  let next = 0;
   const call = async (name: string, args: object = {}) => {
+    const tool = [...HOST_TOOLS, ...MESH_TOOLS].find((candidate) => candidate.name === name);
+    if (tool === undefined) throw new Error(`no ${name}`);
+    try {
+      if (!withMesh) throw new Error("this host keeps no state, so it has no mesh or devices");
+      return { isError: false, content: await tool.run({ ...args }, mesh) };
+    } catch (error) {
+      return {
+        isError: true,
+        content: { kind: "refused", message: error instanceof Error ? error.message : String(error) },
+      };
+    }
+  };
+  let next = 0;
+  const run = async (args: readonly string[]) => {
     const id = ++next;
     const answered = new Promise<void>((resolve) => waiters.push(resolve));
-    const line = { jsonrpc: "2.0", id, method: "tools/call", params: { _meta: META, name, arguments: args } };
+    const line = {
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: { _meta: META, name: "doriterm", arguments: { args } },
+    };
     onData?.(new TextEncoder().encode(`${JSON.stringify(line)}\n`));
     await answered;
     const reply = replies.find((one) => one.id === id);
     return { isError: reply?.result.isError, content: reply?.result.structuredContent };
   };
-  return { acts, call };
+  return { acts, call, run };
 }
 
 test("host_status answers this host's version, id, relay and the devices paired with it", async () => {
@@ -174,20 +192,17 @@ test("an invite that cannot open, a host in no mesh and a host without state eac
   });
   const stateless = session({}, false);
   expect(await stateless.call("mesh_status")).toMatchObject({ isError: true });
-  expect(await stateless.call("doriterm_call", { tool: "mesh_device_revoke", arguments: { id: "d1" } })).toMatchObject({
-    isError: true,
-  });
+  expect(await stateless.run(["devices", "revoke", "d1"])).toMatchObject({ isError: true });
   expect(stateless.acts).toEqual([]);
 });
 
-test("mesh tools are reached through doriterm_call and found by doriterm_tools, all under the mesh group", async () => {
+test("the mesh, the devices and the host's status are reached through the one tool, with CLI words", async () => {
   const s = session();
-  expect(await s.call("doriterm_call", { tool: "mesh_device_revoke", arguments: { id: "d1" } })).toEqual({
-    isError: false,
-    content: { devices: [] },
-  });
+  expect(await s.run(["devices", "revoke", "d1"])).toEqual({ isError: false, content: { devices: [] } });
   expect(s.acts).toEqual([{ revokeDevice: "d1" }]);
-  const found = await s.call("doriterm_tools", { query: "mesh_" });
-  expect(JSON.stringify(found.content)).toContain('"name":"mesh_join_answer"');
+  expect(await s.run(["mesh", "status"])).toMatchObject({ isError: false, content: { joins: [JOIN] } });
+  expect(await s.run(["host", "status"])).toMatchObject({ isError: false, content: { hostId: "h-studio", mcp: "on" } });
+  expect(await s.run(["mesh", "join", "n1", "approve", "123456"])).toMatchObject({ isError: false });
+  expect(s.acts.at(-1)).toEqual({ decide: "n1", approve: true, code: "123456" });
   expect(MESH_TOOLS.every((tool) => tool.name.startsWith("mesh_"))).toBe(true);
 });

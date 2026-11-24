@@ -30,8 +30,13 @@ function session(execReply: unknown) {
     close: () => {},
   };
   serveMcpLines(link, { hostVersion: "1", openHc: () => Promise.resolve(core) });
-  const call = (name: string, args: object): void => {
-    const line = { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name, arguments: args, _meta: META } };
+  const call = (args: readonly string[]): void => {
+    const line = {
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: { name: "doriterm", arguments: { args }, _meta: META },
+    };
     onData?.(new TextEncoder().encode(`${JSON.stringify(line)}\n`));
   };
   return { replies, answered: answered.promise, calls, call };
@@ -46,9 +51,9 @@ const exec = (stdout: string, code = 0) => ({
   truncated: false,
 });
 
-test("a file tool called through doriterm_call runs as machine.exec on the session's own core connection", async () => {
+test("file stat through the one tool runs as machine.exec on the session's own core connection", async () => {
   const s = session(exec("regular file\t12\t1700000000\n"));
-  s.call("doriterm_call", { tool: "file_stat", arguments: { path: "/srv/a.txt", on: "studio" } });
+  s.call(["file", "stat", "/srv/a.txt", "--on", "studio"]);
   await s.answered;
   expect(s.calls).toHaveLength(1);
   expect(s.calls[0]).toMatchObject({ method: "machine.exec", params: { on: "studio" } });
@@ -62,7 +67,7 @@ test("a file tool called through doriterm_call runs as machine.exec on the sessi
 
 test("a refused path comes back as a tool error with its words, not a protocol error", async () => {
   const s = session(exec("", 3));
-  s.call("file_stat", { path: "/nope" });
+  s.call(["file", "stat", "/nope"]);
   await s.answered;
   expect(s.replies[0]).toMatchObject({
     id: 7,
