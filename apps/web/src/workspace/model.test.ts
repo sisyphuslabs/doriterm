@@ -8,6 +8,7 @@ import {
   tabTitle,
   phoneTabTitle,
   terminalTitle,
+  toAgent,
   layoutSpaces,
   spaceOfAddress,
   type SpacesSource,
@@ -28,6 +29,7 @@ const terminal = (fields: Partial<Terminal>): Terminal => ({
 
 const front = (argv: string[]) => ({ argv, cwd: "/work", name: argv[0] ?? "", pid: 2 });
 const reportedState = (state: string) => ({ state }) as unknown as NonNullable<Terminal["status"]>;
+const reportedApp = (app: string) => ({ state: "working", app }) as unknown as NonNullable<Terminal["status"]>;
 const read = (fields: Partial<Terminal>) => runsProgram(terminal(fields));
 
 describe("closing", () => {
@@ -242,5 +244,16 @@ describe("terminalTitle", () => {
       "deploy",
     );
     expect(terminalTitle(terminal({ name: "worker", labels: { "herdr.name": "", title: "old" } }))).toBe("worker");
+  });
+});
+
+describe("toAgent", () => {
+  test("sets kind from agentKind when marked, falling back to agent/shell/program", () => {
+    expect(toAgent(terminal({ status: reportedApp("claude") }), 0).kind).toBe("claude");
+    expect(toAgent(terminal({ status: reportedApp("unknown-wrapper") }), 0).kind).toBe("agent");
+    expect(toAgent(terminal({ argv: ["/bin/zsh"] }), 0).kind).toBe("shell");
+    expect(toAgent(terminal({ argv: ["htop"] }), 0).kind).toBe("program");
+    expect(toAgent(terminal({ status: reportedApp("kiro") }), 0).kind).toBe("agent");
+    expect(toAgent(terminal({ argv: ["kiro"] }), 0).kind).toBe("agent");
   });
 });
