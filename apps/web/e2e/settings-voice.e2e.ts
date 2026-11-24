@@ -45,28 +45,32 @@ test("each way of recognizing speech says where the audio goes", async ({ page }
   ).toBeVisible();
 });
 
-test("where the browser has no speech recognition, the page says so instead of two dead options", async ({ page }) => {
+test("where the browser has no speech recognition, the page says so while leaving Soniox selectable", async ({
+  page,
+}) => {
   await removeSpeech(page);
   await openVoiceSection(page);
   await expect(intro(page)).toBeVisible();
   const notice = page.getByRole("status").filter({ hasText: "Dictation isn't available here" });
   await expect(notice).toBeVisible();
   await expect(notice).toContainText("This browser has no speech recognition");
-  await expect(page.getByText("Speech recognition", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Speech recognition", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Soniox", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Language/ })).toHaveCount(0);
 });
 
-test("in the desktop app, the page says the app cannot dictate and points at the web app", async ({ page }) => {
+test("in the desktop app, the page says the app cannot dictate while leaving Soniox selectable", async ({ page }) => {
   await page.addInitScript((bridge) => {
     Reflect.set(window, "doriface", JSON.parse(bridge));
   }, DESKTOP_BRIDGE);
   await openVoiceSection(page);
-  // The app's Chromium has a recognizer that its speech service refuses, so no option here could work.
+  // The app's Chromium has a recognizer that its speech service refuses, though Soniox can still be configured.
   await expect(intro(page)).toBeVisible();
   const notice = page.getByRole("status").filter({ hasText: "Dictation isn't available here" });
   await expect(notice).toBeVisible();
   await expect(notice).toContainText("The desktop app can't dictate yet");
   await expect(notice).toContainText("use Doriterm in Chrome or Safari");
-  await expect(page.getByText("Speech recognition", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Speech recognition", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Soniox", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Language/ })).toHaveCount(0);
 });
