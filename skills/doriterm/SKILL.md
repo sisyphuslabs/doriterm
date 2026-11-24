@@ -59,3 +59,7 @@ hc kill review; hc rm review           # once its result is read and accepted
 doriface-host mesh status              # mesh members and the line to each
 doriface-host pair                     # QR code, link and code for a phone or browser
 ```
+
+## Over MCP
+
+An agent connected over MCP gets one tool, `doriterm`, which takes the same commands as `hc`. Reading (`ls`, `read`, `file read`) needs the read scope; `exec`, `run` and `send` need act, and act can run any program on the machine, so granting act is granting the host's identity. Paths into the host's own state are refused.

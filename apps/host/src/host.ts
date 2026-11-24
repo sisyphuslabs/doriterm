@@ -27,7 +27,7 @@ import { RelaySessionWire } from "./relay/session-wire.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
 import { startHostPush } from "./push/host-push.ts";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { hcCli } from "./mcp/hc-cli.ts";
 
 export { HOST_VERSION, type E2eeEndpoint, type Host, type HostOptions } from "./host-types.ts";
@@ -167,7 +167,14 @@ async function serve(
         hostVersion: HOST_VERSION,
         runHc: hcCli({ hc: options.hc, session: options.session, env: options.env }),
         skill,
-        plan: { stateDirs: stateDir === undefined ? [] : [resolve(stateDir)], home: homedir(), cwd: process.cwd() },
+        plan: {
+          stateDirs: [
+            ...(stateDir === undefined ? [] : [resolve(stateDir)]),
+            join(homedir(), ".local", "state", "doriface-host"),
+          ],
+          home: homedir(),
+          cwd: process.cwd(),
+        },
         mesh:
           e2ee === undefined || deviceSurface === undefined
             ? undefined

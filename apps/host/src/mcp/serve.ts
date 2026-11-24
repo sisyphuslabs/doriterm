@@ -2,7 +2,7 @@ import { CloseCode } from "@doriface/crypto";
 import { type EventsSubscribeParams, HcRpcError, type HcMethod } from "@doriface/protocol";
 import type { PushLink } from "../push/push-stream.ts";
 import { FileToolRefused } from "./file-tools.ts";
-import type { RunHcCli } from "./hc-cli.ts";
+import { fitReply, type RunHcCli } from "./hc-cli.ts";
 import { type MeshToolDeps, MeshToolRefused } from "./mesh-tools.ts";
 import { type PlanContext, planCall, type Scope } from "./one-tool.ts";
 import { ended, type HcFeed, realEvery, serveListen, serveStream, terminalUri, type Every } from "./subscriptions.ts";
@@ -113,7 +113,7 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
       if (plan.kind === "hc") {
         if (deps.runHc === undefined) throw new Error("this host runs no hc commands");
         const options = { stdin: line.stdin, timeoutMs: line.timeoutMs, signal: abort.signal };
-        const result = await deps.runHc(plan.argv, options);
+        const result = fitReply(await deps.runHc(plan.argv, options));
         if (abort.signal.aborted) return;
         return answer(result, result.exitCode !== 0);
       }

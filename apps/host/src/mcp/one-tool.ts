@@ -84,6 +84,10 @@ function flags(words: readonly string[]): {
   const named: Record<string, string | true> = {};
   for (let index = 0; index < words.length; index++) {
     const word = words[index] ?? "";
+    if (word === "--") {
+      positional.push(...words.slice(index + 1));
+      break;
+    }
     if (!word.startsWith("--")) positional.push(word);
     else if (word.includes("=")) named[word.slice(2, word.indexOf("="))] = word.slice(word.indexOf("=") + 1);
     else if (index + 1 < words.length && !(words[index + 1] ?? "").startsWith("--"))
@@ -111,7 +115,8 @@ export function touchesState(path: string, stateDirs: readonly string[], home: s
 }
 
 export interface PlanContext {
-  /** This host's state dir and any other doriface-host state on this machine. */
+  /** This host's state dir and the default doriface-host state dir on this machine; a path given with --on is checked
+   * against them too, as a local path (the remote machine's own host guards its own state). */
   readonly stateDirs: readonly string[];
   readonly home: string;
   readonly cwd: string;
@@ -139,13 +144,9 @@ export function planCall(args: readonly string[], context: PlanContext): Plan {
     );
   }
   if (verb === "file") return planFile(sub, rest, args, context);
-  if (
-    verb === "put" &&
-    rest.length > 0 &&
-    touchesState(rest.at(-1) ?? "", context.stateDirs, context.home, context.cwd)
-  ) {
+  if (verb === "put" && anyTouchesState([sub, ...rest], context))
     return refused("that path is the host's private state");
-  }
+
   if (verb === "doc") {
     const { positional, named } = flags(rest);
     if (sub === "get")
@@ -165,7 +166,19 @@ export function planCall(args: readonly string[], context: PlanContext): Plan {
   return refused(`unknown command ${verb}; read ${SKILL_URI}`);
 }
 
+/** Whether any word of a command names a path in the host's state: positional, after --, or a flag's value. */
+const anyTouchesState = (words: readonly string[], context: PlanContext): boolean =>
+  words.some(
+    (word) => word !== "" && word !== "--" && touchesState(word, context.stateDirs, context.home, context.cwd),
+  );
+
+/** On another machine (--on) this host cannot resolve ~ or relative paths, so a path naming a doriface-host state dir is refused by its name. */
+const STATE_NAME = /(^|\/)\.local\/state\/doriface-host(-[^/]*)?(\/|$)/;
+
 function planFile(sub: string, rest: readonly string[], args: readonly string[], context: PlanContext): Plan {
+  if (anyTouchesState(rest, context) || rest.some((word) => STATE_NAME.test(word))) {
+    return refused("that path is the host's private state");
+  }
   const { positional, named } = flags(rest);
   const path = positional[0] ?? "";
   if (path !== "" && touchesState(path, context.stateDirs, context.home, context.cwd)) {

@@ -131,7 +131,7 @@ test("no file verb reaches the host's private state: absolute, ~, relative and .
   ];
   for (const args of inside)
     expect([args, plan(args)]).toEqual([args, { kind: "refused", message: "that path is the host's private state" }]);
-  expect(plan(["file", "read", "/home/me/.local/state/doriface-host-other/x"]).kind).toBe("hc");
+  expect(plan(["file", "read", "/home/me/.local/state/other-app/x"]).kind).toBe("hc");
 });
 
 test("an hc command runs on the host's own session and never as the terminal the host itself runs in", () => {
@@ -156,4 +156,28 @@ test("a symlink that leads into the host's state is refused too, so a link canno
       { kind: "refused", message: "that path is the host's private state" },
     ]);
   }
+});
+
+test("no word of a file or put command reaches the host's state: after --, as a flag value, or as the last word", () => {
+  const state = "/home/me/.local/state/doriface-host/host-key.json";
+  for (const args of [
+    ["file", "read", "--", state],
+    ["file", "write", "--", state],
+    ["file", "bytes", "/tmp/x", "--offset", state],
+    ["put", "t1", "--", state],
+  ]) {
+    expect([args, plan(args)]).toEqual([args, { kind: "refused", message: "that path is the host's private state" }]);
+  }
+});
+
+test("on another machine a path into a doriface-host state dir is refused by its name, ~ and relative forms too", () => {
+  for (const path of [
+    "~/.local/state/doriface-host/host-key.json",
+    ".local/state/doriface-host-mesh/devices.json",
+    "/home/x/.local/state/doriface-host",
+  ]) {
+    const args = ["file", "read", "--on", "studio", path];
+    expect([args, plan(args).kind]).toEqual([args, "refused"]);
+  }
+  expect(plan(["file", "read", "--on", "studio", "~/notes.txt"]).kind).toBe("hc");
 });
