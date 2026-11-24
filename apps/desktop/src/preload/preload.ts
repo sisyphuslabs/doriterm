@@ -11,6 +11,7 @@ import {
   isLocalHostStartFailed,
   isNoticeAnswer,
   isNoticeAuthorization,
+  isMcpAnswer,
   isPairedDevicesAnswer,
   isPairOfferAnswer,
   isRevokeDeviceAnswer,
@@ -85,6 +86,11 @@ const bridge: DorifaceBridge = {
   async revokeDevice(id) {
     const answer: unknown = await ipcRenderer.invoke(Channel.revokeDevice, id);
     if (!isRevokeDeviceAnswer(answer)) throw new Error("the main process returned no revoke answer");
+    return answer;
+  },
+  async mcp(request) {
+    const answer: unknown = await ipcRenderer.invoke(Channel.mcp, request);
+    if (!isMcpAnswer(answer)) throw new Error("the main process returned no MCP answer");
     return answer;
   },
   onNavigate(listener) {

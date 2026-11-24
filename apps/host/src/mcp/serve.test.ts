@@ -2,6 +2,7 @@ import { CloseCode } from "@doriface/crypto";
 import { memoryLinkPair } from "@doriface/crypto/testing";
 import { expect, test } from "bun:test";
 import { serveMcpLines } from "./serve.ts";
+import { SERVER_INSTRUCTIONS } from "./lines.ts";
 
 const VERSION = "2026-07-28";
 const LIMIT = 256 * 1024;
@@ -20,8 +21,9 @@ const discover = (id: number) => ({
   result: {
     resultType: "complete",
     supportedVersions: [VERSION],
-    capabilities: {},
+    capabilities: { tools: {}, resources: { listChanged: true }, extensions: { "io.modelcontextprotocol/events": {} } },
     _meta: { "io.modelcontextprotocol/serverInfo": { name: "doriterm", version: "1.2.3" } },
+    instructions: SERVER_INSTRUCTIONS,
   },
 });
 
@@ -37,6 +39,14 @@ test("server/discover advertises only the supported revision and host version", 
   client.send(encode(request(1)));
   expect(answers()).toEqual([discover(1)]);
   expect(server.sent[0]?.at(-1)).toBe(10);
+});
+
+test("server/discover carries instructions a client can show the model, within what clients keep", () => {
+  expect(typeof SERVER_INSTRUCTIONS).toBe("string");
+  expect(SERVER_INSTRUCTIONS.length).toBeGreaterThan(0);
+  // Claude Code cuts server instructions at 2,048 characters.
+  expect(SERVER_INSTRUCTIONS.length).toBeLessThanOrEqual(2048);
+  expect(SERVER_INSTRUCTIONS).toContain("doriterm_tools");
 });
 
 test.each([
@@ -69,9 +79,9 @@ test("a request without a protocol version gets -32022 and requested null", () =
   ]);
 });
 
-test("a non-discovery method gets Method not found rather than reaching a tool", () => {
+test("a method this host does not serve gets Method not found", () => {
   const { client, answers } = open();
-  client.send(encode(request(12, "tools/call")));
+  client.send(encode(request(12, "prompts/list")));
   expect(answers()).toEqual([{ jsonrpc: "2.0", id: 12, error: { code: -32601, message: "Method not found" } }]);
 });
 

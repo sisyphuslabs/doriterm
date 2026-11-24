@@ -57,7 +57,7 @@ test("a paired device's MCP session answers discovery without opening an hc pipe
   connection.send(DISCOVER);
   await connection.answered;
   const reply: unknown = JSON.parse(new TextDecoder().decode(connection.received[0]));
-  expect(reply).toMatchObject({ id: 1, result: { resultType: "complete", capabilities: {} } });
+  expect(reply).toMatchObject({ id: 1, result: { resultType: "complete", capabilities: { tools: {} } } });
   expect(gateway.opened()).toBe(0);
 });
 
