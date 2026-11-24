@@ -124,7 +124,7 @@ Every loop runs only while its scene is on screen and the tab is visible (Inters
 
 ### Docs page
 
-The docs live at `/docs/` (an index of pages) and `/docs/<page>/`, with a Korean copy at `/ko/docs/<page>/`; each is a folder index (`docs/mcp/index.html`), listed in `vite.config.ts` and `public/sitemap.xml`. A page is HTML written by hand: no markdown at runtime. It loads `styles.css` for the tokens, the nav, the code block and the footer, then `docs.css`, and one module, `docs.js` (the theme switch from `theme.js` and the Copy button from `copy.js`, both shared with `main.js`, plus the contents marker). Nothing on a docs page moves: no scene, no reveal, no Pause animations control in the nav.
+The docs live at `/docs/` (an index of pages) and `/docs/<page>/`, in English only (the old `/ko/docs/` URLs redirect there with a 301, `public/_redirects`); each is a folder index (`docs/mcp/index.html`), listed in `vite.config.ts` and `public/sitemap.xml`. A page is HTML written by hand: no markdown at runtime. It loads `styles.css` for the tokens, the nav, the code block and the footer, then `docs.css`, and one module, `docs.js` (the theme switch from `theme.js` and the Copy button from `copy.js`, both shared with `main.js`, plus the contents marker). Nothing on a docs page moves: no scene, no reveal, no Pause animations control in the nav.
 
 | Token or rule    | Value                                                        | Use                                                                                        |
 | ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
