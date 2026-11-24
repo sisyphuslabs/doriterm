@@ -4,6 +4,7 @@ import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { single, type TerminalConfig } from "../ghostty/config.ts";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
 import { HostSize } from "./host-size.ts";
+import { keyboardHeight } from "./keyboard-inset.ts";
 import { pinchedConfig, usePinchFontSize } from "./pinch-font-store.ts";
 import { useTerminalPinch } from "./use-terminal-pinch.ts";
 
@@ -19,8 +20,10 @@ export interface TerminalSizing {
 }
 
 /**
- * Asking for the soft keyboard is starting to type (the keys bar's keyboard button, a key that raises it): every such
- * ask sets the field's `inputmode` to `text` (terminal-port.ts askingForKeyboard), so that change is watched here.
+ * The soft keyboard is the person starting to type: asked for (the keys bar's keyboard button, a key that raises it,
+ * which set the field's `inputmode` to `text`, terminal-port.ts askingForKeyboard), or up, taking room from the visual
+ * viewport whichever way it was raised. Its rows must reach the program then, or a full-screen agent keeps drawing
+ * under the keyboard.
  */
 function useKeyboardAsk(wt: WTerm | null, asked: RefObject<() => void>): void {
   useEffect(() => {
@@ -30,7 +33,15 @@ function useKeyboardAsk(wt: WTerm | null, asked: RefObject<() => void>): void {
       if (field.inputMode === "text") asked.current();
     });
     watch.observe(field, { attributes: true, attributeFilter: ["inputmode"] });
-    return () => watch.disconnect();
+    const viewport = window.visualViewport;
+    const measure = (): void => {
+      if (viewport !== null && keyboardHeight(document.documentElement.clientHeight, viewport) > 0) asked.current();
+    };
+    viewport?.addEventListener("resize", measure);
+    return () => {
+      watch.disconnect();
+      viewport?.removeEventListener("resize", measure);
+    };
   }, [wt, asked]);
 }
 
