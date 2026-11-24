@@ -15,8 +15,10 @@ import { Clock, Ellipsis, Layers, Pencil, Pin, PinOff, Power } from "lucide-reac
 import { memo, useCallback, useMemo, useRef } from "react";
 import { useAskSession } from "./session-context.ts";
 import { filterAgentGroups } from "./sidebar-filter.ts";
-import { type AgentGroup, agentGroups, type AgentSort } from "./sidebar-model.ts";
-import { useAgentSort } from "./sidebar-prefs.ts";
+import { agentGroups, type AgentSort, foldAgentGroups } from "./sidebar-model.ts";
+import { useAgentSort, useFolded } from "./sidebar-prefs.ts";
+import { useSteadyAgents } from "./steady-agents.ts";
+import { useMachinesContext } from "./use-machines.ts";
 import { useAgentPlaces } from "./use-agent-places.ts";
 import { usePin } from "./use-pin.ts";
 import { useNow } from "./use-now.ts";
@@ -163,43 +165,6 @@ const AgentItem = memo(function AgentItem({
   );
 });
 
-/** Whether a sidebar row would draw the same for both: every field AgentRow shows (#2098). */
-export const sameAgent = (a: Agent, b: Agent): boolean =>
-  a.id === b.id &&
-  a.name === b.name &&
-  a.status === b.status &&
-  a.detail === b.detail &&
-  a.machine === b.machine &&
-  a.age === b.age &&
-  a.pinned === b.pinned &&
-  a.icon === b.icon &&
-  a.todo?.done === b.todo?.done &&
-  a.todo?.total === b.todo?.total;
-
-/**
- * Each agent as the render before drew it while nothing it shows changed. The groups are built afresh on every terminal
- * event; without this every row of every agent drew again for one agent's title (#2086).
- */
-function useSteadyAgents(groups: readonly AgentGroup[]): readonly AgentGroup[] {
-  const drawn = useRef(new Map<string, Agent>());
-  return useMemo(() => {
-    const before = drawn.current;
-    const now = new Map<string, Agent>();
-    const steady = groups.map((group) =>
-      Object.assign({}, group, {
-        agents: group.agents.map((agent) => {
-          const kept = before.get(agent.id);
-          const shown = kept !== undefined && sameAgent(kept, agent) ? kept : agent;
-          now.set(agent.id, shown);
-          return shown;
-        }),
-      }),
-    );
-    drawn.current = now;
-    return steady;
-  }, [groups]);
-}
-
 /**
  * The agents, first in the sidebar: Pinned, then Needs you, Working, Idle, Done and Offline with counts (or one group
  * per space), each its own list. On the rail the rows are glyphs and the group titles are left to their labels.
@@ -236,7 +201,17 @@ export function AgentsGroup({
     [terminals, now, sort, places, todoOf],
   );
   const all = useSteadyAgents(built);
-  const groups = useMemo(() => filterAgentGroups(all, query, active), [all, query, active]);
+  const { terminalsLoaded } = useMachinesContext();
+  const listedAddresses = useMemo(
+    () => new Set(listed.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)),
+    [listed],
+  );
+  const [folded] = useFolded(listedAddresses, terminalsLoaded);
+  // A query shows a matching sub-agent with the agents above it, so nothing is folded away while one is typed.
+  const groups = useMemo(() => {
+    const narrowed = filterAgentGroups(all, query, active);
+    return narrowed === all ? foldAgentGroups(all, folded, active) : narrowed;
+  }, [all, query, active, folded]);
   const list = (
     <div className="flex flex-col gap-6 pt-3">
       {groups.map((group) => (

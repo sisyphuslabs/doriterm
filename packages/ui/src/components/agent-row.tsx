@@ -4,6 +4,9 @@ import { cn } from "../lib/cn.ts";
 import { useRowFloors } from "./row-floors.ts";
 import { STATUS_LABEL, StatusChip, StatusIndicator, type AgentStatus } from "./status.tsx";
 
+/** One cell of a row's tree guides: "│" a continuing ancestor, "├" / "└" the row's own joint, "" a spent ancestor. */
+export type AgentTreeGuide = "│" | "├" | "└" | "";
+
 export interface Agent {
   readonly id: string;
   readonly name: string;
@@ -18,6 +21,14 @@ export interface Agent {
   readonly pinned?: boolean;
   /** How far the agent's own todo list has got, when it draws one: `done` of `total`. */
   readonly todo?: { readonly done: number; readonly total: number };
+  /** How deep the row sits under the agent that started it; absent or 0 for a top-level row. */
+  readonly depth?: number;
+  /** One cell per level above the row, as the list it is drawn in shapes them. */
+  readonly guides?: readonly AgentTreeGuide[];
+  /** The rows of the agent's subtree in the list it is drawn in: what a folded row counts. */
+  readonly descendants?: number;
+  /** The most urgent of the agent and its live sub-agents, a sub-agent's done read as idle. */
+  readonly urgency?: AgentStatus;
 }
 
 /** The todo progress in words, for the label and the tooltip. */
