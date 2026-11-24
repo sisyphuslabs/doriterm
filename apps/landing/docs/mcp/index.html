@@ -277,8 +277,24 @@
             your terminals, run commands and write files on that machine, as a paired phone or browser can.
           </p>
           <p>
+            It can also do what a paired phone does with the mesh: read its members, devices and waiting joins
+            (<code>mesh_status</code>), open an invite (<code>mesh_invite</code>), answer a join
+            (<code>mesh_join_answer</code>), rename or revoke a member, unpair a device, and leave. Approving a join
+            needs its six digits, and you compare them yourself, as on the phone. A revoke or a leave shows a preview
+            first and is written only when the assistant asks again with <code>yes</code>.
+          </p>
+          <p>
             One difference from a paired device: an MCP client cannot stop or restart the core, and cannot remove a
             machine.
+          </p>
+          <h3 id="tools-shown">Two tools by default</h3>
+          <p>
+            Every tool an assistant is shown takes room in its context, so it is shown two:
+            <code>doriterm_tools</code> finds a tool, and <code>doriterm_call</code> calls it. Every tool stays
+            reachable that way. To show more up front, add <code>--tools</code> to the config's arguments:
+            <code>"--tools", "all"</code> for every tool, or a list of groups such as
+            <code>"--tools", "terminal,mesh"</code>. The groups are <code>terminal</code>, <code>machine</code>,
+            <code>file</code>, <code>doc</code>, <code>templates</code>, <code>server</code> and <code>mesh</code>.
           </p>
           <p>
             Pair only an assistant you would hand a shell to. What a terminal prints reaches the assistant as text, and

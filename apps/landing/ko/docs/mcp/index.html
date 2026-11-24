@@ -277,8 +277,24 @@
             실행하고, 파일을 씁니다. 페어링된 휴대폰이나 브라우저와 같습니다.
           </p>
           <p>
+            페어링된 휴대폰이 메쉬에서 하는 일도 합니다. 멤버와 기기, 대기 중인 조인을 읽고(<code>mesh_status</code>),
+            초대를 열고(<code>mesh_invite</code>), 조인에 답하고(<code>mesh_join_answer</code>), 멤버 이름을 바꾸거나
+            멤버를 내보내고, 기기 페어링을 끊고, 메쉬에서 나갑니다. 조인을 승인하려면 여섯 자리 숫자가 필요하고,
+            휴대폰에서처럼 숫자는 직접 비교합니다. 내보내기와 나가기는 먼저 미리보기를 보여 주고, 어시스턴트가
+            <code>yes</code>로 다시 요청해야 반영됩니다.
+          </p>
+          <p>
             페어링된 기기와 다른 것은 하나입니다. MCP 클라이언트는 코어를 멈추거나 재시작하지 못하고, 머신을 제거하지
             못합니다.
+          </p>
+          <h3 id="tools-shown">기본은 도구 두 개</h3>
+          <p>
+            어시스턴트에게 보이는 도구는 모두 컨텍스트를 차지하므로 기본으로 두 개만 보입니다.
+            <code>doriterm_tools</code>는 도구를 찾고, <code>doriterm_call</code>은 찾은 도구를 호출합니다. 모든 도구를
+            이 방법으로 쓸 수 있습니다. 처음부터 더 보이게 하려면 설정의 인자에 <code>--tools</code>를 더하세요.
+            <code>"--tools", "all"</code>은 전부, <code>"--tools", "terminal,mesh"</code>는 그 그룹만 더합니다. 그룹은
+            <code>terminal</code>, <code>machine</code>, <code>file</code>, <code>doc</code>, <code>templates</code>,
+            <code>server</code>, <code>mesh</code>입니다.
           </p>
           <p>
             셸을 맡겨도 되는 어시스턴트만 페어링하세요. 터미널에 찍힌 글자는 그대로 어시스턴트에게 가고, 프로그램은
