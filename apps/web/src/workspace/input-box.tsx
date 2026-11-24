@@ -1,5 +1,5 @@
 import { SendHorizontal } from "lucide-react";
-import { type CSSProperties, type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import { Button, cn } from "@doriface/ui";
 
 export interface InputBoxProps {
@@ -20,7 +20,7 @@ const MAX_HEIGHT_PX = 112;
 /**
  * The phone's line into the terminal (#666): a text field takes what is typed, so the phone's own keyboard does the
  * input method, autocorrect and Hangul composition in a real field, and Send writes the line and presses Return. The
- * field sends nothing before Send, which is the difference from typing in the terminal itself. It wraps and grows, so
+ * field sends nothing before Send, which is the difference from typing in the terminal itself; Enter only starts a new line. It wraps and grows, so
  * the whole line is in view while it is written (#949). On the phone it is the keys bar's top row, Send at its end, typing
  * or not (#1551).
  */
@@ -59,13 +59,6 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
     onSend(line);
     setText("");
   };
-  // Enter sends; Shift+Enter is a line of its own. A key that is still composing a Hangul syllable belongs to the
-  // input method, which commits on it, and never to Send.
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-    event.preventDefault();
-    send();
-  };
   // The field and Send keep the 0.5rem the phone chrome leaves between two pressable controls (the round buttons'
   // slot), so a thumb at the field's end does not land on Send (#1506).
   return (
@@ -73,7 +66,8 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
       <textarea
         ref={field}
         rows={1}
-        enterKeyHint="send"
+        // Enter starts a new line, on the phone's keyboard and a hardware one; only Send sends (#2766).
+        enterKeyHint="enter"
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"
@@ -81,7 +75,6 @@ export function InputBox({ onSend, draftKey, className, style }: InputBoxProps) 
         value={text}
         aria-label="Type into the terminal"
         onChange={(event) => setText(event.target.value)}
-        onKeyDown={onKeyDown}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onCompositionStart={() => {
