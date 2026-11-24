@@ -113,7 +113,7 @@ async function seedsListed(hc: string, env: Record<string, string | undefined>, 
 }
 
 /** How long a core told to stop may take to exit; past it the stop throws, naming the process. */
-const CORE_EXIT_BOUND_MS = 20_000;
+export const CORE_EXIT_BOUND_MS = 20_000;
 
 /** How long a core sent SIGKILL may take to leave the process table. */
 const KILLED_EXIT_BOUND_MS = 2_000;
