@@ -26,6 +26,8 @@ import { openRelayPasses } from "./relay/relay-passes.ts";
 import { RelaySessionWire } from "./relay/session-wire.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
 import { startHostPush } from "./push/host-push.ts";
+import type { PushLink } from "./push/push-stream.ts";
+import { hostedFromEnv } from "./hosted/config.ts";
 
 export { HOST_VERSION, type E2eeEndpoint, type Host, type HostOptions } from "./host-types.ts";
 
@@ -153,43 +155,54 @@ async function serve(
             push?.prune();
           },
         });
+  const serveMcp = (link: PushLink): void =>
+    serveMcpLines(link, {
+      hostVersion: HOST_VERSION,
+      mesh:
+        e2ee === undefined || deviceSurface === undefined
+          ? undefined
+          : meshToolDeps({
+              e2ee,
+              devices: deviceSurface,
+              status: async () => {
+                await refreshMeshLines();
+                return meshStatus?.();
+              },
+              relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
+              version: HOST_VERSION,
+            }),
+      // Each MCP session gets its own connection to this host's core, as an hc session gets its own pipe.
+      openHc: async () => {
+        const target = {
+          hc: options.hc,
+          session: options.session,
+          env: options.env,
+          handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
+        };
+        const child = spawnHcLink(target);
+        try {
+          return await openOnCore(child, target);
+        } catch (error) {
+          child.close();
+          throw error;
+        }
+      },
+    });
   const gateway = createGateway({
     e2ee,
     speculative,
     push: push?.serve,
-    mcp: (link) =>
-      serveMcpLines(link, {
-        hostVersion: HOST_VERSION,
-        mesh:
-          e2ee === undefined || deviceSurface === undefined
-            ? undefined
-            : meshToolDeps({
-                e2ee,
-                devices: deviceSurface,
-                status: async () => {
-                  await refreshMeshLines();
-                  return meshStatus?.();
-                },
-                relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
-                version: HOST_VERSION,
-              }),
-        // Each MCP session gets its own connection to this host's core, as an hc session gets its own pipe.
-        openHc: async () => {
-          const target = {
-            hc: options.hc,
-            session: options.session,
-            env: options.env,
-            handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
-          };
-          const child = spawnHcLink(target);
-          try {
-            return await openOnCore(child, target);
-          } catch (error) {
-            child.close();
-            throw error;
-          }
-        },
-      }),
+    mcp: serveMcp,
+    hosted:
+      stateDir === undefined || e2ee === undefined
+        ? undefined
+        : hostedFromEnv({
+            env: process.env,
+            stateDir,
+            hostId: e2ee.identity.hostId,
+            serve: serveMcp,
+            mcpOn: () => e2ee.mcp.enabled(),
+          }),
     pair:
       e2ee === undefined
         ? undefined

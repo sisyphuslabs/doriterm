@@ -54,6 +54,8 @@ export interface GatewayOptions {
   readonly push?: ((link: PushLink, owner: string) => void) | undefined;
   /** Serves the discovery-only MCP stream under the client's key. */
   readonly mcp?: ((link: PushLink, key: string) => void) | undefined;
+  /** The URL MCP endpoint (`/mcp` and its OAuth metadata) on the loopback listener, behind DORIFACE_HOSTED_MCP=1. */
+  readonly hosted?: ((request: Request) => Promise<Response>) | undefined;
   /**
    * This computer's own pairing offer, for the app that runs the host: `POST /v1/pair` opens one and `GET /v1/pair`
    * reports it, behind the same token as `/v1/hc` and never on the LAN listener. Without it both routes are absent.
@@ -169,6 +171,11 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (pair !== undefined) {
       app.get("/v1/pair", pairGate, (c) => c.json(pair.state()));
       app.post("/v1/pair", pairGate, async (c) => c.json(await pair.open()));
+    }
+    if (options.hosted !== undefined) {
+      const hosted = options.hosted;
+      app.all("/mcp", (c) => hosted(c.req.raw));
+      app.get("/.well-known/oauth-protected-resource", (c) => hosted(c.req.raw));
     }
     if (mcpSurface !== undefined) {
       app.get("/v1/mcp", pairGate, (c) => c.json(mcpSurface.state()));
