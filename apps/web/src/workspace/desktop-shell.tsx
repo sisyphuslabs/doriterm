@@ -283,13 +283,16 @@ export function DesktopShell(props: DesktopShellProps) {
         onNew={onNew}
       />
       {shown ? (
-        <Sidebar
-          terminals={terminals}
-          active={focusedAddress}
-          onOpen={openTerminal}
-          onPalette={onPalette}
-          {...(medium ? { rail: true, onExpand: () => setDrawer((open) => !open) } : {})}
-        />
+        // While the drawer covers the rail, the drawer is the one Workspace landmark: the rail takes no focus or reading.
+        <div className="contents" inert={medium && drawer} aria-hidden={medium && drawer ? true : undefined}>
+          <Sidebar
+            terminals={terminals}
+            active={focusedAddress}
+            onOpen={openTerminal}
+            onPalette={onPalette}
+            {...(medium ? { rail: true, onExpand: () => setDrawer((open) => !open) } : {})}
+          />
+        </div>
       ) : null}
       {medium && drawer ? (
         <>
