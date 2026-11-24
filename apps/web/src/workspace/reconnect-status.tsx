@@ -1,7 +1,7 @@
 import type { HcConnection } from "@doriface/client";
-import { Spinner, StatusBarItem } from "@doriface/ui";
+import { Spinner, StatusBarItem, useShownAfter } from "@doriface/ui";
 import { Cable, Globe, WifiOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DirectReason } from "../connection/direct-attempt.ts";
 import { directPathAvailable } from "../connection/direct-switch.ts";
 import { hostFailure } from "../connection/host-failure.ts";
@@ -47,8 +47,22 @@ export function reconnectingLabel(machine: string, seconds: number | null): stri
   return seconds === null ? `Reconnecting${to}…` : `Reconnecting${to} in ${seconds} s`;
 }
 
-/** What to say about the workspace's connection while it is not usable, or null while it is. */
+/**
+ * What to say about the workspace's connection while it is not usable, or null while it is. A reconnect is said only
+ * once it has taken a second, and then for at least half a second, so a quick one shows nothing and none blinks
+ * (#2768). Offline is a state, not a wait, so it is said at once.
+ */
 export function useConnectionNotice(): ConnectionNotice | null {
+  const notice = useCurrentNotice();
+  const waiting = notice !== null && !notice.offline;
+  const shown = useShownAfter(waiting);
+  const last = useRef<ConnectionNotice | null>(null);
+  if (waiting) last.current = notice;
+  if (notice?.offline === true) return notice;
+  return shown ? (waiting ? notice : last.current) : null;
+}
+
+function useCurrentNotice(): ConnectionNotice | null {
   const state = useConnection();
   const online = useOnline();
   const failed = state.phase === "failed" ? state : null;

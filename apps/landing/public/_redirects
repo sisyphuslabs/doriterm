@@ -1,0 +1,3 @@
+/ko/docs /docs/ 301
+/ko/docs/ /docs/ 301
+/ko/docs/* /docs/:splat 301

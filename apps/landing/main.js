@@ -1,5 +1,7 @@
+import { bindCopy } from "./copy.js";
+import { setupTheme } from "./theme.js";
+
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-const STORAGE_KEY = "doriterm-theme";
 const MOTION_KEY = "doriterm-motion";
 
 function readMotionPaused() {
@@ -144,23 +146,6 @@ function setupMotion() {
   });
 }
 
-function setupTheme() {
-  const buttons = [...document.querySelectorAll("[data-theme-choice]")];
-  const apply = (choice) => {
-    for (const frame of document.querySelectorAll(".live iframe")) postTheme(frame, choice);
-    if (choice === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = choice;
-    // Blocked site storage throws: the choice then lasts for this page only.
-    try {
-      if (choice === "system") localStorage.removeItem(STORAGE_KEY);
-      else localStorage.setItem(STORAGE_KEY, choice);
-    } catch {}
-    for (const button of buttons) button.setAttribute("aria-pressed", String(button.dataset.themeChoice === choice));
-  };
-  apply(document.documentElement.dataset.theme ?? "system");
-  for (const button of buttons) button.addEventListener("click", () => apply(button.dataset.themeChoice));
-}
-
 function setupReveal() {
   const items = document.querySelectorAll(".reveal");
   const observer = new IntersectionObserver(
@@ -279,22 +264,13 @@ function setupPairing() {
 }
 
 function setupCopy() {
-  const button = document.querySelector("[data-copy]");
-  const label = button.querySelector("[data-copy-label]");
   const source = document.querySelector("[data-copy-source]");
-  button.addEventListener("click", async () => {
-    const commands = source.textContent
+  bindCopy(document.querySelector("[data-copy]"), () =>
+    source.textContent
       .split("\n")
       .map((line) => line.replace(/^\$ /, "").replace(/\s+#.*$/, ""))
-      .join("\n");
-    try {
-      await navigator.clipboard.writeText(commands);
-      label.textContent = "Copied";
-    } catch {
-      label.textContent = "Select and copy";
-    }
-    setTimeout(() => (label.textContent = "Copy"), 1600);
-  });
+      .join("\n"),
+  );
 }
 
 /** One coordinate of a cubic bezier at parameter t, and its derivative. */
@@ -815,7 +791,10 @@ function setupFleet() {
 
 setupMotion();
 setupReveal();
-setupTheme();
+// Pinning Light or Dark pins the mockups' palette too; "system" lets them follow prefers-color-scheme like the page.
+setupTheme((choice) => {
+  for (const frame of document.querySelectorAll(".live iframe")) postTheme(frame, choice);
+});
 setupFleet();
 setupLive();
 setupWire();

@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+## v0.1.23 - 2026-11-24
+
+v0.1.22 was prepared but never published; everything listed under v0.1.22 below ships in this release.
+
+### Terminal
+
+- An agent's approval card now waits for 7 sequential replies instead of 10 to confirm a typed answer, and 5 instead
+  of 7 to confirm a row choice. (#2723)
+
+### Workspace
+
+- The first terminal tab no longer flashes when its layout finishes saving. (#2713)
+- A terminal on another machine that is reopened with Try again stays the selected tab once its machine saves it, instead
+  of the selection jumping to the first tab. (#2717)
+- New tab and the first-run guide's Start a terminal no longer go disabled, or do nothing when pressed, while a newly
+  connected host's first terminal is being saved into its layout. (#2722)
+
+### Machine mesh
+
+- The Add a machine dialog stays open and reports success when the browser joins the mesh. (#2714)
+
+### Connection and offline wording
+
+- Every session goes through the relay, in the desktop app too: the desktop app no longer dials a direct address an
+  older build saved (or one edited into its settings by hand), its push stream goes through the relay as well, and
+  nothing in Settings, the status bar or the settings search names or offers a direct address. A saved address stays
+  in the settings file, unused. (#2070)
+- A paired phone or browser now asks the browser to keep its storage, so iOS no longer clears a Home Screen app's
+  device key and hosts and sends it back to the first-run screen. It asks each time the app connects until the
+  browser keeps it; before, only a browser that joined a mesh asked, and a device paired with a code never did. An
+  installed app on its first run also says that, if it was paired before, the phone cleared its data. (#2759, #2762)
+
+### MCP clients
+
+- Run `doriface-host mcp on` to accept MCP sessions from paired devices (off by default); `mcp status` lists who is
+  connected. (#2736)
+- `doriface-host connect --mcp <hostId>` speaks MCP to a paired machine over stdin and stdout, so an outside assistant
+  reaches it with one line of MCP config. (#2735)
+- An MCP client is shown two tools by default, `doriterm_tools` to find a tool and `doriterm_call` to call it, so the
+  whole catalog no longer sits in an assistant's context. `doriface-host connect --mcp --tools all` shows every tool
+  and `--tools terminal,file` adds those groups. (#2735)
+- An MCP client can do what a paired phone does with the mesh: read its members, devices and waiting joins, open an
+  invite, approve or deny a join with its six digits, rename or revoke a member, unpair a device, and leave. A revoke
+  or a leave answers a preview first and is written only when called again with `yes`. (#2735)
+- Settings > This device has an MCP group on the computer that runs the host: the switch, the connected clients with
+  Disconnect, and Connect an MCP client, which pairs the assistant's computer and gives the config to paste. (#2735)
+- The app that runs the host can read and set this computer's MCP switch and see the connected clients
+  (`/v1/mcp` on the loopback gateway), which is what Settings > MCP clients uses. (#2735)
+- A paired device that speaks MCP can use herdr-core's commands on that machine as tools, except stopping or restarting the core and removing a machine. (#2735)
+
 ## v0.1.22 - 2026-11-19
 
 ### Workspace

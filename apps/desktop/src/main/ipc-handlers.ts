@@ -15,6 +15,8 @@ import {
   type LocalHostStartFailed,
   type NoticeAnswer,
   type NoticeAuthorization,
+  type McpAnswer,
+  type McpRequest,
   type PairedDevicesAnswer,
   type PairOfferAnswer,
   type RevokeDeviceAnswer,
@@ -51,6 +53,8 @@ export interface IpcDeps extends PasteInviteDeps {
   /** Every device this computer has stored, and revoking one of them from here. */
   readonly pairedDevices: () => Promise<PairedDevicesAnswer>;
   readonly revokeDevice: (id: string) => Promise<RevokeDeviceAnswer>;
+  /** This computer's MCP switch and connected clients; `on` and `off` set the switch. */
+  readonly mcp: (request: McpRequest) => Promise<McpAnswer>;
   readonly openExternal: (url: string) => Promise<void>;
   readonly setWindowBackground: (color: string) => void;
   readonly closeWindow: () => void;
@@ -94,6 +98,8 @@ export interface IpcHandlers {
   pairedDevices(event: IpcSender): Promise<PairedDevicesAnswer>;
   /** A short id only: anything else is refused here, so a hand-edited renderer cannot address a path. */
   revokeDevice(event: IpcSender, candidate: unknown): Promise<RevokeDeviceAnswer | null>;
+  /** This computer's MCP switch; anything but the three known requests is refused rather than guessed at. */
+  mcp(event: IpcSender, candidate: unknown): Promise<McpAnswer | null>;
   /** Paints the window and the next launch with the in-app theme's background; only `#rrggbb` is taken. */
   setWindowBackground(event: IpcSender, candidate: unknown): Promise<boolean>;
   /** Closes the window the way its Close Window item does, so the close events (and the saved placement) run. */
@@ -191,6 +197,15 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
       assertAppFrame(event, deps.origin);
       try {
         return await deps.pairedDevices();
+      } catch (error) {
+        return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    async mcp(event, candidate) {
+      assertAppFrame(event, deps.origin);
+      if (candidate !== "state" && candidate !== "on" && candidate !== "off") return null;
+      try {
+        return await deps.mcp(candidate);
       } catch (error) {
         return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
       }

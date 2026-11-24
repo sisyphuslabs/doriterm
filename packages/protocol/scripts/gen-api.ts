@@ -124,10 +124,10 @@ function methodShape(node: JsonValue): MethodShape {
   };
 }
 
-async function formatSource(source: string): Promise<string> {
+export async function formatSource(source: string, fileName = "hc-api.ts"): Promise<string> {
   const config = object(parseJson(await Bun.file(FORMAT_CONFIG_PATH).text()));
   const printWidth = config["printWidth"];
-  const result = await format("hc-api.ts", source, typeof printWidth === "number" ? { printWidth } : {});
+  const result = await format(fileName, source, typeof printWidth === "number" ? { printWidth } : {});
   const [error] = result.errors;
   if (error !== undefined) throw new SchemaShapeError(`generated code does not parse: ${error.message}`);
   return result.code;
