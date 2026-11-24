@@ -15,7 +15,6 @@ import { MachineOffline } from "./machine-offline.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
 import { useShown } from "./use-shown.ts";
 import { PackSheet } from "./pack-sheet.tsx";
-import { backWithMotion } from "./phone-back-motion.ts";
 import { PhoneHeader } from "./phone-header.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
 import { PhoneTabSwitcher, useSpaceTabs } from "./phone-tab-switcher.tsx";
@@ -134,7 +133,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           host={connection.hello.core.name}
           tabTitle={tabTitle}
           backTo={backTo}
-          onBack={() => backWithMotion(onBack)}
+          onBack={onBack}
           onOpen={onOpen}
           action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
         />

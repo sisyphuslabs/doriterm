@@ -23,7 +23,7 @@ test("the motion the scripts play is the one tokens.css names", () => {
 
 test("the proposal's motion values", () => {
   const values = Object.fromEntries(
-    ["press", "color", "push", "back", "sheet-in", "sheet-out", "split", "handle", "card", "settle"].map((name) => [
+    ["press", "color", "push", "sheet-in", "sheet-out", "split", "handle", "card", "settle"].map((name) => [
       name,
       token(`--duration-${name}`),
     ]),
@@ -32,7 +32,6 @@ test("the proposal's motion values", () => {
     press: "100ms",
     color: "150ms",
     push: "320ms",
-    back: "200ms",
     "sheet-in": "320ms",
     "sheet-out": "200ms",
     split: "240ms",
