@@ -54,8 +54,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Install herdr-core
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.21/herdr-core-macos-aarch64.tar.gz
-          HC_SHA256: 1ab38dd9270f63a8f794d6d60e8702eb0d1c85a72bda85d735e5eea43f05ffed
+          HC_URL: https://releases.herdr.dev/core/0.1.22/herdr-core-macos-aarch64.tar.gz
+          HC_SHA256: 90798daadefa8d126b90ef0bcdbe9c7dda9c6cfbf011a247065ab5da348f350e
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"

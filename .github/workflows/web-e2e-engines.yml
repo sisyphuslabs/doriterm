@@ -35,8 +35,8 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - name: Install herdr-core
         env:
-          HC_URL: https://releases.herdr.dev/core/0.1.21/herdr-core-linux-x86_64.tar.gz
-          HC_SHA256: 78424755c10a40dde38a0bdb55c20ac19706e9ae05ed68fc2acf1fcff0d941c1
+          HC_URL: https://releases.herdr.dev/core/0.1.22/herdr-core-linux-x86_64.tar.gz
+          HC_SHA256: 3054ec3992ce80c5715d721caa9dcefa6056721d15dc113f4750afce763ba5df
         run: |
           mkdir -p "$RUNNER_TEMP/hc"
           curl -fsSL "$HC_URL" -o "$RUNNER_TEMP/hc.tar.gz"
