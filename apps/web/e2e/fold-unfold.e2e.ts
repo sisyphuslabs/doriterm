@@ -1,6 +1,6 @@
-import type { Page } from "@playwright/test";
 import { startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { fold } from "./fold.ts";
 import { seedLayout } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 
@@ -17,19 +17,6 @@ const shells: string[] = [];
 test.afterEach(() => {
   for (const address of shells.splice(0)) hcOn("host", ["kill", address]);
 });
-
-/** Resizes the window and the screen together, as folding a device does. */
-async function fold(page: Page, size: { readonly width: number; readonly height: number }): Promise<void> {
-  const session = await page.context().newCDPSession(page);
-  await session.send("Emulation.setDeviceMetricsOverride", {
-    ...size,
-    screenWidth: size.width,
-    screenHeight: size.height,
-    deviceScaleFactor: 1,
-    mobile: true,
-  });
-  await page.setViewportSize(size);
-}
 
 for (const device of DEVICES) {
   test(`${device.name}: unfolding and folding keeps the open terminal and its output`, async ({ page }) => {
