@@ -23,11 +23,11 @@ const DISCOVER = `${JSON.stringify({
   params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
 })}\n`;
 
-function fixture(enabled = true) {
+function fixture(setting: "on" | "off" | "unset" = "on") {
   const { dir, m: founder } = side("alpha");
   const member = machine("beta");
   const mcp = new McpSwitch(dir);
-  if (enabled) mcp.setEnabled(true);
+  if (setting !== "unset") mcp.setEnabled(setting === "on");
   const gateway = gatewayOn(founder, member, {
     dir,
     mcp,
@@ -107,8 +107,16 @@ test("a machine member's key cannot open MCP even with the switch on", async () 
   });
 });
 
-test("a paired key cannot finish the MCP handshake when no switch file exists", async () => {
-  const { connect } = fixture(false);
+test("a paired device's MCP session answers discovery when no switch file exists: MCP is on by default", async () => {
+  const { connect } = fixture("unset");
+  const connection = await connect();
+  connection.send(DISCOVER);
+  await connection.answered;
+  expect(JSON.parse(new TextDecoder().decode(connection.received[0]))).toMatchObject({ id: 1, result: {} });
+});
+
+test("a paired key cannot finish the MCP handshake once MCP was turned off", async () => {
+  const { connect } = fixture("off");
   await expect(connect()).rejects.toMatchObject({
     code: CloseCode.UnknownDevice,
     cause: { message: "MCP is off on this host" },

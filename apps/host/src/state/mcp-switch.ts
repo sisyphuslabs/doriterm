@@ -4,9 +4,12 @@ import { withStateLock } from "./lock.ts";
 
 export const MCP_SWITCH_FILE = "mcp.json";
 
+/** A host that never wrote the switch serves MCP; pairing is still the gate, and an explicit off is kept. */
+const ENABLED_WITHOUT_SWITCH = true;
+
 function readEnabled(path: string): boolean {
   const value = readJson(path);
-  if (value === undefined) return false;
+  if (value === undefined) return ENABLED_WITHOUT_SWITCH;
   if (
     !isRecord(value) ||
     value["version"] !== 1 ||
@@ -38,7 +41,7 @@ export class McpSwitch {
     }
     if (stamp === undefined) {
       this.#cached = undefined;
-      return false;
+      return ENABLED_WITHOUT_SWITCH;
     }
     if (this.#cached?.stamp !== stamp) {
       try {
