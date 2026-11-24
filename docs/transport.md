@@ -1,4 +1,4 @@
-# Doriterm transport contract v1.12.1
+# Doriterm transport contract v1.12.3
 
 This is the binding wire contract for every Doriterm package. Each rule below is the current one; the change log at the end records what each revision changed.
 
@@ -373,6 +373,7 @@ One more stream for a device (v1.12): the Model Context Protocol in place of her
 
 ## Change log
 
+- v1.12.3 (host behaviour, no relay change; #2735): hc's event stream over MCP. Terminals are resources (`doriterm://terminal/<address>`, `resources/list`, `resources/read` returns the screen). `subscriptions/listen` acknowledges, then sends `notifications/resources/updated` for subscribed terminals and `notifications/resources/list_changed` when one is created or removed. The Events extension (`io.modelcontextprotocol/events`) offers one event type, `terminal.changed`, by push (`events/stream`): `active`, then one `event` per hc event with its payload, a heartbeat, and a fresh `active` with `truncated` after the core dropped events; cursors are null (no replay). Each subscription is one `events.subscribe` on the session's own core connection and ends on cancel or when the session closes. `terminal.attach` stays excluded.
 - v1.12.1: MCP tools (#2735). `tools/list` and `tools/call`: herdr-core's methods as tools, except seven, each call passed to the host's own core connection for that session.
 - v1.12: the MCP stream (#2735). A session may say `stream:"mcp"`: JSON-RPC lines of the Model Context Protocol, revision `2026-07-28`, served by the host to a paired device or a client member, as the push stream is. Off by default behind a switch (`doriface-host mcp on|off`, `mcp.json`). This revision serves `server/discover` only. No relay change: the stream is inside the Noise payload, and an older host refuses it with 4400.
 - v1.11.1 (relay behaviour, no wire change): the reference relay counts mesh pools from proven sessions between hosts, as monthly HMAC pseudonyms grouped per pool and deleted with the month's salt, and sends its daily totals and pool counts to its operator's product analytics as numbers only (see Relay passes).

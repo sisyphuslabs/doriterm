@@ -1,5 +1,14 @@
 import { isJsonObject, type JsonObject, MCP_TOOLS, type McpToolRow } from "@doriface/protocol";
 import { MESH_TOOLS, type MeshTool } from "./mesh-tools.ts";
+import {
+  EVENT_TYPE,
+  EVENTS_EXTENSION,
+  readListen,
+  readResourceUri,
+  readStream,
+  type ListenFilter,
+  type StreamRequest,
+} from "./subscriptions.ts";
 
 export const MAX_MCP_LINE = 256 * 1024;
 const VERSION = "2026-07-28";
@@ -29,7 +38,8 @@ export const SERVER_INSTRUCTIONS =
   "Only two tools are listed: doriterm_tools and doriterm_call. Many more exist (terminals, machines, files, " +
   "documents, the mesh and its devices). Before you call anything, search with doriterm_tools, using a few words for " +
   "what you want to do, for example 'read terminal screen' or 'approve join'; then call the tool it returns with " +
-  "doriterm_call. Search again whenever a task needs a tool you have not seen.";
+  "doriterm_call. Search again whenever a task needs a tool you have not seen. To wait for a terminal to finish or " +
+  "change, call terminal_wait; a client that supports MCP events can subscribe to terminal.changed instead.";
 
 const CORE_TOOLS = [
   {
@@ -105,7 +115,11 @@ export type McpLine =
   | { readonly kind: "none" }
   | { readonly kind: "cancel"; readonly requestId: unknown }
   | { readonly kind: "call"; readonly id: Id; readonly tool: McpToolRow; readonly args: JsonObject }
-  | { readonly kind: "mesh"; readonly id: Id; readonly tool: MeshTool; readonly args: JsonObject };
+  | { readonly kind: "mesh"; readonly id: Id; readonly tool: MeshTool; readonly args: JsonObject }
+  | { readonly kind: "resources"; readonly id: Id }
+  | { readonly kind: "read"; readonly id: Id; readonly uri: string; readonly address: string }
+  | { readonly kind: "listen"; readonly id: string | number; readonly filter: ListenFilter }
+  | { readonly kind: "stream"; readonly id: string | number; readonly request: StreamRequest };
 
 export const rpcError = (id: Id, code: number, message: string, data?: object) => ({
   jsonrpc: "2.0",
@@ -143,7 +157,7 @@ export function readMcpLine(bytes: Uint8Array, hostVersion: string, shown: Tools
       return result(id, {
         resultType: "complete",
         supportedVersions: [VERSION],
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, resources: { listChanged: true }, extensions: { [EVENTS_EXTENSION]: {} } },
         _meta: { "io.modelcontextprotocol/serverInfo": { name: "doriterm", version: hostVersion } },
         instructions: SERVER_INSTRUCTIONS,
       });
@@ -168,6 +182,28 @@ export function readMcpLine(bytes: Uint8Array, hostVersion: string, shown: Tools
       const tool = typeof name === "string" ? toolByName.get(name) : undefined;
       if (tool === undefined) return invalid(`Unknown tool: ${String(name)}`);
       return { kind: "call", id, tool, args };
+    }
+    case "resources/list":
+      return { kind: "resources", id };
+    case "resources/read": {
+      const uri = isJsonObject(params) ? params["uri"] : undefined;
+      const address = readResourceUri(uri);
+      if (typeof uri !== "string" || address === undefined) {
+        return { kind: "reply", reply: rpcError(id, -32602, "Resource not found", { uri: uri ?? null }) };
+      }
+      return { kind: "read", id, uri, address };
+    }
+    case "subscriptions/listen":
+      if (id === null) return { kind: "reply", reply: rpcError(id, -32600, "Invalid Request") };
+      return { kind: "listen", id, filter: readListen(params) };
+    case "events/list":
+      return result(id, { resultType: "complete", events: [EVENT_TYPE] });
+    case "events/stream": {
+      if (id === null) return { kind: "reply", reply: rpcError(id, -32600, "Invalid Request") };
+      const request = readStream(params);
+      if ("error" in request)
+        return { kind: "reply", reply: rpcError(id, request.error.code, request.error.message, request.error.data) };
+      return { kind: "stream", id, request };
     }
     default:
       return { kind: "reply", reply: rpcError(id, -32601, "Method not found") };

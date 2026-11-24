@@ -261,7 +261,11 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     const run = runConnect(state, relayUrl, hostId, "--mcp", "--tools", "machine");
     await run.write(mcpLine(1, "server/discover"));
     const discovered = JSON.parse(decoder.decode(await within(run.reader.line(), "the discover answer")));
-    expect(discovered.result.capabilities).toEqual({ tools: {} });
+    expect(discovered.result.capabilities).toEqual({
+      tools: {},
+      resources: { listChanged: true },
+      extensions: { "io.modelcontextprotocol/events": {} },
+    });
     await run.write(mcpLine(2, "tools/call", { name: "terminal_list", arguments: {} }));
     const listed = JSON.parse(decoder.decode(await within(run.reader.line(), "the terminal_list answer")));
     expect(listed.result.isError).toBe(false);
@@ -284,6 +288,27 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect(mesh.result.isError).toBe(false);
     expect(mesh.result.structuredContent.devices.map((device: { name: string }) => device.name)).toContain("assistant");
     expect(mesh.result.structuredContent.joins).toEqual([]);
+
+    // A real terminal finishing reaches the client as an MCP event, on a stream narrowed to its label.
+    await run.write(
+      mcpLine(6, "events/stream", { name: "terminal.changed", arguments: { labels: { mcp: "relay-test" } } }),
+    );
+    const active = JSON.parse(decoder.decode(await within(run.reader.line(), "the events/stream confirmation")));
+    expect(active.method).toBe("notifications/events/active");
+    await run.write(
+      mcpLine(7, "tools/call", {
+        name: "doriterm_call",
+        arguments: { tool: "terminal_run", arguments: { argv: ["true"], labels: { mcp: "relay-test" } } },
+      }),
+    );
+    // Lines arrive in order: the tool's reply and the terminal's earlier events come first, so read until it finishes.
+    type Finished = { params: { data: { type: string; terminal: string } } };
+    const nextFinished = async (): Promise<Finished> => {
+      const message = JSON.parse(decoder.decode(await within(run.reader.line(), "the terminal's finished event")));
+      const isFinished = message.method === "notifications/events/event" && message.params.data.type === "finished";
+      return isFinished ? message : nextFinished();
+    };
+    expect((await nextFinished()).params.data.terminal).toMatch(/^t\d+$/);
 
     new McpSwitch(stateDir).setEnabled(false);
     expect(await within(run.exited, "the session ending once MCP is off")).toBe(1);

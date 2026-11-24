@@ -1,19 +1,31 @@
 import { CloseCode } from "@doriface/crypto";
-import { HcRpcError, type HcMethod } from "@doriface/protocol";
+import { type EventsSubscribeParams, HcRpcError, type HcMethod } from "@doriface/protocol";
 import type { PushLink } from "../push/push-stream.ts";
 import type { MeshToolDeps } from "./mesh-tools.ts";
-import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine, toolResult, type ToolsShown } from "./lines.ts";
+import { ended, type HcFeed, realEvery, serveListen, serveStream, terminalUri, type Every } from "./subscriptions.ts";
+import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine, toolResult, type ToolsShown, rpcError } from "./lines.ts";
 
 const encoder = new TextEncoder();
 
 /** What the MCP server needs of a herdr-core connection; an HcConnection is one. */
 export interface HcCaller {
   callByName(method: HcMethod, params: object, options: { readonly signal: AbortSignal }): Promise<unknown>;
+  subscribe(
+    filter: EventsSubscribeParams,
+    options: { readonly signal: AbortSignal },
+  ): Promise<HcFeed & SubscriptionEnd>;
   onClose(listener: (error: Error | undefined) => void): unknown;
   close(): void;
 }
 
+/** How a feed reports that it ended; "detached" is this side closing it. */
+interface SubscriptionEnd {
+  onClose(listener: (close: { readonly reason: string }) => void): unknown;
+}
+
 export interface McpServeDeps {
+  /** Starts a repeating heartbeat; tests beat by hand. */
+  readonly every?: Every | undefined;
   readonly hostVersion: string;
   /** Opens this session's own connection to the core, on its first tool call. */
   readonly openHc?: (() => Promise<HcCaller>) | undefined;
@@ -92,6 +104,79 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
       send({ jsonrpc: "2.0", id: line.id, result: toolResult({ kind: "refused", message }, true) });
     }
   };
+  const readResource = async (line: Extract<McpLine, { kind: "resources" | "read" }>): Promise<void> => {
+    const abort = new AbortController();
+    calls.set(line.id, abort);
+    try {
+      const connection = await openHc();
+      const signal = abort.signal;
+      if (line.kind === "resources") {
+        const listed = await connection.callByName("terminal.list", {}, { signal });
+        const terminals = Reflect.get(Object(listed), "terminals");
+        const resources = (Array.isArray(terminals) ? terminals : []).flatMap((terminal: unknown) => {
+          const address = Reflect.get(Object(terminal), "address");
+          if (typeof address !== "string") return [];
+          const name = Reflect.get(Object(terminal), "name");
+          return [
+            {
+              uri: terminalUri(address),
+              name: typeof name === "string" && name !== "" ? name : address,
+              mimeType: "text/plain",
+            },
+          ];
+        });
+        send({
+          jsonrpc: "2.0",
+          id: line.id,
+          result: { resultType: "complete", resources, ttlMs: 0, cacheScope: "private" },
+        });
+        return;
+      }
+      const read = await connection.callByName("terminal.read", { terminal: line.address }, { signal });
+      const text = Reflect.get(Object(read), "text");
+      const contents = [{ uri: line.uri, mimeType: "text/plain", text: typeof text === "string" ? text : "" }];
+      send({
+        jsonrpc: "2.0",
+        id: line.id,
+        result: { resultType: "complete", contents, ttlMs: 0, cacheScope: "private" },
+      });
+    } catch (error) {
+      if (abort.signal.aborted) return;
+      const notFound = error instanceof HcRpcError && error.kind === "not_found";
+      const message = error instanceof Error ? error.message : String(error);
+      send(rpcError(line.id, notFound ? -32602 : -32603, notFound ? "Resource not found" : message));
+    } finally {
+      calls.delete(line.id);
+      settleDying();
+    }
+  };
+  // One events.subscribe per subscription, on this session's core connection. Cancelling it, or the session ending,
+  // closes the feed; the core closing it ends the subscription with its empty final response.
+  const subscribe = async (line: Extract<McpLine, { kind: "listen" | "stream" }>): Promise<void> => {
+    const abort = new AbortController();
+    calls.set(line.id, abort);
+    let stopBeat: (() => void) | undefined;
+    try {
+      const connection = await openHc();
+      const filter = line.kind === "stream" ? line.request.filter : {};
+      const feed = await connection.subscribe(filter, { signal: abort.signal });
+      if (abort.signal.aborted) return feed.close();
+      const finished = Promise.withResolvers<string>();
+      feed.onClose((info) => finished.resolve(info.reason));
+      abort.signal.addEventListener("abort", () => feed.close(), { once: true });
+      if (line.kind === "listen") serveListen(line.id, line.filter, feed, send);
+      else stopBeat = serveStream(line.id, line.request, feed, send, deps.every ?? realEvery);
+      if ((await finished.promise) !== "detached") send(ended(line.id));
+    } catch (error) {
+      if (abort.signal.aborted) return;
+      const message = error instanceof Error ? error.message : String(error);
+      send(rpcError(line.id, -32603, message));
+    } finally {
+      stopBeat?.();
+      calls.delete(line.id);
+      settleDying();
+    }
+  };
   link.onClose(() => {
     closed = true;
     for (const abort of calls.values()) abort.abort();
@@ -128,6 +213,8 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
         if (typeof key === "string" || typeof key === "number") calls.get(key)?.abort();
       } else if (line.kind === "call") void run(line);
       else if (line.kind === "mesh") void runMesh(line);
+      else if (line.kind === "resources" || line.kind === "read") void readResource(line);
+      else if (line.kind === "listen" || line.kind === "stream") void subscribe(line);
     }
   });
 }

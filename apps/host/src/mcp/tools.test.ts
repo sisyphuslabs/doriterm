@@ -55,6 +55,7 @@ function rig() {
       called.shift()?.();
       return answer.promise;
     },
+    subscribe: () => Promise.reject(new Error("this rig serves no events")),
     onClose: (listener) => {
       coreClosed = listener;
     },
