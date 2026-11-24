@@ -117,6 +117,19 @@ test("tools/list shows two tools until the session asks for more: a group adds t
   expect(r.opened()).toBe(0);
 });
 
+test("both listed tools lead with the advice to search first, so a model learns the catalog exists", () => {
+  const r = rig();
+  r.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: META } });
+  const tools: { name: string; description: string }[] = Reflect.get(
+    Reflect.get(r.replies[0] ?? {}, "result") ?? {},
+    "tools",
+  );
+  const [first, second] = tools.map((tool) => tool.description.split(":")[0]);
+  expect(tools.map((tool) => tool.name)).toEqual(["doriterm_tools", "doriterm_call"]);
+  expect(first).toBe(second);
+  expect(first).toContain("doriterm_tools");
+});
+
 test("doriterm_tools answers the catalog without the core: names alone, or the matches with their schemas", () => {
   const r = rig();
   r.call(1, "doriterm_tools");
