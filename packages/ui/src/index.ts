@@ -2,7 +2,18 @@ export { cn } from "./lib/cn.ts";
 export { SPINNER_DELAY_MS, useDelayedTrue } from "./lib/spinner-delay.ts";
 export { ShowGate, type ShowTiming } from "./lib/show-gate.ts";
 export { INDICATOR_MIN_MS, INDICATOR_TIMING, useShownAfter } from "./lib/use-shown-after.ts";
-export { AgentRow, type Agent, type AgentRowProps } from "./components/agent-row.tsx";
+export { AgentFold, type AgentFoldProps } from "./components/agent-fold.tsx";
+export { AgentMark, type AgentMarkProps } from "./components/agent-mark.tsx";
+export { AGENT_MARKS, hasAgentMark, type AgentMarkEntry } from "./components/agent-marks.ts";
+export {
+  AGENT_TREE_DISCLOSURE_PX,
+  AGENT_TREE_GUIDE_PX,
+  AgentRow,
+  agentRowLead,
+  type Agent,
+  type AgentRowProps,
+  type AgentTreeGuide,
+} from "./components/agent-row.tsx";
 export {
   ApprovalBanner,
   approvalAnnouncement,
