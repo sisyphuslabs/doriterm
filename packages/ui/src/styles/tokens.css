@@ -168,6 +168,7 @@
   --duration-press: 100ms;
   --duration-color: 150ms;
   --duration-push: 320ms;
+  --duration-back: 200ms;
   --duration-sheet-in: 320ms;
   --duration-sheet-out: 200ms;
   --duration-split: 240ms;

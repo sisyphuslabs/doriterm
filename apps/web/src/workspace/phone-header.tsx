@@ -8,6 +8,7 @@ import { machineOf, type Session, spaceOfAddress, terminalTitle } from "./model.
 import { useShown } from "./use-shown.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { PhoneSessionSheet } from "./phone-session-sheet.tsx";
+import { backWithMotion } from "./phone-back-motion.ts";
 import { readoutText, usePinchReadout } from "../terminal/pinch-readout.ts";
 
 export interface PhoneHeaderProps {
@@ -57,7 +58,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
         variant="ghost"
         aria-label={backTo === null ? "Back to agents" : backTo === "" ? "Back" : `Back to ${backTo}`}
         className="max-w-[7.5rem] min-w-11 shrink-0 gap-0.5 px-1.5 text-foreground [&>span]:min-w-0"
-        onClick={onBack}
+        onClick={(event) => backWithMotion(event.currentTarget, onBack)}
       >
         <ChevronLeft aria-hidden />
         {/* Under 360 px the chevron alone: the title keeps the row (its accessible name still says where Back goes). */}

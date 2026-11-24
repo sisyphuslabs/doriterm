@@ -13,6 +13,7 @@ import { SpaceMenuItems } from "./space-actions.tsx";
 import { useNow } from "./use-now.ts";
 import { useKeptScroll } from "./kept-scroll.ts";
 import { NotNowLine, notNowText } from "./not-now-line.tsx";
+import { backWithMotion } from "./phone-back-motion.ts";
 
 export interface PhoneSpaceProps {
   readonly space: ListedSpace;
@@ -163,7 +164,7 @@ function SpaceFrame(props: {
             variant="ghost"
             aria-label={`Back to ${props.from}`}
             className="gap-0.5 px-1.5 text-foreground"
-            onClick={props.onBack}
+            onClick={(event) => backWithMotion(event.currentTarget, props.onBack)}
           >
             <ChevronLeft aria-hidden />
             {props.from === "agents" ? "Agents" : "Spaces"}

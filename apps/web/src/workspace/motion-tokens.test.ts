@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { layoutMotion } from "./layout-motion.ts";
 import { PINCH_SETTLE } from "../terminal/use-terminal-pinch.ts";
+import { BACK_MOTION } from "./phone-back-motion.ts";
 
 const tokens = await Bun.file(new URL("../../../../packages/ui/src/styles/tokens.css", import.meta.url)).text();
 
@@ -15,6 +16,10 @@ test("the motion the scripts play is the one tokens.css names", () => {
     duration: Number.parseInt(token("--duration-split")),
     easing: token("--ease-standard"),
   });
+  expect(BACK_MOTION).toEqual({
+    duration: Number.parseInt(token("--duration-back")),
+    easing: token("--ease-exit"),
+  });
   expect(PINCH_SETTLE).toEqual({
     duration: Number.parseInt(token("--duration-settle")),
     easing: token("--ease-standard"),
@@ -23,7 +28,7 @@ test("the motion the scripts play is the one tokens.css names", () => {
 
 test("the proposal's motion values", () => {
   const values = Object.fromEntries(
-    ["press", "color", "push", "sheet-in", "sheet-out", "split", "handle", "card", "settle"].map((name) => [
+    ["press", "color", "push", "back", "sheet-in", "sheet-out", "split", "handle", "card", "settle"].map((name) => [
       name,
       token(`--duration-${name}`),
     ]),
@@ -32,6 +37,7 @@ test("the proposal's motion values", () => {
     press: "100ms",
     color: "150ms",
     push: "320ms",
+    back: "200ms",
     "sheet-in": "320ms",
     "sheet-out": "200ms",
     split: "240ms",
