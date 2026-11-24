@@ -19,7 +19,7 @@ test("a missing switch is on: a host that never set it serves MCP to paired devi
   expect(mcp.enabled()).toBe(true);
 });
 
-test("an explicit off outlives the process that wrote it, as it does across an update", () => {
+test("an explicit off is kept on disk: a new reader of the same state dir sees it off", () => {
   mcp.setEnabled(false);
   expect(new McpSwitch(dir).enabled()).toBe(false);
 });

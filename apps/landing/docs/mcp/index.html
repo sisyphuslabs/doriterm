@@ -292,38 +292,32 @@
           </p>
           <h2 id="tools">What the assistant can do</h2>
           <p>
-            The tools are herdr-core's own commands under MCP names: <code>terminal_list</code>,
-            <code>terminal_read</code>, <code>terminal_send</code>, <code>terminal_run</code>,
-            <code>machine_exec</code>, <code>file_read</code> and the rest. A paired assistant can read and type into
-            your terminals, run commands and write files on that machine, as a paired phone or browser can.
+            The assistant gets one tool, <code>doriterm</code>. It runs any Doriterm command the way the
+            <code>hc</code> CLI takes it: <code>["ls"]</code> lists terminals, <code>["read","t3"]</code> reads one,
+            <code>["send","t3","npm test"]</code> types into it, <code>["exec","uname -a"]</code> runs a command and
+            <code>["file","read","/etc/hostname"]</code> reads a file. So a paired assistant can read and type into your
+            terminals, run commands and write files on that machine, as a paired phone or browser can.
+          </p>
+          <p>
+            The Doriterm skill comes with it as its manual. The assistant reads
+            <code>doriterm://skill/SKILL.md</code> before its first call, or calls the tool with <code>["skill"]</code>.
+            The same skill is on <a href="/skill/">doriterm.com/skill</a>, and an assistant that can install skills can
+            use it with no MCP at all.
           </p>
           <p>
             It can also do what a paired phone does with the mesh: read its members, devices and waiting joins
-            (<code>mesh_status</code>), open an invite (<code>mesh_invite</code>), answer a join
-            (<code>mesh_join_answer</code>), rename or revoke a member, unpair a device, and leave. Approving a join
-            needs its six digits, and you compare them yourself, as on the phone. A revoke or a leave shows a preview
-            first and is written only when the assistant asks again with <code>yes</code>.
+            (<code>["mesh","status"]</code>), open an invite, answer a join, rename or revoke a member, unpair a device
+            and leave. Approving a join needs its six digits, and you compare them yourself, as on the phone. A revoke
+            or a leave shows a preview first and is written only when the assistant asks again with
+            <code>--yes</code>.
           </p>
           <p>
-            One difference from a paired device: an MCP client cannot stop or restart the core, and cannot remove a
-            machine.
-          </p>
-          <h3 id="tools-shown">Two tools by default</h3>
-          <p>
-            Every tool an assistant is shown takes room in its context, so it is shown two:
-            <code>doriterm_tools</code> finds a tool, and <code>doriterm_call</code> calls it. Every tool stays
-            reachable that way. To show more up front, add <code>--tools</code> to the config's arguments:
-            <code>"--tools", "all"</code> for every tool, or a list of groups such as
-            <code>"--tools", "terminal,mesh"</code>. The groups are <code>terminal</code>, <code>machine</code>,
-            <code>file</code>, <code>doc</code>, <code>templates</code>, <code>server</code> and <code>mesh</code>.
-          </p>
-          <p>
-            Doriterm tells the assistant this when it connects: search with <code>doriterm_tools</code> before calling
-            anything, and search again when a task needs a tool it has not seen.
+            What a paired device can do and an MCP client cannot: stop or restart the core, remove a machine, attach to
+            a terminal interactively, and read the host's own private state (its keys and paired devices).
           </p>
           <h3 id="events">Following terminals as they change</h3>
           <p>
-            To wait for a terminal to finish or change, the assistant calls <code>terminal_wait</code>; that works in
+            To wait for a terminal to finish or change, the assistant runs <code>["wait","t7"]</code>; that works in
             every client. Clients that speak MCP subscriptions can also read each terminal as a resource
             (<code>doriterm://terminal/t7</code>) and be told when it changes, and clients that support MCP events can
             subscribe to <code>terminal.changed</code> and receive what changed. Subscriptions end when the session
