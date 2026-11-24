@@ -4,6 +4,7 @@ import { fingerprintOf, generateHostIdentity, generateX25519 } from "@doriface/c
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KnownHosts } from "../../apps/host/src/state/known-hosts.ts";
+import { McpSwitch } from "../../apps/host/src/state/mcp-switch.ts";
 import { HELLO, rpcFrame } from "../../apps/host/src/testing/hc-session.ts";
 import { DIAL_TIMEOUT_MS } from "../../apps/host/src/commands/connect.ts";
 import { runConnect } from "./support/connect-cli.ts";
@@ -12,6 +13,10 @@ import { within } from "./support/watch.ts";
 import { setUpOnce } from "./support/set-up-once.ts";
 
 const decoder = new TextDecoder();
+const mcpLine = (id: number, method: string, params: object = {}): Uint8Array =>
+  new TextEncoder().encode(
+    `${JSON.stringify({ jsonrpc: "2.0", id, method, params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" }, ...params } })}\n`,
+  );
 /**
  * A refusal must end the process before connect's own dial deadline would (`DIAL_TIMEOUT_MS`, inside hc's 20 s), so the
  * reason on stderr is the refusal's, which each case checks. The refusal itself is cheap: from spawn to exit, 60 refusals
@@ -237,4 +242,32 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect(await within(run.exited, "the refusal", REFUSAL_MS)).toBe(1);
     expect((await run.stderr()).trim().split("\n").at(-1)).toContain("pair it again (4401)");
   }, 60_000);
+
+  test("--mcp carries MCP over the relay once the host has it switched on, and switching it off ends the session", async () => {
+    const { relayUrl, hostId, stateDir } = host();
+    const state = join(scratch, "mcp-device");
+    const pairing = runConnect(state, relayUrl, await host().pairingLink(), "--name", "assistant");
+    await pairing.write(HELLO);
+    await within(pairing.reader.line(), "hello over the pairing run");
+    pairing.end();
+    expect(await within(pairing.exited, "the pairing run exiting")).toBe(0);
+
+    // Paired, but MCP is off on the host: the refusal says so instead of asking to pair again.
+    const refused = runConnect(state, relayUrl, hostId, "--mcp");
+    expect(await within(refused.exited, "the refusal", REFUSAL_MS)).toBe(1);
+    expect(await refused.stderr()).toContain("run doriface-host mcp on there");
+
+    new McpSwitch(stateDir).setEnabled(true);
+    const run = runConnect(state, relayUrl, hostId, "--mcp");
+    await run.write(mcpLine(1, "server/discover"));
+    const discovered = JSON.parse(decoder.decode(await within(run.reader.line(), "the discover answer")));
+    expect(discovered.result.capabilities).toEqual({ tools: {} });
+    await run.write(mcpLine(2, "tools/call", { name: "terminal_list", arguments: {} }));
+    const listed = JSON.parse(decoder.decode(await within(run.reader.line(), "the terminal_list answer")));
+    expect(listed.result.isError).toBe(false);
+    expect(Array.isArray(listed.result.structuredContent.terminals)).toBe(true);
+
+    new McpSwitch(stateDir).setEnabled(false);
+    expect(await within(run.exited, "the session ending once MCP is off")).toBe(1);
+  });
 });

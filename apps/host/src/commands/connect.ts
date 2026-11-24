@@ -24,6 +24,9 @@ export const CONNECT_USAGE = `usage: doriface-host connect <hostId | pairing lin
   --fingerprint <fp> with a typed code: the host's fingerprint as \`doriface-host pair\` printed it there (at least
                      its first 4 groups), checked before pairing
   --replace          let a link or code replace a saved host whose key or relay changed (refused otherwise)
+  --mcp              speak the Model Context Protocol to the host instead of hc's own: stdin and stdout carry MCP's
+                     stdio transport, so an assistant's MCP config is {"command":"doriface-host","args":["connect","--mcp","<hostId>"]}.
+                     The host must have MCP switched on (doriface-host mcp on)
   --mesh             reach a mesh member through the running host here, which dials with its own key; the mesh
                      adds these lines itself, with --state-dir and the member's hostId`;
 
@@ -58,6 +61,7 @@ export async function connectCommand(args: readonly string[], log: (line: string
       fingerprint: { type: "string" },
       replace: { type: "boolean" },
       mesh: { type: "boolean" },
+      mcp: { type: "boolean" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -70,6 +74,7 @@ export async function connectCommand(args: readonly string[], log: (line: string
   const target = parseTarget(given);
   const stateDir = values["state-dir"] ?? defaultStateDir();
   if (values.mesh === true) {
+    if (values.mcp === true) throw new Error("--mesh takes no --mcp: a machine member has no MCP stream");
     if (values.replace === true) throw new Error("--mesh takes no --replace: a member's key comes from the mesh");
     if (target.kind !== "host") throw new Error("--mesh takes a member's hostId, not a pairing link or code");
     const output = stdoutOutput();
@@ -83,6 +88,7 @@ export async function connectCommand(args: readonly string[], log: (line: string
     deviceName: values.name ?? hostname(),
     fingerprint: values.fingerprint,
     replace: values.replace === true,
+    stream: values.mcp === true ? ("mcp" as const) : undefined,
     log,
   };
   const dialed: Dialed = await within(dial(target, options), DIAL_TIMEOUT_MS, "reaching the host through the relay");
