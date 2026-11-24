@@ -38,6 +38,9 @@ export type EntryRead =
   /** The copy handed over is older than one this device has already seen. */
   | { readonly kind: "rolled-back" };
 
+/** Mesh vault entries are signed by the tier key, never by a TypeVault grant: a grant-signed entry is refused. */
+const NO_GRANTS = (): boolean => false;
+
 const entryMark = (id: string): string => `entry:${id}`;
 
 /** Every entry of the current generation that verifies and opens, with its payload. */
@@ -51,7 +54,7 @@ async function openAll(doc: VaultDoc, tier: ResolvedTier, key: SecretKey) {
     current.map(async (envelope) => ({
       envelope,
       // One signed entry that cannot be read (bad payload) must not take every other entry down with it.
-      payload: await openEntry(envelope, { unlock }).catch((cause: unknown) => {
+      payload: await openEntry(envelope, { unlock }, NO_GRANTS).catch((cause: unknown) => {
         if (cause instanceof TypeVaultError) return undefined;
         throw cause;
       }),

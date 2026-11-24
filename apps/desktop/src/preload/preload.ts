@@ -22,6 +22,7 @@ import {
 } from "../shared/bridge.ts";
 import { isUpdateChannel, isUpdateStatus } from "../shared/update.ts";
 import { isPasteInviteAnswer } from "../shared/paste-invite.ts";
+import { VaultChannel } from "../shared/vault.ts";
 
 const version = process.argv.find((arg) => arg.startsWith(VERSION_ARG))?.slice(VERSION_ARG.length) ?? "0.0.0";
 
@@ -55,8 +56,28 @@ const dictation: Pick<
     }
   : {};
 
+/** The mesh vault key, held by the main process; the page gets its recipient and opened wraps, never the key. */
+const vaultKey = {
+  async recipient(): Promise<string> {
+    const recipient: unknown = await ipcRenderer.invoke(VaultChannel.recipient);
+    if (typeof recipient !== "string") throw new Error("the main process returned no vault key");
+    return recipient;
+  },
+  async protection(): Promise<string> {
+    const protection: unknown = await ipcRenderer.invoke(VaultChannel.protection);
+    if (typeof protection !== "string") throw new Error("the main process returned no vault key protection");
+    return protection;
+  },
+  async unseal(sealed: Uint8Array): Promise<Uint8Array> {
+    const opened: unknown = await ipcRenderer.invoke(VaultChannel.unseal, sealed);
+    if (!(opened instanceof Uint8Array)) throw new Error("the main process returned no opened wrap");
+    return opened;
+  },
+};
+
 const bridge: DorifaceBridge = {
   ...dictation,
+  vaultKey,
   version,
   platform: parsePlatform(process.platform),
   async openExternal(url) {

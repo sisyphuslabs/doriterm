@@ -6,6 +6,7 @@ import {
   Menu,
   nativeTheme,
   Notification,
+  safeStorage,
   screen,
   session,
   shell,
@@ -32,6 +33,8 @@ import { applyDevCsp, hardenContents, lockPermissions } from "./harden.ts";
 import { InputGestures } from "./paste-invite.ts";
 import { findHc, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
 import { registerIpc } from "./ipc.ts";
+import { registerVaultIpc } from "./ipc-vault.ts";
+import { openVaultKey, type DesktopVaultKey } from "./vault-key.ts";
 import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
 import { showNotice } from "./notice.ts";
@@ -276,6 +279,22 @@ function ready(): void {
   if (devUrl === undefined) serveApp(webRoot(), csp);
   else applyDevCsp(session.defaultSession, origin, csp);
   showMenu(new Map());
+  let vaultKey: Promise<DesktopVaultKey> | undefined;
+  registerVaultIpc({
+    origin,
+    key: () => {
+      vaultKey ??= openVaultKey(app.getPath("userData"), {
+        available: () => safeStorage.isEncryptionAvailable(),
+        backend: () => (process.platform === "linux" ? safeStorage.getSelectedStorageBackend() : "os"),
+        encrypt: (text) => safeStorage.encryptString(text),
+        decrypt: (data) => safeStorage.decryptString(data),
+      });
+      vaultKey.catch(() => {
+        vaultKey = undefined;
+      });
+      return vaultKey;
+    },
+  });
   registerIpc({
     origin,
     startLocalHost: () => localHost.start(),

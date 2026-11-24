@@ -6,6 +6,8 @@ export interface LocalHostEndpoint {
   readonly url: string;
   readonly token: string;
 }
+import type { KeyProtection } from "@doriface/vault";
+import type { VaultKeyBridge } from "../vault/vault-key.ts";
 
 /** Why this computer's host did not start; `details` is its raw output, shown only on request. */
 export interface HostStartFailure {
@@ -225,6 +227,35 @@ export function installDesktopUpdate(scope: object = globalThis): void {
   const installing = bridgeMethod("installUpdate", scope)?.();
   if (installing instanceof Promise)
     installing.catch((error: unknown) => console.error(`install update: ${String(error)}`));
+}
+
+/** The desktop app's vault key (main process, OS key store), or null outside the desktop app. */
+export function desktopVaultKey(scope: object = globalThis): VaultKeyBridge | null {
+  const bridge: unknown = Reflect.get(scope, "doriface");
+  const key: unknown = typeof bridge === "object" && bridge !== null ? Reflect.get(bridge, "vaultKey") : undefined;
+  if (typeof key !== "object" || key === null) return null;
+  const call = async (name: string, ...args: unknown[]): Promise<unknown> => {
+    const method: unknown = Reflect.get(key, name);
+    if (typeof method !== "function") throw new Error(`this desktop app has no vault key ${name}`);
+    return Reflect.apply(method, key, args);
+  };
+  const PROTECTIONS: readonly KeyProtection[] = ["unprotected", "non-extractable", "os-keystore"];
+  return {
+    recipient: async () => {
+      const recipient = await call("recipient");
+      if (typeof recipient !== "string") throw new Error("the desktop app returned no vault key");
+      return recipient;
+    },
+    protection: async () => {
+      const protection = await call("protection");
+      return PROTECTIONS.find((known) => known === protection) ?? "unprotected";
+    },
+    unseal: async (sealed) => {
+      const opened = await call("unseal", sealed);
+      if (!(opened instanceof Uint8Array)) throw new Error("the desktop app returned no opened wrap");
+      return opened;
+    },
+  };
 }
 
 export function desktopBridge(scope: object = globalThis): DesktopBridge | null {
