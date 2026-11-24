@@ -9,7 +9,7 @@ export interface SidebarSectionProps {
   readonly action?: ReactNode;
   /** The rows reserve a leading fold column: the title moves right with their label column (18 px and its 4 px gap). */
   readonly indent?: boolean;
-  /** The rows draw a mark before their label (an agent's): the title moves right by it (16 px and its 10 px gap). */
+  /** The rows draw a mark before their label (an agent's): the title moves right by it (14 px and the 2 px before it). */
   readonly marked?: boolean;
   readonly children: ReactNode;
   readonly className?: string;
@@ -17,10 +17,10 @@ export interface SidebarSectionProps {
   readonly ref?: Ref<HTMLElement>;
 }
 
-/** The title's left pad, by [fold column reserved][rows draw a mark]: 34 px, then 22 px for the column, 26 px for the mark. */
+/** The title's left pad, by [fold column reserved][rows draw a mark]: 34 px, then 22 px for the column, 16 px for the mark. */
 const TITLE_PAD = [
-  ["pl-8.5", "pl-15"],
-  ["pl-14", "pl-20.5"],
+  ["pl-8.5", "pl-12.5"],
+  ["pl-14", "pl-18"],
 ] as const;
 
 /** A labelled group in the sidebar. The label names the group; the count is its size. */

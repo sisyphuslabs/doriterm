@@ -195,7 +195,10 @@ export function AgentRow({
       </span>
       {agent.icon ??
         (agent.kind !== undefined && hasAgentMark(agent.kind) ? (
-          <AgentMark kind={agent.kind} size={16} className="text-muted-foreground" />
+          // 14 px, held 2 px after the status glyph rather than the row's 10 px gap: the glyph draws inside its 16 px box, so
+          // the two read as one cluster, and the mark costs the row's texts 16 px, which a narrow row with a long machine
+          // name can give and still keep five characters of each (#2746).
+          <AgentMark kind={agent.kind} size={14} className="-ml-2 text-muted-foreground" />
         ) : null)}
       <span
         title={agent.name}

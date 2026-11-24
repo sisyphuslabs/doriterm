@@ -177,7 +177,10 @@ export function AgentsGroup({
       </section>
     );
   return (
-    <SidebarSection title="Agents" {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu })}>
+    <SidebarSection
+      title="Agents"
+      {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu, indent: tree, marked: true })}
+    >
       {list}
     </SidebarSection>
   );
