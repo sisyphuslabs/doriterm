@@ -131,6 +131,7 @@ export function AgentsGroup({
             title={group.title}
             count={group.count}
             indent={tree}
+            marked
             {...(group.tone === undefined ? {} : { tone: group.tone })}
             {...(rail ? { className: "[&>header]:sr-only" } : {})}
           >

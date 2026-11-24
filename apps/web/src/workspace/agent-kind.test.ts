@@ -1,3 +1,4 @@
+import { AGENT_MARKS } from "@doriface/ui";
 import { describe, expect, test } from "bun:test";
 import { AGENT_KINDS, agentKind } from "./agent-kind.ts";
 import type { Session } from "./attention.ts";
@@ -96,5 +97,10 @@ describe("agentKind", () => {
     expect(agentKind(terminal())).toBeNull();
     expect(agentKind(running("vim", "claude.md"))).toBeNull();
     expect(agentKind(terminal({ argv: [] }))).toBeNull();
+  });
+
+  test("every key of AGENT_MARKS is a known agent kind or one of the three generic kinds", () => {
+    const allowed = new Set<string>([...AGENT_KINDS, "agent", "shell", "program"]);
+    for (const kind of Object.keys(AGENT_MARKS)) expect(allowed.has(kind)).toBe(true);
   });
 });

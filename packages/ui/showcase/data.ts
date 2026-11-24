@@ -17,17 +17,25 @@ export const SPACES: readonly Space[] = [
 ];
 
 export const AGENTS_NEEDS_YOU: readonly Agent[] = [
-  { id: "a1", name: "Claude Code", detail: "approve migration", status: "blocked", age: "2m" },
+  { id: "a1", name: "Claude Code", detail: "approve migration", status: "blocked", age: "2m", kind: "claude" },
 ];
 export const AGENTS_DONE: readonly Agent[] = [
-  { id: "a2", name: "Codex", detail: "file sync tests", status: "done", age: "6m" },
+  { id: "a2", name: "Codex", detail: "file sync tests", status: "done", age: "6m", kind: "codex" },
 ];
 export const AGENTS_WORKING: readonly Agent[] = [
-  { id: "a3", name: "Claude Code", detail: "web-client", status: "working", age: "<1m" },
-  { id: "a4", name: "Codex", detail: "terraform plan", status: "working", machine: "build-box", age: "12m" },
+  { id: "a3", name: "Claude Code", detail: "web-client", status: "working", age: "<1m", kind: "claude" },
+  {
+    id: "a4",
+    name: "Codex",
+    detail: "terraform plan",
+    status: "working",
+    machine: "build-box",
+    age: "12m",
+    kind: "codex",
+  },
 ];
 export const AGENTS_IDLE: readonly Agent[] = [
-  { id: "a5", name: "shell", detail: "release-notes", status: "idle", age: "1h" },
+  { id: "a5", name: "shell", detail: "release-notes", status: "idle", age: "1h", kind: "shell" },
 ];
 
 export interface ShowcaseTreeRow {
@@ -50,6 +58,7 @@ export const AGENTS_TREE_NEEDS_YOU: readonly ShowcaseTreeRow[] = [
       detail: "api-server",
       status: "working",
       age: "2m",
+      kind: "claude",
       depth: 0,
       guides: [],
       descendants: 2,
@@ -68,6 +77,7 @@ export const AGENTS_TREE_WORKING: readonly ShowcaseTreeRow[] = [
       detail: "api-server",
       status: "working",
       age: "<1m",
+      kind: "claude",
       depth: 0,
       guides: [],
       descendants: 3,
@@ -82,6 +92,7 @@ export const AGENTS_TREE_WORKING: readonly ShowcaseTreeRow[] = [
       detail: "api-server",
       status: "working",
       age: "<1m",
+      kind: "codex",
       depth: 1,
       guides: ["├"],
       descendants: 1,
@@ -97,6 +108,7 @@ export const AGENTS_TREE_WORKING: readonly ShowcaseTreeRow[] = [
       detail: "api-server",
       status: "done",
       age: "1m",
+      kind: "gemini",
       depth: 2,
       guides: ["│", "└"],
       descendants: 0,
@@ -111,6 +123,7 @@ export const AGENTS_TREE_WORKING: readonly ShowcaseTreeRow[] = [
       detail: "api-server",
       status: "idle",
       age: "2m",
+      kind: "cursor",
       depth: 1,
       guides: ["└"],
       descendants: 0,
@@ -125,6 +138,7 @@ export const AGENTS_TREE_WORKING: readonly ShowcaseTreeRow[] = [
       detail: "web-client",
       status: "working",
       age: "4m",
+      kind: "agent",
       depth: 0,
       guides: [],
       descendants: 2,

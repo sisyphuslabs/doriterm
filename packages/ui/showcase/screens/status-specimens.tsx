@@ -1,5 +1,7 @@
 import {
+  AGENT_MARKS,
   AgentFold,
+  AgentMark,
   AgentRow,
   agentRowLead,
   Badge,
@@ -46,6 +48,16 @@ export function StatusSpecimens() {
         </Row>
       </Section>
 
+      <Section title="Agent marks">
+        <Row>
+          {Object.entries(AGENT_MARKS).map(([kind, entry]) => (
+            <Cell key={kind} label={entry.label}>
+              <AgentMark kind={kind} size={16} className="text-muted-foreground" />
+            </Cell>
+          ))}
+        </Row>
+      </Section>
+
       <Section title="AgentRow, SpaceRow, TabBar">
         <div className="grid gap-6 md:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-px rounded-lg bg-sidebar p-2">
@@ -80,7 +92,7 @@ export function StatusSpecimens() {
               <TabBar tabs={TABS} activeId="t1" newTabKeys={["⌘", "T"]} />
             </div>
             <div className="flex min-w-0 flex-col rounded-lg bg-sidebar p-2">
-              <SidebarSection title="Agent tree" count={10} indent>
+              <SidebarSection title="Agent tree" count={10} indent marked>
                 {AGENTS_TREE.map(({ agent, parentName, fold }) => {
                   const row = (
                     <AgentRow agent={agent} disclosure {...(parentName === undefined ? {} : { parentName })} />

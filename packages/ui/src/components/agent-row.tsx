@@ -1,6 +1,8 @@
 import { Pin } from "lucide-react";
 import { useRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
+import { AgentMark } from "./agent-mark.tsx";
+import { hasAgentMark } from "./agent-marks.ts";
 import { useRowFloors } from "./row-floors.ts";
 import { STATUS_LABEL, StatusChip, StatusIndicator, type AgentStatus } from "./status.tsx";
 
@@ -54,6 +56,8 @@ export interface Agent {
   /** Pre-formatted age: "<1m", "4m", "2h". */
   readonly age?: string;
   readonly icon?: ReactNode;
+  /** The key of the mark drawn for what the agent runs. */
+  readonly kind?: string;
   readonly pinned?: boolean;
   /** How far the agent's own todo list has got, when it draws one: `done` of `total`. */
   readonly todo?: { readonly done: number; readonly total: number };
@@ -115,9 +119,17 @@ export function AgentRow({
   const todo = agent.todo === undefined ? undefined : `${agent.todo.done}/${agent.todo.total}`;
   useRowFloors(
     row,
-    [agent.name, agent.detail, agent.machine, agent.age, todo, drawn, disclosure ? "1" : "0", cells.join("")].join(
-      "\u0000",
-    ),
+    [
+      agent.name,
+      agent.detail,
+      agent.machine,
+      agent.age,
+      agent.kind,
+      todo,
+      drawn,
+      disclosure ? "1" : "0",
+      cells.join(""),
+    ].join("\u0000"),
   );
   if (rail) {
     const label = [
@@ -181,7 +193,10 @@ export function AgentRow({
           <StatusIndicator status={agent.status} />
         )}
       </span>
-      {agent.icon}
+      {agent.icon ??
+        (agent.kind !== undefined && hasAgentMark(agent.kind) ? (
+          <AgentMark kind={agent.kind} size={16} className="text-muted-foreground" />
+        ) : null)}
       <span
         title={agent.name}
         data-floor="name"

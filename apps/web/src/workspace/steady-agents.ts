@@ -12,6 +12,7 @@ export const sameAgent = (a: Agent, b: Agent): boolean =>
   a.age === b.age &&
   a.pinned === b.pinned &&
   a.icon === b.icon &&
+  a.kind === b.kind &&
   (a.depth ?? 0) === (b.depth ?? 0) &&
   (a.descendants ?? 0) === (b.descendants ?? 0) &&
   a.urgency === b.urgency &&

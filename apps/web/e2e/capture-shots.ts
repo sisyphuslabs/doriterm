@@ -101,6 +101,16 @@ let endedOn: "host" | "machine" = "host";
 let verify = "";
 /** The parent, blocked child and grandchild the agents-tree shot starts, ended once the shot is taken. */
 let treeShot: string[] = [];
+/** The three agents the agent-icons shot starts, ended once the shot is taken. */
+let iconShot: string[] = [];
+
+function startAppAgent(name: string, state: string, app: string): string {
+  const report = `printf '\\033]7501;state=${state}:app=${app}\\033\\\\'; sleep 600; :`;
+  const out = hcOn("host", ["run", "--bg", "--name", name, "--label", "space=website", "--", "sh", "-c", report]);
+  const started: unknown = JSON.parse(out);
+  if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
+  return String(started.address);
+}
 
 function startTreeHelper(name: string, state: string, parent: string): string {
   const report = `printf '\\033]7501;state=${state}\\033\\\\'; sleep 600; :`;
@@ -394,6 +404,29 @@ export const SHOTS: readonly Shot[] = [
     cleanup: () => {
       for (const address of treeShot) endAgent("host", address);
       treeShot = [];
+    },
+  },
+  {
+    // Per-agent marks in the sidebar and phone Agents list: Claude, Gemini and a plain agent (#2746).
+    name: "agent-icons",
+    start: "connected",
+    run: async (page) => {
+      const claude = startAppAgent("claude-run", "working", "claude");
+      const gemini = startAppAgent("gemini-run", "working", "gemini");
+      const plain = startAgent("host", "plain-run", "working", "website");
+      iconShot = [claude, gemini, plain];
+      await page.goto("/");
+      const working = page.getByRole("region", { name: "Working", exact: true });
+      await expect(working.locator('[data-floor="name"][title="claude-run"]')).toBeVisible({ timeout: 20_000 });
+      await expect(working.locator('[data-floor="name"][title="gemini-run"]')).toBeVisible({ timeout: 20_000 });
+      await expect(working.locator('[data-floor="name"][title="plain-run"]')).toBeVisible({ timeout: 20_000 });
+      await expect(working.getByRole("img", { name: "Claude" })).toBeVisible();
+      await expect(working.getByRole("img", { name: "Gemini" })).toBeVisible();
+      await expect(working.getByRole("img", { name: "Agent" }).first()).toBeVisible();
+    },
+    cleanup: () => {
+      for (const address of iconShot) endAgent("host", address);
+      iconShot = [];
     },
   },
   {

@@ -20,3 +20,9 @@ test("a row is drawn again when only its place in the tree changed (#2746)", () 
   expect(sameAgent(nested, { ...nested, descendants: 3 })).toBe(false);
   expect(sameAgent(nested, { ...nested, urgency: "blocked" })).toBe(false);
 });
+
+test("a row is drawn again when only its agent mark kind changed (#2746)", () => {
+  expect(sameAgent({ ...agent, kind: "claude" }, { ...agent, kind: "claude" })).toBe(true);
+  expect(sameAgent({ ...agent, kind: "claude" }, { ...agent, kind: "codex" })).toBe(false);
+  expect(sameAgent(agent, { ...agent, kind: "claude" })).toBe(false);
+});
