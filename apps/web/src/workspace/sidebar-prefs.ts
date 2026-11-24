@@ -94,17 +94,21 @@ export function useCollapsed(): readonly [readonly string[], (id: string) => voi
 /**
  * The folds that are still of a listed agent, so the saved list cannot grow without bound. Nothing is dropped before
  * the terminal list has loaded: a reload would otherwise wipe every fold before the feed arrives. An added machine's
- * folds wait the same way until that machine lists a terminal, so one whose terminals arrive later keeps them. Gives
- * back `folded` itself when nothing goes.
+ * folds wait the same way until that machine lists a terminal, so one whose terminals arrive later keeps them, but only
+ * while it is still in the machine list (`added`, its names; null before machine.list has answered). Gives back `folded`
+ * itself when nothing goes.
  */
 export function pruneFolded(
   folded: readonly string[],
   listed: ReadonlySet<string>,
   terminalsLoaded: boolean,
+  added: ReadonlySet<string> | null,
 ): readonly string[] {
   if (!terminalsLoaded) return folded;
   const feeding = new Set([...listed].map(machineOf));
-  const kept = folded.filter((address) => listed.has(address) || !feeding.has(machineOf(address)));
+  const waiting = (machine: string | undefined): boolean =>
+    machine !== undefined && !feeding.has(machine) && (added === null || added.has(machine));
+  const kept = folded.filter((address) => listed.has(address) || waiting(machineOf(address)));
   return kept.length === folded.length ? folded : kept;
 }
 
@@ -115,12 +119,13 @@ export function pruneFolded(
 export function useFolded(
   listed: ReadonlySet<string>,
   terminalsLoaded: boolean,
+  added: ReadonlySet<string> | null,
 ): readonly [readonly string[], (address: string) => void] {
   const folded = useSyncExternalStore(sidebarPrefs.subscribe, () => sidebarPrefs.value.folded);
   useEffect(() => {
-    const kept = pruneFolded(sidebarPrefs.value.folded, listed, terminalsLoaded);
+    const kept = pruneFolded(sidebarPrefs.value.folded, listed, terminalsLoaded, added);
     if (kept !== sidebarPrefs.value.folded) sidebarPrefs.update({ folded: kept });
-  }, [folded, listed, terminalsLoaded]);
+  }, [folded, listed, terminalsLoaded, added]);
   const toggle = (address: string): void => {
     const now = sidebarPrefs.value.folded;
     sidebarPrefs.update({ folded: now.includes(address) ? now.filter((one) => one !== address) : [...now, address] });

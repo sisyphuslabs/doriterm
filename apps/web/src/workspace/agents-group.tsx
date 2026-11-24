@@ -99,12 +99,16 @@ export function AgentsGroup({
     [terminals, now, sort, places, todoOf],
   );
   const all = useSteadyAgents(built);
-  const { terminalsLoaded } = useMachinesContext();
+  const { terminalsLoaded, machinesListed, entries } = useMachinesContext();
+  const addedMachines = useMemo(
+    () => (machinesListed ? new Set(entries.filter((entry) => !entry.local).map((entry) => entry.name)) : null),
+    [machinesListed, entries],
+  );
   const listedAddresses = useMemo(
     () => new Set(listed.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)),
     [listed],
   );
-  const [folded, toggleFold] = useFolded(listedAddresses, terminalsLoaded);
+  const [folded, toggleFold] = useFolded(listedAddresses, terminalsLoaded, addedMachines);
   const foldToggler = useRef(toggleFold);
   foldToggler.current = toggleFold;
   const onToggleFold = useCallback((address: string) => foldToggler.current(address), []);
