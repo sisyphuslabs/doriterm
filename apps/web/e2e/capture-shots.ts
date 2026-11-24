@@ -99,6 +99,30 @@ let ended = "";
 let endedOn: "host" | "machine" = "host";
 /** The agent the attention shot starts to finish where that screen is not looking, ended once the shot is taken. */
 let verify = "";
+/** The parent, blocked child and grandchild the agents-tree shot starts, ended once the shot is taken. */
+let treeShot: string[] = [];
+
+function startTreeHelper(name: string, state: string, parent: string): string {
+  const report = `printf '\\033]7501;state=${state}\\033\\\\'; sleep 600; :`;
+  const out = hcOn("host", [
+    "run",
+    "--bg",
+    "--parent",
+    parent,
+    "--outlive-parent",
+    "--name",
+    name,
+    "--label",
+    "space=website",
+    "--",
+    "sh",
+    "-c",
+    report,
+  ]);
+  const started: unknown = JSON.parse(out);
+  if (typeof started !== "object" || started === null || !("address" in started)) throw new Error(out);
+  return String(started.address);
+}
 
 export const SHOTS: readonly Shot[] = [
   {
@@ -349,6 +373,27 @@ export const SHOTS: readonly Shot[] = [
     cleanup: () => {
       endAgent("host", verify);
       verify = "";
+    },
+  },
+  {
+    // The agent tree in the sidebar and phone Agents list: a working parent, a blocked child and a grandchild (#2746).
+    name: "agents-tree",
+    start: "connected",
+    run: async (page) => {
+      const parent = startAgent("host", "release", "working", "website");
+      const child = startTreeHelper("migrate", "blocked", parent);
+      const grandchild = startTreeHelper("lint", "working", child);
+      treeShot = [grandchild, child, parent];
+      await page.goto("/");
+      const needsYou = page.getByRole("region", { name: "Needs you", exact: true });
+      await expect(needsYou.locator('[data-floor="name"][title="release"]')).toBeVisible({ timeout: 20_000 });
+      await expect(needsYou.locator('[data-floor="name"][title="migrate"]')).toBeVisible({ timeout: 20_000 });
+      await expect(needsYou.locator('[data-floor="name"][title="lint"]')).toBeVisible({ timeout: 20_000 });
+      await expect(needsYou.locator('[data-tree-guides][data-depth="2"]')).toHaveCount(1);
+    },
+    cleanup: () => {
+      for (const address of treeShot) endAgent("host", address);
+      treeShot = [];
     },
   },
   {

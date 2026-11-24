@@ -1,6 +1,14 @@
 import type { AgentStatus } from "@doriface/ui";
 import { describe, expect, test } from "bun:test";
-import { agentTree, ancestorsOf, foldRows, MAX_TREE_DEPTH, treeShape, type TreeRow } from "./agent-tree.ts";
+import {
+  agentTree,
+  ancestorsOf,
+  foldRows,
+  hiddenUnder,
+  MAX_TREE_DEPTH,
+  treeShape,
+  type TreeRow,
+} from "./agent-tree.ts";
 import type { Session } from "./attention.ts";
 
 const terminal = (
@@ -188,6 +196,25 @@ describe("ancestorsOf", () => {
     ];
     expect(ancestorsOf(rows, 4)).toEqual(["d", "a"]);
     expect(ancestorsOf(rows, 0)).toEqual([]);
+  });
+});
+
+describe("hiddenUnder", () => {
+  const rows = [
+    { depth: 0, status: "working" },
+    { depth: 1, status: "done" },
+    { depth: 2, status: "blocked" },
+    { depth: 1, status: "unknown" },
+    { depth: 0, status: "blocked" },
+  ] as const;
+
+  test("counts the whole subtree and the ones that need the person, and stops at the next row of its own level", () => {
+    expect(hiddenUnder(rows, 0)).toEqual({ count: 3, blocked: 1, urgency: "blocked" });
+    expect(hiddenUnder(rows, 4)).toEqual({ count: 0, blocked: 0, urgency: "idle" });
+  });
+
+  test("a done sub-agent reads as idle and an offline one not at all", () => {
+    expect(hiddenUnder([rows[0], rows[1], rows[3]], 0)).toEqual({ count: 2, blocked: 0, urgency: "idle" });
   });
 });
 

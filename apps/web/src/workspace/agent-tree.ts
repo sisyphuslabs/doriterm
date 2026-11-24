@@ -165,6 +165,33 @@ export function withShape<Row extends Shaped>(rows: readonly Row[]): readonly Ro
   });
 }
 
+/** What a folded row hides: how many sub-agents, how many of them need the person, and the most urgent of them. */
+export interface Hidden {
+  readonly count: number;
+  readonly blocked: number;
+  /** As a parent reads its sub-agents: a done one counts as idle, an offline one not at all; idle when none is live. */
+  readonly urgency: AgentStatus;
+}
+
+/** The sub-agents under the row at `index` of a depth-first list, summed up for the fold control that hides them. */
+export function hiddenUnder(
+  rows: readonly { readonly depth?: number; readonly status: AgentStatus }[],
+  index: number,
+): Hidden {
+  const depth = rows[index]?.depth ?? 0;
+  let count = 0;
+  let blocked = 0;
+  let urgency: AgentStatus = "idle";
+  for (let at = index + 1; (rows[at]?.depth ?? 0) > depth && at < rows.length; at += 1) {
+    const status = rows[at]?.status ?? "unknown";
+    count += 1;
+    if (status === "blocked") blocked += 1;
+    const read = status === "done" ? "idle" : status;
+    if (read !== "unknown" && STATUS_RANK[read] < STATUS_RANK[urgency]) urgency = read;
+  }
+  return { count, blocked, urgency };
+}
+
 /** The ids of the rows above `index` in a depth-first list, nearest first. */
 export function ancestorsOf(
   rows: readonly { readonly id: string; readonly depth?: number }[],

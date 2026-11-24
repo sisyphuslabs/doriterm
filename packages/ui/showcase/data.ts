@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AgentStatus,
   ApprovalOption,
   ApprovalPrompt,
   Command,
@@ -28,6 +29,112 @@ export const AGENTS_WORKING: readonly Agent[] = [
 export const AGENTS_IDLE: readonly Agent[] = [
   { id: "a5", name: "shell", detail: "release-notes", status: "idle", age: "1h" },
 ];
+
+export interface ShowcaseTreeRow {
+  readonly agent: Agent;
+  readonly parentName?: string;
+  readonly fold?: {
+    readonly folded: boolean;
+    readonly count: number;
+    readonly blocked: number;
+    readonly urgency: AgentStatus;
+  };
+}
+
+/** A working parent folded over a blocked sub-agent: surfaces under Needs you with the blocked count and badge. */
+export const AGENTS_TREE_NEEDS_YOU: readonly ShowcaseTreeRow[] = [
+  {
+    agent: {
+      id: "tr-migrate",
+      name: "migrate",
+      detail: "api-server",
+      status: "working",
+      age: "2m",
+      depth: 0,
+      guides: [],
+      descendants: 2,
+      urgency: "blocked",
+    },
+    fold: { folded: true, count: 2, blocked: 1, urgency: "blocked" },
+  },
+];
+
+/** An open 3-level tree (depth 0/1/2 with guides) followed by a folded parent showing its hidden count. */
+export const AGENTS_TREE_WORKING: readonly ShowcaseTreeRow[] = [
+  {
+    agent: {
+      id: "tr-deploy",
+      name: "deploy",
+      detail: "api-server",
+      status: "working",
+      age: "<1m",
+      depth: 0,
+      guides: [],
+      descendants: 3,
+      urgency: "working",
+    },
+    fold: { folded: false, count: 3, blocked: 0, urgency: "working" },
+  },
+  {
+    agent: {
+      id: "tr-tests",
+      name: "tests",
+      detail: "api-server",
+      status: "working",
+      age: "<1m",
+      depth: 1,
+      guides: ["├"],
+      descendants: 1,
+      urgency: "working",
+    },
+    parentName: "deploy",
+    fold: { folded: false, count: 1, blocked: 0, urgency: "working" },
+  },
+  {
+    agent: {
+      id: "tr-lint",
+      name: "lint",
+      detail: "api-server",
+      status: "done",
+      age: "1m",
+      depth: 2,
+      guides: ["│", "└"],
+      descendants: 0,
+      urgency: "done",
+    },
+    parentName: "tests",
+  },
+  {
+    agent: {
+      id: "tr-build",
+      name: "build",
+      detail: "api-server",
+      status: "idle",
+      age: "2m",
+      depth: 1,
+      guides: ["└"],
+      descendants: 0,
+      urgency: "idle",
+    },
+    parentName: "deploy",
+  },
+  {
+    agent: {
+      id: "tr-check",
+      name: "check",
+      detail: "web-client",
+      status: "working",
+      age: "4m",
+      depth: 0,
+      guides: [],
+      descendants: 2,
+      urgency: "working",
+    },
+    fold: { folded: true, count: 2, blocked: 0, urgency: "working" },
+  },
+];
+
+export const AGENTS_TREE: readonly ShowcaseTreeRow[] = [...AGENTS_TREE_NEEDS_YOU, ...AGENTS_TREE_WORKING];
 
 export const TABS: readonly WorkspaceTab[] = [
   { id: "t1", title: "Claude Code", status: "blocked" },

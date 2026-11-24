@@ -1,17 +1,22 @@
 import {
+  AgentFold,
   AgentRow,
+  agentRowLead,
   Badge,
   Kbd,
+  RowWithActions,
+  SidebarSection,
   SpaceRow,
   StatusChip,
   StatusIndicator,
   TabBar,
   type AgentStatus,
 } from "../../src/index.ts";
-import { AGENTS_DONE, AGENTS_IDLE, AGENTS_NEEDS_YOU, AGENTS_WORKING, SPACES, TABS } from "../data.ts";
+import { AGENTS_DONE, AGENTS_IDLE, AGENTS_NEEDS_YOU, AGENTS_TREE, AGENTS_WORKING, SPACES, TABS } from "../data.ts";
 import { Cell, Row, Section } from "./specimen.tsx";
 
 const STATUSES: readonly AgentStatus[] = ["working", "blocked", "done", "idle", "unknown"];
+const noop = (): void => {};
 
 /** The status grammar and the rows that carry it: agent rows, space rows and the tab strip. */
 export function StatusSpecimens() {
@@ -73,6 +78,35 @@ export function StatusSpecimens() {
             </div>
             <div className="overflow-hidden rounded-lg border border-border">
               <TabBar tabs={TABS} activeId="t1" newTabKeys={["⌘", "T"]} />
+            </div>
+            <div className="flex min-w-0 flex-col rounded-lg bg-sidebar p-2">
+              <SidebarSection title="Agent tree" count={10} indent>
+                {AGENTS_TREE.map(({ agent, parentName, fold }) => {
+                  const row = (
+                    <AgentRow agent={agent} disclosure {...(parentName === undefined ? {} : { parentName })} />
+                  );
+                  return fold === undefined ? (
+                    <div key={agent.id}>{row}</div>
+                  ) : (
+                    <RowWithActions
+                      key={agent.id}
+                      row={row}
+                      actions={null}
+                      leading={
+                        <AgentFold
+                          name={agent.name}
+                          folded={fold.folded}
+                          count={fold.count}
+                          blocked={fold.blocked}
+                          urgency={fold.urgency}
+                          onToggle={noop}
+                          style={{ marginLeft: agentRowLead(agent.depth ?? 0, 3) }}
+                        />
+                      }
+                    />
+                  );
+                })}
+              </SidebarSection>
             </div>
           </div>
         </div>

@@ -1,6 +1,15 @@
 export { cn } from "./lib/cn.ts";
 export { SPINNER_DELAY_MS, useDelayedTrue } from "./lib/spinner-delay.ts";
-export { AgentRow, type Agent, type AgentRowProps, type AgentTreeGuide } from "./components/agent-row.tsx";
+export { AgentFold, type AgentFoldProps } from "./components/agent-fold.tsx";
+export {
+  AGENT_TREE_DISCLOSURE_PX,
+  AGENT_TREE_GUIDE_PX,
+  AgentRow,
+  agentRowLead,
+  type Agent,
+  type AgentRowProps,
+  type AgentTreeGuide,
+} from "./components/agent-row.tsx";
 export {
   ApprovalBanner,
   approvalAnnouncement,
