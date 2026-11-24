@@ -18,6 +18,8 @@ export default defineConfig({
         mockup: resolve(import.meta.dirname, "mockup", "index.html"),
         docs: resolve(import.meta.dirname, "docs", "index.html"),
         "docs-mcp": resolve(import.meta.dirname, "docs", "mcp", "index.html"),
+        // Written by scripts/skill-site.ts before the build, from skills/doriterm.
+        skill: resolve(import.meta.dirname, "skill", "index.html"),
       },
     },
   },
