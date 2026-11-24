@@ -6,6 +6,7 @@ import { StatusIndicator, type AgentStatus } from "./status.tsx";
 export interface AgentFoldProps {
   readonly name: string;
   readonly folded: boolean;
+  readonly disabled?: boolean;
   readonly count: number;
   readonly blocked: number;
   readonly urgency: AgentStatus;
@@ -36,25 +37,38 @@ export function agentFoldLabel(name: string, folded: boolean, count: number, blo
  * Leading fold control for an agent row with sub-agents: a chevron when open, or the hidden count tinted by urgency
  * (plus a Needs you corner badge whenever any hidden sub-agent is blocked) when folded.
  */
-export function AgentFold({ name, folded, count, blocked, urgency, onToggle, style, className }: AgentFoldProps) {
-  const label = agentFoldLabel(name, folded, count, blocked);
+export function AgentFold({
+  name,
+  folded,
+  disabled = false,
+  count,
+  blocked,
+  urgency,
+  onToggle,
+  style,
+  className,
+}: AgentFoldProps) {
+  const baseLabel = agentFoldLabel(name, folded, count, blocked);
+  const label = disabled ? `${baseLabel} (unavailable while one of them is open)` : baseLabel;
   const neutralTone = !folded || (urgency !== "blocked" && urgency !== "working");
   return (
     <button
       type="button"
       data-agent-fold
       aria-expanded={!folded}
+      aria-disabled={disabled || undefined}
       aria-label={label}
       title={label}
       style={style}
-      onClick={onToggle}
+      onClick={disabled ? undefined : onToggle}
       className={cn(
         "pointer-events-auto relative inline-flex h-(--row) w-[18px] shrink-0 select-none items-center justify-center rounded-md outline-none",
-        "transition-[background-color,color,transform] duration-(--duration-micro) ease-out active:scale-[0.97]",
-        "hover:bg-hover focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
-        "after:absolute after:inset-y-0 after:-inset-x-1 coarse:after:inset-x-[min(-0.25rem,calc(50%-1.375rem))] coarse:after:min-h-11 coarse:after:min-w-11",
-        folded ? COUNT_TONE[urgency] : "text-muted-foreground",
-        neutralTone && "hover:text-foreground",
+        "transition-[background-color,color,transform] duration-(--duration-micro) ease-out",
+        !disabled && "hover:bg-hover active:scale-[0.97]",
+        "focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        "after:absolute after:inset-y-0 after:-right-1 after:-left-1 coarse:after:inset-y-[min(0px,calc(50%-1.375rem))] coarse:after:-right-0.5 coarse:after:left-[min(-0.25rem,calc(100%-2.75rem+0.125rem))] coarse:after:min-h-11",
+        disabled ? "cursor-default text-disabled-glyph" : folded ? COUNT_TONE[urgency] : "text-muted-foreground",
+        !disabled && neutralTone && "hover:text-foreground",
         className,
       )}
     >

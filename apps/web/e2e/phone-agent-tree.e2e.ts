@@ -90,14 +90,15 @@ test("on the phone, a 4-level chain caps guides at depth 2 and the fold button k
 
   const midX = box.x + box.width / 2;
   const midY = box.y + box.height / 2;
-  const reach = 21.5;
+  const reachY = 21.5;
   const points = [
-    { x: midX - reach, y: midY },
-    { x: midX + reach, y: midY },
-    { x: midX, y: midY - reach },
-    { x: midX, y: midY + reach },
+    { x: Math.max(1, box.x - 23.5), y: midY },
+    { x: box.x + box.width, y: midY },
+    { x: midX, y: midY - reachY },
+    { x: midX, y: midY + reachY },
   ];
   expect(await reached(page, points)).toEqual([true, true, true, true]);
+  expect(await reached(page, [{ x: g0.x + g0.width / 2, y: g0.y + g0.height / 2 }])).toEqual([false]);
 
   await fold.tap();
   await expect(r1).toHaveCount(0);
@@ -111,4 +112,16 @@ test("on the phone, a 4-level chain caps guides at depth 2 and the fold button k
   await expect(r2).toBeVisible();
   await expect(r3).toBeVisible();
   await expect(fold).toHaveAttribute("aria-expanded", "true");
+
+  const glyph = await laidOutBox(r0.getByRole("img", { name: "Working" }));
+  await page.touchscreen.tap(glyph.x + glyph.width / 2, glyph.y + glyph.height / 2);
+  const back = page.getByRole("button", { name: "Back to agents" });
+  await expect(back).toBeVisible();
+  await expect(page.locator(`[data-terminal="${p0}"]`)).toBeVisible();
+
+  await back.tap();
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  await expect(r1).toBeVisible();
+  await expect(r2).toBeVisible();
+  await expect(r3).toBeVisible();
 });

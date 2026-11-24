@@ -125,6 +125,8 @@ export function AgentsGroup({
         const unfoldedAgents = narrowed[groupIndex]?.agents ?? group.agents;
         const unfoldedIndexById = new Map(unfoldedAgents.map((agent, idx) => [agent.id, idx]));
         const nameById = new Map(group.agents.map((agent) => [agent.id, agent.name]));
+        const activeIndex = active === null ? -1 : group.agents.findIndex((agent) => agent.id === active);
+        const activeAncestors = new Set(activeIndex === -1 ? [] : ancestorsOf(group.agents, activeIndex));
         return (
           <SidebarSection
             key={group.key}
@@ -139,6 +141,7 @@ export function AgentsGroup({
               const hidden = unfoldedIndex === -1 ? undefined : hiddenUnder(unfoldedAgents, unfoldedIndex);
               const isFolded =
                 hasFold && foldedSet.has(agent.id) && (group.agents[index + 1]?.depth ?? 0) <= (agent.depth ?? 0);
+              const foldDisabled = hasFold && activeAncestors.has(agent.id);
               const parentId = ancestorsOf(group.agents, index)[0];
               const parentName = parentId === undefined ? undefined : nameById.get(parentId);
               const foldLead = hasFold ? agentRowLead(agent.depth ?? 0, depthCap) : 0;
@@ -155,6 +158,7 @@ export function AgentsGroup({
                   disclosure={tree}
                   {...(parentName === undefined ? {} : { parentName })}
                   folded={isFolded}
+                  foldDisabled={foldDisabled}
                   foldCount={hidden?.count ?? 0}
                   foldBlocked={hidden?.blocked ?? 0}
                   foldUrgency={hidden?.urgency ?? "idle"}
