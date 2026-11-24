@@ -23,7 +23,7 @@ import { SessionMenu } from "./session-menu.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { sidebarFilter } from "./sidebar-filter-field.tsx";
 import { SkipLinks } from "./skip-links.tsx";
-import { frontIcon, PROGRAM_ICON, Titled } from "./tab-live.tsx";
+import { frontIcon, Titled } from "./tab-live.tsx";
 import { useShown } from "./use-shown.ts";
 import { useAppActions, type SessionVerb } from "./use-app-actions.ts";
 import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
@@ -52,7 +52,8 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
   });
   const agent = shown.find((terminal) => programKind(terminal) === "agent");
   const first = shown[0];
-  const icon = agent !== undefined ? PROGRAM_ICON.agent : first === undefined ? undefined : frontIcon(first);
+  const lead = agent ?? first;
+  const icon = lead === undefined ? undefined : frontIcon(lead);
   const statuses = new Set(shown.map(agentStatus));
   const status = URGENCY.find((each) => statuses.has(each));
   return {

@@ -1,4 +1,4 @@
-/* doriterm.com docs pages (/docs/, /docs/mcp/, /ko/docs/mcp/), loaded after styles.css and built only from its tokens.
+/* doriterm.com docs pages (/docs/, /docs/mcp/), loaded after styles.css and built only from its tokens.
    The rules are DESIGN-LANDING.md section 5, "Docs page". */
 
 :root {
@@ -203,11 +203,6 @@
 
 .docs__index ol {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.docs__also {
-  margin-top: var(--space-5);
-  font-size: var(--text-sm);
 }
 
 @media (min-width: 640px) {

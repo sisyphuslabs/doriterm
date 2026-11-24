@@ -131,7 +131,7 @@ function DisconnectDialogFrame() {
     <div className="flex flex-1 items-center justify-center p-4 sm:p-6">
       <DialogPanel
         className="max-h-none w-full max-w-md overflow-visible"
-        title="Disconnect Pickle from studio?"
+        title="Disconnect Grok bot from studio?"
         description="Its sessions close at once and it has to pair again."
         actions={
           <>

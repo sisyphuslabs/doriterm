@@ -8,7 +8,7 @@ const acts = { busy: false, note: null, onSwitch: () => {}, onConnect: () => {},
 
 test("an answer from the shell is read only in the one shape, and anything else is no answer", () => {
   const clients = [
-    { id: "3FA94C0E", name: "Pickle" },
+    { id: "3FA94C0E", name: "Grok bot" },
     { id: "AB12CD34", name: null },
   ];
   expect(mcpAnswer({ state: "read", enabled: true, clients, extra: 1 })).toEqual({
@@ -61,13 +61,13 @@ test("each connected client has its own Disconnect, and a mesh client is named a
     state: "read",
     enabled: true,
     clients: [
-      { id: "3FA94C0E", name: "Pickle" },
+      { id: "3FA94C0E", name: "Grok bot" },
       { id: "AB12CD34", name: null },
     ],
   });
   const html = renderToStaticMarkup(<McpClients view={view} {...acts} />);
   expect(html).toContain('aria-checked="true"');
-  expect(html).toContain('aria-label="Disconnect Pickle"');
+  expect(html).toContain('aria-label="Disconnect Grok bot"');
   expect(html).toContain('aria-label="Disconnect A mesh client"');
   expect(html).toContain("3FA94C0E");
   expect(html).toContain("Connected clients");
