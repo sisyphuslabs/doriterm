@@ -8,6 +8,7 @@ import { toggleShortcuts } from "../keys/shortcuts-store.ts";
 import type { Direction } from "../layout/neighbor.ts";
 import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
+import { steppedAgents } from "./agent-order.ts";
 import { nextNeedingYou } from "./attention.ts";
 
 export interface AppActionTargets {
@@ -194,6 +195,8 @@ export function desktopActions(
     // it needs; the browser keeps a key pressed on a screen that shows nothing (#1162).
     if (actionChosen() && isTextSize(action)) return stepTerminalFont(action);
     const live = terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address);
+    // Next and Previous agent walk the rows as the Agents list draws them, not as the feed lists them (#2746).
+    const agents = steppedAgents(live);
     // The tab bar's tabs: the selected space's (#404).
     const keys = layout.shown.map((tab) => tab.key);
     const active = layout.active?.key ?? null;
@@ -253,9 +256,9 @@ export function desktopActions(
       case "pane.close":
         return focused === null ? false : (onClosePane(focused), true);
       case "agent.next":
-        return openAgent(layout, neighbour(live, focused, 1));
+        return openAgent(layout, neighbour(agents, focused, 1));
       case "agent.prev":
-        return openAgent(layout, neighbour(live, focused, -1));
+        return openAgent(layout, neighbour(agents, focused, -1));
       case "agent.waiting":
         return openAgent(layout, nextNeedingYou(terminals, focused));
       case "layout.toggle":

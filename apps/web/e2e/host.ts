@@ -35,6 +35,8 @@ const own = {
   HC_SESSION: session,
   XDG_STATE_HOME: join(dir, "state"),
   XDG_RUNTIME_DIR: join(dir, "run"),
+  // hc's config and templates (`herdr-core/templates`) of this run alone, never the account's: a spec adds templates here.
+  XDG_CONFIG_HOME: join(dir, "config"),
   HC_SOCKET: join(dir, "c.sock"),
 };
 const env = {

@@ -27,7 +27,7 @@ import { useMachineRuns } from "./use-machine-runs.ts";
 import { PIN_LABEL, spacesInOrder } from "./sidebar-model.ts";
 import { PinContext, type PinTerminal } from "./use-pin.ts";
 import { MachinesContext, useMachines } from "./use-machines.ts";
-import { runParamsFor } from "./new-terminal.ts";
+import { runParamsFor, type StartSpace } from "./new-terminal.ts";
 import { useNarrow } from "./use-narrow.ts";
 import { machineIds } from "./tab-keys.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
@@ -214,7 +214,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
       {
         ...runParamsFor(
           terminals.find((terminal) => terminal.address === inView),
-          spaces.find((space) => space.id === layout.active?.spaceKey),
+          startSpace(layout.active?.spaceKey),
         ),
         ...(template === undefined ? {} : { argv: [template], name: template }),
       },
@@ -237,12 +237,19 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
     openInLayout(address, false, key);
     showOnPhone(address);
   };
+  // The listed space a new terminal is started for, with its id in its machine's document (a tab of it names that).
+  const startSpace = (key: string | undefined): StartSpace | undefined => {
+    const shown = spaces.find((each) => each.id === key);
+    if (shown === undefined) return undefined;
+    const docId = layout.tabs.find((tab) => tab.spaceKey === key && !tab.transient)?.space;
+    return { ...shown, ...(docId === undefined ? {} : { space: docId }) };
+  };
   const newTabIn = (key: string): void => {
     const space = spaces.find((each) => each.id === key);
     const near = terminals.find((terminal) => terminal.state === "live" && space?.addresses.includes(terminal.address));
     // The terminal being started holds the keyboard (use-type-ahead): the space's tab in view must not claim it.
     withoutClaim(() => layout.selectSpace(key));
-    runs.start(runParamsFor(near, space), (address) => {
+    runs.start(runParamsFor(near, startSpace(key)), (address) => {
       guideStore.opened(address, ids);
       openInSpace.current(address, key);
     });

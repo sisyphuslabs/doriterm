@@ -57,7 +57,9 @@ test("a terminal waiting on its attach says it is opening, and the pane is busy 
   expect(await pane.boundingBox()).toEqual(before);
 });
 
-test.describe("loading feedback waits before it spins (#1498)", () => {
+// #2768 (supersedes #1498's "say it at once"): a wait under a second shows nothing at all, so a quick one never flashes;
+// past a second its words and spinner come together, and a status keeps its accessible name from the start.
+test.describe("loading feedback waits a second before it shows (#1498, #2768)", () => {
   const started: string[] = [];
 
   test.afterEach(() => {
@@ -65,7 +67,7 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     for (const address of started.splice(0)) endAgent("host", address);
   });
 
-  test("a terminal that is still opening says so at once and shows a spinner only after a second", async ({ page }) => {
+  test("a terminal that is still opening shows nothing for a second, then says so with a spinner", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const socket = await routeHcSocket(page);
     await page.goto("/");
@@ -82,24 +84,21 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     seedLayout([{ id: "tb-load-open", root: [{ pane: "p-load-open", terminal: address }] }]);
 
     const opening = page.getByRole("status", { name: "Opening terminal" });
-    await expect(opening).toBeVisible({ timeout: 20_000 });
-    // Painted from the first frame: a wait never opens as a blank area and then appears.
-    await expect(opening).toHaveCSS("opacity", "1");
+    await expect(opening).toBeAttached({ timeout: 20_000 });
     const text = opening.getByText("Opening…");
-    // The wait names what it waits for at once; the spinner is held back, and its box with it so no layout moves.
-    await expect(text).toBeVisible();
-    const resting = await text.boundingBox();
+    await expect(text).toHaveCount(0);
     await page.clock.runFor(500);
+    await expect(text).toHaveCount(0);
     await expect(opening.locator('[data-slot="spinner"]')).toHaveCount(0);
     await page.clock.runFor(500);
+    await expect(text).toBeVisible();
     await expect(opening.locator('[data-slot="spinner"]')).toBeVisible();
-    expect(await text.boundingBox()).toEqual(resting);
 
     release();
     await expect(opening).toHaveCount(0, { timeout: 20_000 });
   });
 
-  test("a connect that stays unanswered names the session at once and shows a spinner only after a second", async ({
+  test("a connect that stays unanswered shows nothing for a second, then names the session with a spinner", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -110,19 +109,18 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     await page.goto("/");
 
     const title = page.getByText("Connecting to your host");
-    await expect(title).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator("main")).toBeAttached({ timeout: 20_000 });
+    await expect(title).toHaveCount(0);
+    await page.clock.runFor(500);
+    await expect(title).toHaveCount(0);
+    await expect(page.locator('[data-slot="spinner"]')).toHaveCount(0);
+    await page.clock.runFor(500);
+    await expect(title).toBeVisible();
     await expect(page.getByText("Opening the session.")).toBeVisible();
-    await expect(page.locator('[data-slot="spinner"]')).toHaveCount(0);
-    const resting = await title.boundingBox();
-    await page.clock.runFor(500);
-    await expect(page.locator('[data-slot="spinner"]')).toHaveCount(0);
-    await page.clock.runFor(500);
     await expect(page.locator('[data-slot="spinner"]')).toBeVisible();
-    // The icon's box was kept while it waited, so the words did not move when it arrived.
-    expect(await title.boundingBox()).toEqual(resting);
   });
 
-  test("while the workspace's code loads, a status fills the screen at once and a spinner comes only after a second", async ({
+  test("while the workspace's code loads, a quiet status fills the screen at once and its words come after a second", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -138,18 +136,15 @@ test.describe("loading feedback waits before it spins (#1498)", () => {
     await page.goto("/");
 
     const loading = page.getByRole("status", { name: "Loading the workspace" });
+    // The status fills the screen from the first frame (its background), named for assistive tech, but says nothing yet.
     await expect(loading).toBeVisible({ timeout: 20_000 });
-    // Painted from the first frame: a wait never opens as a blank screen and then appears.
-    await expect(loading).toHaveCSS("opacity", "1");
     const text = loading.getByText("Loading the workspace…");
-    // The wait names what it waits for at once; the spinner is held back, and its box with it so no layout moves.
+    await expect(text).toHaveCount(0);
+    await page.clock.runFor(500);
+    await expect(text).toHaveCount(0);
+    await page.clock.runFor(500);
     await expect(text).toBeVisible();
-    const resting = await text.boundingBox();
-    await page.clock.runFor(500);
-    await expect(loading.locator('[data-slot="spinner"]')).toHaveCount(0);
-    await page.clock.runFor(500);
     await expect(loading.locator('[data-slot="spinner"]')).toBeVisible();
-    expect(await text.boundingBox()).toEqual(resting);
     const box = await loading.boundingBox();
     expect(box).toMatchObject({ width: 1440, height: 900 });
 

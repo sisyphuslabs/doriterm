@@ -12,7 +12,7 @@ export const ADOPT_GRACE_MS = 5_000;
 export const MAX_RETRY_MS = 60_000;
 
 /** Addresses by their numbers (`t9` before `t10`), for terminals started in the same millisecond. */
-const BY_ADDRESS = new Intl.Collator("en", { numeric: true });
+export const BY_ADDRESS = new Intl.Collator("en", { numeric: true });
 
 /** A terminal as its own machine's document names it: `t7` for `build-box/t7`. */
 const local = (address: string): string => address.slice(address.indexOf("/") + 1);
