@@ -53,7 +53,9 @@ test("the same dialog takes an invite from another machine and opens it for this
     await other.route(page);
     const { link } = await other.meshOffer();
     const { dialog } = await openAddMachine(page);
-    await dialog.getByLabel("Invite link or code").fill(`curl -fsSL https://get.doriterm.com | DORIFACE_JOIN='<${link}>' sh`);
+    await dialog
+      .getByLabel("Invite link or code")
+      .fill(`curl -fsSL https://get.doriterm.com | DORIFACE_JOIN='<${link}>' sh`);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Join this mesh", exact: true })).toBeVisible({ timeout: 30_000 });
   } finally {
