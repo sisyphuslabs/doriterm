@@ -1,19 +1,13 @@
-import { ClipboardPaste, GamepadDirectional, Keyboard, KeyboardOff, List, TextCursorInput } from "lucide-react";
-import {
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-  type Ref,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { ClipboardPaste, CornerDownLeft, Keyboard, KeyboardOff, List, Move, SquarePen } from "lucide-react";
+import { type CSSProperties, type ReactElement, type ReactNode, type Ref, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
+import { DirectionPad } from "./direction-pad.tsx";
 import { DEFAULT_EXTRA_KEYS } from "./extra-keys-defaults.tsx";
 import { idleKey, keepFocus, KeyButton, keyTarget as key, latchedKey } from "./extra-key-button.tsx";
+import { KeyPages } from "./key-pages.tsx";
 
 export { keepFocus };
+export { KeyboardButton, type KeyboardButtonProps } from "./keyboard-button.tsx";
 
 export interface ExtraKey {
   readonly id: string;
@@ -22,40 +16,6 @@ export interface ExtraKey {
   readonly name: string;
   /** Sticky one-shot modifiers stay pressed for the next key, then let go. */
   readonly modifier?: boolean;
-}
-
-const divider = (height: string): ReactElement => (
-  <span aria-hidden className={cn("mx-1 w-px shrink-0 bg-border", height)} />
-);
-
-type Fade = "none" | "start" | "end" | "both";
-
-function fadeOf(el: HTMLElement): Fade {
-  const start = el.scrollLeft > 1;
-  const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
-  return start && end ? "both" : start ? "start" : end ? "end" : "none";
-}
-
-function useEdgeFade(): [Fade, (el: HTMLDivElement | null) => void] {
-  const [fade, setFade] = useState<Fade>("none");
-  const node = useRef<HTMLDivElement | null>(null);
-  const ref = useCallback((el: HTMLDivElement | null) => {
-    node.current = el;
-    if (el !== null) setFade(fadeOf(el));
-  }, []);
-  useEffect(() => {
-    const el = node.current;
-    if (el === null) return undefined;
-    const update = (): void => setFade(fadeOf(el));
-    el.addEventListener("scroll", update, { passive: true });
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => {
-      el.removeEventListener("scroll", update);
-      observer.disconnect();
-    };
-  }, []);
-  return [fade, ref];
 }
 
 export interface ExtraKeysBarProps {
@@ -74,17 +34,15 @@ export interface ExtraKeysBarProps {
   readonly onKeyHold?: (id: string) => void;
   readonly padOpen?: boolean;
   readonly onPad?: () => void;
+  /** An arrow of the open pad, by id (up, down, left, right). */
+  readonly onPadKey?: (id: string) => void;
   readonly onPaste?: () => void;
-  /**
-   * The input field's toggle: a slot of its own, fixed beside the keyboard key so the two never scroll away. Unset
-   * where there is no field to open (the desktop's keys never show it).
-   */
+  /** The action pill's Return: a terminal key that presses Return in the program, never a send of the card's draft. */
+  readonly onReturn?: () => void;
+  /** The input card is open; its toggle reads pressed. */
   readonly inputBox?: boolean;
+  /** The input card's toggle, the action pill's last slot. Unset where there is no card to open. */
   readonly onInputBox?: () => void;
-  /** A real input field in the first fixed column, in place of the field toggle. */
-  readonly inputField?: ReactNode;
-  /** The input field is in use: it takes a row of its own across the bar, above the keys, which keep their width. */
-  readonly inputActive?: boolean;
   readonly ref?: Ref<HTMLDivElement>;
   readonly onHideKeyboard?: () => void;
   /** The hide button's name: Hide keyboard by default; Hide keys where the bar shows without a soft keyboard. */
@@ -103,27 +61,29 @@ export interface ExtraKeysBarProps {
   readonly style?: CSSProperties;
 }
 
+const pill = "relative h-[3.25rem] rounded-full border border-border bg-chrome/95 shadow-lg backdrop-blur-md";
+const PAD_WIDTH_PX = 202;
+
+/** Where the open pad sits over the key pill, and where its tail points: centred over its key, kept inside the pill. */
+function padPlace(anchor: HTMLElement | null, scrolled: number, pillWidth: number): { left: number; tail: number } {
+  const centre = anchor === null ? pillWidth / 2 : anchor.offsetLeft + anchor.offsetWidth / 2 - scrolled;
+  const left = Math.max(0, Math.min(pillWidth - PAD_WIDTH_PX, centre - PAD_WIDTH_PX / 2));
+  return { left, tail: centre - left };
+}
+
 /**
- * The phone's terminal keys, one rounded pill riding on the soft keyboard. Everything that scrolls sits in the row on
- * the left: the active pack's keys, the person's own keys behind a divider, the arrow-pad toggle, Switch session and
- * Paste. The two slots on the right never scroll: the input field and the keyboard's toggle. Every key is
- * a 44 pt target, and pressing one leaves the text focus (and so the keyboard) where it was. A latched modifier inverts
- * to solid ink with a bar under its label, so it reads as on in both themes.
+ * The phone's terminal keys as the Herdr app draws them (#2778): two pills in one row. The key pill on the left holds the
+ * active pack's keys, the person's own, the arrow pad's key, Switch session and Paste, in pages a swipe turns, with a dot
+ * per page. The action pill on the right never moves: Return, the keyboard's toggle and the input card's toggle. Every key
+ * is a 44 pt target, and pressing one leaves the text focus (and so the keyboard) where it was. A latched modifier
+ * inverts to solid ink with a bar under its label, so it reads as on in both themes.
  */
 export function ExtraKeysBar(props: ExtraKeysBarProps) {
-  const {
-    keys = DEFAULT_EXTRA_KEYS,
-    packKeys = [],
-    latched = [],
-    onKey,
-    onKeyHold,
-    padOpen = false,
-    inputBox = false,
-    inputActive = false,
-    keyboardDown = false,
-  } = props;
-  const { onShowKeyboardStart } = props;
-  const [fade, scroller] = useEdgeFade();
+  const { keys = DEFAULT_EXTRA_KEYS, packKeys = [], latched = [], onKey, onKeyHold, padOpen = false } = props;
+  const { inputBox = false, keyboardDown = false, onShowKeyboardStart } = props;
+  const arrows = useRef<HTMLButtonElement | null>(null);
+  const keysPill = useRef<HTMLDivElement | null>(null);
+  const [scrolled, setScrolled] = useState(0);
   const textKey = (entry: ExtraKey) => (
     <KeyButton
       key={entry.id}
@@ -138,6 +98,36 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
       <List />
     </button>
   );
+  const items = [
+    ...packKeys.map(textKey),
+    ...keys.map(textKey),
+    <button
+      key="arrows"
+      ref={arrows}
+      type="button"
+      aria-label="Arrow keys"
+      aria-pressed={padOpen}
+      onMouseDown={keepFocus}
+      onClick={props.onPad}
+      className={cn(key, padOpen ? latchedKey : idleKey)}
+    >
+      <Move />
+    </button>,
+    <span key="sessions" className="contents">
+      {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
+    </span>,
+    <button
+      key="paste"
+      type="button"
+      aria-label="Paste"
+      onMouseDown={keepFocus}
+      onClick={props.onPaste}
+      className={cn(key, idleKey)}
+    >
+      <ClipboardPaste />
+    </button>,
+  ];
+  const place = padOpen ? padPlace(arrows.current, scrolled, keysPill.current?.clientWidth ?? PAD_WIDTH_PX) : null;
   return (
     <div
       ref={props.ref}
@@ -145,146 +135,61 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
       aria-label="Terminal keys"
       style={props.style}
       className={cn(
-        "px-1.5 py-1 transition-[bottom] duration-(--duration-standard) ease-out motion-reduce:transition-none motion-reduce:duration-0",
+        "flex items-center gap-2 px-1.5 py-1 transition-[bottom] duration-(--duration-standard) ease-out motion-reduce:transition-none motion-reduce:duration-0",
         props.className,
       )}
     >
-      <div
-        className={cn(
-          "border border-border bg-chrome/95 p-1 shadow-lg backdrop-blur-md",
-          inputActive
-            ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-y-1 rounded-[1.625rem]"
-            : "flex h-[3.25rem] items-center rounded-full",
+      <div ref={keysPill} role="group" aria-label="Keys" className={cn(pill, "min-w-0 flex-1 px-1")}>
+        {place === null ? null : (
+          <DirectionPad
+            {...(props.onPadKey === undefined ? {} : { onKey: props.onPadKey })}
+            tail={place.tail}
+            style={{ left: place.left, width: PAD_WIDTH_PX }}
+            className="absolute bottom-full z-10 mb-3"
+          />
         )}
-      >
-        <div
-          ref={scroller}
-          data-slot="terminal-keys-scroll"
-          data-fade={fade}
-          className={cn(
-            inputActive && "col-start-1 row-start-2 h-11",
-            "flex min-w-0 flex-1 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            "data-[fade=end]:[mask-image:linear-gradient(to_right,black_calc(100%-0.75rem),transparent)]",
-            "data-[fade=start]:[mask-image:linear-gradient(to_left,black_calc(100%-0.75rem),transparent)]",
-            "data-[fade=both]:[mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]",
-          )}
+        <KeyPages items={items} onScroll={setScrolled} />
+      </div>
+      <div role="group" aria-label="Actions" className={cn(pill, "flex shrink-0 items-center px-1")}>
+        <button
+          type="button"
+          aria-label="Return"
+          onMouseDown={keepFocus}
+          onClick={props.onReturn}
+          className={cn(key, "text-ring active:bg-selected")}
         >
-          {packKeys.map(textKey)}
-          {packKeys.length > 0 ? divider("h-5") : null}
-          {keys.map(textKey)}
-          {divider("h-5")}
+          <CornerDownLeft />
+        </button>
+        <button
+          type="button"
+          aria-label={keyboardDown ? "Show keyboard" : (props.hideLabel ?? "Hide keyboard")}
+          onPointerDown={
+            !keyboardDown || onShowKeyboardStart === undefined
+              ? undefined
+              : (event) => {
+                  if (event.button !== 0 || !event.isPrimary) return;
+                  onShowKeyboardStart(event.currentTarget, event.pointerId);
+                }
+          }
+          onMouseDown={keepFocus}
+          onClick={keyboardDown ? props.onShowKeyboard : props.onHideKeyboard}
+          className={cn(key, idleKey)}
+        >
+          {keyboardDown ? <Keyboard /> : <KeyboardOff />}
+        </button>
+        {props.onInputBox === undefined ? null : (
           <button
             type="button"
-            aria-label="Arrow keys"
-            aria-pressed={padOpen}
+            aria-label="Type in a field"
+            aria-pressed={inputBox}
             onMouseDown={keepFocus}
-            onClick={props.onPad}
-            className={cn(key, padOpen ? latchedKey : idleKey)}
+            onClick={props.onInputBox}
+            className={cn(key, inputBox ? latchedKey : idleKey)}
           >
-            <GamepadDirectional />
+            <SquarePen />
           </button>
-          {props.renderSessions === undefined ? sessions : props.renderSessions(sessions)}
-          <button
-            type="button"
-            aria-label="Paste"
-            onMouseDown={keepFocus}
-            onClick={props.onPaste}
-            className={cn(key, idleKey)}
-          >
-            <ClipboardPaste />
-          </button>
-        </div>
-        {inputActive ? null : divider("h-6")}
-        <div className={inputActive ? "contents" : "flex shrink-0 items-center"}>
-          <div className={inputActive ? "col-span-2 row-start-1 min-w-0" : "contents"}>{props.inputField}</div>
-          {props.inputField !== undefined || props.onInputBox === undefined ? null : (
-            <button
-              type="button"
-              aria-label="Type in a field"
-              aria-pressed={inputBox}
-              onMouseDown={keepFocus}
-              onClick={props.onInputBox}
-              className={cn(key, inputBox ? latchedKey : idleKey)}
-            >
-              <TextCursorInput />
-            </button>
-          )}
-          <button
-            type="button"
-            aria-label={keyboardDown ? "Show keyboard" : (props.hideLabel ?? "Hide keyboard")}
-            onPointerDown={
-              !keyboardDown || onShowKeyboardStart === undefined
-                ? undefined
-                : (event) => {
-                    if (event.button !== 0 || !event.isPrimary) return;
-                    onShowKeyboardStart(event.currentTarget, event.pointerId);
-                  }
-            }
-            onMouseDown={keepFocus}
-            onClick={keyboardDown ? props.onShowKeyboard : props.onHideKeyboard}
-            className={cn(key, idleKey, inputActive && "col-start-2 row-start-2")}
-          >
-            {keyboardDown ? <Keyboard /> : <KeyboardOff />}
-          </button>
-        </div>
+        )}
       </div>
     </div>
-  );
-}
-
-export interface KeyboardButtonProps {
-  readonly onPress?: () => void;
-  /**
-   * The press as it lands (pointerdown), a task before `onPress`: what has to be let go before the click runs. Only a
-   * primary press, the one that clicks, starts one; `pointerId` is its pointer (#2048).
-   */
-  readonly onPressStart?: (button: HTMLButtonElement, pointerId: number) => void;
-  readonly className?: string;
-  /** Show keyboard by default; Show keys where the button opens the keys bar itself (no soft keyboard to raise). */
-  readonly label?: string;
-  /** The keyboard glyph by default; another round control over the terminal (read-only browsing) brings its own. */
-  readonly icon?: ReactNode;
-  /** A toggle's state, when the button is one: drawn as a latched key while on. */
-  readonly pressed?: boolean;
-}
-
-export function KeyboardButton({
-  onPress,
-  onPressStart,
-  className,
-  label = "Show keyboard",
-  icon,
-  pressed,
-}: KeyboardButtonProps) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={pressed}
-      onPointerDown={
-        onPressStart === undefined
-          ? undefined
-          : (event) => {
-              // A secondary press (a trackpad right-click) ends in contextmenu or auxclick and a second finger clicks
-              // nothing, so neither brings the click that ends what a press start let go (#2048).
-              if (event.button !== 0 || !event.isPrimary) return;
-              onPressStart(event.currentTarget, event.pointerId);
-            }
-      }
-      // The keyboard button leaves the focus on the terminal it asks the keyboard for, as the keys do: a press that took
-      // the focus would tell the program the terminal lost it (#1519). Another round control is left as it was.
-      onMouseDown={icon === undefined ? keepFocus : undefined}
-      onClick={onPress}
-      className={cn(
-        "flex size-12 items-center justify-center rounded-full border border-border shadow-lg backdrop-blur-md outline-none [&_svg:not([data-slot=spinner])]:size-5",
-        pressed === true
-          ? "bg-primary text-primary-foreground active:opacity-80"
-          : "bg-chrome/90 text-foreground active:bg-selected",
-        "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
-        className,
-      )}
-    >
-      {icon ?? <Keyboard />}
-    </button>
   );
 }

@@ -4,7 +4,17 @@ import { ExtraKeysBar, KeyboardButton } from "./extra-keys-bar.tsx";
 import { DEFAULT_EXTRA_KEYS } from "./extra-keys-defaults.tsx";
 
 /** The bar's own chrome, which is not a key of the person's row. */
-const CHROME = new Set(["Terminal keys", "Arrow keys", "Switch session", "Paste", "Type in a field", "Hide keyboard"]);
+const CHROME = new Set([
+  "Terminal keys",
+  "Keys",
+  "Actions",
+  "Arrow keys",
+  "Switch session",
+  "Paste",
+  "Return",
+  "Type in a field",
+  "Hide keyboard",
+]);
 
 /** The names of the bar's keys, in the order they are drawn. */
 const drawnKeys = (markup: string): readonly string[] =>
