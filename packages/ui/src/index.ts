@@ -1,5 +1,7 @@
 export { cn } from "./lib/cn.ts";
 export { SPINNER_DELAY_MS, useDelayedTrue } from "./lib/spinner-delay.ts";
+export { ShowGate, type ShowTiming } from "./lib/show-gate.ts";
+export { INDICATOR_MIN_MS, INDICATOR_TIMING, useShownAfter } from "./lib/use-shown-after.ts";
 export { AgentRow, type Agent, type AgentRowProps } from "./components/agent-row.tsx";
 export {
   ApprovalBanner,
