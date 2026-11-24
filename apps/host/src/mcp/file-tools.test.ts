@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FILE_TOOLS, FileToolRefused, type FileTool } from "./file-tools.ts";
+import { MAX_MCP_LINE, toolResult } from "./lines.ts";
 
 let dir: string;
 let calls: MachineExecParams[];
@@ -116,4 +117,36 @@ test("arguments that do not fit are refused before anything runs", async () => {
   await expect(tool("file_grep").run({ path: dir }, exec)).rejects.toThrow("pattern");
   await expect(tool("file_read_bytes").run({ path: dir, length: -1 }, exec)).rejects.toThrow("length");
   expect(calls).toHaveLength(0);
+});
+
+const replyBytes = (value: unknown): number =>
+  Buffer.byteLength(`${JSON.stringify({ jsonrpc: "2.0", id: 1, result: toolResult(value, false) })}\n`);
+
+test("a read at the documented maximum still fits one MCP reply line, and a larger length is refused", async () => {
+  writeFileSync(join(dir, "big.bin"), Buffer.alloc(300 * 1024, 7));
+  const limit = Number(/At most (\d+) KiB/.exec(tool("file_read_bytes").description)?.[1]) * 1024;
+  const read = await tool("file_read_bytes").run({ path: "big.bin", length: limit }, exec);
+  expect(replyBytes(read)).toBeLessThan(MAX_MCP_LINE);
+  await expect(tool("file_read_bytes").run({ path: "big.bin", length: limit + 1 }, exec)).rejects.toThrow(
+    FileToolRefused,
+  );
+});
+
+test("grep on a single file names that file, and a path with ':' in it parses whole", async () => {
+  writeFileSync(join(dir, "a:b.txt"), "x\nneedle here\n");
+  const one = await tool("file_grep").run({ path: "README.md", pattern: "world" }, exec);
+  expect(one).toEqual({ matches: [{ path: "README.md", line: 2, text: "world" }], more: false });
+  const colon = await tool("file_grep").run({ path: "a:b.txt", pattern: "needle" }, exec);
+  expect(colon).toEqual({ matches: [{ path: "a:b.txt", line: 2, text: "needle here" }], more: false });
+});
+
+test("long matching lines and many paths stay within one reply line, marked more", async () => {
+  writeFileSync(join(dir, "wide.txt"), `${"needle ".repeat(20_000)}\n`.repeat(150));
+  const grep = await tool("file_grep").run({ path: "wide.txt", pattern: "needle" }, exec);
+  expect(replyBytes(grep)).toBeLessThan(MAX_MCP_LINE);
+  expect(grep).toMatchObject({ more: true });
+  mkdirSync(join(dir, "many"));
+  for (let i = 0; i < 900; i++) writeFileSync(join(dir, "many", `${"n".repeat(200)}-${i}.ts`), "");
+  const glob = await tool("file_glob").run({ path: "many", pattern: "*.ts" }, exec);
+  expect(replyBytes(glob)).toBeLessThan(MAX_MCP_LINE);
 });

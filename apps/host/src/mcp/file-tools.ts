@@ -15,16 +15,18 @@ export class FileToolRefused extends Error {}
 
 const LIST_LIMIT = 1000;
 const MATCH_LIMIT = 200;
-/** A reply line holds 256 KiB, and base64 grows the bytes by a third. */
-const BYTES_LIMIT = 128 * 1024;
+/** A reply line holds 256 KiB and carries the value twice (content text and structuredContent); base64 adds a third. */
+const BYTES_LIMIT = 64 * 1024;
+/** The most text list, glob and grep take from the machine, so two copies of it fit one reply line. */
+const OUTPUT_BUDGET = 32 * 1024;
 
 // `st PATH` prints "type<TAB>size<TAB>mtime" on GNU (stat -c) and BSD or macOS (stat -f) alike, without following links.
 const STAT = `st() { if stat -c %s / >/dev/null 2>&1; then stat -c '%F\t%s\t%Y' -- "$1"; else stat -f '%HT\t%z\t%m' -- "$1"; fi; }`;
 const SCRIPTS = {
   stat: `${STAT}; [ -e "$1" ] || [ -L "$1" ] || exit 3; st "$1"`,
-  list: `${STAT}; [ -d "$1" ] || exit 4; n=0; for f in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$f" ] || [ -L "$f" ] || continue; n=$((n+1)); [ $n -gt ${LIST_LIMIT} ] && { echo more; break; }; printf '%s\t%s\n' "$(st "$f")" "\${f##*/}"; done`,
-  glob: `[ -d "$1" ] || exit 4; find "$1" \\( -name .git -o -name node_modules \\) -prune -o -type f -name "$2" -print | head -n ${LIST_LIMIT + 1}`,
-  grep: `[ -e "$1" ] || exit 3; grep -rnI $3 --exclude-dir=.git --exclude-dir=node_modules -E -e "$2" -- "$1" | head -n ${MATCH_LIMIT + 1}`,
+  list: `${STAT}; [ -d "$1" ] || exit 4; n=0; for f in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$f" ] || [ -L "$f" ] || continue; n=$((n+1)); [ $n -gt ${LIST_LIMIT} ] && { echo more; break; }; printf '%s\t%s\n' "$(st "$f")" "\${f##*/}"; done | head -c ${OUTPUT_BUDGET}`,
+  glob: `[ -d "$1" ] || exit 4; find "$1" \\( -name .git -o -name node_modules \\) -prune -o -type f -name "$2" -print | head -n ${LIST_LIMIT + 1} | head -c ${OUTPUT_BUDGET}`,
+  grep: `[ -e "$1" ] || exit 3; grep -rnIH --null $3 --exclude-dir=.git --exclude-dir=node_modules -E -e "$2" -- "$1" | head -n ${MATCH_LIMIT + 1} | head -c ${OUTPUT_BUDGET}`,
   bytes: `${STAT}; [ -f "$1" ] || exit 4; st "$1"; tail -c +$(($2 + 1)) -- "$1" | head -c $3`,
 } as const;
 
@@ -88,7 +90,14 @@ function statLine(line: string): { readonly type: string; readonly size: number;
     mtime: Number(mtime),
   };
 }
-const lines = (bytes: Uint8Array): string[] => Buffer.from(bytes).toString("utf8").split("\n").filter(Boolean);
+/** The output's lines; output cut at the budget loses its last, partial line and reports that more was left. */
+function lines(bytes: Uint8Array): string[] & { cut?: boolean } {
+  const all = Buffer.from(bytes).toString("utf8").split("\n");
+  const cut = bytes.length >= OUTPUT_BUDGET;
+  const rows: string[] & { cut?: boolean } = (cut ? all.slice(0, -1) : all).filter(Boolean);
+  rows.cut = cut;
+  return rows;
+}
 
 /** Files and folders beyond hc's file_read, file_write and file_edit, run by machine.exec under the same gate. */
 export const FILE_TOOLS: readonly FileTool[] = [
@@ -99,7 +108,7 @@ export const FILE_TOOLS: readonly FileTool[] = [
     run: async (args, exec) => {
       const path = text(args, "path");
       const rows = lines(await runScript(exec, args, SCRIPTS.list, [path]));
-      const more = rows.at(-1) === "more";
+      const more = rows.at(-1) === "more" || rows.cut === true;
       const entries = (more ? rows.slice(0, -1) : rows).map((row) => {
         const cut = row.lastIndexOf("\t");
         const { type, size, mtime } = statLine(row.slice(0, cut));
@@ -123,7 +132,7 @@ export const FILE_TOOLS: readonly FileTool[] = [
     inputSchema: object({ path: { type: "string" }, pattern: { type: "string" } }, ["path", "pattern"]),
     run: async (args, exec) => {
       const found = lines(await runScript(exec, args, SCRIPTS.glob, [text(args, "path"), text(args, "pattern")]));
-      return { paths: found.slice(0, LIST_LIMIT), more: found.length > LIST_LIMIT };
+      return { paths: found.slice(0, LIST_LIMIT), more: found.length > LIST_LIMIT || found.cut === true };
     },
   },
   {
@@ -135,11 +144,14 @@ export const FILE_TOOLS: readonly FileTool[] = [
     ]),
     run: async (args, exec) => {
       const values = [text(args, "path"), text(args, "pattern"), args["ignoreCase"] === true ? "-i" : "-s"];
-      const found = lines(await runScript(exec, args, SCRIPTS.grep, values)).map((row) => {
-        const [path = "", line = "0", ...rest] = row.split(":");
-        return { path, line: Number(line), text: rest.join(":") };
+      const rows = lines(await runScript(exec, args, SCRIPTS.grep, values));
+      // grep --null ends each file name with NUL, so a name with ':' in it stays whole: name NUL line ':' text.
+      const found = rows.map((row) => {
+        const name = row.indexOf("\0");
+        const colon = row.indexOf(":", name + 1);
+        return { path: row.slice(0, name), line: Number(row.slice(name + 1, colon)), text: row.slice(colon + 1) };
       });
-      return { matches: found.slice(0, MATCH_LIMIT), more: found.length > MATCH_LIMIT };
+      return { matches: found.slice(0, MATCH_LIMIT), more: found.length > MATCH_LIMIT || rows.cut === true };
     },
   },
   {
