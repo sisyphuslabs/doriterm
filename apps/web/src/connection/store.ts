@@ -6,6 +6,7 @@ import { connect, DeviceNotPairedError, type ConnectionPath, type OpenConnection
 import type { DirectReason } from "./direct-attempt.ts";
 import { helloName } from "./hello-name.ts";
 import { isFinal } from "./host-failure.ts";
+import { nextMember, UnknownDeviceRefusals } from "./member-choice.ts";
 import { MeshConnections, type MemberEntry } from "./mesh-connections.ts";
 import { type ResumeWiring, wireResume } from "./resume-wiring.ts";
 import {
@@ -102,6 +103,7 @@ export class ConnectionStore {
    */
   #closedFor: Error | null = null;
   readonly #budget = new AttemptBudget();
+  readonly #unknownTo = new UnknownDeviceRefusals();
   readonly #connect: typeof connect;
   readonly #save: Saver;
   /** A wake's check on the open link: a socket the page slept on can be half-open (#653), and input must not go into it. */
@@ -185,6 +187,7 @@ export class ConnectionStore {
   start(): void {
     this.stop();
     this.#relayFirst = false;
+    this.#unknownTo.clear();
     if (!isConfigured(this.#settings)) {
       this.#set({ phase: "unconfigured" });
       return;
@@ -280,6 +283,7 @@ export class ConnectionStore {
     });
     this.#stale = null;
     this.#budget.reset();
+    this.#unknownTo.clear();
     this.#armStable();
     this.#set({
       phase: "open",
@@ -290,28 +294,11 @@ export class ConnectionStore {
     });
   }
 
-  /**
-   * Moves the selection to the next member of the roster, when there is one to move to.
-   *
-   * The roster is what the saved settings carry; with one member this does nothing, so a single-host app behaves exactly as
-   * it did. Each rotation is saved, because the host this app is bound to is then the one it is reaching for.
-   */
+  /** Moves the selection to the next member of the roster, when there is one; saved, since that is the host now reached for. */
   #rotateMember(): void {
-    const { members } = this.#settings;
-    if (members.length < 2) return;
-    const at = members.findIndex((member) => member.hostId === this.#settings.hostId);
-    // A selected host that is not in the roster cannot be moved on from: the roster rule puts it there, so its absence means
-    // the two disagree, and picking members[0] would bind the app to a host nobody selected.
-    if (at === -1) return;
-    const next = members[(at + 1) % members.length];
-    if (next === undefined || next.hostId === this.#settings.hostId) return;
-    this.#settings = {
-      ...this.#settings,
-      hostId: next.hostId,
-      hostName: next.hostName,
-      hostKey: next.hostKey,
-      directUrl: next.directUrl,
-    };
+    const next = nextMember(this.#settings);
+    if (next === undefined) return;
+    this.#settings = next;
     this.#save(this.#settings);
   }
 
@@ -375,10 +362,12 @@ export class ConnectionStore {
 
   #retry(error: Error, attempt: number): void {
     this.#disarmStable();
-    const settling =
-      this.#settings.viewMember === true &&
-      (error instanceof DeviceNotPairedError || ("code" in error && error.code === 4401));
-    if (isFinal(error) && !settling) {
+    const unknownDevice = error instanceof DeviceNotPairedError || ("code" in error && error.code === 4401);
+    const settling = this.#settings.viewMember === true && unknownDevice;
+    // A member this device was never paired with refuses it too; only a refusal from every member means it is unknown (#2759).
+    const unknownHere =
+      unknownDevice && !settling && this.#settings.mode !== "loopback" && !this.#unknownTo.refusedBy(this.#settings);
+    if (isFinal(error) && !settling && !unknownHere) {
       this.#stale = null;
       this.#set({ phase: "failed", error, retryInMs: null, retryAt: null, stale: null });
       return;
@@ -392,7 +381,11 @@ export class ConnectionStore {
     const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 10_000;
     this.#set({
       phase: "failed",
-      error: settling ? new Error("Settling: waiting for this machine to learn this browser's membership.") : error,
+      error: settling
+        ? new Error("Settling: waiting for this machine to learn this browser's membership.")
+        : unknownHere
+          ? new Error("This machine does not know this device; trying the one it is paired with.")
+          : error,
       ...(settling ? { settling: true } : {}),
       retryInMs: delay,
       retryAt: Date.now() + delay,
