@@ -1,6 +1,6 @@
 import type { JsonObject } from "@doriface/protocol";
 import { realpathSync } from "node:fs";
-import { isAbsolute, normalize, resolve } from "node:path";
+import { isAbsolute, normalize, posix, resolve } from "node:path";
 import { FILE_TOOLS, type FileTool } from "./file-tools.ts";
 import { HOST_TOOLS, MESH_TOOLS, type MeshTool } from "./mesh-tools.ts";
 
@@ -104,11 +104,17 @@ function flags(words: readonly string[]): {
 export function touchesState(path: string, stateDirs: readonly string[], home: string, cwd: string): boolean {
   const expanded = path === "~" || path.startsWith("~/") ? `${home}${path.slice(1)}` : path;
   const full = normalize(isAbsolute(expanded) ? expanded : resolve(cwd, expanded));
-  const inside = (candidate: string): boolean =>
-    stateDirs.some((dir) => candidate === dir || candidate.startsWith(`${normalize(dir)}/`));
+  // Compared without case: macOS file systems ignore it, so STATE/ opens state/.
+  const inside = (candidate: string): boolean => {
+    const lower = candidate.toLowerCase();
+    return stateDirs.some((dir) => {
+      const base = normalize(dir).toLowerCase();
+      return lower === base || lower.startsWith(`${base}/`);
+    });
+  };
   if (inside(full)) return true;
   try {
-    return inside(realpathSync(full));
+    return inside(realpathSync.native(full));
   } catch {
     return false;
   }
@@ -173,10 +179,10 @@ const anyTouchesState = (words: readonly string[], context: PlanContext): boolea
   );
 
 /** On another machine (--on) this host cannot resolve ~ or relative paths, so a path naming a doriface-host state dir is refused by its name. */
-const STATE_NAME = /(^|\/)\.local\/state\/doriface-host(-[^/]*)?(\/|$)/;
+const STATE_NAME = /(^|\/)\.local\/state\/doriface-host(-[^/]*)?(\/|$)/i;
 
 function planFile(sub: string, rest: readonly string[], args: readonly string[], context: PlanContext): Plan {
-  if (anyTouchesState(rest, context) || rest.some((word) => STATE_NAME.test(word))) {
+  if (anyTouchesState(rest, context) || rest.some((word) => STATE_NAME.test(posix.normalize(word)))) {
     return refused("that path is the host's private state");
   }
   const { positional, named } = flags(rest);

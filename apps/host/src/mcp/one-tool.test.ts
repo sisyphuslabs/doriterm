@@ -181,3 +181,15 @@ test("on another machine a path into a doriface-host state dir is refused by its
   }
   expect(plan(["file", "read", "--on", "studio", "~/notes.txt"]).kind).toBe("hc");
 });
+
+test("the state guard is not fooled by case or by unnormalized spelling, here or on another machine", () => {
+  for (const args of [
+    ["file", "read", "/home/me/.local/STATE/doriface-host/host-key.json"],
+    ["file", "read", "/HOME/ME/.local/state/DORIFACE-HOST/devices.json"],
+    ["file", "read", "--on", "studio", "/Users/x/.local/state/./doriface-host/host-key.json"],
+    ["file", "read", "--on", "studio", "/Users/x/.local//state/doriface-host-mesh/devices.json"],
+    ["file", "read", "--on", "studio", "~/.LOCAL/State/Doriface-Host/host-key.json"],
+  ]) {
+    expect([args, plan(args).kind]).toEqual([args, "refused"]);
+  }
+});
