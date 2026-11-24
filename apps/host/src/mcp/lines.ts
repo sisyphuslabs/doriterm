@@ -17,11 +17,25 @@ export type ToolsShown = "core" | "all" | readonly string[];
 export const TOOLS_SHOWN_METHOD = "notifications/doriterm/tools";
 const SEARCH_LIMIT = 8;
 
+const SEARCH_FIRST =
+  "Search doriterm_tools before calling anything: most Doriterm tools are not listed until searched.";
+
+/**
+ * What server/discover tells the model about this server (DiscoverResult.instructions in 2026-07-28). Most tools are
+ * deliberately not in tools/list, so a model that does not know to search would conclude they do not exist.
+ */
+export const SERVER_INSTRUCTIONS =
+  "Doriterm reaches the terminals, files and mesh of the machine this session is paired with. " +
+  "Only two tools are listed: doriterm_tools and doriterm_call. Many more exist (terminals, machines, files, " +
+  "documents, the mesh and its devices). Before you call anything, search with doriterm_tools, using a few words for " +
+  "what you want to do, for example 'read terminal screen' or 'approve join'; then call the tool it returns with " +
+  "doriterm_call. Search again whenever a task needs a tool you have not seen.";
+
 const CORE_TOOLS = [
   {
     name: "doriterm_tools",
     description:
-      "Find Doriterm tools (terminals, machines, files, docs, the mesh and its devices). Without a query: every tool's name and what it does. " +
+      `${SEARCH_FIRST} Finds Doriterm tools (terminals, machines, files, docs, the mesh and its devices). Without a query: every tool's name and what it does. ` +
       `With a query: up to ${SEARCH_LIMIT} matching tools with their input schemas. Call one with doriterm_call.`,
     inputSchema: {
       type: "object",
@@ -31,7 +45,7 @@ const CORE_TOOLS = [
   },
   {
     name: "doriterm_call",
-    description: "Call a Doriterm tool found with doriterm_tools, by its name and with its arguments.",
+    description: `${SEARCH_FIRST} Calls a Doriterm tool found with doriterm_tools, by its name and with its arguments.`,
     inputSchema: {
       type: "object",
       properties: { tool: { type: "string" }, arguments: { type: "object" } },
@@ -131,6 +145,7 @@ export function readMcpLine(bytes: Uint8Array, hostVersion: string, shown: Tools
         supportedVersions: [VERSION],
         capabilities: { tools: {} },
         _meta: { "io.modelcontextprotocol/serverInfo": { name: "doriterm", version: hostVersion } },
+        instructions: SERVER_INSTRUCTIONS,
       });
     case "tools/list":
       return result(id, { resultType: "complete", tools: shownTools(shown), ttlMs: 300_000, cacheScope: "private" });
