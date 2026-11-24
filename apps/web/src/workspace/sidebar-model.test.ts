@@ -165,9 +165,9 @@ describe("agentGroups: sub-agents (#2746)", () => {
     ]);
   });
 
-  test("a pinned sub-agent is listed once, in Pinned with its own sub-agents, and still bubbles to its parent", () => {
+  test("a pinned sub-agent is listed once, in Pinned with its own sub-agents, and its parent is placed by what stays", () => {
     const fleet = [
-      terminal("t1", undefined),
+      terminal("t1", "working"),
       child("t2", "t1", "blocked", { [PIN_LABEL]: "1" }),
       child("t3", "t2", undefined),
       child("t4", "t1", undefined),
@@ -175,7 +175,7 @@ describe("agentGroups: sub-agents (#2746)", () => {
     const groups = agentGroups(fleet, 0, "status");
     expect(drawn(groups)).toEqual([
       ["Pinned", 2, ["t2@0", "t3@1"]],
-      ["Needs you", 2, ["t1@0", "t4@1"]],
+      ["Working", 2, ["t1@0", "t4@1"]],
     ]);
     expect(groups[1]?.agents.map((agent) => [agent.descendants, agent.guides])).toEqual([
       [1, []],

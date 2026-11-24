@@ -35,7 +35,12 @@ describe("pruneFolded", () => {
   });
 
   test("once loaded, a fold of an agent that is gone is dropped", () => {
-    expect(pruneFolded(folded, new Set(["t1", "t2"]), true)).toEqual(["t1"]);
+    expect(pruneFolded(folded, new Set(["t1", "t2", "box/t1"]), true)).toEqual(["t1"]);
+  });
+
+  test("a fold on an added machine that lists nothing yet is kept until that machine's terminals arrive", () => {
+    expect(pruneFolded(folded, new Set(["t1"]), true)).toBe(folded);
+    expect(pruneFolded(folded, new Set(["t1", "box/t9"]), true)).toEqual(["t1"]);
   });
 
   test("while every folded agent is listed the saved list is the same one, so it is not written again", () => {

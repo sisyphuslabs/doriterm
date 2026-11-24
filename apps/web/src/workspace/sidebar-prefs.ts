@@ -1,6 +1,7 @@
 import type { AvatarColor } from "@doriface/ui";
 import { AVATAR_COLORS } from "@doriface/ui";
 import { useEffect, useSyncExternalStore } from "react";
+import { machineOf } from "./model.ts";
 import { assignColors, type AgentSort } from "./sidebar-model.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
 
@@ -92,8 +93,9 @@ export function useCollapsed(): readonly [readonly string[], (id: string) => voi
 
 /**
  * The folds that are still of a listed agent, so the saved list cannot grow without bound. Nothing is dropped before
- * the terminal list has loaded: a reload would otherwise wipe every fold before the feed arrives. Gives back `folded`
- * itself when nothing goes.
+ * the terminal list has loaded: a reload would otherwise wipe every fold before the feed arrives. An added machine's
+ * folds wait the same way until that machine lists a terminal, so one whose terminals arrive later keeps them. Gives
+ * back `folded` itself when nothing goes.
  */
 export function pruneFolded(
   folded: readonly string[],
@@ -101,7 +103,8 @@ export function pruneFolded(
   terminalsLoaded: boolean,
 ): readonly string[] {
   if (!terminalsLoaded) return folded;
-  const kept = folded.filter((address) => listed.has(address));
+  const feeding = new Set([...listed].map(machineOf));
+  const kept = folded.filter((address) => listed.has(address) || !feeding.has(machineOf(address)));
   return kept.length === folded.length ? folded : kept;
 }
 

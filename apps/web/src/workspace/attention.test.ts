@@ -10,7 +10,13 @@ import {
   type Session,
   withAttention,
 } from "./attention.ts";
-import { groupAgents } from "./model.ts";
+import { agentGroups } from "./sidebar-model.ts";
+
+/** The ids the sidebar lists in one status section. */
+const section = (terminals: Parameters<typeof agentGroups>[0], key: string): string[] =>
+  agentGroups(terminals, 0, "status")
+    .find((group) => group.key === key)
+    ?.agents.map((agent) => agent.id) ?? [];
 
 const session = (fields: Partial<Session> = {}): Session => ({
   address: "t1",
@@ -54,11 +60,9 @@ describe("agentStatus", () => {
       session({ address: "t3", status: { state: "blocked" } }),
       session({ address: "t4", status: { state: "done" }, seen: true }),
     ];
-    const groups = groupAgents(terminals, 0);
     for (const entry of terminals) {
       const status = agentStatus(entry);
-      const section = status === "unknown" ? [] : groups[status];
-      expect(section.map((agent) => agent.id)).toContain(entry.address);
+      if (status !== "unknown") expect(section(terminals, status)).toContain(entry.address);
     }
   });
 });
@@ -220,9 +224,9 @@ describe("waitingBesides", () => {
 describe("attention across the surfaces", () => {
   test("a seen finish leaves the Done section for Idle, and stops the counts asking for it", () => {
     const terminals = [session({ status: { state: "done" }, turn: 3 })];
-    expect(groupAgents(terminals, 0).done.map((agent) => agent.id)).toEqual(["t1"]);
-    const looked = groupAgents(withAttention(terminals, { t1: "3" }), 0);
-    expect(looked.done).toEqual([]);
-    expect(looked.idle.map((agent) => agent.id)).toEqual(["t1"]);
+    expect(section(terminals, "done")).toEqual(["t1"]);
+    const looked = withAttention(terminals, { t1: "3" });
+    expect(section(looked, "done")).toEqual([]);
+    expect(section(looked, "idle")).toEqual(["t1"]);
   });
 });
