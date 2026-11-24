@@ -149,6 +149,15 @@ function grid(addresses: readonly string[]): Tree[] {
   return rows.length === 1 ? (rows[0]?.children ?? []) : [{ id: "bench-rows", axis: "column", children: rows }];
 }
 
+/** Ends a terminal the bench started; one that has already ended and been removed is done, not an error (#2810). */
+function killIfLive(address: string): void {
+  try {
+    hcOn("host", ["kill", address]);
+  } catch (error) {
+    if (!(error instanceof Error && error.message.includes('"kind":"not_found"'))) throw error;
+  }
+}
+
 for (const panes of PANES) {
   test(`render bench: ${panes} panes`, async ({ page }) => {
     const dir = mkdtempSync(join(tmpdir(), "bench-"));
@@ -253,7 +262,7 @@ for (const panes of PANES) {
       console.log(`render bench ${BUILD} ${panes} panes: ${JSON.stringify(run)}`);
     } finally {
       clearLayout();
-      for (const address of started) hcOn("host", ["kill", address]);
+      for (const address of started) killIfLive(address);
       rmSync(dir, { recursive: true, force: true });
     }
   });
