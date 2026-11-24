@@ -49,5 +49,9 @@ test("adding a machine offers only the relay path", async ({ page }) => {
   await expect(dialog).toContainText("through the relay");
   // It says it needs no ssh: what it must not offer is a direct or LAN path.
   await expect(dialog).not.toContainText(/direct|\bLAN\b|local network/i);
-  await expect(dialog.getByRole("textbox")).toHaveCount(0);
+  // No address to type in. The one field is "Invite link or code", for an invite from another machine, which reaches
+  // it through the relay too (#2795).
+  await expect(dialog.getByRole("textbox")).toHaveCount(1);
+  await expect(dialog.getByRole("textbox", { name: "Invite link or code" })).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: /address|host|port|url/i })).toHaveCount(0);
 });

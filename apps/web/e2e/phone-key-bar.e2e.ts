@@ -1,4 +1,4 @@
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
 
@@ -16,32 +16,50 @@ const BAR_KEYS = [
   "Arrow keys",
   "Paste",
   "Switch session",
-  "Send",
+  "Return",
   "Hide keyboard",
+  "Type in a field",
 ];
-const PAD_KEYS = ["Delete", "Up arrow", "Clear screen", "Left arrow", "Return", "Right arrow", "Down arrow"];
-/** Send belongs to the fixed input column; the keyboard key has its own column. */
-const FIXED_KEYS = ["Send", "Hide keyboard"];
+const PAD_KEYS = ["Up arrow", "Left arrow", "Down arrow", "Right arrow"];
+/** Return, the keyboard toggle and the input-card toggle live in the fixed Actions pill. */
+const FIXED_KEYS = ["Return", "Hide keyboard", "Type in a field"];
 const SCROLL_KEYS = BAR_KEYS.length - FIXED_KEYS.length;
 const names = (scope: Locator) =>
   scope.getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
 
+async function expectPagedKey(page: Page, scroller: Locator, label: string): Promise<void> {
+  const button = key(page, label);
+  await button.scrollIntoViewIfNeeded();
+  await expect(button).toBeInViewport({ ratio: 1 });
+  expect(Number(await scroller.getAttribute("data-page"))).toBeGreaterThan(1);
+}
+
 for (const width of [390, 320]) {
-  test(`at ${width} the keys bar is one pill of 44 pt keys inside the screen`, async ({ page }) => {
+  test(`at ${width} the keys bar is two pills of 44 pt keys in one row inside the screen`, async ({ page }) => {
     await openPhoneTerminal(page, width);
     const bar = keysBar(page);
     await expect(bar).toBeVisible();
     expect(await names(bar)).toEqual(expect.arrayContaining(BAR_KEYS));
     await expectTouchTargets(bar);
+    const keysPill = bar.getByRole("group", { name: "Keys", exact: true });
+    const actionsPill = bar.getByRole("group", { name: "Actions", exact: true });
+    const [keysBox, actionsBox] = await Promise.all([keysPill.boundingBox(), actionsPill.boundingBox()]);
+    if (keysBox === null || actionsBox === null) throw new Error("pill not laid out");
+    expect(Math.abs(keysBox.y - actionsBox.y)).toBeLessThanOrEqual(1);
+    expect(keysBox.x + keysBox.width).toBeLessThan(actionsBox.x);
+    expect(await names(actionsPill)).toEqual(FIXED_KEYS);
     const shown = await page.locator('[data-slot="terminal-keys-scroll"]').evaluate((el) => {
       const edge = el.getBoundingClientRect();
       return [...el.querySelectorAll("button")]
-        .filter((button) => button.getBoundingClientRect().right <= edge.right + 1)
+        .filter((button) => {
+          const rect = button.getBoundingClientRect();
+          return rect.left >= edge.left - 1 && rect.right <= edge.right + 1;
+        })
         .map((button) => button.getAttribute("aria-label"));
     });
-    // The fixed input leaves room for the first three keys at 390; the rest are reached by swiping.
+    // The key pill shows one page at a time; the rest are reached by paging sideways.
     if (width === 390) {
-      // The keys in the row's own order, of which the first few fit: the row swipes for the rest (#195).
+      // The keys in the row's own order, of which the first page fits: the row pages for the rest (#195, #2778).
       expect(shown.slice(0, 3)).toEqual(
         process.platform === "darwin" ? ["Control", "Command", "Shift"] : ["Control", "Shift", "Tab"],
       );
@@ -107,29 +125,35 @@ test("a browser that shrinks the layout viewport for the keyboard shows the bar 
   await expect(bar).toBeVisible();
 });
 
-test("the D-pad toggle lays a 3x3 pad over the terminal", async ({ page }) => {
+test("the D-pad toggle opens an inverted-T arrow bubble over its key", async ({ page }) => {
   await openPhoneTerminal(page);
   const toggle = key(page, "Arrow keys");
+  await toggle.scrollIntoViewIfNeeded();
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  const pad = page.getByRole("group", { name: "Arrow keys" });
+  const pad = page.getByRole("group", { name: "Arrow keys", exact: true });
   await expect(pad).toBeVisible();
-  const order = await pad
-    .locator(":scope > *")
-    .evaluateAll((cells) => cells.map((cell) => cell.getAttribute("aria-label") ?? ""));
-  expect(order).toEqual([
-    "Delete",
-    "Up arrow",
-    "Clear screen",
-    "Left arrow",
-    "Return",
-    "Right arrow",
-    "",
-    "Down arrow",
-    "",
-  ]);
   expect(await names(pad)).toEqual(PAD_KEYS);
+  await expect(pad.locator('[data-slot="pad-tail"]')).toHaveCount(1);
+  const [padBox, toggleBox, up, left, down, right] = await Promise.all([
+    pad.boundingBox(),
+    toggle.boundingBox(),
+    pad.getByRole("button", { name: "Up arrow", exact: true }).boundingBox(),
+    pad.getByRole("button", { name: "Left arrow", exact: true }).boundingBox(),
+    pad.getByRole("button", { name: "Down arrow", exact: true }).boundingBox(),
+    pad.getByRole("button", { name: "Right arrow", exact: true }).boundingBox(),
+  ]);
+  if (padBox === null || toggleBox === null || up === null || left === null || down === null || right === null) {
+    throw new Error("arrow pad not laid out");
+  }
+  expect(padBox.y + padBox.height).toBeLessThanOrEqual(toggleBox.y);
+  expect(up.y + up.height).toBeLessThanOrEqual(down.y);
+  expect(Math.abs(up.x - down.x)).toBeLessThanOrEqual(1);
+  expect(left.x + left.width).toBeLessThanOrEqual(down.x);
+  expect(down.x + down.width).toBeLessThanOrEqual(right.x);
+  expect(Math.abs(left.y - down.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(right.y - down.y)).toBeLessThanOrEqual(1);
   await expectTouchTargets(pad);
   // Pressing pad keys keeps the keyboard up: the terminal keeps focus.
   await key(page, "Up arrow").click();
@@ -138,28 +162,23 @@ test("the D-pad toggle lays a 3x3 pad over the terminal", async ({ page }) => {
   await expect(pad).toHaveCount(0);
 });
 
-test("swiping the bar sideways reveals ~ | / - behind an edge fade", async ({ page }) => {
+test("paging the key pill sideways moves its dots and reveals ~ | / -", async ({ page }) => {
   await openPhoneTerminal(page);
-  const scroller = page.locator('[data-slot="terminal-keys-scroll"]');
-  await expect(scroller).toHaveAttribute("data-fade", "end");
+  const keysPill = keysBar(page).getByRole("group", { name: "Keys", exact: true });
+  const scroller = keysPill.locator('[data-slot="terminal-keys-scroll"]');
+  const total = Number(await scroller.getAttribute("data-pages"));
+  expect(total).toBeGreaterThan(1);
+  await expect(scroller).toHaveAttribute("data-page", "1");
+  await expect(keysPill.locator('[data-slot="page-dot"]')).toHaveCount(total);
+  await expect(scroller.locator('[data-slot="key-page"]')).toHaveCount(total);
+
   await scroller.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
-  await expect(scroller).toHaveAttribute("data-fade", "start");
-  // The narrow row reveals each character when scrolled into view.
-  const visible = await scroller.evaluate((el) => {
-    const edge = el.getBoundingClientRect();
-    const buttons = [...el.querySelectorAll("button")];
-    const tilde = buttons.find((button) => button.textContent === "~");
-    el.scrollLeft += (tilde?.getBoundingClientRect().left ?? edge.left) - edge.left;
-    return buttons
-      .filter((button) => {
-        const box = button.getBoundingClientRect();
-        return box.left >= edge.left - 1 && box.right <= edge.right + 1;
-      })
-      .map((button) => button.textContent);
-  });
-  expect(visible).toEqual(expect.arrayContaining(["~", "|", "/"]));
-  await key(page, "Hyphen").scrollIntoViewIfNeeded();
-  await expect(key(page, "Hyphen")).toBeInViewport({ ratio: 1 });
+  await expect(scroller).toHaveAttribute("data-page", String(total));
+  // Paging through the key pill reveals each character key fully inside the viewport.
+  await expectPagedKey(page, scroller, "Tilde");
+  await expectPagedKey(page, scroller, "Vertical bar");
+  await expectPagedKey(page, scroller, "Slash");
+  await expectPagedKey(page, scroller, "Hyphen");
 });
 
 test("reduced motion moves the bar without animating it", async ({ page }) => {

@@ -15,8 +15,13 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-test("a missing switch is off, not implicitly enabled", () => {
-  expect(mcp.enabled()).toBe(false);
+test("a missing switch is on: a host that never set it serves MCP to paired devices", () => {
+  expect(mcp.enabled()).toBe(true);
+});
+
+test("an explicit off outlives the process that wrote it, as it does across an update", () => {
+  mcp.setEnabled(false);
+  expect(new McpSwitch(dir).enabled()).toBe(false);
 });
 
 test("both switch settings persist across readers", () => {

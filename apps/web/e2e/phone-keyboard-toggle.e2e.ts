@@ -199,11 +199,12 @@ test.describe("a finger on a phone", () => {
     await expect(input).toHaveAttribute("inputmode", "text");
     await expectUp(page);
 
-    // The Type field rides on the keys bar, so it is on the page only while the keyboard is up (the #1409 spec checks it
-    // goes with the keyboard): there is no down state to raise the keyboard from. What a tap on it can prove is that the
-    // focus leaves the terminal for a field that asks for a keyboard: this fake lowers the keyboard on any focus move that
-    // does not land on a textarea without `inputmode="none"` (phone-key-bar.ts), so the keyboard is up after the move only
-    // because the Type field is such a textarea. (`getAttribute`, since `inputMode` is not on `HTMLElement | SVGElement`.)
+    // The Type field lives in the Input card above the keys row (#2778), opened by "Type in a field". Opening the card
+    // and tapping the field proves focus leaves the terminal for a field that asks for a keyboard: this fake lowers the
+    // keyboard on any focus move that does not land on a textarea without `inputmode="none"` (phone-key-bar.ts), so the
+    // keyboard stays up only because the Type field is such a textarea. (`getAttribute`, since `inputMode` is not on
+    // `HTMLElement | SVGElement`.)
+    await key(page, "Type in a field").tap();
     const field = page.getByLabel("Type into the terminal");
     await field.tap();
     await expect(field).toBeFocused();
