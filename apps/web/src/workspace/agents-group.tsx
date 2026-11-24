@@ -1,8 +1,9 @@
 import type { Terminal } from "@doriface/protocol";
 import { agentRowLead, IconButton, Menu, MenuRadioGroup, MenuRadioItem, SidebarSection } from "@doriface/ui";
 import { Clock, Layers } from "lucide-react";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { AgentItem } from "./agent-item.tsx";
+import { publishAgentOrder } from "./agent-order.ts";
 import { ancestorsOf, hiddenUnder } from "./agent-tree.ts";
 import { filterAgentGroups } from "./sidebar-filter.ts";
 import { agentGroups, type AgentSort, foldAgentGroups } from "./sidebar-model.ts";
@@ -115,6 +116,7 @@ export function AgentsGroup({
     () => (rail || !queryBlank ? narrowed : foldAgentGroups(narrowed, folded, active)),
     [rail, queryBlank, narrowed, folded, active],
   );
+  useEffect(() => publishAgentOrder(groups.flatMap((group) => group.agents.map((agent) => agent.id))), [groups]);
   const tree = !rail && narrowed.some((group) => group.agents.some((agent) => (agent.descendants ?? 0) > 0));
   const depthCap = heading ? 3 : 2;
   const list = (
