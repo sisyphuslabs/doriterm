@@ -15,6 +15,14 @@ const PREVIEW = `bunx --bun vite preview --outDir ${OUT} --host 127.0.0.1 --port
 
 if (process.env["TEST_WORKER_INDEX"] === undefined) process.once("SIGTERM", () => process.kill(process.pid, "SIGINT"));
 
+function viewportOf(value: string | undefined): { width: number; height: number } {
+  const [width, height] = (value ?? "1920x1080").split("x").map(Number);
+  if (width === undefined || height === undefined || !(width > 0 && height > 0)) {
+    throw new Error(`BENCH_VIEWPORT takes WIDTHxHEIGHT, got ${value}`);
+  }
+  return { width, height };
+}
+
 export default defineConfig({
   testDir: ".",
   testMatch: "*.bench.ts",
@@ -27,11 +35,12 @@ export default defineConfig({
   metadata: { runDir: RUN_DIR },
   forbidOnly: Boolean(process.env["CI"]),
   reporter: "list",
-  // Chromium as the e2e suite runs it, at a desktop size where 50 panes still show some text each.
+  // Chromium as the e2e suite runs it, at a desktop size where 50 panes still show some text each; BENCH_VIEWPORT
+  // (WIDTHxHEIGHT) runs the same bench at another size, such as a phone's 390x844 (#2810).
   use: {
     browserName: "chromium",
     baseURL: `http://127.0.0.1:${E2E_WEB_PORT}`,
-    viewport: { width: 1920, height: 1080 },
+    viewport: viewportOf(process.env["BENCH_VIEWPORT"]),
     trace: "off",
     serviceWorkers: "block",
   },
