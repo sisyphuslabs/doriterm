@@ -21,13 +21,13 @@ const BYTES_LIMIT = 64 * 1024;
 const OUTPUT_BUDGET = 32 * 1024;
 
 // `st PATH` prints "type<TAB>size<TAB>mtime" on GNU (stat -c) and BSD or macOS (stat -f) alike, without following links.
-const STAT = `st() { if stat -c %s / >/dev/null 2>&1; then stat -c '%F\t%s\t%Y' -- "$1"; else stat -f '%HT\t%z\t%m' -- "$1"; fi; }`;
+const STAT = `st() { l=; [ "$1" = -L ] && { l=-L; shift; }; if stat -c %s / >/dev/null 2>&1; then stat $l -c '%F\t%s\t%Y' -- "$1"; else stat $l -f '%HT\t%z\t%m' -- "$1"; fi; }`;
 const SCRIPTS = {
   stat: `${STAT}; [ -e "$1" ] || [ -L "$1" ] || exit 3; st "$1"`,
-  list: `${STAT}; [ -d "$1" ] || exit 4; n=0; for f in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$f" ] || [ -L "$f" ] || continue; n=$((n+1)); [ $n -gt ${LIST_LIMIT} ] && { echo more; break; }; printf '%s\t%s\n' "$(st "$f")" "\${f##*/}"; done | head -c ${OUTPUT_BUDGET}`,
+  list: `${STAT}; [ -d "$1" ] || exit 4; n=0; for f in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$f" ] || [ -L "$f" ] || continue; n=$((n+1)); [ $n -gt ${LIST_LIMIT} ] && { printf 'more\\0'; break; }; printf '%s\t%s\\0' "$(st "$f")" "\${f##*/}"; done | head -c ${OUTPUT_BUDGET}`,
   glob: `[ -d "$1" ] || exit 4; find "$1" \\( -name .git -o -name node_modules \\) -prune -o -type f -name "$2" -print | head -n ${LIST_LIMIT + 1} | head -c ${OUTPUT_BUDGET}`,
-  grep: `[ -e "$1" ] || exit 3; grep -rnIH --null $3 --exclude-dir=.git --exclude-dir=node_modules -E -e "$2" -- "$1" | head -n ${MATCH_LIMIT + 1} | head -c ${OUTPUT_BUDGET}`,
-  bytes: `${STAT}; [ -f "$1" ] || exit 4; st "$1"; tail -c +$(($2 + 1)) -- "$1" | head -c $3`,
+  grep: `[ -e "$1" ] || exit 3; { grep -rnIH --null $3 --exclude-dir=.git --exclude-dir=node_modules -E -e "$2" -- "$1"; echo "grep-exit $?" >&2; } | head -n ${MATCH_LIMIT + 1} | head -c ${OUTPUT_BUDGET}`,
+  bytes: `${STAT}; [ -f "$1" ] || exit 4; st -L "$1"; tail -c +$(($2 + 1)) -- "$1" | head -c $3`,
 } as const;
 
 const object = (properties: JsonObject, required: readonly string[]): JsonObject => ({
@@ -60,7 +60,12 @@ const where = (args: JsonObject): Pick<MachineExecParams, "on" | "cwd"> => ({
 const REFUSALS: Readonly<Record<number, string>> = { 3: "no such file or folder", 4: "not a folder" };
 
 /** Runs a script with its arguments as $1.., never through a shell line, and answers its stdout bytes. */
-async function runScript(exec: Exec, args: JsonObject, script: string, values: readonly string[]): Promise<Uint8Array> {
+async function runScript(
+  exec: Exec,
+  args: JsonObject,
+  script: string,
+  values: readonly string[],
+): Promise<{ readonly out: Uint8Array; readonly err: string }> {
   const reply: unknown = await exec({ argv: ["sh", "-c", script, "sh", ...values], ...where(args), timeout: 60 });
   const field = (key: string): unknown => Reflect.get(Object(reply), key);
   const [stdout, stderrText, code] = [field("stdout"), field("stderr"), field("code")];
@@ -76,8 +81,9 @@ async function runScript(exec: Exec, args: JsonObject, script: string, values: r
     throw new FileToolRefused(`${values[0]}: ${REFUSALS[result.code]}`);
   }
   if (result.timed_out) throw new FileToolRefused("it took longer than 60 s");
-  if (result.code !== 0 && stderr !== "") throw new FileToolRefused(stderr);
-  return Buffer.from(result.stdout, "base64");
+  if (result.code !== 0)
+    throw new FileToolRefused(stderr === "" ? `${values[0]}: exited ${String(result.code)}` : stderr);
+  return { out: Buffer.from(result.stdout, "base64"), err: stderr };
 }
 
 const TYPES: Readonly<Record<string, string>> = { directory: "dir", "symbolic link": "link" };
@@ -91,8 +97,8 @@ function statLine(line: string): { readonly type: string; readonly size: number;
   };
 }
 /** The output's lines; output cut at the budget loses its last, partial line and reports that more was left. */
-function lines(bytes: Uint8Array): string[] & { cut?: boolean } {
-  const all = Buffer.from(bytes).toString("utf8").split("\n");
+function lines(bytes: Uint8Array, separator = "\n"): string[] & { cut?: boolean } {
+  const all = Buffer.from(bytes).toString("utf8").split(separator);
   const cut = bytes.length >= OUTPUT_BUDGET;
   const rows: string[] & { cut?: boolean } = (cut ? all.slice(0, -1) : all).filter(Boolean);
   rows.cut = cut;
@@ -107,10 +113,10 @@ export const FILE_TOOLS: readonly FileTool[] = [
     inputSchema: object({ path: { type: "string" } }, ["path"]),
     run: async (args, exec) => {
       const path = text(args, "path");
-      const rows = lines(await runScript(exec, args, SCRIPTS.list, [path]));
+      const rows = lines((await runScript(exec, args, SCRIPTS.list, [path])).out, "\0");
       const more = rows.at(-1) === "more" || rows.cut === true;
       const entries = (more ? rows.slice(0, -1) : rows).map((row) => {
-        const cut = row.lastIndexOf("\t");
+        const cut = row.indexOf("\t", row.indexOf("\t", row.indexOf("\t") + 1) + 1);
         const { type, size, mtime } = statLine(row.slice(0, cut));
         return { name: row.slice(cut + 1), type, size, mtime };
       });
@@ -123,7 +129,7 @@ export const FILE_TOOLS: readonly FileTool[] = [
     inputSchema: object({ path: { type: "string" } }, ["path"]),
     run: async (args, exec) => {
       const path = text(args, "path");
-      return { path, ...statLine(lines(await runScript(exec, args, SCRIPTS.stat, [path]))[0] ?? "") };
+      return { path, ...statLine(lines((await runScript(exec, args, SCRIPTS.stat, [path])).out)[0] ?? "") };
     },
   },
   {
@@ -131,7 +137,7 @@ export const FILE_TOOLS: readonly FileTool[] = [
     description: `Find files under a folder whose name matches a pattern such as *.ts, skipping .git and node_modules; up to ${LIST_LIMIT}.`,
     inputSchema: object({ path: { type: "string" }, pattern: { type: "string" } }, ["path", "pattern"]),
     run: async (args, exec) => {
-      const found = lines(await runScript(exec, args, SCRIPTS.glob, [text(args, "path"), text(args, "pattern")]));
+      const found = lines((await runScript(exec, args, SCRIPTS.glob, [text(args, "path"), text(args, "pattern")])).out);
       return { paths: found.slice(0, LIST_LIMIT), more: found.length > LIST_LIMIT || found.cut === true };
     },
   },
@@ -144,14 +150,21 @@ export const FILE_TOOLS: readonly FileTool[] = [
     ]),
     run: async (args, exec) => {
       const values = [text(args, "path"), text(args, "pattern"), args["ignoreCase"] === true ? "-i" : "-s"];
-      const rows = lines(await runScript(exec, args, SCRIPTS.grep, values));
+      const { out, err } = await runScript(exec, args, SCRIPTS.grep, values);
+      const rows = lines(out);
+      // grep exits 2 when it could not read something; what it found is then not the whole answer.
+      const incomplete = /grep-exit 2/.test(err);
       // grep --null ends each file name with NUL, so a name with ':' in it stays whole: name NUL line ':' text.
       const found = rows.map((row) => {
         const name = row.indexOf("\0");
         const colon = row.indexOf(":", name + 1);
         return { path: row.slice(0, name), line: Number(row.slice(name + 1, colon)), text: row.slice(colon + 1) };
       });
-      return { matches: found.slice(0, MATCH_LIMIT), more: found.length > MATCH_LIMIT || rows.cut === true };
+      return {
+        matches: found.slice(0, MATCH_LIMIT),
+        more: found.length > MATCH_LIMIT || rows.cut === true,
+        ...(incomplete ? { incomplete: true } : {}),
+      };
     },
   },
   {
@@ -166,7 +179,11 @@ export const FILE_TOOLS: readonly FileTool[] = [
       const asked = args["length"] === undefined ? undefined : count(args, "length", 0);
       if (asked !== undefined && asked > BYTES_LIMIT)
         throw new FileToolRefused(`length must be at most ${BYTES_LIMIT}`);
-      const out = await runScript(exec, args, SCRIPTS.bytes, [path, String(offset), String(asked ?? BYTES_LIMIT + 1)]);
+      const { out } = await runScript(exec, args, SCRIPTS.bytes, [
+        path,
+        String(offset),
+        String(asked ?? BYTES_LIMIT + 1),
+      ]);
       const cut = out.indexOf(10);
       const { size } = statLine(Buffer.from(out.subarray(0, cut)).toString("utf8"));
       const data = out.subarray(cut + 1);
