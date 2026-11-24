@@ -1,4 +1,4 @@
-# Doriterm transport contract v1.12.4
+# Doriterm transport contract v1.12.5
 
 This is the binding wire contract for every Doriterm package. Each rule below is the current one; the change log at the end records what each revision changed.
 
@@ -374,6 +374,7 @@ One more stream for a device (v1.12): the Model Context Protocol in place of her
 
 ## Change log
 
+- v1.12.5 (host behaviour, no relay change; #2735): the catalog gains the host's file tools `file_list`, `file_stat`, `file_glob`, `file_grep` and `file_read_bytes` (base64, at most 128 KiB per call, `offset` and `length` for larger files), each run as one `machine.exec` of `sh` on the session's own core connection with the same `on` and `cwd` as hc's `file.*`, and `host_status` (version, host id, relay, paired devices). A machine without `sh` answers them as a tool error.
 - v1.12.4 (host behaviour, no relay change; #2735): MCP is on by default. A missing `mcp.json` now means on instead of off; a written `{"enabled":false}` still turns it off and survives an update.
 - v1.12.3 (host behaviour, no relay change; #2735): hc's event stream over MCP. Terminals are resources (`doriterm://terminal/<address>`, `resources/list`, `resources/read` returns the screen). `subscriptions/listen` acknowledges, then sends `notifications/resources/updated` for subscribed terminals and `notifications/resources/list_changed` when one is created or removed. The Events extension (`io.modelcontextprotocol/events`) offers one event type, `terminal.changed`, by push (`events/stream`): `active`, then one `event` per hc event with its payload, a heartbeat, and a fresh `active` with `truncated` after the core dropped events; cursors are null (no replay). Each subscription is one `events.subscribe` on the session's own core connection and ends on cancel or when the session closes. `terminal.attach` stays excluded.
 - v1.12.2 (host behaviour, no relay change; #2735): `tools/list` shows two tools, `doriterm_tools` and `doriterm_call`, unless the session's first line was the notification `notifications/doriterm/tools` with `{"tools":"all"}` or a list of groups; what is shown never changes what can be called. The catalog gains the host's own mesh tools (`mesh_status`, `mesh_invite`, `mesh_join_answer`, `mesh_revoke`, `mesh_rename`, `mesh_leave`, `mesh_device_revoke`). The plaintext listener gains `/v1/mcp` behind the per-launch token, never on the LAN listener.

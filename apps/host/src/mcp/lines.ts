@@ -1,5 +1,6 @@
 import { isJsonObject, type JsonObject, MCP_TOOLS, type McpToolRow } from "@doriface/protocol";
-import { MESH_TOOLS, type MeshTool } from "./mesh-tools.ts";
+import { FILE_TOOLS, type FileTool } from "./file-tools.ts";
+import { HOST_TOOLS, MESH_TOOLS, type MeshTool } from "./mesh-tools.ts";
 import {
   EVENT_TYPE,
   EVENTS_EXTENSION,
@@ -72,8 +73,8 @@ interface Listed {
   readonly inputSchema: JsonObject;
 }
 const listed = ({ name, description, inputSchema }: Listed): Listed => ({ name, description, inputSchema });
-/** Every tool a session can call: herdr-core's methods, then this host's mesh tools. */
-const CATALOG: readonly Listed[] = [...MCP_TOOLS, ...MESH_TOOLS];
+/** Every tool a session can call: herdr-core's methods, the host's file tools beyond them, its own status, then its mesh tools. */
+const CATALOG: readonly Listed[] = [...MCP_TOOLS, ...FILE_TOOLS, ...HOST_TOOLS, ...MESH_TOOLS];
 
 function shownTools(shown: ToolsShown): readonly object[] {
   if (shown === "all") return CATALOG.map(listed);
@@ -116,6 +117,7 @@ export type McpLine =
   | { readonly kind: "cancel"; readonly requestId: unknown }
   | { readonly kind: "call"; readonly id: Id; readonly tool: McpToolRow; readonly args: JsonObject }
   | { readonly kind: "mesh"; readonly id: Id; readonly tool: MeshTool; readonly args: JsonObject }
+  | { readonly kind: "file"; readonly id: Id; readonly tool: FileTool; readonly args: JsonObject }
   | { readonly kind: "resources"; readonly id: Id }
   | { readonly kind: "read"; readonly id: Id; readonly uri: string; readonly address: string }
   | { readonly kind: "listen"; readonly id: string | number; readonly filter: ListenFilter }
@@ -128,7 +130,8 @@ export const rpcError = (id: Id, code: number, message: string, data?: object) =
 });
 const result = (id: Id, value: object): McpLine => ({ kind: "reply", reply: { jsonrpc: "2.0", id, result: value } });
 const toolByName = new Map(MCP_TOOLS.map((row) => [row.name, row]));
-const meshToolByName = new Map(MESH_TOOLS.map((tool) => [tool.name, tool]));
+const meshToolByName = new Map([...HOST_TOOLS, ...MESH_TOOLS].map((tool) => [tool.name, tool]));
+const fileToolByName = new Map(FILE_TOOLS.map((tool) => [tool.name, tool]));
 
 /** Decodes one complete line without its LF and decides what it asks for; only the methods this host serves exist. */
 export function readMcpLine(bytes: Uint8Array, hostVersion: string, shown: ToolsShown = "core"): McpLine {
@@ -179,6 +182,8 @@ export function readMcpLine(bytes: Uint8Array, hostVersion: string, shown: Tools
       if (!isJsonObject(args)) return invalid("Invalid params: arguments must be an object");
       const meshTool = typeof name === "string" ? meshToolByName.get(name) : undefined;
       if (meshTool !== undefined) return { kind: "mesh", id, tool: meshTool, args };
+      const fileTool = typeof name === "string" ? fileToolByName.get(name) : undefined;
+      if (fileTool !== undefined) return { kind: "file", id, tool: fileTool, args };
       const tool = typeof name === "string" ? toolByName.get(name) : undefined;
       if (tool === undefined) return invalid(`Unknown tool: ${String(name)}`);
       return { kind: "call", id, tool, args };

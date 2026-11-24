@@ -36,6 +36,7 @@ function session(over: Partial<MeshToolDeps> = {}, withMesh = true) {
     close: () => {},
   };
   const mesh: MeshToolDeps = {
+    host: { version: "0.1.25", hostId: "h-studio", relay: "https://relay.example" },
     status: async () => undefined,
     pending: () => [JOIN],
     devices: () => [{ name: "phone", id: "d1", pairedAt: "2026-11-24T00:00:00Z" }],
@@ -77,6 +78,20 @@ function session(over: Partial<MeshToolDeps> = {}, withMesh = true) {
   };
   return { acts, call };
 }
+
+test("host_status answers this host's version, id, relay and the devices paired with it", async () => {
+  const s = session();
+  expect(await s.call("host_status")).toEqual({
+    isError: false,
+    content: {
+      version: "0.1.25",
+      hostId: "h-studio",
+      relay: "https://relay.example",
+      mcp: "on",
+      devices: [{ name: "phone", id: "d1", pairedAt: "2026-11-24T00:00:00Z" }],
+    },
+  });
+});
 
 test("mesh_status answers the members, the paired devices and the joins that wait, with their digits", async () => {
   const s = session();

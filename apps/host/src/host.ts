@@ -171,6 +171,7 @@ async function serve(
                   return meshStatus?.();
                 },
                 relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
+                version: HOST_VERSION,
               }),
         // Each MCP session gets its own connection to this host's core, as an hc session gets its own pipe.
         openHc: async () => {
