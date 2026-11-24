@@ -33,6 +33,7 @@ import { runAction, setActionFallback, useKeymapDispatcher } from "./keys/dispat
 import { reportMenuKeys } from "./keys/menu-keys.ts";
 import { router } from "./router.tsx";
 import { guardedSessionStorage } from "./storage/guarded.ts";
+import { keepStorageOnceOpen } from "./storage/keep-storage.ts";
 import { reloadIntoWaitingWorker, resumeUpdate } from "./update/reload-into-waiting.ts";
 import { updateStore } from "./update/update-store.ts";
 import { stepTerminalFont, takesTextSizeKey } from "./workspace/use-app-actions.ts";
@@ -87,6 +88,7 @@ if (!native && (location.protocol === "https:" || location.protocol === "http:")
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintBars);
   }
 }
+keepStorageOnceOpen(connectionStore);
 const desktop = desktopBridge();
 // This computer's host, if it dies while the app runs, is started again before the link to it is tried again (#515).
 if (desktop !== null)
