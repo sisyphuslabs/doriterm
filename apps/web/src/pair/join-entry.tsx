@@ -25,12 +25,17 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
         </p>
       ) : null}
       {connection.phase === "open" ? (
-        <section aria-labelledby="join-on-other-machine" className="flex flex-col gap-3">
-          <h2 id="join-on-other-machine" className="font-semibold text-foreground">
-            On the other machine, run
+        <>
+          <section aria-labelledby="join-add-another" className="flex flex-col gap-3">
+            <h2 id="join-add-another" className="font-semibold text-foreground">
+              Add another machine
+            </h2>
+            <JoinCommandBlock connection={connection.connection} open />
+          </section>
+          <h2 className="border-t border-border pt-4 font-semibold text-foreground">
+            Have an invite from another machine?
           </h2>
-          <JoinCommandBlock connection={connection.connection} open />
-        </section>
+        </>
       ) : null}
       <InviteField onOffer={onOffer} />
       <Button size="lg" render={<a href="/settings#connect" />}>
