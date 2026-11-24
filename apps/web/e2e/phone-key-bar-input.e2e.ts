@@ -56,12 +56,11 @@ test("the pad and the modifiers send the bytes a hardware keyboard would", async
   await key(page, "Control").click();
   await key(page, "Shift").click();
   await key(page, "Right arrow").click();
-  await key(page, "Clear screen").click();
+  await key(page, "Down arrow").click();
   await key(page, "Escape").click();
-  await page.keyboard.type("ab");
-  await key(page, "Delete").click();
+  await page.keyboard.type("a");
   await key(page, "Return").click();
-  await expect(terminal).toContainText("^[[A^[[1;5D^[[Z^[[1;6C^L^[a", { timeout: 10_000 });
+  await expect(terminal).toContainText("^[[A^[[1;5D^[[Z^[[1;6C^[[B^[a", { timeout: 10_000 });
   await expect(key(page, "Control")).toHaveAttribute("aria-pressed", "false");
   await expect(key(page, "Shift")).toHaveAttribute("aria-pressed", "false");
 });
