@@ -64,7 +64,7 @@ export function useMeshVault(): MeshVaultSnapshot {
   const connection = useConnection();
   const open = connection.phase === "open" ? connection.connection : null;
   useEffect(() => {
-    if (open !== null) void meshVault.sync();
+    void (open === null ? meshVault.offline() : meshVault.sync());
   }, [open]);
   return useSyncExternalStore(meshVault.subscribe, () => meshVault.snapshot);
 }

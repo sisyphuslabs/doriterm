@@ -57,7 +57,7 @@ export interface VaultMember {
 }
 
 export interface MeshVaultSnapshot {
-  readonly phase: "loading" | "not-member" | "ready" | "failed";
+  readonly phase: "loading" | "not-member" | "offline" | "ready" | "failed";
   readonly message?: string;
   readonly soniox: SonioxView;
   readonly members: readonly VaultMember[];
@@ -112,6 +112,12 @@ export class MeshVault {
 
   sync(): Promise<void> {
     return this.#round(async (doc, ctx) => maintain(doc, ctx));
+  }
+
+  /** With no connection: says whether this device is a member that only needs a machine, or not one at all. */
+  async offline(): Promise<void> {
+    const ctx = await this.#context().catch(() => undefined);
+    this.#set({ ...INITIAL, phase: ctx === undefined ? "not-member" : "offline" });
   }
 
   /** Encrypts the Soniox entry on this device and writes it to every reachable machine; the key never leaves in clear. */

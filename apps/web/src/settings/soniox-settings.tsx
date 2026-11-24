@@ -8,6 +8,8 @@ function apiKeyDescription(snapshot: MeshVaultSnapshot): string {
   switch (snapshot.phase) {
     case "not-member":
       return "Join this device to your mesh to keep the key in the mesh vault.";
+    case "offline":
+      return "Connect to one of your machines to open the mesh vault.";
     case "loading":
       return "Opening the mesh vault…";
     case "failed":

@@ -51,6 +51,17 @@ describe("the Soniox entry through the mesh vault", () => {
     expect(SONIOX_ENTRY).toBe("soniox");
   });
 
+  test("with no connection the vault says why instead of loading forever", async () => {
+    const signPubs: string[] = [];
+    const member = await device(machine(), () => signPubs);
+    signPubs.push(member.me.signPub);
+    await member.vault.offline();
+    expect(member.vault.snapshot.phase).toBe("offline");
+    const outsider = await device(machine(), () => []);
+    await outsider.vault.offline();
+    expect(outsider.vault.snapshot.phase).toBe("not-member");
+  });
+
   test("a device outside the mesh cannot use the vault", async () => {
     const outsider = await device(machine(), () => []);
     await outsider.vault.sync();
