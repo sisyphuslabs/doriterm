@@ -27,9 +27,9 @@ const MAX_HEIGHT_PX = 112;
 /**
  * The phone's line into the terminal (#666): a text field takes what is typed, so the phone's own keyboard does the
  * input method, autocorrect and Hangul composition in a real field, and Send writes the line and presses Return. The
- * field sends nothing before Send, which is the difference from typing in the terminal itself; Enter only starts a new line. It wraps and grows, so
- * the whole line is in view while it is written (#949). On the phone it lives in the input card over the keys row, which
- * its toggle opens (#2778).
+ * field sends nothing before Send, which is the difference from typing in the terminal itself; Enter only starts a new
+ * line (#2766). It wraps and grows, so the whole draft is in view while it is written (#949). On the phone it lives in
+ * the input card over the keys row, which its toggle opens (#2778).
  */
 export function InputBox({ onSend, draftKey, fieldRef, accessory, className, style }: InputBoxProps) {
   const [text, setTextState] = useState(() => drafts.get(draftKey) ?? "");
