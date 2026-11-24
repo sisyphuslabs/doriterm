@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "types",
+    "rootDir": ".",
+    "types": ["bun"]
+  },
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../crypto"
+    },
+    {
+      "path": "../mesh"
+    }
+  ]
+}
