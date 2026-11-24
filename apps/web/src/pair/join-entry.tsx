@@ -1,3 +1,4 @@
+import { inviteIn, isOwnInvite, OWN_INVITE } from "./invite-text.ts";
 import { Button, Field, Input, Notice } from "@doriface/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -29,7 +30,8 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
     pairingLink.set(candidate.slice(candidate.indexOf("#")));
     void navigate({ to: "/pair" });
   };
-  const apply = async (candidate: string): Promise<void> => {
+  const apply = async (pasted: string): Promise<void> => {
+    const candidate = inviteIn(pasted);
     setBusy(true);
     setError(undefined);
     try {
@@ -38,6 +40,8 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
       if (hash === -1 && code === null) throw new Error("Paste an invite link or enter its 8-character code.");
       const parsed = hash >= 0 ? parsePairingFragment(candidate.slice(hash)) : await lookups.offer(code ?? "");
       if (!parsed.ok) throw new Error(parsed.reason);
+      // Checked before any handshake, so this app's own invite for another machine is not spent by pasting it back.
+      if (isOwnInvite(parsed.offer.hostId, connectionStore.settings)) throw new Error(OWN_INVITE);
       showOffer(candidate, hash < 0 ? { ...parsed.offer, target: "mesh" } : parsed.offer);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
