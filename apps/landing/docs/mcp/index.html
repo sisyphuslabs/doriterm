@@ -297,6 +297,18 @@
             <code>file</code>, <code>doc</code>, <code>templates</code>, <code>server</code> and <code>mesh</code>.
           </p>
           <p>
+            Doriterm tells the assistant this when it connects: search with <code>doriterm_tools</code> before calling
+            anything, and search again when a task needs a tool it has not seen.
+          </p>
+          <h3 id="events">Following terminals as they change</h3>
+          <p>
+            To wait for a terminal to finish or change, the assistant calls <code>terminal_wait</code>; that works in
+            every client. Clients that speak MCP subscriptions can also read each terminal as a resource
+            (<code>doriterm://terminal/t7</code>) and be told when it changes, and clients that support MCP events can
+            subscribe to <code>terminal.changed</code> and receive what changed. Subscriptions end when the session
+            does.
+          </p>
+          <p>
             Pair only an assistant you would hand a shell to. What a terminal prints reaches the assistant as text, and
             a program can print instructions.
           </p>
