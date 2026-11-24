@@ -280,7 +280,7 @@ interface SampleMcpClient {
 export const MCP_CLIENTS: readonly SampleMcpClient[] = [
   {
     id: "c1",
-    name: "Pickle",
+    name: "Grok bot",
     connected: "Connected 3 minutes ago",
     deviceId: "3FA94C0E",
     paired: "Paired 18 Dec",
@@ -291,12 +291,5 @@ export const MCP_CLIENTS: readonly SampleMcpClient[] = [
     connected: "Connected 2 hours ago",
     deviceId: "7B21D855",
     paired: "Paired 11 Dec",
-  },
-  {
-    id: "c3",
-    name: "Grok bot",
-    connected: "Connected yesterday",
-    deviceId: "9E04A6C1",
-    paired: "Paired 2 Dec",
   },
 ];

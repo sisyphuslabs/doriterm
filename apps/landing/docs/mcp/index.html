@@ -29,7 +29,6 @@
     <meta name="twitter:image" content="https://doriterm.com/og.png?v=6b5dfcb2" />
     <link rel="canonical" href="https://doriterm.com/docs/mcp/" />
     <link rel="alternate" hreflang="en" href="https://doriterm.com/docs/mcp/" />
-    <link rel="alternate" hreflang="ko" href="https://doriterm.com/ko/docs/mcp/" />
     <link rel="alternate" hreflang="x-default" href="https://doriterm.com/docs/mcp/" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -118,14 +117,35 @@
         <article class="docs__article">
           <header class="docs__head">
             <p class="eyebrow"><a href="/docs/">Docs</a><span class="rule"></span>MCP</p>
-            <a class="btn btn--ghost btn--sm docs__lang" href="/ko/docs/mcp/" hreflang="ko" lang="ko">한국어</a>
           </header>
           <h1 class="docs__title">Use Doriterm from an MCP client</h1>
           <p class="docs__lede">
             An assistant that speaks the Model Context Protocol (MCP) can use your machine's terminals through Doriterm:
-            list them, read a screen, send a message to an agent, run a command. Outside assistants such as a Grok bot,
-            Pickle or Dots connect this way.
+            list them, read a screen, send a message to an agent, run a command.
           </p>
+          <h2 id="what-you-can-do">What you can do with this</h2>
+          <p>
+            Through MCP, a cloud agent such as a Grok bot or Dots works in the environment on the computers you own, the
+            way you would at their keyboards. The shells, tools and checkouts already there become its workspace.
+          </p>
+          <p>
+            Say you are on the train and ask Dots, from your phone, whether the branch you left on your desktop passes
+            its tests. Dots opens a terminal on the desktop in that project and runs the test command the project
+            already uses.
+          </p>
+          <p>
+            When the run finishes, Dots reads the screen and answers with the two tests that failed and the line each
+            one stopped on. Nothing was installed or uploaded first.
+          </p>
+          <p>
+            The tests ran on the computer where your code, your toolchain and your environment variables already were.
+          </p>
+          <p>
+            Or a Grok bot in your team's chat is asked why last night's import on the home server stopped. It finds the
+            terminal that ran the import, reads its last screen, and posts the error the job ended on.
+          </p>
+          <p>Until now someone had to open a laptop and SSH in for that.</p>
+          <h2 id="set-up">Set it up</h2>
           <p>
             The assistant pairs like a phone and gets what a paired device gets on that machine. Setup has three steps.
           </p>
@@ -396,6 +416,8 @@
         <nav class="toc" aria-label="On this page">
           <p class="toc__title">On this page</p>
           <ol>
+            <li><a href="#what-you-can-do">What you can do with this</a></li>
+            <li><a href="#set-up">Set it up</a></li>
             <li><a href="#turn-on">1. Turn MCP on</a></li>
             <li><a href="#pair">2. Pair the assistant's computer</a></li>
             <li><a href="#config">3. Paste the MCP config</a></li>
