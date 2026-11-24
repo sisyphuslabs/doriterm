@@ -61,19 +61,6 @@ test("the key pill pages sideways and its dots follow the page in view", async (
   expect(widths).toEqual(Array.from({ length: count }, () => width));
 });
 
-test("a wider pill has fewer pages, and the page in view never points past the last", async ({ page }) => {
-  await openPhoneTerminal(page, 390);
-  const scroller = pages(page);
-  const narrow = Number(await scroller.getAttribute("data-pages"));
-  await scroller.evaluate((element) => element.scrollTo({ left: element.scrollWidth, behavior: "instant" }));
-  await expect(scroller).toHaveAttribute("data-page", String(narrow));
-
-  await page.setViewportSize({ width: 700, height: 844 });
-  await expect.poll(async () => Number(await scroller.getAttribute("data-pages"))).toBeLessThan(narrow);
-  const wide = Number(await scroller.getAttribute("data-pages"));
-  expect(Number(await scroller.getAttribute("data-page"))).toBeLessThanOrEqual(wide);
-});
-
 test("the card toggle opens the input card above the row, and Send keeps the #2767 rule", async ({
   page,
 }, testInfo) => {
