@@ -40,7 +40,9 @@ function usePerPage(): [number, (element: HTMLDivElement | null) => void] {
 export function KeyPages({ items, onScroll }: KeyPagesProps) {
   const [perPage, ref] = usePerPage();
   const pages = pagesOf(items, perPage);
-  const [page, setPage] = useState(1);
+  const [scrolledTo, setPage] = useState(1);
+  // Wider pages are fewer pages: until the next scroll the page last scrolled to can lie past the last one.
+  const page = Math.min(scrolledTo, pages.length);
   const follow = (element: HTMLDivElement): void => {
     const width = element.clientWidth;
     if (width > 0) setPage(Math.min(pages.length, Math.round(element.scrollLeft / width) + 1));

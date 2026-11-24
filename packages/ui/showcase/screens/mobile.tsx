@@ -1,13 +1,6 @@
 import { ChevronLeft, Ellipsis } from "lucide-react";
 import type { ReactNode } from "react";
-import {
-  DirectionPad,
-  ExtraKeysBar,
-  IconButton,
-  StatusChip,
-  TerminalPreview,
-  type TerminalLine,
-} from "../../src/index.ts";
+import { ExtraKeysBar, IconButton, StatusChip, TerminalPreview, type TerminalLine } from "../../src/index.ts";
 import { CLAUDE_LINES } from "../data.ts";
 import { DEMO_KEYS } from "../keys.tsx";
 import { PhoneFrame } from "./frames.tsx";
@@ -46,15 +39,12 @@ export function MobileTerminal({
         {overlay === undefined ? null : <div className="absolute inset-x-2 top-2">{overlay}</div>}
       </div>
       {bottom ?? (
-        <>
-          {pad ? <DirectionPad className="absolute right-3 bottom-[calc(var(--safe-bottom)+4.25rem)]" /> : null}
-          <ExtraKeysBar
-            keys={DEMO_KEYS}
-            latched={["ctrl"]}
-            padOpen={pad}
-            className="pb-[calc(var(--safe-bottom)+0.25rem)]"
-          />
-        </>
+        <ExtraKeysBar
+          keys={DEMO_KEYS}
+          latched={["ctrl"]}
+          padOpen={pad}
+          className="pb-[calc(var(--safe-bottom)+0.25rem)]"
+        />
       )}
     </div>
   );
