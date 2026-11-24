@@ -15,6 +15,7 @@ export { Badge, badgeVariants, type BadgeProps } from "./components/badge.tsx";
 export { Button, buttonVariants, type ButtonProps } from "./components/button.tsx";
 export { ColorSwatch, type ColorSwatchProps } from "./components/color-swatch.tsx";
 export { CommandPalette, type Command, type CommandPaletteProps } from "./components/command-palette.tsx";
+export { CopyBlock, type CopyBlockProps } from "./components/copy-block.tsx";
 export { Dialog, DialogClose, DialogPanel, type DialogPanelProps, type DialogProps } from "./components/dialog.tsx";
 export { EmptyState, type EmptyStateProps } from "./components/empty-state.tsx";
 export { DirectionPad, type DirectionPadProps } from "./components/direction-pad.tsx";
@@ -95,6 +96,7 @@ export { SpaceRow, type Space, type SpaceGit, type SpaceRowProps } from "./compo
 export { AVATAR_COLORS, SpaceAvatar, type AvatarColor, type SpaceAvatarProps } from "./components/space-avatar.tsx";
 export { RowWithActions, type RowWithActionsProps } from "./components/row-actions.tsx";
 export { MachineHeader, type MachineHeaderProps } from "./components/machine-header.tsx";
+export { McpClientRow, type McpClientRowProps } from "./components/mcp-client-row.tsx";
 export { SidebarFooter, SidebarFooterItem, type SidebarFooterItemProps } from "./components/sidebar-footer.tsx";
 export { Spinner, DelayedSpinner, type SpinnerProps } from "./components/spinner.tsx";
 export {
