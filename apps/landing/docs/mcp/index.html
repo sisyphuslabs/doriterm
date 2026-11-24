@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Use Doriterm from an MCP client · Doriterm docs</title>
+    <meta
+      name="description"
+      content="Pair an MCP assistant with your machine and let it list, read and type into your terminals through Doriterm, end-to-end encrypted."
+    />
+    <meta name="theme-color" content="#0f0e0d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)" />
+    <meta property="og:title" content="Use Doriterm from an MCP client · Doriterm docs" />
+    <meta
+      property="og:description"
+      content="Pair an MCP assistant with your machine and let it list, read and type into your terminals through Doriterm, end-to-end encrypted."
+    />
+    <meta property="og:url" content="https://doriterm.com/docs/mcp/" />
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://doriterm.com/og.png?v=6b5dfcb2" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Doriterm: Your devices. One terminal., above the mesh: one relay that sees ciphertext only, linking a laptop, a mac mini, a cloud box, a phone and a pi."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://doriterm.com/og.png?v=6b5dfcb2" />
+    <link rel="canonical" href="https://doriterm.com/docs/mcp/" />
+    <link rel="alternate" hreflang="en" href="https://doriterm.com/docs/mcp/" />
+    <link rel="alternate" hreflang="ko" href="https://doriterm.com/ko/docs/mcp/" />
+    <link rel="alternate" hreflang="x-default" href="https://doriterm.com/docs/mcp/" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/TimelessSansVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/docs.css" />
+    <script src="/theme-init.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav">
+      <div class="wrap nav__inner">
+        <a class="brand" href="/" aria-label="doriterm, home">
+          <img class="mark-dark" src="/mark-dark.svg" alt="" width="28" height="28" />
+          <img class="mark-light" src="/mark-light.svg" alt="" width="28" height="28" />
+          <span>doriterm</span>
+        </a>
+        <nav aria-label="Sections">
+          <ul class="nav__links">
+            <li><a href="/#mesh">Mesh</a></li>
+            <li><a href="/#app">App</a></li>
+            <li><a href="/#relay">Relay</a></li>
+            <li><a href="/#pairing">Pairing</a></li>
+            <li><a href="/#everywhere">Platforms</a></li>
+            <li><a href="https://github.com/sisyphuslabs/doriterm">GitHub</a></li>
+          </ul>
+        </nav>
+        <div class="nav__end">
+          <div class="theme-switch" role="group" aria-label="Theme">
+            <button type="button" data-theme-choice="system" aria-pressed="true" title="Match the system">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="12" rx="2" />
+                <path d="M8 20h8M12 16v4" />
+              </svg>
+              <span class="visually-hidden">System</span>
+            </button>
+            <button type="button" data-theme-choice="light" aria-pressed="false" title="Light">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path
+                  d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                />
+              </svg>
+              <span class="visually-hidden">Light</span>
+            </button>
+            <button type="button" data-theme-choice="dark" aria-pressed="false" title="Dark">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+              </svg>
+              <span class="visually-hidden">Dark</span>
+            </button>
+          </div>
+          <a class="btn btn--primary btn--sm" href="https://app.doriterm.com">Open the app</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="docs">
+      <div class="wrap docs__layout">
+        <article class="docs__article">
+          <header class="docs__head">
+            <p class="eyebrow"><a href="/docs/">Docs</a><span class="rule"></span>MCP</p>
+            <a class="btn btn--ghost btn--sm docs__lang" href="/ko/docs/mcp/" hreflang="ko" lang="ko">한국어</a>
+          </header>
+          <h1 class="docs__title">Use Doriterm from an MCP client</h1>
+          <p class="docs__lede">
+            An assistant that speaks the Model Context Protocol (MCP) can use your machine's terminals through Doriterm:
+            list them, read a screen, send a message to an agent, run a command. Outside assistants such as a Grok bot,
+            Pickle or Dots connect this way.
+          </p>
+          <p>
+            The assistant pairs like a phone and gets what a paired device gets on that machine. Setup has three steps.
+          </p>
+          <h2 id="turn-on">1. Turn MCP on</h2>
+          <p>MCP is off on every machine until you turn it on. On the machine:</p>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>doriface-host mcp on</code></pre>
+          </div>
+          <p>Or in the app: Settings &gt; MCP clients, pick the machine, and switch it on.</p>
+          <h2 id="pair">2. Pair the assistant's computer</h2>
+          <p>On your machine, open a pairing offer:</p>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>doriface-host pair</code></pre>
+          </div>
+          <p>
+            Or press <strong>Connect an MCP client</strong> in Settings &gt; MCP clients. You get a QR code, a link and
+            a short code. The offer lasts 10 minutes and works once.
+          </p>
+          <p>On the computer the assistant runs on, install the Doriterm host and pair with the link:</p>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>doriface-host connect '&lt;link&gt;'</code></pre>
+          </div>
+          <p>
+            The link carries the machine's key, so nothing else is asked. With the typed code, add the fingerprint the
+            offer printed, at least its first four groups:
+          </p>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>doriface-host connect &lt;code&gt; --fingerprint '3FA9 4C0E 7B21 D855'</code></pre>
+          </div>
+          <h2 id="config">3. Paste the MCP config</h2>
+          <p>
+            Add this to the assistant's MCP settings. The host id is the one <code>doriface-host pair</code> printed on
+            your machine.
+          </p>
+          <div class="code">
+            <div class="code__head">
+              <span>json</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>{
+  "mcpServers": {
+    "doriterm": {
+      "command": "doriface-host",
+      "args": ["connect", "--mcp", "&lt;hostId&gt;"]
+    }
+  }
+}</code></pre>
+          </div>
+          <p>
+            That is all. The assistant starts the command when it needs it, and the command carries MCP to your machine
+            through the relay, end-to-end encrypted like the rest of Doriterm.
+          </p>
+          <h2 id="tools">What the assistant can do</h2>
+          <p>
+            The tools are herdr-core's own commands under MCP names: <code>terminal_list</code>,
+            <code>terminal_read</code>, <code>terminal_send</code>, <code>terminal_run</code>,
+            <code>machine_exec</code>, <code>file_read</code> and the rest. A paired assistant can read and type into
+            your terminals, run commands and write files on that machine, as a paired phone or browser can.
+          </p>
+          <p>
+            It can also do what a paired phone does with the mesh: read its members, devices and waiting joins
+            (<code>mesh_status</code>), open an invite (<code>mesh_invite</code>), answer a join
+            (<code>mesh_join_answer</code>), rename or revoke a member, unpair a device, and leave. Approving a join
+            needs its six digits, and you compare them yourself, as on the phone. A revoke or a leave shows a preview
+            first and is written only when the assistant asks again with <code>yes</code>.
+          </p>
+          <p>
+            One difference from a paired device: an MCP client cannot stop or restart the core, and cannot remove a
+            machine.
+          </p>
+          <h3 id="tools-shown">Two tools by default</h3>
+          <p>
+            Every tool an assistant is shown takes room in its context, so it is shown two:
+            <code>doriterm_tools</code> finds a tool, and <code>doriterm_call</code> calls it. Every tool stays
+            reachable that way. To show more up front, add <code>--tools</code> to the config's arguments:
+            <code>"--tools", "all"</code> for every tool, or a list of groups such as
+            <code>"--tools", "terminal,mesh"</code>. The groups are <code>terminal</code>, <code>machine</code>,
+            <code>file</code>, <code>doc</code>, <code>templates</code>, <code>server</code> and <code>mesh</code>.
+          </p>
+          <p>
+            Doriterm tells the assistant this when it connects: search with <code>doriterm_tools</code> before calling
+            anything, and search again when a task needs a tool it has not seen.
+          </p>
+          <h3 id="events">Following terminals as they change</h3>
+          <p>
+            To wait for a terminal to finish or change, the assistant calls <code>terminal_wait</code>; that works in
+            every client. Clients that speak MCP subscriptions can also read each terminal as a resource
+            (<code>doriterm://terminal/t7</code>) and be told when it changes, and clients that support MCP events can
+            subscribe to <code>terminal.changed</code> and receive what changed. Subscriptions end when the session
+            does.
+          </p>
+          <p>
+            Pair only an assistant you would hand a shell to. What a terminal prints reaches the assistant as text, and
+            a program can print instructions.
+          </p>
+          <h2 id="status">See who is connected, and disconnect</h2>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>doriface-host mcp status</code></pre>
+          </div>
+          <p>
+            Settings &gt; MCP clients shows the same list. <strong>Disconnect</strong> revokes the device: its sessions
+            close at once and it has to pair again. From a terminal that is
+            <code>doriface-host devices revoke &lt;id&gt;</code>.
+          </p>
+          <h2 id="turn-off">Turn it off</h2>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>doriface-host mcp off</code></pre>
+          </div>
+          <p>
+            Every MCP session on that machine closes. Paired devices stay paired, so <code>mcp on</code> lets them back
+            in.
+          </p>
+          <h2 id="troubleshooting">If something is off</h2>
+          <div class="docs__table">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">You see</th>
+                  <th scope="col">What it means</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>"MCP is off on this host"</td>
+                  <td>Run <code>doriface-host mcp on</code> on the machine</td>
+                </tr>
+                <tr>
+                  <td>"studio needs an update to accept MCP clients"</td>
+                  <td>The host on that machine is older than this feature</td>
+                </tr>
+                <tr>
+                  <td>The assistant lists no tools</td>
+                  <td>Its computer is not paired, or the device was disconnected. Pair again</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <nav class="toc" aria-label="On this page">
+          <p class="toc__title">On this page</p>
+          <ol>
+            <li><a href="#turn-on">1. Turn MCP on</a></li>
+            <li><a href="#pair">2. Pair the assistant's computer</a></li>
+            <li><a href="#config">3. Paste the MCP config</a></li>
+            <li><a href="#tools">What the assistant can do</a></li>
+            <li><a href="#status">See who is connected, and disconnect</a></li>
+            <li><a href="#turn-off">Turn it off</a></li>
+            <li><a href="#troubleshooting">If something is off</a></li>
+          </ol>
+        </nav>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer__inner">
+        <a class="brand" href="/" aria-label="doriterm, home">
+          <img class="mark-dark" src="/mark-dark.svg" alt="" width="28" height="28" />
+          <img class="mark-light" src="/mark-light.svg" alt="" width="28" height="28" />
+          <span>doriterm</span>
+        </a>
+        <nav aria-label="Footer">
+          <a href="/docs/">Docs</a>
+          <a href="https://github.com/sisyphuslabs/doriterm">GitHub</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/releases">Releases</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/blob/dev/docs/architecture.md">Architecture</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/blob/dev/LICENSE">AGPL-3.0</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script type="module" src="/docs.js"></script>
+  </body>
+</html>

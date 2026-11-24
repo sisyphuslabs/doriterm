@@ -267,3 +267,36 @@ export const VOICE_TRANSCRIPT = "마이그레이션 롤백 스크립트부터 �
 
 /** What the recognizer has heard so far, mid-sentence, for a still frame of listening. */
 export const VOICE_HEARD = "마이그레이션 롤백 스크립트부터 보여줘. Then run the";
+
+interface SampleMcpClient {
+  readonly id: string;
+  readonly name: string;
+  readonly connected: string;
+  readonly deviceId: string;
+  readonly paired: string;
+}
+
+/** Sample connected MCP clients for Settings > MCP clients. */
+export const MCP_CLIENTS: readonly SampleMcpClient[] = [
+  {
+    id: "c1",
+    name: "Pickle",
+    connected: "Connected 3 minutes ago",
+    deviceId: "3FA94C0E",
+    paired: "Paired 18 Dec",
+  },
+  {
+    id: "c2",
+    name: "Dots",
+    connected: "Connected 2 hours ago",
+    deviceId: "7B21D855",
+    paired: "Paired 11 Dec",
+  },
+  {
+    id: "c3",
+    name: "Grok bot",
+    connected: "Connected yesterday",
+    deviceId: "9E04A6C1",
+    paired: "Paired 2 Dec",
+  },
+];

@@ -119,7 +119,27 @@ Every loop runs only while its scene is on screen and the tab is visible (Inters
 | Section index    | `.index`                                   | numbered rows, title, description (from 640 px)                                      | hover ink                                                                                      |
 | Relay wire       | `.wire`                                    | dashed amber container, two lanes of ciphertext chips (opposite directions), caption | marquee                                                                                        |
 | Mesh canvas      | `.fleet`                                   | step buttons, one canvas, caption                                                    | scene change, signed-record fan-out                                                            |
-| Footer           | `.footer`                                  | wordmark, four links                                                                 | hover ink                                                                                      |
+| Docs page        | `.docs`, `.toc`                            | eyebrow trail, language link, h1, one column of prose, code blocks, contents beside  | contents mark the section being read (`aria-current`); hidden under 1080 px                    |
+| Footer           | `.footer`                                  | wordmark, five links (Docs first)                                                    | hover ink                                                                                      |
+
+### Docs page
+
+The docs live at `/docs/` (an index of pages) and `/docs/<page>/`, with a Korean copy at `/ko/docs/<page>/`; each is a folder index (`docs/mcp/index.html`), listed in `vite.config.ts` and `public/sitemap.xml`. A page is HTML written by hand: no markdown at runtime. It loads `styles.css` for the tokens, the nav, the code block and the footer, then `docs.css`, and one module, `docs.js` (the theme switch from `theme.js` and the Copy button from `copy.js`, both shared with `main.js`, plus the contents marker). Nothing on a docs page moves: no scene, no reveal, no Pause animations control in the nav.
+
+| Token or rule    | Value                                                        | Use                                                                                        |
+| ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `--docs-measure` | 60ch                                                         | the prose column (the lede's measure); code blocks and tables keep to it and scroll inside |
+| `--docs-toc`     | 220 px                                                       | the contents column beside the prose from 1080 px, sticky at `--docs-top` (112 px)         |
+| page title (h1)  | `--text-h2`, weight 560, `--tracking-h2`, max 18ch, balanced | one per page; the index page's is two-tone                                                 |
+| section (h2)     | `--text-h3`, weight 600, -0.015em, hairline above            | the page's own sections, each with an id the contents link to                              |
+| lede             | `--text-lede` in `--ink-2`                                   | the first paragraph only; the rest is `--text-body` in `--ink-2`, emphasis in `--ink`      |
+| inline code      | Timeless Sans 560 on `--surface-2`, `--radius-xs`            | commands in a sentence; wraps anywhere on a phone                                          |
+| code block       | `.code` with a label (`shell`, `json`) and Copy              | JetBrains Mono; copies the block as written; the label words come from the button's data   |
+| table            | `--text-sm`, uppercase `--text-xs` heads, `--line` rows      | scrolls inside its own box when narrower than its content                                  |
+| language link    | `.btn--ghost.btn--sm` with `hreflang` and `lang`             | beside the eyebrow trail; each page also carries `<link rel="alternate" hreflang>`         |
+| Korean           | `word-break: keep-all`                                       | Korean wraps between words, never inside one                                               |
+
+The contents use `--accent` only for the marker line of the current section (blue is structure). A docs page keeps `<html lang>` for its language; the nav, footer and the Open the app button stay as on the landing.
 
 ### Live mockups
 

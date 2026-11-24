@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ko" class="no-js">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MCP 클라이언트에서 Doriterm 쓰기 · Doriterm 문서</title>
+    <meta
+      name="description"
+      content="MCP 어시스턴트를 내 머신과 페어링해, Doriterm으로 터미널을 보고 읽고 입력하게 합니다. 종단 간 암호화됩니다."
+    />
+    <meta name="theme-color" content="#0f0e0d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)" />
+    <meta property="og:title" content="MCP 클라이언트에서 Doriterm 쓰기 · Doriterm 문서" />
+    <meta
+      property="og:description"
+      content="MCP 어시스턴트를 내 머신과 페어링해, Doriterm으로 터미널을 보고 읽고 입력하게 합니다. 종단 간 암호화됩니다."
+    />
+    <meta property="og:url" content="https://doriterm.com/ko/docs/mcp/" />
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:image" content="https://doriterm.com/og.png?v=6b5dfcb2" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Doriterm: Your devices. One terminal., above the mesh: one relay that sees ciphertext only, linking a laptop, a mac mini, a cloud box, a phone and a pi."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://doriterm.com/og.png?v=6b5dfcb2" />
+    <link rel="canonical" href="https://doriterm.com/ko/docs/mcp/" />
+    <link rel="alternate" hreflang="en" href="https://doriterm.com/docs/mcp/" />
+    <link rel="alternate" hreflang="ko" href="https://doriterm.com/ko/docs/mcp/" />
+    <link rel="alternate" hreflang="x-default" href="https://doriterm.com/docs/mcp/" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/TimelessSansVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/docs.css" />
+    <script src="/theme-init.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+    <header class="nav">
+      <div class="wrap nav__inner">
+        <a class="brand" href="/" aria-label="doriterm, home">
+          <img class="mark-dark" src="/mark-dark.svg" alt="" width="28" height="28" />
+          <img class="mark-light" src="/mark-light.svg" alt="" width="28" height="28" />
+          <span>doriterm</span>
+        </a>
+        <nav aria-label="Sections">
+          <ul class="nav__links">
+            <li><a href="/#mesh">Mesh</a></li>
+            <li><a href="/#app">App</a></li>
+            <li><a href="/#relay">Relay</a></li>
+            <li><a href="/#pairing">Pairing</a></li>
+            <li><a href="/#everywhere">Platforms</a></li>
+            <li><a href="https://github.com/sisyphuslabs/doriterm">GitHub</a></li>
+          </ul>
+        </nav>
+        <div class="nav__end">
+          <div class="theme-switch" role="group" aria-label="테마">
+            <button type="button" data-theme-choice="system" aria-pressed="true" title="시스템 설정 따르기">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="12" rx="2" />
+                <path d="M8 20h8M12 16v4" />
+              </svg>
+              <span class="visually-hidden">시스템</span>
+            </button>
+            <button type="button" data-theme-choice="light" aria-pressed="false" title="라이트">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path
+                  d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                />
+              </svg>
+              <span class="visually-hidden">라이트</span>
+            </button>
+            <button type="button" data-theme-choice="dark" aria-pressed="false" title="다크">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+              </svg>
+              <span class="visually-hidden">다크</span>
+            </button>
+          </div>
+          <a class="btn btn--primary btn--sm" href="https://app.doriterm.com">Open the app</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="docs">
+      <div class="wrap docs__layout">
+        <article class="docs__article">
+          <header class="docs__head">
+            <p class="eyebrow"><a href="/docs/">문서</a><span class="rule"></span>MCP</p>
+            <a class="btn btn--ghost btn--sm docs__lang" href="/docs/mcp/" hreflang="en" lang="en">English</a>
+          </header>
+          <h1 class="docs__title">MCP 클라이언트에서 Doriterm 쓰기</h1>
+          <p class="docs__lede">
+            MCP(Model Context Protocol)를 쓰는 어시스턴트가 Doriterm으로 내 머신의 터미널을 다룹니다. 터미널 목록을
+            보고, 화면을 읽고, 에이전트에게 메시지를 보내고, 명령을 실행합니다. Grok 봇, Pickle, Dots 같은 외부
+            어시스턴트가 이렇게 붙습니다.
+          </p>
+          <p>
+            어시스턴트는 휴대폰처럼 페어링하고, 그 머신에서 페어링된 기기와 같은 권한을 받습니다. 설정은 세 단계입니다.
+          </p>
+          <h2 id="turn-on">1. MCP 켜기</h2>
+          <p>MCP는 켜기 전까지 모든 머신에서 꺼져 있습니다. 머신에서 실행합니다.</p>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="복사됨" data-copy-failed="직접 선택해 복사">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>복사</span>
+              </button>
+            </div>
+            <pre><code>doriface-host mcp on</code></pre>
+          </div>
+          <p>앱에서는 설정 &gt; MCP 클라이언트에서 머신을 고르고 스위치를 켭니다.</p>
+          <h2 id="pair">2. 어시스턴트의 컴퓨터를 페어링하기</h2>
+          <p>내 머신에서 페어링 초대를 엽니다.</p>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="복사됨" data-copy-failed="직접 선택해 복사">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>복사</span>
+              </button>
+            </div>
+            <pre><code>doriface-host pair</code></pre>
+          </div>
+          <p>
+            앱에서는 설정 &gt; MCP 클라이언트의 <strong>MCP 클라이언트 연결</strong>을 누릅니다. QR 코드, 링크, 짧은
+            코드가 나옵니다. 초대는 10분 뒤 만료되고 한 번 쓰면 끝납니다.
+          </p>
+          <p>어시스턴트가 도는 컴퓨터에 Doriterm 호스트를 설치하고, 링크로 페어링합니다.</p>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="복사됨" data-copy-failed="직접 선택해 복사">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>복사</span>
+              </button>
+            </div>
+            <pre><code>doriface-host connect '&lt;링크&gt;'</code></pre>
+          </div>
+          <p>
+            링크에 머신의 키가 들어 있어서 더 묻는 것이 없습니다. 짧은 코드로 페어링할 때는 초대에 같이 출력된 지문을
+            앞의 네 묶음 이상 붙입니다.
+          </p>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="복사됨" data-copy-failed="직접 선택해 복사">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>복사</span>
+              </button>
+            </div>
+            <pre><code>doriface-host connect &lt;코드&gt; --fingerprint '3FA9 4C0E 7B21 D855'</code></pre>
+          </div>
+          <h2 id="config">3. MCP 설정 붙여넣기</h2>
+          <p>
+            어시스턴트의 MCP 설정에 아래 내용을 넣습니다. 호스트 ID는 내 머신에서 <code>doriface-host pair</code>가
+            출력한 값입니다.
+          </p>
+          <div class="code">
+            <div class="code__head">
+              <span>json</span
+              ><button class="copy" type="button" data-copy data-copied="복사됨" data-copy-failed="직접 선택해 복사">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>복사</span>
+              </button>
+            </div>
+            <pre><code>{
+  "mcpServers": {
+    "doriterm": {
+      "command": "doriface-host",
+      "args": ["connect", "--mcp", "&lt;hostId&gt;"]
+    }
+  }
+}</code></pre>
+          </div>
+          <p>
+            이게 전부입니다. 어시스턴트가 필요할 때 이 명령을 실행하고, 명령은 릴레이를 거쳐 MCP를 내 머신으로 보냅니다.
+            Doriterm의 다른 연결처럼 종단 간 암호화됩니다.
+          </p>
+          <h2 id="tools">어시스턴트가 하는 일</h2>
+          <p>
+            herdr-core의 명령이 MCP 이름으로 도구가 됩니다. <code>terminal_list</code>, <code>terminal_read</code>,
+            <code>terminal_send</code>, <code>terminal_run</code>, <code>machine_exec</code>,
+            <code>file_read</code> 등이 있습니다. 페어링된 어시스턴트는 그 머신에서 터미널을 읽고 입력하고, 명령을
+            실행하고, 파일을 씁니다. 페어링된 휴대폰이나 브라우저와 같습니다.
+          </p>
+          <p>
+            페어링된 휴대폰이 메쉬에서 하는 일도 합니다. 멤버와 기기, 대기 중인 조인을 읽고(<code>mesh_status</code>),
+            초대를 열고(<code>mesh_invite</code>), 조인에 답하고(<code>mesh_join_answer</code>), 멤버 이름을 바꾸거나
+            멤버를 내보내고, 기기 페어링을 끊고, 메쉬에서 나갑니다. 조인을 승인하려면 여섯 자리 숫자가 필요하고,
+            휴대폰에서처럼 숫자는 직접 비교합니다. 내보내기와 나가기는 먼저 미리보기를 보여 주고, 어시스턴트가
+            <code>yes</code>로 다시 요청해야 반영됩니다.
+          </p>
+          <p>
+            페어링된 기기와 다른 것은 하나입니다. MCP 클라이언트는 코어를 멈추거나 재시작하지 못하고, 머신을 제거하지
+            못합니다.
+          </p>
+          <h3 id="tools-shown">기본은 도구 두 개</h3>
+          <p>
+            어시스턴트에게 보이는 도구는 모두 컨텍스트를 차지하므로 기본으로 두 개만 보입니다.
+            <code>doriterm_tools</code>는 도구를 찾고, <code>doriterm_call</code>은 찾은 도구를 호출합니다. 모든 도구를
+            이 방법으로 쓸 수 있습니다. 처음부터 더 보이게 하려면 설정의 인자에 <code>--tools</code>를 더하세요.
+            <code>"--tools", "all"</code>은 전부, <code>"--tools", "terminal,mesh"</code>는 그 그룹만 더합니다. 그룹은
+            <code>terminal</code>, <code>machine</code>, <code>file</code>, <code>doc</code>, <code>templates</code>,
+            <code>server</code>, <code>mesh</code>입니다.
+          </p>
+          <p>
+            Doriterm은 연결될 때 어시스턴트에게 이렇게 알려 줍니다. 무엇이든 호출하기 전에 <code>doriterm_tools</code>로
+            찾고, 처음 보는 도구가 필요하면 다시 찾으라고요.
+          </p>
+          <h3 id="events">터미널 변화 따라가기</h3>
+          <p>
+            터미널이 끝나거나 바뀌기를 기다릴 때는 <code>terminal_wait</code>를 호출합니다. 모든 클라이언트에서 됩니다.
+            MCP 구독을 지원하는 클라이언트는 터미널을 리소스(<code>doriterm://terminal/t7</code>)로 읽고 바뀔 때 알림을
+            받을 수 있고, MCP 이벤트를 지원하는 클라이언트는 <code>terminal.changed</code>를 구독해 무엇이 바뀌었는지
+            받습니다. 구독은 세션이 끝나면 함께 끝납니다.
+          </p>
+          <p>
+            셸을 맡겨도 되는 어시스턴트만 페어링하세요. 터미널에 찍힌 글자는 그대로 어시스턴트에게 가고, 프로그램은
+            지시문을 찍어 보내기도 합니다.
+          </p>
+          <h2 id="status">연결된 클라이언트 보기와 끊기</h2>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="복사됨" data-copy-failed="직접 선택해 복사">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>복사</span>
+              </button>
+            </div>
+            <pre><code>doriface-host mcp status</code></pre>
+          </div>
+          <p>
+            설정 &gt; MCP 클라이언트에도 같은 목록이 나옵니다. <strong>연결 끊기</strong>는 그 기기를 취소합니다. 세션이
+            바로 닫히고, 다시 쓰려면 새로 페어링해야 합니다. 터미널에서는
+            <code>doriface-host devices revoke &lt;id&gt;</code>입니다.
+          </p>
+          <h2 id="turn-off">끄기</h2>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="복사됨" data-copy-failed="직접 선택해 복사">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>복사</span>
+              </button>
+            </div>
+            <pre><code>doriface-host mcp off</code></pre>
+          </div>
+          <p>그 머신의 MCP 세션이 전부 닫힙니다. 페어링은 그대로라서 <code>mcp on</code>을 하면 다시 붙습니다.</p>
+          <h2 id="troubleshooting">뭔가 안 될 때</h2>
+          <div class="docs__table">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">보이는 문구</th>
+                  <th scope="col">뜻</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>"MCP is off on this host"</td>
+                  <td>머신에서 <code>doriface-host mcp on</code>을 실행합니다</td>
+                </tr>
+                <tr>
+                  <td>"studio needs an update to accept MCP clients"</td>
+                  <td>그 머신의 호스트가 이 기능보다 오래된 버전입니다</td>
+                </tr>
+                <tr>
+                  <td>어시스턴트에 도구가 하나도 안 보임</td>
+                  <td>그 컴퓨터가 페어링되지 않았거나 기기가 끊겼습니다. 다시 페어링합니다</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <nav class="toc" aria-label="이 페이지">
+          <p class="toc__title">이 페이지</p>
+          <ol>
+            <li><a href="#turn-on">1. MCP 켜기</a></li>
+            <li><a href="#pair">2. 어시스턴트의 컴퓨터를 페어링하기</a></li>
+            <li><a href="#config">3. MCP 설정 붙여넣기</a></li>
+            <li><a href="#tools">어시스턴트가 하는 일</a></li>
+            <li><a href="#status">연결된 클라이언트 보기와 끊기</a></li>
+            <li><a href="#turn-off">끄기</a></li>
+            <li><a href="#troubleshooting">뭔가 안 될 때</a></li>
+          </ol>
+        </nav>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer__inner">
+        <a class="brand" href="/" aria-label="doriterm, home">
+          <img class="mark-dark" src="/mark-dark.svg" alt="" width="28" height="28" />
+          <img class="mark-light" src="/mark-light.svg" alt="" width="28" height="28" />
+          <span>doriterm</span>
+        </a>
+        <nav aria-label="Footer">
+          <a href="/docs/">Docs</a>
+          <a href="https://github.com/sisyphuslabs/doriterm">GitHub</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/releases">Releases</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/blob/dev/docs/architecture.md">Architecture</a>
+          <a href="https://github.com/sisyphuslabs/doriterm/blob/dev/LICENSE">AGPL-3.0</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script type="module" src="/docs.js"></script>
+  </body>
+</html>

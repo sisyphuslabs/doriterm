@@ -18,6 +18,7 @@ import { listenError, StartupError } from "./startup-error.ts";
 import { type StartedPart, stopStarted } from "./stop-started.ts";
 import { assertListenAllowed, formatHost } from "./listen.ts";
 import { openOnCore, spawnHcLink } from "./mesh/hc-machines.ts";
+import { McpSurface } from "./mcp-surface.ts";
 import { meshToolDeps } from "./mcp/mesh-deps.ts";
 import { serveMcpLines } from "./mcp/serve.ts";
 import { HostUplink } from "./relay/host-uplink.ts";
@@ -199,6 +200,17 @@ async function serve(
             relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
           }),
     devices: deviceSurface,
+    mcpSurface:
+      e2ee === undefined
+        ? undefined
+        : new McpSurface({
+            mcp: e2ee.mcp,
+            devices: e2ee.devices,
+            sessions: () => e2ee.sessions.mcpSessions(),
+            changed: async () => {
+              await e2ee.sessions.closeRevoked();
+            },
+          }),
     token: options.token,
     hostVersion: HOST_VERSION,
     hcVersion,
