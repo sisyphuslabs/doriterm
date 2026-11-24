@@ -43,6 +43,9 @@ export default defineConfig({
     viewport: viewportOf(process.env["BENCH_VIEWPORT"]),
     trace: "off",
     serviceWorkers: "block",
+    // Headless Chromium draws WebGL in software (SwiftShader) unless told to use the GPU; BENCH_CHROMIUM_ARGS passes the
+    // flags that do (on a Mac: --use-angle=metal --enable-gpu --ignore-gpu-blocklist), the same for every build (#2810).
+    launchOptions: { args: (process.env["BENCH_CHROMIUM_ARGS"] ?? "").split(" ").filter((arg) => arg !== "") },
   },
   webServer: {
     command: PREBUILT === undefined ? `bunx --bun vite build --outDir ${OUT} --emptyOutDir && ${PREVIEW}` : PREVIEW,
