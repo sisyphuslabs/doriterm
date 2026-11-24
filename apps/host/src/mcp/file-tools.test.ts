@@ -176,3 +176,14 @@ test("file_list keeps names with a tab or a newline in them whole", async () => 
   expect(JSON.stringify(listed)).toContain('"name":"a\\tb"');
   expect(JSON.stringify(listed)).toContain('"name":"c\\nd"');
 });
+
+test("a search from above the host's state never returns what the state files hold", async () => {
+  for (const name of ["doriface-host", "doriface-host-mesh"]) {
+    mkdirSync(join(dir, ".local", "state", name), { recursive: true });
+    writeFileSync(join(dir, ".local", "state", name, "host-key.json"), '{"secret":"needle-in-key"}\n');
+  }
+  writeFileSync(join(dir, "notes.txt"), "needle-in-key is fine here\n");
+  const found = await tool("file_grep").run({ path: ".", pattern: "needle-in-key" }, exec);
+  expect(found).toMatchObject({ matches: [{ path: "./notes.txt", line: 1 }] });
+  expect(JSON.stringify(found)).not.toContain("host-key");
+});

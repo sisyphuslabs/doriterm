@@ -193,3 +193,13 @@ test("the state guard is not fooled by case or by unnormalized spelling, here or
     expect([args, plan(args).kind]).toEqual([args, "refused"]);
   }
 });
+
+test("a long s or other compatibility spelling does not get past the name check", () => {
+  for (const path of [
+    "~/.local/\u017ftate/doriface-ho\u017ft/host-key.json",
+    "/home/me/.local/\u017ftate/doriface-host/x",
+  ]) {
+    const args = ["file", "read", "--on", "studio", path];
+    expect([args, plan(args).kind]).toEqual([args, "refused"]);
+  }
+});

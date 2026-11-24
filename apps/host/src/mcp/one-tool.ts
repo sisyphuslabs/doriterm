@@ -101,14 +101,17 @@ function flags(words: readonly string[]): {
  * A path a file verb names must not reach the host's private state (keys, paired devices, the mesh): those would let an
  * agent take the host's identity. `~` and relative paths are resolved the way hc resolves them on this machine.
  */
+/** Compatibility-folded lower case, so ſ, fullwidth and other look-alike spellings compare as plain letters. */
+const fold = (text: string): string => text.normalize("NFKC").toLowerCase();
+
 export function touchesState(path: string, stateDirs: readonly string[], home: string, cwd: string): boolean {
   const expanded = path === "~" || path.startsWith("~/") ? `${home}${path.slice(1)}` : path;
   const full = normalize(isAbsolute(expanded) ? expanded : resolve(cwd, expanded));
   // Compared without case: macOS file systems ignore it, so STATE/ opens state/.
   const inside = (candidate: string): boolean => {
-    const lower = candidate.toLowerCase();
+    const lower = fold(candidate);
     return stateDirs.some((dir) => {
-      const base = normalize(dir).toLowerCase();
+      const base = fold(normalize(dir));
       return lower === base || lower.startsWith(`${base}/`);
     });
   };
@@ -182,7 +185,7 @@ const anyTouchesState = (words: readonly string[], context: PlanContext): boolea
 const STATE_NAME = /(^|\/)\.local\/state\/doriface-host(-[^/]*)?(\/|$)/i;
 
 function planFile(sub: string, rest: readonly string[], args: readonly string[], context: PlanContext): Plan {
-  if (anyTouchesState(rest, context) || rest.some((word) => STATE_NAME.test(posix.normalize(word)))) {
+  if (anyTouchesState(rest, context) || rest.some((word) => STATE_NAME.test(posix.normalize(fold(word))))) {
     return refused("that path is the host's private state");
   }
   const { positional, named } = flags(rest);
