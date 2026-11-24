@@ -11,7 +11,7 @@ bun run --cwd apps/landing preview   # serve dist/
 ```
 
 - `index.html`, `styles.css`, `main.js`: the page. Plain HTML and CSS, one small module for the theme switch, the scene animations and the mockup frames.
-- `docs/index.html`, `docs/mcp/index.html`, `ko/docs/mcp/index.html` (served at `/docs/`, `/docs/mcp/`, `/ko/docs/mcp/`), `docs.css`, `docs.js`: the docs pages, written as HTML. `theme.js` (the theme switch) and `copy.js` (a code block's Copy button) are shared by `main.js` and `docs.js`.
+- `docs/index.html`, `docs/mcp/index.html` (served at `/docs/` and `/docs/mcp/`; the old `/ko/docs/` URLs redirect there, `public/_redirects`), `docs.css`, `docs.js`: the docs pages, written as HTML. `theme.js` (the theme switch) and `copy.js` (a code block's Copy button) are shared by `main.js` and `docs.js`.
 - `mockup/index.html` (served at `/mockup/`), `src/mockup/`: the app's own components from `@doriface/ui` with sample data, shown on the page in lazy iframes.
 - `public/`: files served at fixed paths (`_headers`, `og.png`, `robots.txt`, `sitemap.xml`, icons, the pre-paint `theme-init.js`, and `fonts/`, the Timeless Free Font License for Timeless Sans and Serif and the OFL for JetBrains Mono, which ship as `dist/fonts/`; the font files themselves are hashed into `dist/assets/`).
 

@@ -4,7 +4,7 @@ import { McpClientRow, type McpClientRowProps } from "./mcp-client-row.tsx";
 
 const row = (props: Partial<McpClientRowProps> = {}): string =>
   renderToStaticMarkup(
-    <McpClientRow name="Pickle" connected="Connected 3 minutes ago" onDisconnect={() => {}} {...props} />,
+    <McpClientRow name="Grok bot" connected="Connected 3 minutes ago" onDisconnect={() => {}} {...props} />,
   );
 
 test("the Disconnect button's accessible name carries the client's name", () => {

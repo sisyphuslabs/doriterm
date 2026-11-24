@@ -1,26 +1,18 @@
 import type { Terminal } from "@doriface/protocol";
-import {
-  AgentRow,
-  IconButton,
-  Menu,
-  MenuItem,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  RowWithActions,
-  SidebarSection,
-  type Agent,
-} from "@doriface/ui";
-import { Clock, Ellipsis, Layers, Pencil, Pin, PinOff, Power } from "lucide-react";
-import { memo, useCallback, useMemo, useRef } from "react";
-import { useAskSession } from "./session-context.ts";
+import { agentRowLead, IconButton, Menu, MenuRadioGroup, MenuRadioItem, SidebarSection } from "@doriface/ui";
+import { Clock, Layers } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { AgentItem } from "./agent-item.tsx";
+import { publishAgentOrder } from "./agent-order.ts";
+import { ancestorsOf, hiddenUnder } from "./agent-tree.ts";
 import { filterAgentGroups } from "./sidebar-filter.ts";
-import { type AgentGroup, agentGroups, type AgentSort } from "./sidebar-model.ts";
-import { useAgentSort } from "./sidebar-prefs.ts";
-import { useAgentPlaces } from "./use-agent-places.ts";
-import { usePin } from "./use-pin.ts";
-import { useNow } from "./use-now.ts";
+import { agentGroups, type AgentSort, foldAgentGroups } from "./sidebar-model.ts";
+import { useAgentSort, useFolded } from "./sidebar-prefs.ts";
+import { useSteadyAgents } from "./steady-agents.ts";
 import { useTodoOf } from "./todo-progress.ts";
+import { useAgentPlaces } from "./use-agent-places.ts";
+import { useMachinesContext } from "./use-machines.ts";
+import { useNow } from "./use-now.ts";
 import { useShown } from "./use-shown.ts";
 
 export interface AgentsGroupProps {
@@ -71,135 +63,6 @@ export function PhoneSortMenu({ terminals }: { readonly terminals: readonly Term
   return any ? <SortMenu size="md" /> : null;
 }
 
-/** What can be done with an agent: its "..." menu and its right-click menu hold the same items. */
-function AgentMenuItems({ agent }: { readonly agent: Agent }) {
-  const pin = usePin();
-  const ask = useAskSession();
-  const pinned = agent.pinned === true;
-  return (
-    <>
-      <MenuItem icon={pinned ? <PinOff /> : <Pin />} onClick={() => pin(agent.id, !pinned)}>
-        {pinned ? "Unpin" : "Pin to top"}
-      </MenuItem>
-      <MenuItem icon={<Pencil />} onClick={() => ask({ kind: "rename", address: agent.id })}>
-        Rename…
-      </MenuItem>
-      <MenuSeparator />
-      <MenuItem icon={<Power />} destructive onClick={() => ask({ kind: "end", address: agent.id })}>
-        End session…
-      </MenuItem>
-    </>
-  );
-}
-
-/**
- * Hover or keyboard focus shows only these two; everything else about the agent is in the "..." menu. A touch screen
- * draws More alone: Pin is its menu's first item, and the row keeps its age and machine (#950, after #798/#808).
- */
-function AgentActions({ agent }: { readonly agent: Agent }) {
-  const pin = usePin();
-  const pinned = agent.pinned === true;
-  return (
-    <>
-      <IconButton
-        label={pinned ? `Unpin ${agent.name}` : `Pin ${agent.name} to the top`}
-        // One pin shape at the resting pin's 14 px: Unpin draws that same pin filled, since PinOff's slashed body is drawn
-        // smaller inside the same box and would shrink under the pointer (#1562). Only Unpin stands in for that pin; an
-        // unpinned row's Pin to top keeps the actions' own size, the same as More beside it (#1555).
-        icon={pinned ? <Pin className="fill-current" /> : <Pin />}
-        className={pinned ? "size-6 coarse:hidden [&_svg:not([data-slot=spinner])]:size-3.5" : "size-6 coarse:hidden"}
-        onClick={() => pin(agent.id, !pinned)}
-      />
-      <Menu
-        align="end"
-        trigger={<IconButton label={`More for ${agent.name}`} icon={<Ellipsis />} className="size-6" />}
-      >
-        <AgentMenuItems agent={agent} />
-      </Menu>
-    </>
-  );
-}
-
-interface AgentItemProps {
-  readonly agent: Agent;
-  readonly selected: boolean;
-  readonly compactBlocked: boolean;
-  readonly onOpen: (address: string) => void;
-  readonly rail: boolean;
-  /** A double-click asks for a new name, as a space row's does (#2658); not on the phone, where a tap opens the agent. */
-  readonly doubleClickRenames: boolean;
-}
-
-/** One agent's row with its actions; it draws again only when that agent, its selection or the rail changed (#2086). */
-const AgentItem = memo(function AgentItem({
-  agent,
-  selected,
-  compactBlocked,
-  onOpen,
-  rail,
-  doubleClickRenames,
-}: AgentItemProps) {
-  const ask = useAskSession();
-  const row = (
-    <AgentRow
-      agent={agent}
-      selected={selected}
-      compactBlocked={compactBlocked}
-      onSelect={onOpen}
-      rail={rail}
-      {...(doubleClickRenames ? { onDoubleClick: () => ask({ kind: "rename", address: agent.id }) } : {})}
-    />
-  );
-  // The rail has no room for the hover actions, but its right-click opens the same menu (#699).
-  return rail ? (
-    <RowWithActions row={row} actions={null} menu={<AgentMenuItems agent={agent} />} />
-  ) : (
-    <RowWithActions
-      row={row}
-      actions={<AgentActions agent={agent} />}
-      menu={<AgentMenuItems agent={agent} />}
-      coarseActions
-    />
-  );
-});
-
-/** Whether a sidebar row would draw the same for both: every field AgentRow shows (#2098). */
-export const sameAgent = (a: Agent, b: Agent): boolean =>
-  a.id === b.id &&
-  a.name === b.name &&
-  a.status === b.status &&
-  a.detail === b.detail &&
-  a.machine === b.machine &&
-  a.age === b.age &&
-  a.pinned === b.pinned &&
-  a.icon === b.icon &&
-  a.todo?.done === b.todo?.done &&
-  a.todo?.total === b.todo?.total;
-
-/**
- * Each agent as the render before drew it while nothing it shows changed. The groups are built afresh on every terminal
- * event; without this every row of every agent drew again for one agent's title (#2086).
- */
-function useSteadyAgents(groups: readonly AgentGroup[]): readonly AgentGroup[] {
-  const drawn = useRef(new Map<string, Agent>());
-  return useMemo(() => {
-    const before = drawn.current;
-    const now = new Map<string, Agent>();
-    const steady = groups.map((group) =>
-      Object.assign({}, group, {
-        agents: group.agents.map((agent) => {
-          const kept = before.get(agent.id);
-          const shown = kept !== undefined && sameAgent(kept, agent) ? kept : agent;
-          now.set(agent.id, shown);
-          return shown;
-        }),
-      }),
-    );
-    drawn.current = now;
-    return steady;
-  }, [groups]);
-}
-
 /**
  * The agents, first in the sidebar: Pinned, then Needs you, Working, Idle, Done and Offline with counts (or one group
  * per space), each its own list. On the rail the rows are glyphs and the group titles are left to their labels.
@@ -236,30 +99,75 @@ export function AgentsGroup({
     [terminals, now, sort, places, todoOf],
   );
   const all = useSteadyAgents(built);
-  const groups = useMemo(() => filterAgentGroups(all, query, active), [all, query, active]);
+  const { terminalsLoaded } = useMachinesContext();
+  const listedAddresses = useMemo(
+    () => new Set(listed.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)),
+    [listed],
+  );
+  const [folded, toggleFold] = useFolded(listedAddresses, terminalsLoaded);
+  const foldToggler = useRef(toggleFold);
+  foldToggler.current = toggleFold;
+  const onToggleFold = useCallback((address: string) => foldToggler.current(address), []);
+  // A query shows a matching sub-agent with the agents above it, so nothing is folded away while one is typed.
+  const narrowed = useMemo(() => filterAgentGroups(all, query, active), [all, query, active]);
+  const queryBlank = narrowed === all;
+  const foldedSet = useMemo(() => new Set(folded), [folded]);
+  const groups = useMemo(
+    () => (rail || !queryBlank ? narrowed : foldAgentGroups(narrowed, folded, active)),
+    [rail, queryBlank, narrowed, folded, active],
+  );
+  useEffect(() => publishAgentOrder(groups.flatMap((group) => group.agents.map((agent) => agent.id))), [groups]);
+  const tree = !rail && narrowed.some((group) => group.agents.some((agent) => (agent.descendants ?? 0) > 0));
+  const depthCap = heading ? 3 : 2;
   const list = (
     <div className="flex flex-col gap-6 pt-3">
-      {groups.map((group) => (
-        <SidebarSection
-          key={group.key}
-          title={group.title}
-          count={group.count}
-          {...(group.tone === undefined ? {} : { tone: group.tone })}
-          {...(rail ? { className: "[&>header]:sr-only" } : {})}
-        >
-          {group.agents.map((agent) => (
-            <AgentItem
-              key={agent.id}
-              agent={agent}
-              selected={agent.id === active}
-              compactBlocked={group.compactBlocked}
-              onOpen={open}
-              rail={rail}
-              doubleClickRenames={heading}
-            />
-          ))}
-        </SidebarSection>
-      ))}
+      {groups.map((group, groupIndex) => {
+        const unfoldedAgents = narrowed[groupIndex]?.agents ?? group.agents;
+        const unfoldedIndexById = new Map(unfoldedAgents.map((agent, idx) => [agent.id, idx]));
+        const nameById = new Map(group.agents.map((agent) => [agent.id, agent.name]));
+        return (
+          <SidebarSection
+            key={group.key}
+            title={group.title}
+            count={group.count}
+            indent={tree}
+            marked
+            {...(group.tone === undefined ? {} : { tone: group.tone })}
+            {...(rail ? { className: "[&>header]:sr-only" } : {})}
+          >
+            {group.agents.map((agent, index) => {
+              const hasFold = !rail && queryBlank && (agent.descendants ?? 0) > 0;
+              const unfoldedIndex = hasFold ? (unfoldedIndexById.get(agent.id) ?? -1) : -1;
+              const hidden = unfoldedIndex === -1 ? undefined : hiddenUnder(unfoldedAgents, unfoldedIndex);
+              const isFolded =
+                hasFold && foldedSet.has(agent.id) && (group.agents[index + 1]?.depth ?? 0) <= (agent.depth ?? 0);
+              const parentId = ancestorsOf(group.agents, index)[0];
+              const parentName = parentId === undefined ? undefined : nameById.get(parentId);
+              const foldLead = hasFold ? agentRowLead(agent.depth ?? 0, depthCap) : 0;
+              return (
+                <AgentItem
+                  key={agent.id}
+                  agent={agent}
+                  selected={agent.id === active}
+                  compactBlocked={group.compactBlocked}
+                  onOpen={open}
+                  rail={rail}
+                  doubleClickRenames={heading}
+                  depthCap={depthCap}
+                  disclosure={tree}
+                  {...(parentName === undefined ? {} : { parentName })}
+                  folded={isFolded}
+                  foldCount={hidden?.count ?? 0}
+                  foldBlocked={hidden?.blocked ?? 0}
+                  foldUrgency={hidden?.urgency ?? "idle"}
+                  foldLead={foldLead}
+                  onToggleFold={onToggleFold}
+                />
+              );
+            })}
+          </SidebarSection>
+        );
+      })}
     </div>
   );
   if (!heading)
@@ -269,7 +177,10 @@ export function AgentsGroup({
       </section>
     );
   return (
-    <SidebarSection title="Agents" {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu })}>
+    <SidebarSection
+      title="Agents"
+      {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu, indent: tree, marked: true })}
+    >
       {list}
     </SidebarSection>
   );

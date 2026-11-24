@@ -43,7 +43,7 @@ test("the websocket endpoint names the plain-HTTP MCP route", () => {
 
 test("reading asks with the token; on and off put the switch, and the host's answer is what comes back", async () => {
   const clients = [
-    { id: "3FA94C0E", name: "Pickle" },
+    { id: "3FA94C0E", name: "Grok bot" },
     { id: "AB12CD34", name: null },
   ];
   const host = hostAnswers(() => Response.json({ enabled: true, clients }));

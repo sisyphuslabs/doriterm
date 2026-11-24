@@ -108,7 +108,7 @@ function PairedStep() {
   const [copied, setCopied] = useState(false);
   return (
     <Panel
-      title="Pickle is paired with studio."
+      title="Grok bot is paired with studio."
       actions={
         <Button type="button" variant="primary">
           Done

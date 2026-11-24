@@ -84,6 +84,30 @@ describe("filterAgentGroups", () => {
   });
 });
 
+describe("filterAgentGroups: sub-agents (#2746)", () => {
+  const lead = agent("a1", "lead", { depth: 0, guides: [], descendants: 3 });
+  const worker = agent("a2", "worker", { depth: 1, guides: ["├"], descendants: 1 });
+  const probe = agent("a3", "probe", { depth: 2, guides: ["│", "└"], descendants: 0 });
+  const scout = agent("a4", "scout", { depth: 1, guides: ["└"], descendants: 0 });
+  const groups = [group("working", [lead, worker, probe, scout])];
+
+  test("a matching sub-agent keeps the agents above it, and the count follows", () => {
+    const kept = filterAgentGroups(groups, "probe", null);
+    expect(kept.map((one) => [one.count, one.agents.map((row) => row.id)])).toEqual([[3, ["a1", "a2", "a3"]]]);
+  });
+
+  test("the kept rows are shaped as the narrowed list draws them; a row whose shape holds is the same object", () => {
+    const [kept] = filterAgentGroups(groups, "probe", null);
+    expect(kept?.agents.map((row) => [row.guides, row.descendants])).toEqual([
+      [[], 2],
+      [["└"], 1],
+      [["", "└"], 0],
+    ]);
+    const [all] = filterAgentGroups(groups, "o", null);
+    expect(all?.agents[2]).toBe(probe);
+  });
+});
+
 describe("filterSpaces", () => {
   const spaces = [space("s1", "api", "laptop"), space("s2", "web"), space("s3", "docs")];
 
