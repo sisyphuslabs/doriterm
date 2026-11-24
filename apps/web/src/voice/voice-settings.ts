@@ -1,8 +1,8 @@
 /**
- * Where speech becomes text. ask: on first use, say the browser's speech service may hear the audio and wait for
+ * Where speech becomes text. soniox: Soniox's service, with the key from the mesh vault. ask: on first use, say the browser's speech service may hear the audio and wait for
  * a yes; device: only the browser's on-device recognizer; service: the browser's speech service, already allowed.
  */
-export type Engine = "ask" | "device" | "service";
+export type Engine = "ask" | "device" | "service" | "soniox";
 
 export interface VoiceSettings {
   /** A BCP 47 tag, or "" to follow the browser's language. */
@@ -12,7 +12,7 @@ export interface VoiceSettings {
 
 export const VOICE_KEY = "doriface.voice";
 export const DEFAULT_VOICE: VoiceSettings = { language: "", engine: "ask" };
-const ENGINES: readonly Engine[] = ["ask", "device", "service"];
+const ENGINES: readonly Engine[] = ["ask", "device", "service", "soniox"];
 
 /** The languages Settings offers; the browser's own is offered first, and a stored one stays listed. */
 export const VOICE_LANGUAGES: readonly string[] = [

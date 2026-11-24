@@ -15,6 +15,8 @@ const ENGINE_NOTE: Readonly<Record<Engine, string>> = {
   ask: "The first dictation asks before any audio goes to the browser's speech service, which may run outside this device.",
   device: "Only the browser's on-device recognizer listens; the audio never leaves this device.",
   service: "The browser sends the audio to its speech service, which may run outside this device.",
+  soniox:
+    "Soniox turns speech into text in real time. Audio goes from this device straight to Soniox, with the key from your mesh vault.",
 };
 
 const BLOCKED: Readonly<Record<VoiceBlocked, string>> = {
