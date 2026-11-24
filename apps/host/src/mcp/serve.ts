@@ -1,7 +1,7 @@
 import { CloseCode } from "@doriface/crypto";
 import { HcRpcError, type HcMethod } from "@doriface/protocol";
 import type { PushLink } from "../push/push-stream.ts";
-import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine } from "./lines.ts";
+import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine, toolResult, type ToolsShown } from "./lines.ts";
 
 const encoder = new TextEncoder();
 
@@ -18,19 +18,13 @@ export interface McpServeDeps {
   readonly openHc?: (() => Promise<HcCaller>) | undefined;
 }
 
-const toolResult = (value: unknown, isError: boolean) => ({
-  resultType: "complete",
-  content: [{ type: "text", text: JSON.stringify(value) }],
-  structuredContent: value,
-  isError,
-});
-
 /** One LF-delimited JSON-RPC message at a time; tool calls run concurrently and each reply is one whole line. */
 export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
   let pending: Uint8Array | undefined;
   let length = 0;
   let closed = false;
   let dying = false;
+  let shown: ToolsShown = "core";
   let hc: Promise<HcCaller> | undefined;
   const calls = new Map<Id, AbortController>();
   const close = (code: number, reason: string): void => {
@@ -110,11 +104,12 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
       start = lf + 1;
       let line: McpLine;
       try {
-        line = readMcpLine(bytesOfLine, deps.hostVersion);
+        line = readMcpLine(bytesOfLine, deps.hostVersion, shown);
       } catch {
         return close(CloseCode.CryptoFailure, "an MCP line is not a UTF-8 JSON object");
       }
       if (line.kind === "reply") send(line.reply);
+      else if (line.kind === "show") shown = line.shown;
       else if (line.kind === "cancel") {
         const key = line.requestId;
         if (typeof key === "string" || typeof key === "number") calls.get(key)?.abort();

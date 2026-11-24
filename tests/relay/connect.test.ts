@@ -258,7 +258,7 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect(await refused.stderr()).toContain("run doriface-host mcp on there");
 
     new McpSwitch(stateDir).setEnabled(true);
-    const run = runConnect(state, relayUrl, hostId, "--mcp");
+    const run = runConnect(state, relayUrl, hostId, "--mcp", "--tools", "machine");
     await run.write(mcpLine(1, "server/discover"));
     const discovered = JSON.parse(decoder.decode(await within(run.reader.line(), "the discover answer")));
     expect(discovered.result.capabilities).toEqual({ tools: {} });
@@ -266,6 +266,17 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     const listed = JSON.parse(decoder.decode(await within(run.reader.line(), "the terminal_list answer")));
     expect(listed.result.isError).toBe(false);
     expect(Array.isArray(listed.result.structuredContent.terminals)).toBe(true);
+
+    // --tools reached the host before the first line from stdin: the list is the core two and the group asked for.
+    await run.write(mcpLine(3, "tools/list"));
+    const shown = JSON.parse(decoder.decode(await within(run.reader.line(), "the tools/list answer")));
+    const names: string[] = shown.result.tools.map((tool: { name: string }) => tool.name);
+    expect(names.slice(0, 2)).toEqual(["doriterm_tools", "doriterm_call"]);
+    expect(names.length).toBeGreaterThan(2);
+    expect(names.slice(2).every((name) => name.startsWith("machine_"))).toBe(true);
+    await run.write(mcpLine(4, "tools/call", { name: "doriterm_call", arguments: { tool: "terminal_list" } }));
+    const through = JSON.parse(decoder.decode(await within(run.reader.line(), "the doriterm_call answer")));
+    expect(Array.isArray(through.result.structuredContent.terminals)).toBe(true);
 
     new McpSwitch(stateDir).setEnabled(false);
     expect(await within(run.exited, "the session ending once MCP is off")).toBe(1);

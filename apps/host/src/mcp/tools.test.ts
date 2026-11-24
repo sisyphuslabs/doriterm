@@ -88,8 +88,86 @@ function rig() {
   };
 }
 
-test("tools/list is the generated table: 25 of herdr-core's methods, none of the seven left out", () => {
+const SHOW = "notifications/doriterm/tools";
+const namesIn = (answer: unknown): readonly string[] =>
+  (JSON.stringify(answer).match(/"name":"[a-z_]+"/g) ?? []).map((pair) => pair.slice(8, -1));
+
+test("tools/list shows two tools until the session asks for more: a group adds to them, all replaces them", () => {
   const r = rig();
+  const list = (id: number): void => r.send({ jsonrpc: "2.0", id, method: "tools/list", params: { _meta: META } });
+  list(1);
+  expect(namesIn(r.replies[0])).toEqual(["doriterm_tools", "doriterm_call"]);
+  r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: ["machine"] } });
+  list(2);
+  expect(namesIn(r.replies[1])).toEqual([
+    "doriterm_tools",
+    "doriterm_call",
+    ...MCP_TOOLS.filter((tool) => tool.name.startsWith("machine_")).map((tool) => tool.name),
+  ]);
+  r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: "all" } });
+  list(3);
+  expect(namesIn(r.replies[2])).toEqual(MCP_TOOLS.map((tool) => tool.name));
+  r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: 7 } });
+  list(4);
+  expect(namesIn(r.replies[3])).toEqual(["doriterm_tools", "doriterm_call"]);
+  expect(r.replies).toHaveLength(4);
+  expect(r.opened()).toBe(0);
+});
+
+test("doriterm_tools answers the catalog without the core: names alone, or the matches with their schemas", () => {
+  const r = rig();
+  r.call(1, "doriterm_tools");
+  r.call(2, "doriterm_tools", { query: "terminal_kill" });
+  r.call(3, "doriterm_tools", { query: "terminal" });
+  r.call(4, "doriterm_tools", { query: 5 });
+  const content = (index: number): { tools: { name: string; inputSchema?: object }[]; more?: number } =>
+    Reflect.get(Reflect.get(r.replies[index] ?? {}, "result") ?? {}, "structuredContent");
+  expect(content(0).tools.map((tool) => tool.name)).toEqual(MCP_TOOLS.map((tool) => tool.name));
+  expect(content(0).tools.every((tool) => tool.inputSchema === undefined)).toBe(true);
+  expect(content(1).tools.map((tool) => tool.name)).toEqual(["terminal_kill"]);
+  expect(content(1).tools[0]?.inputSchema).toEqual(
+    MCP_TOOLS.find((tool) => tool.name === "terminal_kill")?.inputSchema,
+  );
+  const terminals = MCP_TOOLS.filter((tool) => `${tool.name} ${tool.description}`.toLowerCase().includes("terminal"));
+  expect(content(2).tools).toHaveLength(8);
+  expect(content(2).more).toBe(terminals.length - 8);
+  expect(r.replies[3]).toEqual({
+    jsonrpc: "2.0",
+    id: 4,
+    error: { code: -32602, message: "Invalid params: query must be a string" },
+  });
+  expect(r.opened()).toBe(0);
+});
+
+test("doriterm_call runs the named tool as a direct call would, and refuses what a direct call refuses", async () => {
+  const r = rig();
+  const reached = r.coreCall();
+  r.call(1, "doriterm_call", { tool: "terminal_list", arguments: { all: true } });
+  await reached;
+  expect(r.calls[0]).toMatchObject({ method: "terminal.list", params: { all: true } });
+  const refused = [
+    "doriterm_call",
+    "no_such_tool",
+    ...MCP_EXCLUDED_METHODS.map((method) => method.replaceAll(".", "_")),
+  ];
+  refused.forEach((tool, index) => r.call(10 + index, "doriterm_call", { tool }));
+  r.call(30, "doriterm_call", { tool: "terminal_list", arguments: [1] });
+  r.call(31, "doriterm_call", {});
+  expect(r.replies).toEqual([
+    ...refused.map((tool, index) => ({
+      jsonrpc: "2.0",
+      id: 10 + index,
+      error: { code: -32602, message: `Unknown tool: ${tool}` },
+    })),
+    { jsonrpc: "2.0", id: 30, error: { code: -32602, message: "Invalid params: arguments must be an object" } },
+    { jsonrpc: "2.0", id: 31, error: { code: -32602, message: "Unknown tool: undefined" } },
+  ]);
+  expect(r.calls).toHaveLength(1);
+});
+
+test("the full list is the generated table: 25 of herdr-core's methods, none of the seven left out", () => {
+  const r = rig();
+  r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: "all" } });
   r.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: META } });
   const [answer] = r.replies;
   expect(answer).toMatchObject({ id: 1, result: { resultType: "complete", ttlMs: 300_000, cacheScope: "private" } });

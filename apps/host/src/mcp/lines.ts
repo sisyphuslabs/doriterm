@@ -5,8 +5,80 @@ const VERSION = "2026-07-28";
 const VERSION_KEY = "io.modelcontextprotocol/protocolVersion";
 export type Id = string | number | null;
 
-/** What one line asks for: an answer now, nothing, a cancellation, or a tool call to run. */
+/**
+ * Which tools `tools/list` shows this session: `"core"` is the two below, `"all"` every catalog tool, and a list of
+ * groups (the word before a tool name's first `_`) those groups after the core two. It only saves the client's context:
+ * every catalog tool can be called by name whatever is shown.
+ */
+export type ToolsShown = "core" | "all" | readonly string[];
+
+/** The bridge's first line (`doriface-host connect --mcp --tools ...`): a notification, so an older host ignores it. */
+export const TOOLS_SHOWN_METHOD = "notifications/doriterm/tools";
+const SEARCH_LIMIT = 8;
+
+const CORE_TOOLS = [
+  {
+    name: "doriterm_tools",
+    description:
+      "Find Doriterm tools (terminals, machines, files, docs). Without a query: every tool's name and what it does. " +
+      `With a query: up to ${SEARCH_LIMIT} matching tools with their input schemas. Call one with doriterm_call.`,
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "Words to match in a tool's name or description." } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "doriterm_call",
+    description: "Call a Doriterm tool found with doriterm_tools, by its name and with its arguments.",
+    inputSchema: {
+      type: "object",
+      properties: { tool: { type: "string" }, arguments: { type: "object" } },
+      required: ["tool"],
+      additionalProperties: false,
+    },
+  },
+] as const;
+
+const groupOf = (name: string): string => name.slice(0, name.indexOf("_"));
+const listed = ({ name, description, inputSchema }: McpToolRow) => ({ name, description, inputSchema });
+
+function shownTools(shown: ToolsShown): readonly object[] {
+  if (shown === "all") return MCP_TOOLS.map(listed);
+  if (shown === "core") return CORE_TOOLS;
+  return [...CORE_TOOLS, ...MCP_TOOLS.filter((row) => shown.includes(groupOf(row.name))).map(listed)];
+}
+
+function findTools(query: string | undefined): object {
+  if (query === undefined || query.trim() === "") {
+    return { tools: MCP_TOOLS.map(({ name, description }) => ({ name, description })) };
+  }
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = MCP_TOOLS.filter((row) => {
+    const text = `${row.name} ${row.description}`.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+  return { tools: matches.slice(0, SEARCH_LIMIT).map(listed), more: Math.max(0, matches.length - SEARCH_LIMIT) };
+}
+
+/** Reads what the bridge asked to be shown; anything else than "all" or a list of group names means the core two. */
+function readShown(params: unknown): ToolsShown {
+  const tools = isJsonObject(params) ? params["tools"] : undefined;
+  if (tools === "all") return "all";
+  if (Array.isArray(tools) && tools.length > 0 && tools.every((group) => typeof group === "string")) return tools;
+  return "core";
+}
+
+export const toolResult = (value: unknown, isError: boolean) => ({
+  resultType: "complete",
+  content: [{ type: "text", text: JSON.stringify(value) }],
+  structuredContent: value,
+  isError,
+});
+
+/** What one line asks for: an answer now, nothing, a cancellation, what to show from now on, or a tool call to run. */
 export type McpLine =
+  | { readonly kind: "show"; readonly shown: ToolsShown }
   | { readonly kind: "reply"; readonly reply: object }
   | { readonly kind: "none" }
   | { readonly kind: "cancel"; readonly requestId: unknown }
@@ -21,7 +93,7 @@ const result = (id: Id, value: object): McpLine => ({ kind: "reply", reply: { js
 const toolByName = new Map(MCP_TOOLS.map((row) => [row.name, row]));
 
 /** Decodes one complete line without its LF and decides what it asks for; only the methods this host serves exist. */
-export function readMcpLine(bytes: Uint8Array, hostVersion: string): McpLine {
+export function readMcpLine(bytes: Uint8Array, hostVersion: string, shown: ToolsShown = "core"): McpLine {
   const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes));
   if (!isJsonObject(value)) throw new Error("an MCP line must be a JSON object");
   const { jsonrpc, method, id, params } = value;
@@ -30,6 +102,7 @@ export function readMcpLine(bytes: Uint8Array, hostVersion: string): McpLine {
   if (id === undefined) {
     if (method === "notifications/cancelled" && isJsonObject(params))
       return { kind: "cancel", requestId: params["requestId"] };
+    if (method === TOOLS_SHOWN_METHOD) return { kind: "show", shown: readShown(params) };
     return { kind: "none" };
   }
   if (id !== null && typeof id !== "string" && !(typeof id === "number" && Number.isFinite(id))) {
@@ -50,19 +123,23 @@ export function readMcpLine(bytes: Uint8Array, hostVersion: string): McpLine {
         _meta: { "io.modelcontextprotocol/serverInfo": { name: "doriterm", version: hostVersion } },
       });
     case "tools/list":
-      return result(id, {
-        resultType: "complete",
-        tools: MCP_TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
-        ttlMs: 300_000,
-        cacheScope: "private",
-      });
+      return result(id, { resultType: "complete", tools: shownTools(shown), ttlMs: 300_000, cacheScope: "private" });
     case "tools/call": {
-      const name = isJsonObject(params) ? params["name"] : undefined;
+      const invalid = (what: string): McpLine => ({ kind: "reply", reply: rpcError(id, -32602, what) });
+      const given = isJsonObject(params) ? (params["arguments"] ?? {}) : {};
+      if (!isJsonObject(given)) return invalid("Invalid params: arguments must be an object");
+      const asked = isJsonObject(params) ? params["name"] : undefined;
+      if (asked === "doriterm_tools") {
+        const query = given["query"];
+        if (query !== undefined && typeof query !== "string") return invalid("Invalid params: query must be a string");
+        return result(id, toolResult(findTools(query), false));
+      }
+      // doriterm_call is the same call one level in: the named tool and its arguments.
+      const name = asked === "doriterm_call" ? given["tool"] : asked;
+      const args = asked === "doriterm_call" ? (given["arguments"] ?? {}) : given;
       const tool = typeof name === "string" ? toolByName.get(name) : undefined;
-      if (tool === undefined) return { kind: "reply", reply: rpcError(id, -32602, `Unknown tool: ${String(name)}`) };
-      const args = isJsonObject(params) ? (params["arguments"] ?? {}) : {};
-      if (!isJsonObject(args))
-        return { kind: "reply", reply: rpcError(id, -32602, "Invalid params: arguments must be an object") };
+      if (tool === undefined) return invalid(`Unknown tool: ${String(name)}`);
+      if (!isJsonObject(args)) return invalid("Invalid params: arguments must be an object");
       return { kind: "call", id, tool, args };
     }
     default:
