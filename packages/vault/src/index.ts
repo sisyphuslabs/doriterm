@@ -1,5 +1,7 @@
 export type { DeviceKey, KeyProtection, MemberSigner, VaultContext } from "./context.ts";
 export { EMPTY_VAULT, mergeVaults, parseVaultDoc, VAULT_DOC, type VaultDoc } from "./doc.ts";
+export { type EntryDraft, type Keyholder, localKeyholder, type TierHandle } from "./keyholder.ts";
+export { type KeyholderRequest, remoteKeyholder, serveKeyholder } from "./keyholder-rpc.ts";
 export type { DeviceBody, SignedRecord } from "./records.ts";
-export type { ResolvedTier, ResolvedVault } from "./resolve.ts";
+export { openersOf, type ResolvedTier, type ResolvedVault } from "./resolve.ts";
 export { type EntryRead, maintain, readEntry, resolveVault, writeEntry } from "./vault.ts";

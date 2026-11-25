@@ -35,7 +35,7 @@
     "lucide-react": "1.66.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "typevault": "github:code-yeongyu/typevault#9ed0c7e203f523d2a6cb142e70cfedb6b4f58f36",
+    "typevault": "github:code-yeongyu/typevault#ecce7187c7173c6ea77f72363dd415f4625bcb26",
     "uqr": "0.1.3",
     "workbox-core": "7.4.1",
     "workbox-precaching": "7.4.1",

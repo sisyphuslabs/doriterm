@@ -22,6 +22,7 @@
     "@doriface/crypto": "workspace:*",
     "@doriface/host": "workspace:*",
     "@doriface/protocol": "workspace:*",
+    "@doriface/vault": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
     "@types/ws": "8.18.1",
@@ -29,7 +30,7 @@
     "electron-builder": "26.18.0",
     "electron-updater": "6.8.11",
     "node-api-headers": "1.9.0",
-    "typevault": "github:code-yeongyu/typevault#9ed0c7e203f523d2a6cb142e70cfedb6b4f58f36",
+    "typevault": "github:code-yeongyu/typevault#ecce7187c7173c6ea77f72363dd415f4625bcb26",
     "ws": "8.18.3"
   },
   "productName": "Doriterm"

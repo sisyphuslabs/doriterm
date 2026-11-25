@@ -34,9 +34,34 @@ export interface TierBody {
   readonly at: string;
 }
 
+/**
+ * "I sealed this tier record's key to this holder's recipient", signed by the member that sealed it. Wraps without one
+ * are ignored: an unsigned holder can neither displace a genuine wrap nor stand for a device that saw the key.
+ */
+export interface WrapBody {
+  readonly v: 1;
+  readonly type: "vault-wrap";
+  readonly mesh: string;
+  /** The tier record's id. */
+  readonly tier: string;
+  readonly holder: string;
+  readonly recipient: string;
+  /** sha256 of the wrap's base64 text, binding the signature to that ciphertext. */
+  readonly digest: string;
+  readonly by: string;
+  readonly at: string;
+}
+
+/** A sealed tier key with the signed record that says who sealed it, for whom. */
+export interface SignedWrap extends SignedRecord {
+  readonly wrap: string;
+}
+
 const encoder = new TextEncoder();
 
-export async function signRecord(body: DeviceBody | TierBody, signer: MemberSigner): Promise<SignedRecord> {
+export const wrapDigest = (wrap: string): string => bytesToHex(sha256(encoder.encode(wrap)));
+
+export async function signRecord(body: DeviceBody | TierBody | WrapBody, signer: MemberSigner): Promise<SignedRecord> {
   const text = JSON.stringify(body);
   return { body: text, sig: base64urlEncode(await signer.sign(encoder.encode(text))) };
 }
@@ -101,3 +126,19 @@ export const recordAt = (record: SignedRecord): string => {
 
 /** Whether the record's signature verifies for the signPub it is filed under (merge keeps a forged copy out). */
 export const signedBy = (record: SignedRecord, signPub: string): boolean => verified(record, signPub);
+
+/** The wrap's body, when it is well formed, sits where it is filed, matches its ciphertext and is signed by its `by`. */
+export function readWrap(
+  stored: SignedWrap,
+  mesh: string,
+  where: { readonly tier: string; readonly holder: string; readonly by: string },
+): WrapBody | undefined {
+  const b = parseBody(stored);
+  if (b === undefined || b["v"] !== 1 || b["type"] !== "vault-wrap" || b["mesh"] !== mesh) return undefined;
+  const { tier, holder, recipient, digest, by, at } = b;
+  if (tier !== where.tier || holder !== where.holder || by !== where.by) return undefined;
+  if (!text(recipient) || !recipient.startsWith("age1") || !text(at) || digest !== wrapDigest(stored.wrap))
+    return undefined;
+  if (!verified(stored, by)) return undefined;
+  return { v: 1, type: "vault-wrap", mesh, tier, holder, recipient, digest, by, at };
+}

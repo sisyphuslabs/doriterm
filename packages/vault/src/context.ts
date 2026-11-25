@@ -1,4 +1,5 @@
 import type { RevisionLedger } from "typevault/core";
+import type { Keyholder } from "./keyholder.ts";
 
 /** Where a device's vault key lives, from the weakest to the strongest custody the platform offers. */
 export type KeyProtection = "unprotected" | "non-extractable" | "os-keystore";
@@ -25,7 +26,8 @@ export interface VaultContext {
   /** signPubs of the current members, from the verified mesh records (never the advisory status document). */
   readonly members: ReadonlySet<string>;
   readonly self: MemberSigner;
-  readonly key: DeviceKey;
+  /** This device's vault key and the tier keys it opens; the tier keys never leave it. */
+  readonly key: Keyholder;
   /** The highest entry revision and tier generation this device has seen; a lower one handed over is a rollback. */
   readonly ledger: RevisionLedger;
   readonly now: () => string;

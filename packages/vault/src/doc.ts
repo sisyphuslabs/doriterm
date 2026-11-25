@@ -1,19 +1,24 @@
 import { type Envelope, EnvelopeSchema } from "typevault/core";
-import { recordAt, type SignedRecord, signedBy } from "./records.ts";
+import { cleanVault } from "./clean.ts";
+import { recordAt, type SignedRecord, type SignedWrap } from "./records.ts";
 
 /** The herdr document the vault lives in, on every machine's core. Machines store it; only devices read it. */
 export const VAULT_DOC = "doriface-vault";
 
+/**
+ * Everything is kept as sets keyed by who could have produced it, never as one winner chosen by a field anyone can
+ * write: an extra item from a hostile writer sits beside the genuine one and is ignored on read; it never replaces it.
+ */
 export interface VaultDoc {
   readonly v: 1;
-  /** Device announcements by member signPub. */
+  /** Device announcements by member signPub (only that member can sign one). */
   readonly devices: Readonly<Record<string, SignedRecord>>;
   /** Tier generations by record id. */
   readonly tiers: Readonly<Record<string, SignedRecord>>;
-  /** base64 TypeVault wraps of a tier generation's key: tier record id -> member signPub -> wrap. */
-  readonly wraps: Readonly<Record<string, Readonly<Record<string, string>>>>;
-  /** TypeVault entry envelopes by entry id. */
-  readonly entries: Readonly<Record<string, Envelope>>;
+  /** Signed wraps: tier record id -> holder signPub -> signer signPub -> wrap. */
+  readonly wraps: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, SignedWrap>>>>>>;
+  /** TypeVault envelopes: entry id -> tier record id (whose key signed it) -> envelope. */
+  readonly entries: Readonly<Record<string, Readonly<Record<string, Envelope>>>>;
 }
 
 export const EMPTY_VAULT: VaultDoc = { v: 1, devices: {}, tiers: {}, wraps: {}, entries: {} };
@@ -32,97 +37,89 @@ function recordsIn(value: unknown): Record<string, SignedRecord> {
   return out;
 }
 
-function wrapsIn(value: unknown): Record<string, Record<string, string>> {
+/** Two levels of string keys over `leaf`, dropping every branch that holds nothing. */
+function nested<T>(value: unknown, leaf: (item: unknown) => T | undefined): Record<string, Record<string, T>> {
   if (!isObject(value)) return {};
-  const out: Record<string, Record<string, string>> = {};
-  for (const [tier, holders] of Object.entries(value)) {
-    if (!isObject(holders)) continue;
-    const kept = Object.entries(holders).filter((pair): pair is [string, string] => typeof pair[1] === "string");
-    if (kept.length > 0) out[tier] = Object.fromEntries(kept);
+  const out: Record<string, Record<string, T>> = {};
+  for (const [outer, inner] of Object.entries(value)) {
+    if (!isObject(inner)) continue;
+    const kept = Object.entries(inner).flatMap(([key, item]) => {
+      const parsed = leaf(item);
+      return parsed === undefined ? [] : [[key, parsed] as const];
+    });
+    if (kept.length > 0) out[outer] = Object.fromEntries(kept);
   }
   return out;
 }
 
-function entriesIn(value: unknown): Record<string, Envelope> {
-  if (!isObject(value)) return {};
-  const out: Record<string, Envelope> = {};
-  for (const [id, item] of Object.entries(value)) {
-    const parsed = EnvelopeSchema.safeParse(item);
-    if (parsed.success && parsed.data.id === id) out[id] = parsed.data;
-  }
-  return out;
-}
+const wrapIn = (item: unknown): SignedWrap | undefined =>
+  isObject(item) &&
+  typeof item["body"] === "string" &&
+  typeof item["sig"] === "string" &&
+  typeof item["wrap"] === "string"
+    ? { body: item["body"], sig: item["sig"], wrap: item["wrap"] }
+    : undefined;
+
+const envelopeIn = (item: unknown): Envelope | undefined => {
+  const parsed = EnvelopeSchema.safeParse(item);
+  return parsed.success ? parsed.data : undefined;
+};
 
 /** The document as stored, keeping every well-formed item; anything else reads as an empty vault. */
 export function parseVaultDoc(value: unknown): VaultDoc {
   if (!isObject(value) || value["v"] !== 1) return EMPTY_VAULT;
+  const wraps = isObject(value["wraps"]) ? value["wraps"] : {};
   return {
     v: 1,
     devices: recordsIn(value["devices"]),
     tiers: recordsIn(value["tiers"]),
-    wraps: wrapsIn(value["wraps"]),
-    entries: entriesIn(value["entries"]),
+    wraps: Object.fromEntries(
+      Object.entries(wraps).flatMap(([tier, holders]) => {
+        const kept = nested(holders, wrapIn);
+        return Object.keys(kept).length === 0 ? [] : [[tier, kept] as const];
+      }),
+    ),
+    entries: nested(value["entries"], envelopeIn),
   };
 }
 
-const later = (a: SignedRecord, b: SignedRecord): SignedRecord => {
+const bySig = <T extends { readonly sig: string }>(a: T, b: T): T => (a.sig <= b.sig ? a : b);
+const laterRecord = <T extends SignedRecord>(a: T, b: T): T => {
   const [atA, atB] = [recordAt(a), recordAt(b)];
-  if (atA !== atB) return atA > atB ? a : b;
-  return a.sig <= b.sig ? a : b;
+  return atA === atB ? bySig(a, b) : atA > atB ? a : b;
 };
+const newerEnvelope = (a: Envelope, b: Envelope): Envelope => (a.rev === b.rev ? bySig(a, b) : a.rev > b.rev ? a : b);
 
-function mergeDevices(a: VaultDoc["devices"], b: VaultDoc["devices"]): Record<string, SignedRecord> {
-  const out: Record<string, SignedRecord> = {};
-  for (const [signPub, record] of [...Object.entries(a), ...Object.entries(b)]) {
-    if (!signedBy(record, signPub)) continue;
-    const held = out[signPub];
-    out[signPub] = held === undefined ? record : later(held, record);
+function union<T>(a: Readonly<Record<string, T>>, b: Readonly<Record<string, T>>, pick: (x: T, y: T) => T) {
+  const out: Record<string, T> = { ...a };
+  for (const [key, item] of Object.entries(b)) {
+    const held = out[key];
+    out[key] = held === undefined ? item : pick(held, item);
   }
   return out;
 }
 
-function mergeWraps(a: VaultDoc["wraps"], b: VaultDoc["wraps"]): Record<string, Record<string, string>> {
-  const out: Record<string, Record<string, string>> = {};
-  for (const [tier, holders] of [...Object.entries(a), ...Object.entries(b)]) {
-    const into = (out[tier] ??= {});
-    for (const [signPub, wrap] of Object.entries(holders)) {
-      const held = into[signPub];
-      into[signPub] = held === undefined || wrap < held ? wrap : held;
-    }
-  }
-  return out;
-}
-
-const newer = (a: Envelope, b: Envelope): Envelope => {
-  if (a.gen !== b.gen) return a.gen > b.gen ? a : b;
-  if (a.rev !== b.rev) return a.rev > b.rev ? a : b;
-  return a.sig <= b.sig ? a : b;
-};
-
-function mergeEntries(a: VaultDoc["entries"], b: VaultDoc["entries"]): Record<string, Envelope> {
-  const out: Record<string, Envelope> = { ...a };
-  for (const [id, envelope] of Object.entries(b)) {
-    const held = out[id];
-    out[id] = held === undefined ? envelope : newer(held, envelope);
-  }
-  return out;
-}
-
-const sorted = <T>(record: Readonly<Record<string, T>>): Record<string, T> =>
-  Object.fromEntries(Object.entries(record).toSorted(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)));
+type Rec<T> = Readonly<Record<string, T>>;
+const union2 = <T>(a: Rec<Rec<T>>, b: Rec<Rec<T>>, pick: (x: T, y: T) => T) => union(a, b, (x, y) => union(x, y, pick));
+const union3 = <T>(a: Rec<Rec<Rec<T>>>, b: Rec<Rec<Rec<T>>>, pick: (x: T, y: T) => T) =>
+  union(a, b, (x, y) => union2(x, y, pick));
 
 /**
- * Two copies of the vault as one: the union, keeping per key the newest validly signed announcement, every tier record,
- * the lowest wrap ciphertext, and the entry with the highest generation and revision. Commutative and idempotent, so
- * machines converge whichever copy a device reads first. Membership and envelope checks happen on read, not here.
+ * Two copies as one. Each is cleaned first (`cleanVault` drops whatever is not signed by who it claims), so at each
+ * key of the union the only choice is between items the same signer or tier key produced (later announcement, later wrap,
+ * higher revision). Commutative and idempotent, so machines converge whichever copy a device reads first. Who counts
+ * as a member is decided on read, not here.
  */
-export function mergeVaults(a: VaultDoc, b: VaultDoc): VaultDoc {
-  const wraps = mergeWraps(a.wraps, b.wraps);
-  return {
-    v: 1,
-    devices: sorted(mergeDevices(a.devices, b.devices)),
-    tiers: sorted({ ...a.tiers, ...b.tiers }),
-    wraps: sorted(Object.fromEntries(Object.entries(wraps).map(([tier, holders]) => [tier, sorted(holders)]))),
-    entries: sorted(mergeEntries(a.entries, b.entries)),
-  };
+export function mergeVaults(a: VaultDoc, b: VaultDoc, mesh: string): VaultDoc {
+  const [x, y] = [cleanVault(a, mesh), cleanVault(b, mesh)];
+  return cleanVault(
+    {
+      v: 1,
+      devices: union(x.devices, y.devices, laterRecord),
+      tiers: union(x.tiers, y.tiers, bySig),
+      wraps: union3(x.wraps, y.wraps, laterRecord),
+      entries: union2(x.entries, y.entries, newerEnvelope),
+    },
+    mesh,
+  );
 }

@@ -1,19 +1,9 @@
-import {
-  decodeSecretKey,
-  fromBase64,
-  fromUtf8,
-  type PublicKey,
-  publicKeyOf,
-  samePublic,
-  type SecretKey,
-  TypeVaultError,
-  type VaultState,
-} from "typevault/core";
+import { fromBase64, type PublicKey } from "typevault/core";
 import type { VaultContext } from "./context.ts";
 import type { VaultDoc } from "./doc.ts";
-import { type DeviceBody, readDevice, readTier, recordId, type TierBody } from "./records.ts";
+import { TIER, type TierHandle } from "./keyholder.ts";
+import { type DeviceBody, readDevice, readTier, readWrap, recordId, type TierBody, type WrapBody } from "./records.ts";
 
-export const TIER = "mesh";
 export const TIER_MARK = `tier:${TIER}`;
 
 export interface ResolvedTier {
@@ -28,7 +18,7 @@ export interface ResolvedVault {
   readonly devices: ReadonlyMap<string, DeviceBody>;
   /** The current generation: the highest one a current member signed and this device has not seen superseded. */
   readonly tier: ResolvedTier | undefined;
-  /** The highest generation any record names, trusted or not: a new generation must pass it. */
+  /** The highest generation a current member signed: a new generation must pass it. */
   readonly highestGen: number;
   /** A member signed a generation this device has already seen superseded: the copy is stale, not empty. */
   readonly stale: boolean;
@@ -45,9 +35,8 @@ export function resolveVault(doc: VaultDoc, ctx: VaultContext): ResolvedVault {
   let stale = false;
   for (const record of Object.values(doc.tiers)) {
     const body = readTier(record, ctx.mesh);
-    if (body === undefined) continue;
+    if (body === undefined || !ctx.members.has(body.by)) continue;
     highestGen = Math.max(highestGen, body.gen);
-    if (!ctx.members.has(body.by)) continue;
     if (!ctx.ledger.allows(TIER_MARK, body.gen)) {
       stale = true;
       continue;
@@ -71,39 +60,52 @@ export function resolveVault(doc: VaultDoc, ctx: VaultContext): ResolvedVault {
   };
 }
 
-/** The TypeVault state an envelope is checked against: one tier, whose key also stands in as the owner key. */
-export const stateOf = (tier: ResolvedTier): VaultState => ({
-  owner: tier.publicKey,
-  origin: tier.id,
-  handovers: [],
-  seqs: { tiers: tier.gen, members: 1, signers: 1, ceilings: 1 },
-  tiers: { [TIER]: { includes: [], gen: tier.gen, ...tier.publicKey } },
-  members: {},
-  signers: {},
-  ceilings: {},
-});
+export interface MemberWrap {
+  readonly body: WrapBody;
+  readonly wrap: string;
+}
 
-/** Opens this device's wrap of the current tier key: undefined when there is none or it is not the signed tier key. */
-export async function unlockTier(doc: VaultDoc, ctx: VaultContext, tier: ResolvedTier): Promise<SecretKey | undefined> {
-  const wrap = doc.wraps[tier.id]?.[ctx.self.signPub];
-  if (wrap === undefined) return undefined;
-  let bytes: Uint8Array;
-  try {
-    bytes = await ctx.key.unseal(fromBase64(wrap));
-  } catch (cause) {
-    if (cause instanceof TypeVaultError) return undefined;
-    throw cause;
+/** The tier's wraps that a current member signed, by holder; wraps nobody in the mesh vouches for are ignored. */
+export function memberWraps(
+  doc: VaultDoc,
+  ctx: VaultContext,
+  tierId: string,
+): ReadonlyMap<string, readonly MemberWrap[]> {
+  const out = new Map<string, MemberWrap[]>();
+  for (const [holder, signers] of Object.entries(doc.wraps[tierId] ?? {})) {
+    for (const [by, stored] of Object.entries(signers)) {
+      if (!ctx.members.has(by)) continue;
+      const body = readWrap(stored, ctx.mesh, { tier: tierId, holder, by });
+      if (body !== undefined) out.set(holder, [...(out.get(holder) ?? []), { body, wrap: stored.wrap }]);
+    }
   }
-  let key: SecretKey;
-  try {
-    key = decodeSecretKey(fromUtf8(bytes));
-  } catch (cause) {
-    if (cause instanceof TypeVaultError) return undefined;
-    throw cause;
+  return out;
+}
+
+/** Members whose announced key has a wrap of the current tier signed by a current member: the devices that can open it. */
+export function openersOf(doc: VaultDoc, ctx: VaultContext, resolved: ResolvedVault): ReadonlySet<string> {
+  if (resolved.tier === undefined) return new Set();
+  const wraps = memberWraps(doc, ctx, resolved.tier.id);
+  return new Set(
+    [...resolved.devices].flatMap(([holder, device]) =>
+      (wraps.get(holder) ?? []).some((item) => item.body.recipient === device.recipient) ? [holder] : [],
+    ),
+  );
+}
+
+/** Opens this device's wrap of the current tier inside the keyholder: undefined when none is the signed tier key. */
+export async function unlockTier(
+  doc: VaultDoc,
+  ctx: VaultContext,
+  tier: ResolvedTier,
+): Promise<TierHandle | undefined> {
+  for (const { wrap } of memberWraps(doc, ctx, tier.id).get(ctx.self.signPub) ?? []) {
+    // oxlint-disable-next-line no-await-in-loop -- tried in turn: the first wrap that opens is enough
+    const handle = await ctx.key.unwrap(fromBase64(wrap), tier.gen, tier.publicKey);
+    if (handle !== undefined) {
+      ctx.ledger.accept(TIER_MARK, tier.gen);
+      return handle;
+    }
   }
-  const { role } = key;
-  if (role.kind !== "tier" || role.tier !== TIER || role.gen !== tier.gen) return undefined;
-  if (!samePublic(await publicKeyOf(key), tier.publicKey)) return undefined;
-  ctx.ledger.accept(TIER_MARK, tier.gen);
-  return key;
+  return undefined;
 }
