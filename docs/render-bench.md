@@ -75,3 +75,19 @@ Measured on 2026-11-07 on `ubuntu-24.04`, 5 rounds: A/A Render bench run 4232854
 - Unpaced drawing at 1 pane is the noisiest (a single pane's 480 KB draws in about half a second; rounds ran from 774 to 884 KiB/s), so its limit is 0.85 times the baseline. Both ends of that window are read on a 50 ms poll: each program waits for the go file with `sleep 0.05`, and the bench checks every pane for the end line every 50 ms. Each poll can add up to about 10% to a window of about 0.55 s, which likely accounts for most of that spread; at 15 and 50 panes A/A medians moved under 1.5%.
 - Those runs had the unpaced phase right after the hidden one. In the merged order, after the prompt phase, A/A run 42566564456 (2026-11-09, dev `47bfb6b5`, same setup) drew 838 / 814 KiB/s at 1 pane (rounds 744 to 846), 3,989 / 3,952 at 15 and 4,002 / 3,967 at 50: medians 2.9%, 0.9% and 0.9% apart.
 - Main busy at 50 panes stays in the table, ungated; at 1 and 15 panes (7% and 39% busy) it still gates.
+
+## WebGL against the DOM (#2810)
+
+`VITE_TERMINAL_RENDERER=webgl` builds the web app with @wterm's WebGL2 renderer (`dom`, the default, otherwise). A WebGL build keeps no row text in the DOM, so each terminal registers its core's screen in `window.__dorifaceTerminalScreens` when a page sets it (the bench's probe does; nothing does in the product), and every wait reads that and then lets one more frame pass, for either build. `BENCH_VIEWPORT` (`WIDTHxHEIGHT`) runs the bench at another size and `BENCH_CHROMIUM_ARGS` launches the browser with GPU flags: headless Chromium draws WebGL with SwiftShader otherwise, and SwiftShader passes `failIfMajorPerformanceCaveat` (measured on Linux and macOS), so a software WebGL cannot be told apart by that flag.
+
+Measured on 2026-11-25 on an Apple M5 Max (`--use-angle=metal --enable-gpu --ignore-gpu-blocklist`, GL renderer `ANGLE Metal Renderer: Apple M5 Max`), the dom and webgl builds of one commit, 3 alternating rounds, medians, 1920x1080. Every gated metric was within its limit:
+
+| Panes | Main busy, dom / webgl | Drawn MB/s unpaced, dom / webgl | Frame p95 ms, dom / webgl | Show catch-up ms, dom / webgl |
+| ----- | ---------------------- | ------------------------------- | ------------------------- | ----------------------------- |
+| 1     | 6.0% / 4.3%            | 0.84 / 0.82                     | 16.7 / 16.8               | 71 / 24                       |
+| 15    | 17.4% / 10.9%          | 7.6 / 12.2                      | 16.8 / 16.7               | 12 / 8                        |
+| 50    | 32.2% / 14.5%          | 14.1 / 22.2                     | 16.7 / 16.7               | 41 / 13                       |
+
+One pane at phone width (390x844, iPhone 14 emulation) and at 1920x1080, 25 keys each, keydown to the first frame showing the echo: p50 23.5 / 22.1 ms (phone, dom / webgl) and 24.1 / 23.5 ms (desktop); the two renderers draw one terminal alike.
+
+WebGL is faster under many busy panes, and the DOM stays the default: with @wterm 0.5.9 and 0.6.0 alike, the WebGL renderer draws Hangul narrower than its two cells (gaps between syllables) and Latin heavier than the DOM, and after a synchronized full redraw (`ESC[3J` and the whole transcript again, a model switch in an agent's TUI) a phone's view is left above the bottom; 0.5.9 also drew one blank frame in that redraw. Specs that pass with the DOM on the same GPU failed with WebGL: `flood-input.e2e.ts` (#560's Close question) and four in `phone-browse-mode.e2e.ts` / `phone-browse-guards.e2e.ts`. The DOM build showed no changed frame through that redraw on a phone.
