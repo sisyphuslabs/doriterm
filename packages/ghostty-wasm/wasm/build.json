@@ -35,8 +35,12 @@
     {
       "path": "patches/wterm/0002-answer-osc-7501-program-status.patch",
       "sha256": "a3735eb566e89002d888078668d1bfb0d530e81a33bb0420daf9e29f4998a68e"
+    },
+    {
+      "path": "patches/wterm/0003-export-kitty-placeholder-runs.patch",
+      "sha256": "7ef5b820c5aa72b8c929d5059b158be3f07c701f8c4ed8c7786dd11d2a316bf5"
     }
   ],
-  "sha256": "2a4f3b1c54b70b194a59e38610d5730a0abc362a76aefeaa140ebc97e3e8e29e",
-  "bytes": 666200
+  "sha256": "e0640ebb504e76f93e8937b82eb6011af96a5bc1c06bb8638149378ea02a4261",
+  "bytes": 668141
 }

@@ -1,5 +1,5 @@
 diff --git a/dist/ghostty-core.d.ts b/dist/ghostty-core.d.ts
-index 308f0cd..aeb818d 100644
+index 308f0cd3aaf3cf6e4c15ff0bcfd69922bd1ea111..1ae4a5adc0ca8afb14db42d9818ec6c61055d9e5 100644
 --- a/dist/ghostty-core.d.ts
 +++ b/dist/ghostty-core.d.ts
 @@ -1,4 +1,5 @@
@@ -21,8 +21,17 @@ index 308f0cd..aeb818d 100644
      init(cols: number, rows: number): void;
      resize(cols: number, rows: number): void;
      getColorOverrides(): TerminalColorOverrides;
+@@ -87,7 +94,7 @@ export declare class GhosttyCore implements TerminalCore {
+     synchronizedOutputGeneration(): number;
+     modifyOtherKeys(): 0 | 2;
+     kittyKeyboardFlags(): number;
+-    getGraphicsState(): TerminalGraphicsState | null;
++    getGraphicsState(firstRow?: number, endRow?: number): TerminalGraphicsState | null;
+     getGraphicsImage(imageId: number, version: number): TerminalImageData | null;
+     getResourceState(): TerminalResourceState;
+     dispose(): void;
 diff --git a/dist/ghostty-core.js b/dist/ghostty-core.js
-index ea4cfb6..d936559 100644
+index ea4cfb6d542fc20cb376a10e834d45be90740830..24d76997b51aa9661bcb517b49f8e1a2e700c0dd 100644
 --- a/dist/ghostty-core.js
 +++ b/dist/ghostty-core.js
 @@ -143,6 +143,14 @@ export class GhosttyCore {
@@ -40,8 +49,32 @@ index ea4cfb6..d936559 100644
      // -- Lifecycle --
      init(cols, rows) {
          if (this._disposed)
+@@ -398,12 +406,12 @@ export class GhosttyCore {
+             return 0;
+         return this.wasm.exports.kitty_keyboard_flags?.(this.termPtr) ?? 0;
+     }
+-    getGraphicsState() {
++    getGraphicsState(firstRow = 0, endRow = 0) {
+         if (this._disposed || this.termPtr === 0)
+             return null;
+         const generation = this.wasm.exports.graphics_generation?.(this.termPtr);
+         const imageCount = this.wasm.exports.graphics_image_count?.(this.termPtr) ?? 0;
+-        const placementCount = this.wasm.exports.graphics_placement_count?.(this.termPtr) ?? 0;
++        const placementCount = this.wasm.exports.graphics_placement_count?.(this.termPtr, firstRow, endRow) ?? 0;
+         if (generation === undefined || !Number.isSafeInteger(generation))
+             return null;
+         if (!Number.isSafeInteger(imageCount) ||
+@@ -448,7 +456,7 @@ export class GhosttyCore {
+             return null;
+         try {
+             const images = readGraphicsImages(this.wasm, this.termPtr, this._graphicsBufPtr, imageCapacity);
+-            const placements = readGraphicsPlacements(this.wasm, this.termPtr, this._graphicsBufPtr + imageCapacity * GRAPHICS_IMAGE_BYTES, placementCapacity);
++            const placements = readGraphicsPlacements(this.wasm, this.termPtr, this._graphicsBufPtr + imageCapacity * GRAPHICS_IMAGE_BYTES, placementCapacity, firstRow, endRow);
+             const result = {
+                 generation,
+                 images: images.map((image) => ({ ...image })),
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index fddb207..01c6093 100644
+index fddb2070f5eb1f4347fccd2f1b91c200a7d561a8..01c609338da33ffad804cde313c277f111a58951 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -1,3 +1,5 @@
@@ -52,7 +85,7 @@ index fddb207..01c6093 100644
  //# sourceMappingURL=index.d.ts.map
 \ No newline at end of file
 diff --git a/dist/index.js b/dist/index.js
-index 15813d3..4d6d47b 100644
+index 15813d3dac55364a65029cd6b2362490318cb0c7..4d6d47b3d3043fd33ef0675ed2d0a1bc2960b7dc 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1,2 +1,3 @@
@@ -60,3 +93,85 @@ index 15813d3..4d6d47b 100644
 +export { loadGhosttyWasm } from "./wasm-bindings.js";
  //# sourceMappingURL=index.js.map
 \ No newline at end of file
+diff --git a/dist/wasm-bindings.d.ts b/dist/wasm-bindings.d.ts
+index e4545b5efd8f03a95bb542f2b967143ba8163162..83bd4b7cb0993f10373d52c8469614633bbad4d9 100644
+--- a/dist/wasm-bindings.d.ts
++++ b/dist/wasm-bindings.d.ts
+@@ -45,13 +45,13 @@ export interface GhosttyExports {
+     modify_other_keys?(ptr: number): number;
+     graphics_generation?(ptr: number): number;
+     graphics_image_count?(ptr: number): number;
+-    graphics_placement_count?(ptr: number): number;
++    graphics_placement_count?(ptr: number, firstRow?: number, endRow?: number): number;
+     graphics_bytes_used?(ptr: number): number;
+     graphics_capacity?(ptr: number): number;
+     graphics_rejected?(ptr: number): number;
+     graphics_evicted?(ptr: number): number;
+     graphics_images?(ptr: number, buf_ptr: number, max_records: number): number;
+-    graphics_placements?(ptr: number, buf_ptr: number, max_records: number): number;
++    graphics_placements?(ptr: number, buf_ptr: number, max_records: number, firstRow?: number, endRow?: number): number;
+     graphics_image_size?(ptr: number, image_id: number, version: number): number;
+     graphics_image_copy?(ptr: number, image_id: number, version: number, buf_ptr: number, buf_len: number): number;
+     get_cols(ptr: number): number;
+@@ -154,7 +154,7 @@ export interface WasmGraphicsPlacement {
+     z: number;
+ }
+ export declare function readGraphicsImages(wasm: GhosttyWasm, termPtr: number, bufPtr: number, capacity: number): WasmGraphicsImage[];
+-export declare function readGraphicsPlacements(wasm: GhosttyWasm, termPtr: number, bufPtr: number, capacity: number): WasmGraphicsPlacement[];
++export declare function readGraphicsPlacements(wasm: GhosttyWasm, termPtr: number, bufPtr: number, capacity: number, firstRow?: number, endRow?: number): WasmGraphicsPlacement[];
+ /**
+  * Write a UTF-8 string into WASM memory and call the terminal's write
+  * function. Handles allocation/deallocation of the transfer buffer.
+diff --git a/dist/wasm-bindings.js b/dist/wasm-bindings.js
+index 20d056624ab36a1d669bef399e5177bfe38e8be6..f570e22c8fe6c82c9a6f090998523cc77eae7814 100644
+--- a/dist/wasm-bindings.js
++++ b/dist/wasm-bindings.js
+@@ -219,13 +219,13 @@ export function readGraphicsImages(wasm, termPtr, bufPtr, capacity) {
+     }
+     return result;
+ }
+-export function readGraphicsPlacements(wasm, termPtr, bufPtr, capacity) {
++export function readGraphicsPlacements(wasm, termPtr, bufPtr, capacity, firstRow, endRow) {
+     const read = wasm.exports.graphics_placements;
+     if (!read || !Number.isSafeInteger(capacity) || capacity < 0)
+         return [];
+     let count;
+     try {
+-        count = read(termPtr, bufPtr, capacity);
++        count = read(termPtr, bufPtr, capacity, firstRow, endRow);
+     }
+     catch {
+         return [];
+@@ -248,18 +248,27 @@ export function readGraphicsPlacements(wasm, termPtr, bufPtr, capacity) {
+         const imageId = view.getUint32(offset, true);
+         const placementId = view.getUint32(offset + 4, true);
+         const placementTag = view.getUint32(offset + 56, true);
++        const virtual = placementTag === 2 ? {
++            col: view.getUint32(offset + 28, true),
++            row: view.getUint32(offset + 32, true),
++            columns: view.getUint32(offset + 36, true),
++            rows: view.getUint32(offset + 40, true),
++        } : null;
+         result.push({
+-            placementKey: `${imageId}:${placementId}:${placementTag}`,
++            placementKey: virtual
++                ? `${imageId}:${placementId}:v:${view.getUint32(offset + 12, true)}:${view.getUint32(offset + 16, true)}:${virtual.row}:${virtual.col}:${virtual.columns}:${virtual.rows}:${view.getUint32(offset + 44, true)}`
++                : `${imageId}:${placementId}:${placementTag}`,
++            virtual,
+             imageId,
+             imageVersion: view.getUint32(offset + 8, true),
+             row: view.getUint32(offset + 12, true),
+             col: view.getUint32(offset + 16, true),
+             offsetX: view.getUint32(offset + 20, true),
+             offsetY: view.getUint32(offset + 24, true),
+-            sourceX: view.getUint32(offset + 28, true),
+-            sourceY: view.getUint32(offset + 32, true),
+-            sourceWidth: view.getUint32(offset + 36, true),
+-            sourceHeight: view.getUint32(offset + 40, true),
++            sourceX: virtual ? 0 : view.getUint32(offset + 28, true),
++            sourceY: virtual ? 0 : view.getUint32(offset + 32, true),
++            sourceWidth: virtual ? 0 : view.getUint32(offset + 36, true),
++            sourceHeight: virtual ? 0 : view.getUint32(offset + 40, true),
+             columns: view.getUint32(offset + 44, true),
+             rows: view.getUint32(offset + 48, true),
+             z: view.getInt32(offset + 52, true),

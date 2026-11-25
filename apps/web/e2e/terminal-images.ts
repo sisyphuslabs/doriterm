@@ -47,7 +47,8 @@ export function chunked(control: string, payload: string, size: number): string 
 /** Has the shell print `mark` on its own line, then `bytes` (from a file, so nothing long is typed), then `done-<mark>`. */
 export async function show(page: Page, terminal: Locator, mark: string, bytes: string): Promise<void> {
   const file = join(mkdtempSync(join(tmpdir(), "dh-images-")), "out");
-  writeFileSync(file, bytes, "latin1");
+  // Graphics controls and base64 are ASCII; Kitty placeholder cells and their diacritics are UTF-8.
+  writeFileSync(file, bytes, "utf8");
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type(`echo ${mark}; cat ${file}; echo; echo done-${mark}`);
   await page.keyboard.press("Enter");
