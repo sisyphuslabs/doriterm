@@ -2,11 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { KEYBOARD_REQUEST_MS, keyboardHeight, keyboardInset, LayoutKeyboard } from "./keyboard-inset.ts";
 
 test.each([
-  ["no keyboard", { height: 844, offsetTop: 0, scale: 1 }, 0],
-  ["a keyboard over the bottom", { height: 508, offsetTop: 0, scale: 1 }, 336],
-  ["a keyboard with the page scrolled up under it", { height: 508, offsetTop: 120, scale: 1 }, 216],
-  ["a fractional viewport", { height: 507.6, offsetTop: 0, scale: 1 }, 336],
-  ["a pinch zoom, which is not a keyboard", { height: 422, offsetTop: 0, scale: 2 }, 0],
+  ["no keyboard", { height: 844, offsetTop: 0, pageTop: 0, scale: 1 }, 0],
+  ["a keyboard over the bottom", { height: 508, offsetTop: 0, pageTop: 0, scale: 1 }, 336],
+  ["a keyboard with the page scrolled up under it", { height: 508, offsetTop: 120, pageTop: 120, scale: 1 }, 216],
+  // An installed iOS app scrolls the document itself to show the focused field: the visual viewport has not moved in
+  // the layout viewport (offsetTop 0), the layout viewport has moved down the page, and the keys, placed in the page,
+  // move up with it. Measured from the layout viewport they stood a scroll's height over the keyboard.
+  ["a keyboard with the document scrolled under it", { height: 508, offsetTop: 0, pageTop: 49, scale: 1 }, 287],
+  ["a fractional viewport", { height: 507.6, offsetTop: 0, pageTop: 0, scale: 1 }, 336],
+  ["a pinch zoom, which is not a keyboard", { height: 422, offsetTop: 0, pageTop: 0, scale: 2 }, 0],
 ] as const)("the keyboard inset under %s", (_, viewport, inset) => {
   expect(keyboardInset(844, viewport)).toBe(inset);
 });
@@ -50,12 +54,12 @@ describe("a browser that resizes the page for the keyboard (#244)", () => {
 });
 
 test("a pan by the keyboard's height zeroes the inset but not the keyboard's height", () => {
-  const panned = { height: 508, offsetTop: 336, scale: 1 };
+  const panned = { height: 508, offsetTop: 336, pageTop: 336, scale: 1 };
   expect(keyboardInset(844, panned)).toBe(0);
   expect(keyboardHeight(844, panned)).toBe(336);
-  expect(keyboardHeight(844, { height: 844, offsetTop: 0, scale: 1 })).toBe(0);
+  expect(keyboardHeight(844, { height: 844, offsetTop: 0, pageTop: 0, scale: 1 })).toBe(0);
 });
 
 test("a pinch zoom is no keyboard's height either", () => {
-  expect(keyboardHeight(844, { height: 422, offsetTop: 0, scale: 2 })).toBe(0);
+  expect(keyboardHeight(844, { height: 422, offsetTop: 0, pageTop: 0, scale: 2 })).toBe(0);
 });
