@@ -21,7 +21,14 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
         const cell = Number.parseFloat(getComputedStyle(element).getPropertyValue("--term-cell-width"));
         const first = element.querySelector(".term-grid .term-row:not(.term-scrollback-row)")?.getBoundingClientRect();
         const rows = element.querySelectorAll(".term-grid .term-row:not(.term-scrollback-row)");
-        const chars = [...(rows[r]?.textContent ?? "").padEnd(c + n)].slice(c, c + n);
+        // A frame drawn with WebGL shows the core as it was drawn; the DOM rows catch up later (#2810).
+        const screens = Reflect.get(window, "__dorifaceTerminalScreens") as Record<string, () => string> | undefined;
+        const drawn =
+          element.querySelector("canvas.term-gpu-canvas:not([hidden])") === null
+            ? undefined
+            : screens?.[element.getAttribute("data-terminal") ?? ""]?.();
+        const rowText = drawn === undefined ? (rows[r]?.textContent ?? "") : (drawn.split("\n")[r] ?? "");
+        const chars = [...rowText.padEnd(c + n)].slice(c, c + n);
         const cells: { text: string; col: number }[] = [];
         for (const span of element.querySelectorAll(".term-prediction-cell")) {
           const box = span.getBoundingClientRect();
@@ -30,7 +37,7 @@ export async function startRowSampler(terminal: Locator, row: number, col: numbe
           cells.push({ text: span.textContent ?? "", col: at });
           if (at >= 0 && at < n) chars[at] = span.textContent ?? "";
         }
-        const grid = [...(rows[r]?.textContent ?? "").padEnd(c + n)].slice(c, c + n).join("");
+        const grid = [...rowText.padEnd(c + n)].slice(c, c + n).join("");
         const core = Array.from({ length: n }, (_, at) => predictor?.cell(r, c + at) || " ").join("");
         samples.push({ row: chars.join(""), grid, core, at: performance.now(), cells });
       };

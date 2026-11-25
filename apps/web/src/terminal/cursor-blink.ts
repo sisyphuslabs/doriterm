@@ -223,7 +223,14 @@ export function blinkCursor(element: HTMLElement, timer: Timer = after): () => v
     },
     timer,
   );
-  const decide = (): void => blink.decide();
+  const decide = (): void => {
+    // A WebGL frame draws its own cursor, which the hide rule's CSS cannot reach: wterm hides it for this class (#2810).
+    element.classList.toggle(
+      "cursor-hidden",
+      element.hasAttribute("data-preedit") || element.hasAttribute("data-predicting"),
+    );
+    blink.decide();
+  };
   const press = (): void => blink.press();
   const release = (): void => blink.release();
 
