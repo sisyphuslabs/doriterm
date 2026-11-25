@@ -49,6 +49,7 @@ for (const theme of ["day", "night"] as const) {
       localStorage.setItem("doriface.appearance", JSON.stringify({ theme: chosen, custom: [] }));
     }, theme);
     const terminal = await openPhoneTerminal(page);
+    await key(page, "Type in a field").click();
     await terminal.click();
     await expect(field(page)).toBeVisible();
     await expect.poll(async () => (await field(page).boundingBox())?.height).toBe(44);

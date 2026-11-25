@@ -30,7 +30,7 @@ import { DictationHost } from "./dictation.ts";
 import { DirectForwarder } from "./direct-forward.ts";
 import { applyDevCsp, hardenContents, lockPermissions } from "./harden.ts";
 import { InputGestures } from "./paste-invite.ts";
-import { findHc, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
+import { findHc, hostChildEnv, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
 import { registerIpc } from "./ipc.ts";
 import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
@@ -40,6 +40,7 @@ import { loadNoticeAuthorization } from "./notice-addon.ts";
 import { NoticeRequest, noticesSupported } from "./notice-request.ts";
 import { requestPairOffer } from "./pair-offer.ts";
 import { requestPairedDevices, revokePairedDevice } from "./devices.ts";
+import { requestMcp } from "./mcp.ts";
 import { loadSpeech, speechAddonPath } from "./speech.ts";
 import { registerAppScheme, serveApp } from "./protocol.ts";
 import { applyMacTitlebar } from "./titlebar.ts";
@@ -222,7 +223,7 @@ function ready(): void {
     searched: () => usualHcDirs(context),
     // A new terminal with no directory opens in the home folder, not where the app was launched from (#2047).
     cwd: context.home,
-    env: process.env,
+    env: hostChildEnv(context),
     log: (line) => console.log(line),
   });
   app.on("will-quit", () => void localHost.stop());
@@ -295,6 +296,13 @@ function ready(): void {
     revokeDevice: async (id) => {
       try {
         return await revokePairedDevice(await localHost.start(), id);
+      } catch (error) {
+        return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    mcp: async (request) => {
+      try {
+        return await requestMcp(await localHost.start(), request);
       } catch (error) {
         return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
       }

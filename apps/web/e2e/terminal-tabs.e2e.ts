@@ -59,7 +59,8 @@ test("open tabs and the active terminal survive crossing the phone breakpoint an
   await page.goto("/");
   const before = await twoTabs(page);
   const wide = page.viewportSize() ?? { width: 1280, height: 720 };
-  await page.setViewportSize({ width: 700, height: wide.height });
+  // Under the compact tier's 600 px (apps/web/src/layout/width-tier.ts).
+  await page.setViewportSize({ width: 500, height: wide.height });
   await expect(page.getByRole("tablist", { name: "Tabs" })).toBeHidden();
   await page.setViewportSize(wide);
   await expect.poll(() => layout(page), { timeout: 15_000 }).toEqual(before);

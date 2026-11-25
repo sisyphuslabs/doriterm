@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { endAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { FOLD7, fold } from "./fold.ts";
 import { seedLayout } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { PHONE } from "./phone-key-bar.ts";
@@ -81,7 +82,7 @@ async function sampleBottomWhile(page: Page, address: string, change: () => Prom
 test.describe("on a phone", () => {
   test.use({ ...PHONE });
 
-  test("a phone turned to landscape and back shows no frame with an earlier line at the bottom (#812)", async ({
+  test("a foldable unfolded and folded again shows no frame with an earlier line at the bottom (#812)", async ({
     page,
   }) => {
     const dir = mkdtempSync(join(tmpdir(), "doriface-first-paint-"));
@@ -93,6 +94,7 @@ test.describe("on a phone", () => {
       const address = String((JSON.parse(out) as { address: string }).address);
       started.push(address);
       seedLayout([{ id: "tb-812", name: "agent", root: [{ pane: "p1", terminal: address }] }]);
+      await fold(page, FOLD7.folded);
       await page.goto("/");
       await page
         .getByRole("button", { name: /first-paint-agent/ })
@@ -101,12 +103,12 @@ test.describe("on a phone", () => {
       const terminal = page.locator(`[data-terminal="${address}"]`);
       await atLastLine(terminal);
 
-      // Each crossing of the breakpoint mounts the view anew and attaches again, so the core's first paint replays the
-      // last 2,000 lines: the bottom of the view must never walk through them (#812).
+      // Each crossing between the phone and tablet layouts mounts the view anew and attaches again, so the core's first
+      // paint replays the last 2,000 lines: the bottom of the view must never walk through them (#812).
       const samples = await sampleBottomWhile(page, address, async () => {
-        await page.setViewportSize({ width: 844, height: 390 });
+        await fold(page, FOLD7.open);
         await atLastLine(terminal);
-        await page.setViewportSize({ width: 390, height: 844 });
+        await fold(page, FOLD7.folded);
         await atLastLine(terminal);
       });
 

@@ -165,7 +165,7 @@ describe("startRelayedHost", () => {
       60_000,
     );
   }
-  for (const { stage, title, env, settled } of startupCases) {
+  for (const { stage, title, env, settled, resumes } of startupCases) {
     test(
       title,
       async () => {
@@ -207,8 +207,12 @@ describe("startRelayedHost", () => {
           fixture.kill("SIGTERM");
           await lineFrom(reader, seen, "SIGNALLED");
           // Start-up goes on only now, after the interrupt: it must end at its next step rather than race the teardown.
-          fixture.stdin.write("GO\n");
-          await fixture.stdin.flush();
+          // A stage that does not hold ends on the SIGTERM alone, so it gets no GO: its fixture may already have exited,
+          // and a write to it would fail with EPIPE (#2725). Its stdin stays open, so it must end without any input.
+          if (resumes) {
+            fixture.stdin.write("GO\n");
+            await fixture.stdin.flush();
+          }
           await fixture.exited;
           const errors = await stderr;
           expect(existsSync(settledFile) ? readFileSync(settledFile, "utf8") : "never settled").toContain(settled);

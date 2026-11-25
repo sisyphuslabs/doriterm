@@ -7,7 +7,7 @@ import {
   type ApprovalOutcome,
   type ApprovalRecord,
   readRecords,
-  recordJson,
+  type RecordsRead,
   update,
 } from "./approval-records.ts";
 import { readScreenPrompt } from "./approval-screen.ts";
@@ -30,39 +30,25 @@ export type AnswerResult =
 
 const failure = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/** Sets the outcome of exactly this answer's record (prompt, client and attempt), never another answer's. */
-async function settle(core: ApprovalCore, mark: ApprovalMark, mine: ApprovalRecord, outcome: ApprovalOutcome) {
+/**
+ * Sets the outcome of exactly this answer's record (prompt, client and attempt), never another answer's. `read` is the
+ * fence's own read, when the answer has one: the record is written at its version, without reading it again.
+ */
+async function settle(
+  core: ApprovalCore,
+  mark: ApprovalMark,
+  mine: ApprovalRecord,
+  outcome: ApprovalOutcome,
+  read?: RecordsRead,
+) {
   const ours = (record: ApprovalRecord) =>
     record.prompt === mine.prompt && record.client === mine.client && record.attempt === mine.attempt;
-  await update(core, mark.terminal, (records) =>
-    records.some(ours)
-      ? records.map((record) => recordJson(record, ours(record) ? outcome : record.outcome))
-      : undefined,
-  );
-}
-
-/**
- * The claimer's fence, read right before its key press: the prompt's record is still this answer's own `claimed` one,
- * and both this client's own clocks (its monotonic clock and its wall clock, each read only against itself) say the
- * claim is younger than `CLAIM_TTL_MS - FENCE_MARGIN_MS`.
- */
-async function fenced(
-  core: ApprovalCore,
-  address: string,
-  mine: ApprovalRecord,
-  clock: ApprovalClock,
-  claimedAt: number,
-  wall: () => number,
-  wallClaimedAt: number,
-) {
-  const current = (await readRecords(core, address)).findLast((record) => record.prompt === mine.prompt);
-  return (
-    current?.client === mine.client &&
-    current.attempt === mine.attempt &&
-    current.outcome === "claimed" &&
-    clock.now() - claimedAt < CLAIM_TTL_MS - FENCE_MARGIN_MS &&
-    // A monotonic clock may stand still while the device sleeps; this device's own wall clock does not.
-    wall() - wallClaimedAt < CLAIM_TTL_MS - FENCE_MARGIN_MS
+  await update(
+    core,
+    mark.terminal,
+    (records) =>
+      records.some(ours) ? records.map((record) => (ours(record) ? { ...record, outcome } : record)) : undefined,
+    read,
   );
 }
 
@@ -71,21 +57,37 @@ const ENTRY_WAITS_MS = [50, 100, 200, 400, 800, 1600];
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** The typed row `option` is open on the live screen: the agent still waits, and its cursor's row takes text. */
+/** Start the read beside the screen. Observe its rejection immediately, but use its result only if input is needed. */
+function prefetchFence(core: ApprovalCore, address: string) {
+  const settled = Promise.allSettled([readRecords(core, address)]);
+  return async () => {
+    const [read] = await settled;
+    if (read.status === "rejected") throw read.reason;
+    return read.value;
+  };
+}
+
+/**
+ * Waits for the typed row `option` to open on the live screen (the agent still waits, and its cursor's row takes text),
+ * returning the document read alongside the open row for the caller's pre-paste fence.
+ */
 async function entryOpen(
   core: ApprovalCore,
   address: string,
   option: string,
   pause: (ms: number) => Promise<void>,
   waits: readonly number[] = ENTRY_WAITS_MS,
-): Promise<boolean> {
+): Promise<RecordsRead | undefined> {
   const [ms, ...later] = waits;
-  if (ms === undefined) return false;
+  if (ms === undefined) return undefined;
   await pause(ms);
-  const [terminal, screen] = await Promise.all([core.terminal(address), core.screen(address)]);
-  if (!waitsOnApproval(terminal)) return false;
+  const checking = Promise.all([core.terminal(address), core.screen(address)]);
+  const fence = prefetchFence(core, address);
+  const [terminal, screen] = await checking;
+  if (!waitsOnApproval(terminal)) return undefined;
   const now = readScreenPrompt(terminal.status?.app ?? "", screen);
-  return (now?.typing === true && now.cursor === option) || entryOpen(core, address, option, pause, later);
+  if (now?.typing !== true || now.cursor !== option) return entryOpen(core, address, option, pause, later);
+  return fence();
 }
 
 /**
@@ -101,11 +103,13 @@ async function entryOpen(
  *    cancel.
  * 3. Fence: re-read the document; press only if the prompt's record is still this answer's own claim and this client's
  *    monotonic and wall clocks both say the claim is younger than CLAIM_TTL_MS - FENCE_MARGIN_MS (a sleeping page's
- *    monotonic clock may stand still). Otherwise nothing is pressed (`failed`).
+ *    monotonic clock may stand still). Otherwise nothing is pressed (`failed`). Read the document beside the screen
+ *    in step 2, but check ownership and age after both replies: a slow screen can outlive the claim.
  * 4. Press the keys, then record `sent`. A press that throws is `unknown`: it may have landed, so the prompt stays held
  *    until the screen moves. For typed text, the keys open its row; the text is pasted (one line, no control
- *    characters) only once the live screen shows that row open and the fence of step 3 still holds, and is `unknown`
- *    otherwise, since keys were pressed.
+ *    characters) only once the live screen shows that row open and the fence of step 3 still holds (read beside that
+ *    screen read), and is `unknown` otherwise, since keys were pressed. `sent` is written at the version of the last
+ *    fence's read, without reading the document again.
  *
  * `wallMs` is only shown to people. Two limits stay: a key already on the wire when its claim lapses, and someone
  * typing in the terminal itself; both need a conditional `terminal.keys` in hc (herdrdev/herdr-core#122).
@@ -143,33 +147,51 @@ export async function answerApproval(
     attempt: crypto.randomUUID(),
     outcome: "claimed",
   };
-  const taken = await update(core, mark.terminal, (records) =>
-    records.some((record) => record.prompt === key && holds(record, clock, options.retake, who.client))
-      ? undefined
-      : [...records.filter((record) => record.prompt !== key), claim].map((record) => recordJson(record)),
+  const taken = await update(
+    core,
+    mark.terminal,
+    (records) =>
+      records.some((record) => record.prompt === key && holds(record, clock, options.retake, who.client))
+        ? undefined
+        : [...records.filter((record) => record.prompt !== key), claim],
+    undefined,
+    clock,
   );
   const winner = taken?.findLast((record) => record.prompt === key);
   if (taken !== undefined) return winner === undefined ? { kind: "stale" } : { kind: "lost", record: winner };
 
   const text = reply.kind === "text" ? typedAnswer(reply.text) : undefined;
-  let press: boolean;
+  const holdsFence = (read: RecordsRead): boolean => {
+    const current = read.records.findLast((record) => record.prompt === key);
+    return (
+      current?.client === claim.client &&
+      current.attempt === claim.attempt &&
+      current.outcome === "claimed" &&
+      clock.now() - claimedAt < CLAIM_TTL_MS - FENCE_MARGIN_MS &&
+      wall() - wallClaimedAt < CLAIM_TTL_MS - FENCE_MARGIN_MS
+    );
+  };
+  let press: RecordsRead | undefined;
   let keys: readonly string[] | undefined;
   try {
-    const live = await livePrompt(core, mark);
+    const checking = livePrompt(core, mark);
+    const fence = prefetchFence(core, mark.terminal);
+    const live = await checking;
     // The keys are worked out on the live screen, and only for rows that still carry the words the card showed.
     keys = live.now === undefined || !replyShown(mark.prompt, live.now, reply) ? undefined : replyKeys(live.now, reply);
     if (live.check !== "pending" || keys === undefined || (reply.kind === "text" && text === undefined)) {
       await settle(core, mark, claim, "stale");
       return { kind: "stale" };
     }
-    press = await fenced(core, mark.terminal, claim, clock, claimedAt, wall, wallClaimedAt);
+    const read = await fence();
+    press = holdsFence(read) ? read : undefined;
   } catch (error) {
     // Nothing was pressed. Release the claim as `failed` if the document is reachable; if it is not, it lapses after
     // CLAIM_TTL_MS of every other client's watch.
     await settle(core, mark, claim, "failed").catch(() => undefined);
     return { kind: "failed", reason: failure(error), attempt: claim.attempt ?? "" };
   }
-  if (!press) {
+  if (press === undefined) {
     await settle(core, mark, claim, "failed").catch(() => undefined);
     return {
       kind: "failed",
@@ -180,13 +202,15 @@ export async function answerApproval(
   try {
     await core.keys(mark.terminal, keys);
     if (reply.kind === "text" && text !== undefined) {
-      if (!(await entryOpen(core, mark.terminal, reply.option, options.pause ?? wait)))
+      const open = await entryOpen(core, mark.terminal, reply.option, options.pause ?? wait);
+      if (open === undefined)
         throw new Error("the row for a typed answer did not open; its keys were pressed, the text was not sent");
       // The row took time to open: the claim is checked again, as before the keys, right before the text goes in.
-      if (!(await fenced(core, mark.terminal, claim, clock, claimedAt, wall, wallClaimedAt)))
+      if (!holdsFence(open))
         throw new Error(
           "the claim lapsed or was taken while the typed row opened; its keys were pressed, the text was not sent",
         );
+      press = open;
       await core.send(mark.terminal, text);
     }
   } catch (error) {
@@ -194,6 +218,7 @@ export async function answerApproval(
     return { kind: "unknown", reason: failure(error) };
   }
   // The key was delivered. If `sent` cannot be written, the claim lapses later and the screen re-check finds no prompt.
-  await settle(core, mark, claim, "sent").catch(() => undefined);
+  // Written at the version of the last fence, whose record is this claim: no read in between (#2718).
+  await settle(core, mark, claim, "sent", press).catch(() => undefined);
   return { kind: "sent" };
 }

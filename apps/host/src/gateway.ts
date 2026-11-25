@@ -8,6 +8,7 @@ import { attachAfterRun } from "./attach-after-run.ts";
 import { checkBearer, checkHandshake } from "./auth.ts";
 import { bridge } from "./bridge.ts";
 import { AmbiguousDeviceError, type DeviceSurface, UnknownDeviceError } from "./device-surface.ts";
+import type { McpSurface } from "./mcp-surface.ts";
 import { acceptE2ee, type E2eeDeps, type E2eeTransport } from "./e2ee/accept.ts";
 import { meshPeer } from "./e2ee/authorize.ts";
 import { firstLineRefusal, gateHello } from "./e2ee/first-line.ts";
@@ -51,6 +52,8 @@ export interface GatewayOptions {
   readonly resumeGraceMs?: number | undefined;
   /** Serves a device's push stream (`stream:"push"`, and `/v1/push` on loopback); without it both are refused. */
   readonly push?: ((link: PushLink, owner: string) => void) | undefined;
+  /** Serves the discovery-only MCP stream under the client's key. */
+  readonly mcp?: ((link: PushLink, key: string) => void) | undefined;
   /**
    * This computer's own pairing offer, for the app that runs the host: `POST /v1/pair` opens one and `GET /v1/pair`
    * reports it, behind the same token as `/v1/hc` and never on the LAN listener. Without it both routes are absent.
@@ -62,6 +65,11 @@ export interface GatewayOptions {
    * both routes are absent.
    */
   readonly devices?: DeviceSurface | undefined;
+  /**
+   * This computer's MCP switch for the app that runs the host: `GET /v1/mcp` reads it with the connected clients and
+   * `PUT /v1/mcp` with `{"enabled": true|false}` sets it, behind the same token and never on the LAN listener.
+   */
+  readonly mcpSurface?: McpSurface | undefined;
 }
 
 /** The loopback pairing routes' answers; the app renders these, so they stay JSON-serialisable. */
@@ -150,7 +158,8 @@ export function createGateway(options: GatewayOptions): Gateway {
   );
   const pair = options.pair;
   const devices = options.devices;
-  if (pair !== undefined || devices !== undefined) {
+  const mcpSurface = options.mcpSurface;
+  if (pair !== undefined || devices !== undefined || mcpSurface !== undefined) {
     const pairGate = async (c: Context, next: Next) => {
       if (!checkBearer(c.req.header("authorization"), options.token))
         return c.text("missing or wrong doriface token", 401);
@@ -160,6 +169,15 @@ export function createGateway(options: GatewayOptions): Gateway {
     if (pair !== undefined) {
       app.get("/v1/pair", pairGate, (c) => c.json(pair.state()));
       app.post("/v1/pair", pairGate, async (c) => c.json(await pair.open()));
+    }
+    if (mcpSurface !== undefined) {
+      app.get("/v1/mcp", pairGate, (c) => c.json(mcpSurface.state()));
+      app.put("/v1/mcp", pairGate, async (c) => {
+        const body: unknown = await c.req.json().catch(() => undefined);
+        const enabled = typeof body === "object" && body !== null ? Reflect.get(body, "enabled") : undefined;
+        if (typeof enabled !== "boolean") return c.json({ error: "enabled must be true or false" }, 400);
+        return c.json(await mcpSurface.set(enabled));
+      });
     }
     if (devices !== undefined) {
       app.get("/v1/devices", pairGate, (c) => c.json({ devices: devices.list() }));
@@ -216,6 +234,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       return;
     }
     if (secure.stream === "push") return servePush(secure);
+    if (secure.stream === "mcp") return serveMcp(secure);
     // A pairing session is not gated by authorize's session limit, yet the new device keeps it as its workspace.
     const room =
       secure.kind === SessionKind.Session ? undefined : requireWithin(e2ee.policy, "sessions", e2ee.sessions.count());
@@ -253,6 +272,16 @@ export function createGateway(options: GatewayOptions): Gateway {
       const key = base64urlEncode(secure.remoteStatic);
       e2ee.mesh?.recordClientSession(key);
       options.push(e2ee.sessions.guardPush(secure), key);
+    }
+  };
+
+  const serveMcp = (secure: SecureLink): void => {
+    if (e2ee === undefined || !e2ee.sessions.admitLimited(secure, e2ee.policy)) return;
+    if (options.mcp === undefined) secure.close(1011, "this host serves no mcp stream");
+    else {
+      const key = base64urlEncode(secure.remoteStatic);
+      e2ee.mesh?.recordClientSession(key);
+      options.mcp(e2ee.sessions.guardMcp(secure), key);
     }
   };
 

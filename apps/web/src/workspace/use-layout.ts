@@ -35,9 +35,10 @@ import type { Leaving } from "./use-drop-pane.ts";
 import { useTabClose } from "./use-tab-close.ts";
 import { useTabOpening } from "./use-tab-opening.ts";
 import { useTabMoves } from "./use-tab-moves.ts";
+import { type TerminalDrops, useTerminalDrops } from "./use-terminal-drops.ts";
 import { layoutsRestored, type MachineLayout } from "./use-layout-docs.ts";
 
-export interface Layout extends PaneMoves {
+export interface Layout extends PaneMoves, TerminalDrops {
   /** Every tab of every machine's document, and this screen's own. */
   readonly tabs: readonly LayoutTab[];
   /** The tab bar's tabs: the selected space's (the space of the tab in view), in their document's order (#404). */
@@ -400,6 +401,7 @@ export function useLayout(
   const { dropPane, closeTab } = useTabClose(tabs, active, view.spaces, layoutOf, setLoose, setView, leavePane);
 
   const moves = usePaneMoves({ active, focused, layoutOf, show, setView, history: history.current });
+  const drops = useTerminalDrops({ tabs, layoutOf, show });
   const selectTab = useCallback((key: string): void => show(key, null), [show]);
   const focusPane = useCallback((tab: string, pane: string): void => show(tab, pane), [show]);
   const { moveTab, lastMove } = useTabMoves(shown, layoutOf);
@@ -460,6 +462,7 @@ export function useLayout(
     seen: view.seen,
     remember,
     ...moves,
+    ...drops,
     moveTab,
     renameTab,
     pinTab,

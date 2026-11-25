@@ -6,6 +6,7 @@ import type { HostOptions } from "./host-types.ts";
 import { meshDeps } from "./mesh/host-deps.ts";
 import { type PairingSlotRegistrar, PairingSlots } from "./pairing-slots.ts";
 import { DeviceStore } from "./state/devices.ts";
+import { McpSwitch } from "./state/mcp-switch.ts";
 import { MeshStore } from "./state/mesh.ts";
 import { PairingStore } from "./state/pairing.ts";
 
@@ -17,6 +18,7 @@ export function e2eeDeps(
   proofs: RelayProofs | undefined,
 ) {
   const devices = new DeviceStore(stateDir);
+  const mcp = new McpSwitch(stateDir);
   const policy = options.policy ?? policyFromEnv(process.env);
   const pairing = new PairingStore(stateDir, options.log);
   const mesh = new MeshStore(stateDir, { log: options.log });
@@ -24,7 +26,7 @@ export function e2eeDeps(
   /** Filled in once the LAN listener has its port. */
   const lanUrls: string[] = [];
   const slots = new PairingSlots(pairing, identity.noise.publicKey, registrar, options.log);
-  const sessions = new LiveSessions(devices, options.log, mesh);
+  const sessions = new LiveSessions(devices, options.log, mesh, mcp);
   const meshParts = meshDeps({
     stateDir,
     identity,
@@ -47,6 +49,7 @@ export function e2eeDeps(
     identity,
     lanUrls,
     devices,
+    mcp,
     pairing,
     mesh,
     slots,

@@ -76,6 +76,18 @@ describe("handshake payloads: one JSON line, then raw stream bytes", () => {
     expect(() => decodeHello("IKpsk2", bytes('{"v":1,"name":"browser","stream":"roster"}\n'))).toThrow(PayloadError);
   });
 
+  test("mcp is a session stream with no early bytes and is never a pairing stream", () => {
+    expect(text(encodeSessionHello(undefined, "mcp"))).toBe('{"v":1,"stream":"mcp"}\n');
+    expect(decodeHello("IK", bytes('{"v":1,"stream":"mcp"}\n'))).toEqual({
+      kind: "session",
+      early: new Uint8Array(0),
+      stream: "mcp",
+    });
+    expect(() => encodeSessionHello(bytes("early"), "mcp")).toThrow("no early bytes");
+    expect(() => decodeHello("IK", bytes('{"v":1,"stream":"mcp"}\nearly'))).toThrow("no early bytes");
+    expect(() => decodeHello("IKpsk2", bytes('{"v":1,"name":"browser","stream":"mcp"}\n'))).toThrow(PayloadError);
+  });
+
   test.each([
     ["IK", '{"v":1,"stream":"mesh"}\nearly'],
     ["IK", '{"v":1,"stream":"push"}\nearly'],

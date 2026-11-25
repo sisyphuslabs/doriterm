@@ -25,7 +25,7 @@ export interface PaneDrag {
 }
 
 /** The pane other than `dragged` under (x, y) of `box`, with the zone the point is in; none over no other pane. */
-function targetIn(
+export function targetIn(
   box: HTMLElement | null,
   panes: ReadonlyMap<string, Rect> | undefined,
   dragged: string,

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
+import { FOLD7, fold } from "./fold.ts";
 import { seedLayout } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { PHONE } from "./phone-key-bar.ts";
@@ -98,7 +99,7 @@ async function atLastLine(terminal: Locator): Promise<void> {
 test.describe("on a phone", () => {
   test.use({ ...PHONE });
 
-  test("a phone turned back before its landscape view's attach is answered still paints the portrait view to its bottom row (#2475)", async ({
+  test("a foldable folded again before its unfolded view's attach is answered still paints the folded view to its bottom row (#2475)", async ({
     page,
   }) => {
     const dir = mkdtempSync(join(tmpdir(), "doriface-rotate-in-flight-"));
@@ -111,6 +112,7 @@ test.describe("on a phone", () => {
       started.push(address);
       seedLayout([{ id: "tb-2475", name: "agent", root: [{ pane: "p1", terminal: address }] }]);
       const link = await holdNextAttachAnswer(page);
+      await fold(page, FOLD7.folded);
       await page.goto("/");
       await page
         .getByRole("button", { name: /rotate-in-flight-agent/ })
@@ -119,13 +121,14 @@ test.describe("on a phone", () => {
       const terminal = page.locator(`[data-terminal="${address}"]`);
       await atLastLine(terminal);
 
-      // Landscape mounts the view anew, and its attach reaches the core; its answer waits on the way back.
+      // Unfolding changes the layout (phone to tablet, width-tier.ts) and mounts the view anew, and its attach reaches
+      // the core; its answer waits on the way back. (Turning a phone on its side keeps the phone layout and its view.)
       await page.evaluate(() => Reflect.set(window, "__dorifaceAttachLog", []));
       link.arm();
-      await page.setViewportSize({ width: 844, height: 390 });
+      await fold(page, FOLD7.open);
       await link.asked();
-      // Back to portrait before that answer is in: the landscape view goes, and the portrait one starts attaching.
-      await page.setViewportSize({ width: 390, height: 844 });
+      // Folded again before that answer is in: the unfolded view goes, and the folded one starts attaching.
+      await fold(page, FOLD7.folded);
       await page.waitForFunction(() => (Reflect.get(window, "__dorifaceAttachLog") as unknown[]).length >= 2);
       link.release();
 

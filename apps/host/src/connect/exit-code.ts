@@ -1,3 +1,5 @@
+import { CloseCode } from "@doriface/crypto";
+
 /**
  * `doriface-host connect` ends like ssh, the program herdr documents a `via` as standing in for: 255 when the
  * connection itself failed and the far side's hc never spoke (a refusal, a failed dial, a line the far side closed
@@ -9,6 +11,11 @@
  * as Windows until its core restarts (#2019).
  */
 export const CONNECTION_FAILED_EXIT = 255;
+
+/** MCP off and an unknown device share 4401. Only the MCP client treats that initial refusal as exit 1. */
+export function initialFailureExitCode(stream: "mcp" | undefined, code: number | undefined): number {
+  return stream === "mcp" && code === CloseCode.UnknownDevice ? 1 : CONNECTION_FAILED_EXIT;
+}
 
 export interface SessionEnd {
   /** The far side said at least one byte. */

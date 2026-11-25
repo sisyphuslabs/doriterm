@@ -16,6 +16,7 @@ import { HELLO_REQUEST_LINE } from "@doriface/client";
 import { OPEN_POLICY, type PlanPolicy, requireFeature, requireWithin } from "@doriface/policy";
 import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
+import type { McpSwitch } from "../state/mcp-switch.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import { type ClaimRefusal, JOIN_ON_DEVICE_OFFER, type PairingClaim, type PairingStore } from "../state/pairing.ts";
 import { authorizationOf, handshakeRefusalLine, sessionPeer } from "./authorize.ts";
@@ -29,6 +30,7 @@ export type E2eeTransport =
 export interface E2eeDeps {
   readonly identity: HostIdentity;
   readonly devices: DeviceStore;
+  readonly mcp?: McpSwitch | undefined;
   readonly pairing: PairingStore;
   /** The mesh membership, when this host keeps one; its authorize index is consulted before the devices. */
   readonly mesh?: MeshStore | undefined;
@@ -137,7 +139,14 @@ export async function acceptE2ee(
       }
       const index = meshIndex(deps);
       if ("refused" in index) return refuse(1011, index.refused);
-      const peer = sessionPeer(hello.stream, hello.remoteStatic, index.index, deps.devices);
+      const { mcp } = deps;
+      const peer = sessionPeer(
+        hello.stream,
+        hello.remoteStatic,
+        index.index,
+        deps.devices,
+        mcp === undefined ? undefined : { enabled: () => mcp.enabled(), log: deps.log },
+      );
       if (
         hello.stream === "roster" &&
         peer.kind === "refused" &&
