@@ -10,8 +10,9 @@ import {
   type AgentStatus,
 } from "@doriface/ui";
 import { Ellipsis, Pencil, Pin, PinOff, Power } from "lucide-react";
-import { memo } from "react";
+import { memo, type PointerEvent } from "react";
 import { useAskSession } from "./session-context.ts";
+import { useTerminalGrab } from "./terminal-drag.tsx";
 import { usePin } from "./use-pin.ts";
 
 /** What can be done with an agent: its "..." menu and its right-click menu hold the same items. */
@@ -101,6 +102,7 @@ export const AgentItem = memo(function AgentItem({
   onToggleFold,
 }: AgentItemProps) {
   const ask = useAskSession();
+  const grab = useTerminalGrab();
   const row = (
     <AgentRow
       agent={agent}
@@ -112,6 +114,12 @@ export const AgentItem = memo(function AgentItem({
       disclosure={disclosure}
       {...(parentName === undefined ? {} : { parentName })}
       {...(doubleClickRenames ? { onDoubleClick: () => ask({ kind: "rename", address: agent.id }) } : {})}
+      {...(grab === null
+        ? {}
+        : {
+            onPointerDown: (event: PointerEvent<HTMLElement>) => grab.onPointerDown(event, agent.id, agent.name),
+            onClickCapture: grab.onClickCapture,
+          })}
     />
   );
   // The rail has no room for the hover actions or tree controls, but its right-click opens the same menu (#699).
