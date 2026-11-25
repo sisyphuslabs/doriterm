@@ -2,6 +2,110 @@
 
 ## Unreleased
 
+## v0.1.24 - 2026-11-24
+
+### Workspace
+
+- An agent started from the tab strip's + menu (such as omo) opens as a tab of the selected space, instead of in a new
+  space when it takes a few seconds to get ready. (#2748)
+- The Agents list keeps an agent's helpers with it: a terminal another agent started is listed right under that agent,
+  and the agent is placed by the most urgent of itself and its helpers, so a helper that needs you brings its agent to
+  Needs you. A helper that finished does not move a working agent out of Working. (#2752)
+- The Agents list draws helpers as an indented tree with a fold control that shows the hidden count and whether any
+  helper needs you, on desktop and phone. (#2755)
+- Agent rows and tabs show a single-colour mark for what they run: the agent's own for Claude, Cursor, Copilot, Gemini,
+  OpenCode, Kimi and Qwen, a distinct glyph for Codex, Grok, Amp, Antigravity, omo, omp and Droid, and the generic
+  agent, shell and program glyphs for everything else. The agent is read from its own report, else from the program it
+  runs. (#2757)
+
+### Keys
+
+- Next agent and Previous agent step through the agents in the order the Agents list draws them, so a helper comes
+  right after the agent that started it and the keys follow the filter and the folds on screen. (#2756)
+
+### Phone
+
+- In the phone's text field, Enter now starts a new line, on the phone's keyboard and a hardware keyboard alike, and
+  only the Send button sends. A message can be written over several lines before it goes. (#2766, #2767)
+- The terminal's keys on a phone now sit in two pills in one row, as in the Herdr app: the keys on the left in pages you
+  swipe through, with a dot per page, and Return, the keyboard toggle and the text field's toggle on the right. The text
+  field moved into its own card above the row, which opens and closes with its toggle; Enter there still starts a new
+  line and only Send sends. The arrow keys open as a small inverted-T bubble over their key. (#2778)
+
+### Connection and offline wording
+
+- Loading and reconnecting messages no longer flash for short waits. "Connecting to your host", "Loading the
+  workspace…", "Loading agents…", "Reconnecting…" in the status bar, the phone's line and a pane's header show only
+  once a wait has taken a second, and then stay at least half a second, so a quick reload or a quick return to the
+  app shows nothing, and none blinks. Being offline is still said at once. (#2768, #2769)
+
+### MCP clients
+
+- MCP is on by default: a paired device can open an MCP session on a host that never set the switch, new installs
+  and existing hosts alike. `doriface-host mcp off` still turns it off, and that setting survives updates; an unpaired
+  or revoked device is still refused. (#2735)
+- An MCP client can follow terminals as they change: terminals are MCP resources it can read and subscribe to
+  (`subscriptions/listen`), and the MCP Events extension delivers `terminal.changed` with what changed
+  (`events/stream`). Each subscription ends when it is cancelled or the session closes. (#2735)
+
+### Pairing and adding machines
+
+- Add a machine and Pair a host are one flow. The same place shows the line to run on the other machine and takes an
+  invite from another machine: a link, its code, or the whole install line as it was pasted. (#2795, #2803)
+- This app's own install line pasted back into its invite field is refused with a note to run it on the other machine,
+  and the invite still works there. Before, it read as a different kind of invite, the host refused it, and every retry
+  said it was used already. (#2795, #2803)
+
+## v0.1.23 - 2026-11-24
+
+v0.1.22 was prepared but never published; everything listed under v0.1.22 below ships in this release.
+
+### Terminal
+
+- An agent's approval card now waits for 7 sequential replies instead of 10 to confirm a typed answer, and 5 instead
+  of 7 to confirm a row choice. (#2723)
+
+### Workspace
+
+- The first terminal tab no longer flashes when its layout finishes saving. (#2713)
+- A terminal on another machine that is reopened with Try again stays the selected tab once its machine saves it, instead
+  of the selection jumping to the first tab. (#2717)
+- New tab and the first-run guide's Start a terminal no longer go disabled, or do nothing when pressed, while a newly
+  connected host's first terminal is being saved into its layout. (#2722)
+
+### Machine mesh
+
+- The Add a machine dialog stays open and reports success when the browser joins the mesh. (#2714)
+
+### Connection and offline wording
+
+- Every session goes through the relay, in the desktop app too: the desktop app no longer dials a direct address an
+  older build saved (or one edited into its settings by hand), its push stream goes through the relay as well, and
+  nothing in Settings, the status bar or the settings search names or offers a direct address. A saved address stays
+  in the settings file, unused. (#2070)
+- A paired phone or browser now asks the browser to keep its storage, so iOS no longer clears a Home Screen app's
+  device key and hosts and sends it back to the first-run screen. It asks each time the app connects until the
+  browser keeps it; before, only a browser that joined a mesh asked, and a device paired with a code never did. An
+  installed app on its first run also says that, if it was paired before, the phone cleared its data. (#2759, #2762)
+
+### MCP clients
+
+- Run `doriface-host mcp on` to accept MCP sessions from paired devices (off by default); `mcp status` lists who is
+  connected. (#2736)
+- `doriface-host connect --mcp <hostId>` speaks MCP to a paired machine over stdin and stdout, so an outside assistant
+  reaches it with one line of MCP config. (#2735)
+- An MCP client is shown two tools by default, `doriterm_tools` to find a tool and `doriterm_call` to call it, so the
+  whole catalog no longer sits in an assistant's context. `doriface-host connect --mcp --tools all` shows every tool
+  and `--tools terminal,file` adds those groups. (#2735)
+- An MCP client can do what a paired phone does with the mesh: read its members, devices and waiting joins, open an
+  invite, approve or deny a join with its six digits, rename or revoke a member, unpair a device, and leave. A revoke
+  or a leave answers a preview first and is written only when called again with `yes`. (#2735)
+- Settings > This device has an MCP group on the computer that runs the host: the switch, the connected clients with
+  Disconnect, and Connect an MCP client, which pairs the assistant's computer and gives the config to paste. (#2735)
+- The app that runs the host can read and set this computer's MCP switch and see the connected clients
+  (`/v1/mcp` on the loopback gateway), which is what Settings > MCP clients uses. (#2735)
+- A paired device that speaks MCP can use herdr-core's commands on that machine as tools, except stopping or restarting the core and removing a machine. (#2735)
+
 ## v0.1.22 - 2026-11-19
 
 ### Workspace

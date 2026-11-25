@@ -5,6 +5,7 @@ import { Columns2, PanelLeft, Rows2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
 import { useActionKeys } from "../keys/use-action-keys.ts";
+import { useWidthTier } from "../layout/width-tier.ts";
 import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
@@ -23,7 +24,7 @@ import { SessionMenu } from "./session-menu.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { sidebarFilter } from "./sidebar-filter-field.tsx";
 import { SkipLinks } from "./skip-links.tsx";
-import { frontIcon, PROGRAM_ICON, Titled } from "./tab-live.tsx";
+import { frontIcon, Titled } from "./tab-live.tsx";
 import { useShown } from "./use-shown.ts";
 import { useAppActions, type SessionVerb } from "./use-app-actions.ts";
 import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
@@ -36,6 +37,7 @@ import { attachAhead, openingCallsOf } from "../terminal/opening-attach.ts";
 import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
+import { TerminalDragProvider } from "./terminal-drag.tsx";
 
 /** A tab's glyph: the state that most needs the person among its panes, as the sidebar sections rank them. */
 const URGENCY: readonly AgentStatus[] = ["blocked", "done", "working", "idle", "unknown"];
@@ -52,7 +54,8 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
   });
   const agent = shown.find((terminal) => programKind(terminal) === "agent");
   const first = shown[0];
-  const icon = agent !== undefined ? PROGRAM_ICON.agent : first === undefined ? undefined : frontIcon(first);
+  const lead = agent ?? first;
+  const icon = lead === undefined ? undefined : frontIcon(lead);
   const statuses = new Set(shown.map(agentStatus));
   const status = URGENCY.find((each) => statuses.has(each));
   return {
@@ -127,18 +130,44 @@ export function DesktopShell(props: DesktopShellProps) {
   const toasts = useToastManager();
   const [sidebar, setSidebar] = useSidebarShown();
   const [{ rail }, setSidebarSize] = useSidebarSize();
+  const tier = useWidthTier();
+  const medium = tier === "medium";
+  const railed = medium || rail;
+  const shown = medium || sidebar;
+  const [drawer, setDrawer] = useState(false);
+  useEffect(() => {
+    if (!medium) setDrawer(false);
+  }, [medium]);
+  useEffect(() => {
+    if (!medium || !drawer) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented || behindModal()) return;
+      event.preventDefault();
+      setDrawer(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [medium, drawer]);
   const sidebarKeys = useActionKeys("layout.toggle:sidebar");
   const newTabKeys = useActionKeys("tab.new");
   const moveLeftKeys = useActionKeys("tab.move:left");
   const moveRightKeys = useActionKeys("tab.move:right");
-  const focusSidebar = useFocusSidebar(sidebar, () => setSidebar(true));
+  const focusSidebar = useFocusSidebar(shown, () => setSidebar(true));
+  const toggleSidebar = (): void => {
+    if (medium) setDrawer((open) => !open);
+    else setSidebar((open) => !open);
+  };
   // The filter key shows the whole sidebar (out of hiding, off the rail) with its field focused. Behind a modal dialog
   // (the palette, a rename) it does nothing, as the focus key does, so focus stays in the dialog; chosen from the palette
   // it runs, since the palette closes as it does (#848).
   const filterSidebar = (): void => {
     if (behindModal() && !actionChosen()) return;
-    setSidebar(true);
-    if (rail) setSidebarSize({ rail: false });
+    if (medium) {
+      setDrawer(true);
+    } else {
+      setSidebar(true);
+      if (rail) setSidebarSize({ rail: false });
+    }
     sidebarFilter.ask();
   };
   const focusedAddress = layout.focused?.address ?? null;
@@ -173,7 +202,7 @@ export function DesktopShell(props: DesktopShellProps) {
     onCloseTab,
     onClosePane,
     onRenameTab: tabRename.open,
-    onToggleSidebar: () => setSidebar((shown) => !shown),
+    onToggleSidebar: toggleSidebar,
     onFocusSidebar: focusSidebar,
     onFilterSidebar: filterSidebar,
     onSession,
@@ -207,6 +236,10 @@ export function DesktopShell(props: DesktopShellProps) {
     }
     layout.placeTerminal(address);
   };
+  const openFromDrawer = (address: string): void => {
+    openTerminal(address);
+    setDrawer(false);
+  };
   useArrivalReady(
     workspaceSettled(loaded, { open: layout.tabs.map((tab) => tab.key), restored: layout.restored }, live.length),
   );
@@ -232,161 +265,204 @@ export function DesktopShell(props: DesktopShellProps) {
     </>
   );
 
+  const toggleExpanded = medium ? drawer : sidebar;
+
   return (
     // --titlebar-leading: where a titlebar row's own content starts, past the window buttons, the sidebar toggle and
     // herdr-app's 12 px gap.
-    <div className="relative flex h-dvh overflow-hidden bg-background pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) [--titlebar-leading:calc(var(--titlebar-inset-start,0.5rem)+var(--control-sm)+0.75rem)]">
-      <SkipLinks onSidebar={focusSidebar} />
-      <FirstRunGuideCard
-        className="absolute right-4 bottom-10 z-30 m-0 w-72 shadow-lg"
-        listVisible={sidebar}
-        live={terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)}
-        ids={ids}
-        onNew={onNew}
-      />
-      {sidebar ? (
-        <Sidebar terminals={terminals} active={focusedAddress} onOpen={openTerminal} onPalette={onPalette} />
-      ) : null}
-      {/* The titlebar's leading strip, beside the toggle and, with the sidebar hidden, before it: it keeps the chrome and
+    <div
+      className={cn(
+        "relative flex h-dvh overflow-hidden bg-background pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) [--titlebar-leading:calc(var(--titlebar-inset-start,0.5rem)+var(--control-sm)+0.75rem)]",
+        medium && "[--sidebar-rail-width:var(--sidebar-rail-width-medium)]",
+      )}
+    >
+      <TerminalDragProvider>
+        <SkipLinks onSidebar={focusSidebar} />
+        <FirstRunGuideCard
+          className="absolute right-4 bottom-10 z-30 m-0 w-72 shadow-lg"
+          listVisible={shown}
+          live={terminals.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)}
+          ids={ids}
+          onNew={onNew}
+        />
+        {shown ? (
+          // While the drawer covers the rail, the drawer is the one Workspace landmark: the rail takes no focus or reading.
+          <div className="contents" inert={medium && drawer} aria-hidden={medium && drawer ? true : undefined}>
+            <Sidebar
+              terminals={terminals}
+              active={focusedAddress}
+              onOpen={openTerminal}
+              onPalette={onPalette}
+              {...(medium ? { rail: true, onExpand: () => setDrawer((open) => !open) } : {})}
+            />
+          </div>
+        ) : null}
+        {medium && drawer ? (
+          <>
+            <button
+              type="button"
+              aria-label="Close sidebar"
+              className="absolute inset-0 z-30 bg-black/30"
+              onClick={() => setDrawer(false)}
+            />
+            <div
+              data-sidebar-drawer
+              className="absolute top-(--safe-top) bottom-(--safe-bottom) left-(--safe-left) z-40 flex"
+            >
+              <Sidebar
+                drawer
+                terminals={terminals}
+                active={focusedAddress}
+                onOpen={openFromDrawer}
+                onPalette={onPalette}
+              />
+            </div>
+          </>
+        ) : null}
+        {/* The titlebar's leading strip, beside the toggle and, with the sidebar hidden, before it: it keeps the chrome and
           the window drag where the tab strip's own box used to reach (#643). It comes before the toggle so the toggle's
           no-drag box is listed after it, and the strip below starts past both of them. Its width is the strip's margin,
           so the two tile: the strip's own padding-left is what the row's px-2.5 gives it, and its content therefore
           starts where it did before (--titlebar-leading, or 0.625rem past the rail). */}
-      {sidebar && !rail ? null : (
+        {shown && !railed ? null : (
+          <div
+            data-titlebar
+            className={cn(
+              "absolute top-(--safe-top) h-(--tabbar-height) border-b border-border bg-chrome",
+              railed
+                ? "left-[calc(var(--safe-left)+var(--sidebar-rail-width))] w-[max(0rem,calc(var(--titlebar-leading)-var(--sidebar-rail-width)-0.625rem))] pl-[max(0rem,calc(var(--titlebar-inset-start,0.5rem)-var(--sidebar-rail-width)))]"
+                : "left-(--safe-left) w-[max(0rem,calc(var(--titlebar-leading)-0.625rem))] pl-[var(--titlebar-inset-start,0.5rem)]",
+            )}
+          />
+        )}
+        {/* One sidebar toggle in the same place whether the sidebar is open or not, right after the window buttons (#415). It
+          comes after the sidebar in the DOM so the skip links stay the first Tab stops and it is the stop just before the tabs. */}
         <div
           data-titlebar
           className={cn(
-            "absolute top-(--safe-top) h-(--tabbar-height) border-b border-border bg-chrome",
-            rail
-              ? "left-[calc(var(--safe-left)+var(--sidebar-rail-width))] w-[max(0rem,calc(var(--titlebar-leading)-var(--sidebar-rail-width)-0.625rem))] pl-[max(0rem,calc(var(--titlebar-inset-start,0.5rem)-var(--sidebar-rail-width)))]"
-              : "left-(--safe-left) w-[max(0rem,calc(var(--titlebar-leading)-0.625rem))] pl-[var(--titlebar-inset-start,0.5rem)]",
+            "absolute top-(--safe-top) left-[calc(var(--safe-left)+var(--titlebar-inset-start,0.5rem))] flex h-11 items-center",
+            medium && drawer ? "z-40" : "z-10",
           )}
-        />
-      )}
-      {/* One sidebar toggle in the same place whether the sidebar is open or not, right after the window buttons (#415). It
-          comes after the sidebar in the DOM so the skip links stay the first Tab stops and it is the stop just before the tabs. */}
-      <div
-        data-titlebar
-        className="absolute top-(--safe-top) left-[calc(var(--safe-left)+var(--titlebar-inset-start,0.5rem))] z-10 flex h-11 items-center"
-      >
-        <IconButton
-          label={sidebar ? "Hide sidebar" : "Show sidebar"}
-          aria-expanded={sidebar}
-          {...(sidebarKeys === undefined ? {} : { keys: sidebarKeys })}
-          icon={<PanelLeft />}
-          onClick={() => setSidebar((shown) => !shown)}
-        />
-      </div>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <TabBar
-          tabs={tabList}
-          activeId={layout.active?.key ?? ""}
-          {...(newTabKeys === undefined ? {} : { newTabKeys })}
-          onSelect={layout.selectTab}
-          onClose={onCloseTab}
-          onPin={(key, pinned) =>
-            void layout.pinTab(key, pinned).catch((cause: unknown) =>
-              toasts.add({
-                type: "error",
-                title: pinned ? "The tab was not pinned" : "The tab was not unpinned",
-                description: cause instanceof Error ? cause.message : String(cause),
-              }),
-            )
-          }
-          onCloseSet={(key, which) => onCloseTabs(layout.closeSetOf(key, which))}
-          onNew={onNew}
-          newDisabled={props.newDisabled}
-          newMenu={
-            <NewTabMenu
-              connection={connection}
-              newTabKeys={newTabKeys}
-              onNew={onNew}
-              onAgent={onNewAgent}
-              onSpace={onNewSpace}
-            />
-          }
-          onRename={tabRename.open}
-          onMove={layout.moveTab}
-          moveKeys={{
-            ...(moveLeftKeys === undefined ? {} : { left: moveLeftKeys }),
-            ...(moveRightKeys === undefined ? {} : { right: moveRightKeys }),
-          }}
-          moved={layout.lastMove === null ? null : { id: layout.lastMove.key, count: layout.lastMove.count }}
-          {...(sidebar && !rail
-            ? {}
-            : {
-                // The strip starts past the toggle rather than under it: Electron lists the strip's drag box after the
-                // toggle's no-drag one and the later box wins, so a click on the toggle would drag the window (#643).
-                className: sidebar
-                  ? "ml-[max(0rem,calc(var(--titlebar-leading)-var(--sidebar-rail-width)-0.625rem))]"
-                  : "ml-[max(0rem,calc(var(--titlebar-leading)-0.625rem))]",
-              })}
-          trailing={
-            <>
-              {focusedTerminal === undefined || nothingToType ? null : (
-                <Titled terminal={focusedTerminal}>
-                  {(title) => <DictateButton voice={voice} target={title} size="sm" ref={mic} />}
-                </Titled>
-              )}
-              {focusedTerminal === undefined ? null : (
-                <Titled terminal={focusedTerminal}>
-                  {(title) => <SessionMenu address={focusedTerminal.address} title={title} />}
-                </Titled>
-              )}
-              {split}
-            </>
-          }
-        />
-        {tabRename.dialog}
-        {/* The page's one main landmark: the panes, between the tab strip and the status bar (#1378). */}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {layout.tabs.length > 0 ? null : nothingOpen ? (
-            <NoTerminal onNew={onNew} />
-          ) : (
-            <QuietBusy label="Restoring your tabs" text="Restoring your tabs…" className="flex-1" />
-          )}
-          <SplitPanes
-            connection={connection}
-            terminals={terminals}
-            layout={layout}
-            titles={new Map(tabList.map((tab) => [tab.id, tab.title]))}
-            onEnd={onEnd}
-            onSplit={onSplit}
-            onClose={onClosePane}
-            onEnded={onEnded}
-            sends={sends}
-            dock={
-              focusedTerminal === undefined || nothingToType ? null : (
-                <Titled terminal={focusedTerminal}>
-                  {(title) => (
-                    <VoiceDock
-                      voice={voice}
-                      target={title}
-                      onType={(text) => {
-                        sends.type(focusedTerminal.address, text);
-                        document.querySelector<HTMLElement>(FOCUSED_TERMINAL_INPUT)?.focus();
-                      }}
-                      onClose={() => mic.current?.focus()}
-                      className="pb-2"
-                    />
-                  )}
-                </Titled>
+        >
+          <IconButton
+            label={toggleExpanded ? "Hide sidebar" : "Show sidebar"}
+            aria-expanded={toggleExpanded}
+            {...(sidebarKeys === undefined ? {} : { keys: sidebarKeys })}
+            icon={<PanelLeft />}
+            onClick={toggleSidebar}
+          />
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <TabBar
+            tabs={tabList}
+            activeId={layout.active?.key ?? ""}
+            {...(newTabKeys === undefined ? {} : { newTabKeys })}
+            onSelect={layout.selectTab}
+            onClose={onCloseTab}
+            onPin={(key, pinned) =>
+              void layout.pinTab(key, pinned).catch((cause: unknown) =>
+                toasts.add({
+                  type: "error",
+                  title: pinned ? "The tab was not pinned" : "The tab was not unpinned",
+                  description: cause instanceof Error ? cause.message : String(cause),
+                }),
               )
             }
+            onCloseSet={(key, which) => onCloseTabs(layout.closeSetOf(key, which))}
+            onNew={onNew}
+            newDisabled={props.newDisabled}
+            newMenu={
+              <NewTabMenu
+                connection={connection}
+                newTabKeys={newTabKeys}
+                onNew={onNew}
+                onAgent={onNewAgent}
+                onSpace={onNewSpace}
+              />
+            }
+            onRename={tabRename.open}
+            onMove={layout.moveTab}
+            moveKeys={{
+              ...(moveLeftKeys === undefined ? {} : { left: moveLeftKeys }),
+              ...(moveRightKeys === undefined ? {} : { right: moveRightKeys }),
+            }}
+            moved={layout.lastMove === null ? null : { id: layout.lastMove.key, count: layout.lastMove.count }}
+            {...(shown && !railed
+              ? {}
+              : {
+                  // The strip starts past the toggle rather than under it: Electron lists the strip's drag box after the
+                  // toggle's no-drag one and the later box wins, so a click on the toggle would drag the window (#643).
+                  className: shown
+                    ? "ml-[max(0rem,calc(var(--titlebar-leading)-var(--sidebar-rail-width)-0.625rem))]"
+                    : "ml-[max(0rem,calc(var(--titlebar-leading)-0.625rem))]",
+                })}
+            trailing={
+              <>
+                {focusedTerminal === undefined || nothingToType ? null : (
+                  <Titled terminal={focusedTerminal}>
+                    {(title) => <DictateButton voice={voice} target={title} size="sm" ref={mic} />}
+                  </Titled>
+                )}
+                {focusedTerminal === undefined ? null : (
+                  <Titled terminal={focusedTerminal}>
+                    {(title) => <SessionMenu address={focusedTerminal.address} title={title} />}
+                  </Titled>
+                )}
+                {split}
+              </>
+            }
           />
-        </main>
-        <DesktopStatusBar
-          connection={connection}
-          terminals={terminals}
-          live={live}
-          loaded={loaded}
-          focusedAddress={focusedAddress}
-          focusedTerminal={focusedTerminal}
-          focusedMachine={focusedMachine}
-          onOpen={openTerminal}
-          onPalette={onPalette}
-        />
-      </div>
+          {tabRename.dialog}
+          {/* The page's one main landmark: the panes, between the tab strip and the status bar (#1378). */}
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {layout.tabs.length > 0 ? null : nothingOpen ? (
+              <NoTerminal onNew={onNew} />
+            ) : (
+              <QuietBusy label="Restoring your tabs" text="Restoring your tabs…" className="flex-1" />
+            )}
+            <SplitPanes
+              connection={connection}
+              terminals={terminals}
+              layout={layout}
+              titles={new Map(tabList.map((tab) => [tab.id, tab.title]))}
+              onEnd={onEnd}
+              onSplit={onSplit}
+              onClose={onClosePane}
+              onEnded={onEnded}
+              sends={sends}
+              dock={
+                focusedTerminal === undefined || nothingToType ? null : (
+                  <Titled terminal={focusedTerminal}>
+                    {(title) => (
+                      <VoiceDock
+                        voice={voice}
+                        target={title}
+                        onType={(text) => {
+                          sends.type(focusedTerminal.address, text);
+                          document.querySelector<HTMLElement>(FOCUSED_TERMINAL_INPUT)?.focus();
+                        }}
+                        onClose={() => mic.current?.focus()}
+                        className="pb-2"
+                      />
+                    )}
+                  </Titled>
+                )
+              }
+            />
+          </main>
+          <DesktopStatusBar
+            connection={connection}
+            terminals={terminals}
+            live={live}
+            loaded={loaded}
+            focusedAddress={focusedAddress}
+            focusedTerminal={focusedTerminal}
+            focusedMachine={focusedMachine}
+            onOpen={openTerminal}
+            onPalette={onPalette}
+          />
+        </div>
+      </TerminalDragProvider>
     </div>
   );
 }

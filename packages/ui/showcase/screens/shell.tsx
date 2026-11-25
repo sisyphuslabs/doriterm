@@ -1,10 +1,13 @@
 import { Columns2, Ellipsis, Folder, Monitor, PanelLeft, Search, Settings } from "lucide-react";
 import type { ReactNode } from "react";
 import {
+  AgentFold,
   AgentRow,
+  agentRowLead,
   Button,
   IconButton,
   Kbd,
+  RowWithActions,
   ScrollArea,
   SidebarSection,
   SpaceRow,
@@ -19,12 +22,58 @@ import {
   AGENTS_DONE,
   AGENTS_IDLE,
   AGENTS_NEEDS_YOU,
-  AGENTS_WORKING,
+  AGENTS_TREE_NEEDS_YOU,
+  AGENTS_TREE_WORKING,
   CLAUDE_LINES,
   CODEX_LINES,
   SPACES,
   TABS,
+  type ShowcaseTreeRow,
 } from "../data.ts";
+
+const noop = (): void => {};
+
+function TreeRowItem({
+  entry,
+  selected,
+  compactBlocked = false,
+  depthCap,
+}: {
+  readonly entry: ShowcaseTreeRow;
+  readonly selected?: boolean;
+  readonly compactBlocked?: boolean;
+  readonly depthCap: number;
+}) {
+  const { agent, parentName, fold } = entry;
+  const row = (
+    <AgentRow
+      agent={agent}
+      selected={selected === true}
+      compactBlocked={compactBlocked}
+      disclosure
+      depthCap={depthCap}
+      {...(parentName === undefined ? {} : { parentName })}
+    />
+  );
+  if (fold === undefined) return row;
+  return (
+    <RowWithActions
+      row={row}
+      actions={null}
+      leading={
+        <AgentFold
+          name={agent.name}
+          folded={fold.folded}
+          count={fold.count}
+          blocked={fold.blocked}
+          urgency={fold.urgency}
+          onToggle={noop}
+          style={{ marginLeft: agentRowLead(agent.depth ?? 0, depthCap) }}
+        />
+      }
+    />
+  );
+}
 
 /** Spaces and the agent sections, shared by the desktop sidebar and the phone's first screen. */
 export function AgentLists({
@@ -34,6 +83,7 @@ export function AgentLists({
   readonly selected?: string;
   readonly agentsFirst?: boolean;
 }) {
+  const depthCap = agentsFirst ? 2 : 3;
   const spaces = (
     <SidebarSection title="Spaces" count={SPACES.length} className={agentsFirst ? "order-last" : ""}>
       {SPACES.map((space) => (
@@ -44,24 +94,33 @@ export function AgentLists({
   return (
     <div className="flex flex-col gap-4 px-2 pb-3">
       {spaces}
-      <SidebarSection title="Needs you" count={AGENTS_NEEDS_YOU.length} tone="text-status-blocked-text">
+      <SidebarSection title="Needs you" count={AGENTS_NEEDS_YOU.length + 3} tone="text-status-blocked-text" indent>
         {AGENTS_NEEDS_YOU.map((agent) => (
-          <AgentRow key={agent.id} agent={agent} selected={agent.id === selected} compactBlocked />
+          <AgentRow key={agent.id} agent={agent} selected={agent.id === selected} compactBlocked disclosure />
+        ))}
+        {AGENTS_TREE_NEEDS_YOU.map((entry) => (
+          <TreeRowItem
+            key={entry.agent.id}
+            entry={entry}
+            selected={entry.agent.id === selected}
+            compactBlocked
+            depthCap={depthCap}
+          />
         ))}
       </SidebarSection>
-      <SidebarSection title="Done" count={AGENTS_DONE.length} tone="text-status-done-text">
+      <SidebarSection title="Done" count={AGENTS_DONE.length} tone="text-status-done-text" indent>
         {AGENTS_DONE.map((agent) => (
-          <AgentRow key={agent.id} agent={agent} selected={agent.id === selected} />
+          <AgentRow key={agent.id} agent={agent} selected={agent.id === selected} disclosure />
         ))}
       </SidebarSection>
-      <SidebarSection title="Working" count={AGENTS_WORKING.length} tone="text-status-working-text">
-        {AGENTS_WORKING.map((agent) => (
-          <AgentRow key={agent.id} agent={agent} />
+      <SidebarSection title="Working" count={7} tone="text-status-working-text" indent>
+        {AGENTS_TREE_WORKING.map((entry) => (
+          <TreeRowItem key={entry.agent.id} entry={entry} depthCap={depthCap} />
         ))}
       </SidebarSection>
-      <SidebarSection title="Idle" count={AGENTS_IDLE.length}>
+      <SidebarSection title="Idle" count={AGENTS_IDLE.length} indent>
         {AGENTS_IDLE.map((agent) => (
-          <AgentRow key={agent.id} agent={agent} />
+          <AgentRow key={agent.id} agent={agent} disclosure />
         ))}
       </SidebarSection>
     </div>

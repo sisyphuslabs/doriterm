@@ -675,9 +675,9 @@ test.describe("10: on a phone at 390", () => {
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toHaveAccessibleName(
       /tab 2 of 3$/,
     );
-    const panes = page.getByRole("navigation", { name: "Panes in this tab" });
-    await panes.getByRole("button", { name: "Next pane" }).click();
+    // The split tab shows both of its panes (split focus, #2788): a tap on the other one moves the focus there.
     await expect(page.locator(`[data-terminal="${twoBeside}"]`)).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Focus split-w2b" }).click();
     await expect(header.getByRole("heading", { name: "split-w2b", exact: true })).toBeVisible();
     const tabSwitch = page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
     await expect(tabSwitch).toContainText("2/3");

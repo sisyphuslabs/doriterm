@@ -36,6 +36,7 @@ const setup = (
   let closes = 0;
   const pairs: ("open" | "state")[] = [];
   const revokes: string[] = [];
+  const mcpRequests: string[] = [];
   const menus: ReadonlyMap<string, string>[] = [];
   const notices: DesktopNotice[] = [];
   const targets: string[] = [];
@@ -65,6 +66,10 @@ const setup = (
       return { state: "none" };
     },
     pairedDevices: async () => ({ state: "listed", devices: [] }),
+    mcp: async (request) => {
+      mcpRequests.push(request);
+      return { state: "read", enabled: request === "on", clients: [] };
+    },
     revokeDevice: async (id) => {
       revokes.push(id);
       return { state: "not-found", devices: [] };
@@ -112,6 +117,7 @@ const setup = (
     notices,
     pairs,
     revokes,
+    mcpRequests,
     targets,
     background,
     starts: () => starts,
@@ -144,6 +150,7 @@ describe("IPC sender gate", () => {
         expect(handlers.startLocalHost(event)).rejects.toThrow("refused IPC"),
         expect(handlers.pairOffer(event, "open")).rejects.toThrow("refused IPC"),
         expect(handlers.pairedDevices(event)).rejects.toThrow("refused IPC"),
+        expect(handlers.mcp(event, "on")).rejects.toThrow("refused IPC"),
         expect(handlers.revokeDevice(event, "3FA94C0E")).rejects.toThrow("refused IPC"),
         expect(handlers.setWindowBackground(event, "#131518")).rejects.toThrow("refused IPC"),
         expect(handlers.closeWindow(event)).rejects.toThrow("refused IPC"),
@@ -371,6 +378,18 @@ describe("IPC sender gate", () => {
       refused.map(() => null),
     );
     expect(pairs).toEqual(["open", "state"]);
+  });
+
+  test("the app origin can read and set this computer's MCP switch, and only with the three known requests", async () => {
+    const { handlers, mcpRequests } = setup();
+    expect(await handlers.mcp(app, "state")).toEqual({ state: "read", enabled: false, clients: [] });
+    expect(await handlers.mcp(app, "on")).toEqual({ state: "read", enabled: true, clients: [] });
+    expect(await handlers.mcp(app, "off")).toEqual({ state: "read", enabled: false, clients: [] });
+    const refused = ["enable", "", null, true, { request: "on" }];
+    expect(await Promise.all(refused.map((candidate) => handlers.mcp(app, candidate)))).toEqual(
+      refused.map(() => null),
+    );
+    expect(mcpRequests).toEqual(["state", "on", "off"]);
   });
 
   test("a revoke takes a short device id only, so a hand-edited page cannot address a path", async () => {

@@ -103,6 +103,9 @@ for (const type of ["foreground", "title"] as const) {
   test(`${type} in one of three panes paints next frame without rendering the shell (#2607)`, async ({ page }) => {
     await page.addInitScript(countRenders, [1, "h2"] as const);
     const socket = await routeHcSocket(page);
+    // The page reads git facts again every five seconds, and a read that finds them changed draws the whole workspace
+    // again (over 300 components). Hold their replies from the first read until the events are counted.
+    const releaseFacts = socket.holdFromHost('"dirs":');
     await page.goto("/");
     const first = await openNewTerminal(page);
     const address = await first.getAttribute("data-terminal");
@@ -114,6 +117,12 @@ for (const type of ["foreground", "title"] as const) {
       await expect(page.locator("[data-terminal]")).toHaveCount(i + 2);
     }
     await expect(page.locator("[data-terminal]")).toHaveCount(3);
+    // A new pane's renderer readiness and predictor initialization each redraw it; finish them before a sample opens.
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll("[data-terminal]")].every(
+        (pane) => pane.getAttribute("data-ready") === "true" && pane.getAttribute("data-predictor-ready") === "true",
+      ),
+    );
     await page.locator("[data-terminal]").last().getByRole("textbox").focus();
     const channels = new Set<number>();
     let cwd: string | undefined;
@@ -169,6 +178,7 @@ for (const type of ["foreground", "title"] as const) {
       runs: Reflect.get(window, "__terminalFreshRuns"),
     }));
     release();
+    releaseFacts();
     console.log(`${type} render evidence ${JSON.stringify(evidence)}`);
     expect(evidence.painted).toEqual(Array.from({ length: 6 }, () => true));
     expect(evidence.runs.length).toBeGreaterThanOrEqual(6);

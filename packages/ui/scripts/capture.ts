@@ -27,6 +27,8 @@ const SCREENS = [
   "states",
   "sidebar-recompose",
   "approval",
+  "mcp-agents",
+  "mcp-attach",
   "voice",
   "terminal-find",
 ] as const;

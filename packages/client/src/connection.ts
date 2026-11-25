@@ -138,6 +138,14 @@ export class HcConnection {
     return this.#request(method, params ?? {}, options ?? {}, (result) => result);
   }
 
+  /**
+   * A call by method name for passthrough tooling (the host's MCP server): the method comes from a generated table, the
+   * params are given as they are, and the result is checked only for being a JSON object, as {@link call} checks it.
+   */
+  callByName(method: HcMethod, params: object, options: CallOptions = {}): Promise<HcResult<HcMethod>> {
+    return this.#request(method, params, options, (result) => result);
+  }
+
   /** Attaches as a viewer. Kind 6 is used only when both the core and this attach path offer it. */
   attach(params: TerminalAttachParams, options: AttachOptions = {}): Promise<TerminalStream> {
     return this.#request("terminal.attach", params, options, (result) => {

@@ -1,6 +1,19 @@
 export { cn } from "./lib/cn.ts";
 export { SPINNER_DELAY_MS, useDelayedTrue } from "./lib/spinner-delay.ts";
-export { AgentRow, type Agent, type AgentRowProps } from "./components/agent-row.tsx";
+export { ShowGate, type ShowTiming } from "./lib/show-gate.ts";
+export { INDICATOR_MIN_MS, INDICATOR_TIMING, useShownAfter } from "./lib/use-shown-after.ts";
+export { AgentFold, type AgentFoldProps } from "./components/agent-fold.tsx";
+export { AgentMark, type AgentMarkProps } from "./components/agent-mark.tsx";
+export { AGENT_MARKS, hasAgentMark, type AgentMarkEntry } from "./components/agent-marks.ts";
+export {
+  AGENT_TREE_DISCLOSURE_PX,
+  AGENT_TREE_GUIDE_PX,
+  AgentRow,
+  agentRowLead,
+  type Agent,
+  type AgentRowProps,
+  type AgentTreeGuide,
+} from "./components/agent-row.tsx";
 export {
   ApprovalBanner,
   approvalAnnouncement,
@@ -15,6 +28,7 @@ export { Badge, badgeVariants, type BadgeProps } from "./components/badge.tsx";
 export { Button, buttonVariants, type ButtonProps } from "./components/button.tsx";
 export { ColorSwatch, type ColorSwatchProps } from "./components/color-swatch.tsx";
 export { CommandPalette, type Command, type CommandPaletteProps } from "./components/command-palette.tsx";
+export { CopyBlock, type CopyBlockProps } from "./components/copy-block.tsx";
 export { Dialog, DialogClose, DialogPanel, type DialogPanelProps, type DialogProps } from "./components/dialog.tsx";
 export { EmptyState, type EmptyStateProps } from "./components/empty-state.tsx";
 export { DirectionPad, type DirectionPadProps } from "./components/direction-pad.tsx";
@@ -95,6 +109,7 @@ export { SpaceRow, type Space, type SpaceGit, type SpaceRowProps } from "./compo
 export { AVATAR_COLORS, SpaceAvatar, type AvatarColor, type SpaceAvatarProps } from "./components/space-avatar.tsx";
 export { RowWithActions, type RowWithActionsProps } from "./components/row-actions.tsx";
 export { MachineHeader, type MachineHeaderProps } from "./components/machine-header.tsx";
+export { McpClientRow, type McpClientRowProps } from "./components/mcp-client-row.tsx";
 export { SidebarFooter, SidebarFooterItem, type SidebarFooterItemProps } from "./components/sidebar-footer.tsx";
 export { Spinner, DelayedSpinner, type SpinnerProps } from "./components/spinner.tsx";
 export {

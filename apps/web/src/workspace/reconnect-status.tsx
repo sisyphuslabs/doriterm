@@ -1,9 +1,9 @@
 import type { HcConnection } from "@doriface/client";
-import { Spinner, StatusBarItem } from "@doriface/ui";
+import { Spinner, StatusBarItem, useShownAfter } from "@doriface/ui";
 import { Cable, Globe, WifiOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DirectReason } from "../connection/direct-attempt.ts";
-import { canForwardPlainWs } from "../connection/direct-forward.ts";
+import { directPathAvailable } from "../connection/direct-switch.ts";
 import { hostFailure } from "../connection/host-failure.ts";
 import { type ConnectionSettings, staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
@@ -47,8 +47,22 @@ export function reconnectingLabel(machine: string, seconds: number | null): stri
   return seconds === null ? `Reconnecting${to}…` : `Reconnecting${to} in ${seconds} s`;
 }
 
-/** What to say about the workspace's connection while it is not usable, or null while it is. */
+/**
+ * What to say about the workspace's connection while it is not usable, or null while it is. A reconnect is said only
+ * once it has taken a second, and then for at least half a second, so a quick one shows nothing and none blinks
+ * (#2768). Offline is a state, not a wait, so it is said at once.
+ */
 export function useConnectionNotice(): ConnectionNotice | null {
+  const notice = useCurrentNotice();
+  const waiting = notice !== null && !notice.offline;
+  const shown = useShownAfter(waiting);
+  const last = useRef<ConnectionNotice | null>(null);
+  if (waiting) last.current = notice;
+  if (notice?.offline === true) return notice;
+  return shown ? (waiting ? notice : last.current) : null;
+}
+
+function useCurrentNotice(): ConnectionNotice | null {
   const state = useConnection();
   const online = useOnline();
   const failed = state.phase === "failed" ? state : null;
@@ -173,21 +187,17 @@ const DIRECT_REASONS: Record<DirectReason, string> = {
 };
 
 /**
- * The transport the open session runs on. A browser reaches every member over the relay (#1381 §8), so its label says
- * Relay on every session; the Direct label and its reasons (#446) are the desktop shell's, whose paired host still races
- * direct and whose forwarder is the only thing that may dial one. A phone shows it in its own bar, whose screen has no
- * tooltip.
+ * The transport the open session runs on. The relay carries every session (#2070), so the label says Relay; the Direct
+ * label and its reasons (#446) are the desktop shell's with the direct path switched on, whose paired host then races
+ * direct and whose forwarder is the only thing that may dial one (#1381 §8). A phone shows it in its own bar, whose
+ * screen has no tooltip.
  */
 export function ConnectionPathItem() {
   const state = useConnection();
   if (state.phase !== "open" || connectionStore.settings.mode !== "relay") return null;
-  if (!canForwardPlainWs()) {
+  if (!directPathAvailable()) {
     return (
-      <span
-        data-connection-path="relay"
-        className="flex shrink-0"
-        title="Relay: every session from a browser goes through the relay."
-      >
+      <span data-connection-path="relay" className="flex shrink-0" title="Relay: every session goes through the relay.">
         <StatusBarItem icon={<Globe aria-hidden />}>Relay</StatusBarItem>
       </span>
     );

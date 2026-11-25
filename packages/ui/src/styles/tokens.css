@@ -144,6 +144,13 @@
   --sidebar-width: 16.75rem;
   /* The sidebar dragged narrow: an icon rail. The macOS desktop app widens it to clear the window buttons. */
   --sidebar-rail-width: 2.75rem;
+  /* --- Layout tiers (redesign T3, #2788). Widths: compact < 600, medium 600-1023, wide >= 1024 (apps/web/src/layout/
+     width-tier.ts; media queries cannot read custom properties, so the numbers live there). Split focus 55:45 within
+     30:70 is split-focus.ts's. --- */
+  /* A medium screen's sidebar: always the rail, 64 px, whose expand opens a drawer over the content. */
+  --sidebar-rail-width-medium: 4rem;
+  --sidebar-drawer-width: 18.75rem;
+  /* --- end layout tiers --- */
   /* Space avatars: one strong colour per hue, the same in light and dark, with a white initial (decorative). */
   --avatar-teal: #1f9688;
   --avatar-orange: #c96a3a;

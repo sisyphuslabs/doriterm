@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { openPhoneTerminal, panViewport, PHONE } from "./phone-key-bar.ts";
+import { key, openPhoneTerminal, panViewport, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
@@ -12,7 +12,7 @@ const focusedLabel = (page: Page) =>
 async function typeFieldUp(page: Page): Promise<void> {
   const terminal = await openPhoneTerminal(page);
   await terminal.tap();
-  await field(page).tap();
+  await key(page, "Type in a field").tap();
   await expect(field(page)).toBeFocused();
 }
 
