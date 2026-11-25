@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { VitePWA, type ManifestOptions } from "vite-plugin-pwa";
 import { night, resolveTheme } from "../../packages/ui/src/theme/index.ts";
@@ -59,6 +60,10 @@ const themeColor = {
 };
 
 export default defineConfig({
+  resolve: {
+    // The page and its workers must configure Zod before typevault constructs any schemas.
+    alias: [{ find: /^zod$/, replacement: fileURLToPath(new URL("./src/vault/jitless.ts", import.meta.url)) }],
+  },
   plugins: [
     react(),
     themeColor,
