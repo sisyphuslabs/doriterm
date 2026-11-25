@@ -1,6 +1,9 @@
 /// <reference lib="webworker" />
 
-export {};
+/** What the worker posts back once a second: frames it presented in that second. Exporting it keeps this file a module. */
+export interface OffscreenProbeReport {
+  readonly framesPerSecond: number;
+}
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -45,7 +48,7 @@ function runProbe(canvas: OffscreenCanvas): void {
       if (elapsed >= REPORT_INTERVAL_MS) {
         const framesPerSecond = Math.round((frames * 1000) / elapsed);
         // DedicatedWorkerGlobalScope.postMessage accepts an empty transfer list as its second argument.
-        self.postMessage({ framesPerSecond }, []);
+        self.postMessage({ framesPerSecond } satisfies OffscreenProbeReport, []);
         windowStart = now;
         frames = 0;
       }
