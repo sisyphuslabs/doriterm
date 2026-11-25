@@ -40,6 +40,7 @@ import { loadNoticeAuthorization } from "./notice-addon.ts";
 import { NoticeRequest, noticesSupported } from "./notice-request.ts";
 import { requestPairOffer } from "./pair-offer.ts";
 import { requestPairedDevices, revokePairedDevice } from "./devices.ts";
+import { requestMcp } from "./mcp.ts";
 import { loadSpeech, speechAddonPath } from "./speech.ts";
 import { registerAppScheme, serveApp } from "./protocol.ts";
 import { applyMacTitlebar } from "./titlebar.ts";
@@ -295,6 +296,13 @@ function ready(): void {
     revokeDevice: async (id) => {
       try {
         return await revokePairedDevice(await localHost.start(), id);
+      } catch (error) {
+        return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    mcp: async (request) => {
+      try {
+        return await requestMcp(await localHost.start(), request);
       } catch (error) {
         return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
       }

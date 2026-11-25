@@ -5,6 +5,8 @@ import { ContextMenu, skipMenuHandler, skipTouchMenu } from "./menu.tsx";
 export interface RowWithActionsProps {
   /** The row's own button; it stays the list's stop, and ArrowRight reaches the actions (see the sidebar's roving). */
   readonly row: ReactElement;
+  /** Always-visible leading control (e.g. a tree fold button), positioned by the caller over the row's reserved slot. */
+  readonly leading?: ReactNode;
   /** Shown over the row's trailing meta on hover, keyboard focus, or while one of their menus is open. */
   readonly actions: ReactNode;
   /**
@@ -48,7 +50,7 @@ function openFromKeys(event: KeyboardEvent<HTMLDivElement>): void {
 }
 
 /** A sidebar row with a few trailing actions that take the place of its meta (age, machine, count) when shown. */
-export function RowWithActions({ row, actions, menu, coarseActions = false, className }: RowWithActionsProps) {
+export function RowWithActions({ row, leading, actions, menu, coarseActions = false, className }: RowWithActionsProps) {
   const box = useRef<HTMLDivElement | null>(null);
   const element = (
     <div
@@ -59,6 +61,11 @@ export function RowWithActions({ row, actions, menu, coarseActions = false, clas
         : { onTouchStart: skipMenuHandler, onContextMenu: skipTouchMenu, onKeyDown: openFromKeys })}
     >
       {row}
+      {leading === undefined || leading === null || leading === false ? null : (
+        <span data-row-leading className="pointer-events-none absolute inset-y-0 left-0 flex items-center">
+          {leading}
+        </span>
+      )}
       <span
         className={cn(
           "invisible absolute inset-y-0 right-1 flex items-center gap-0.5",

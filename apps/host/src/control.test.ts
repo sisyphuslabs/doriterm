@@ -1,9 +1,15 @@
+import { base64urlEncode, generateX25519 } from "@doriface/crypto";
+import { OPEN_POLICY } from "@doriface/policy";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { controlIsLive, controlSocketPath, type ControlListener, listenControl, requestControl } from "./control.ts";
 import { parseRequest } from "./control-requests.ts";
+import { openControl } from "./host-control.ts";
+import { e2eeDeps } from "./host-e2ee.ts";
+import { dial, gatewayOn } from "./testing/gateway-harness.ts";
+import { machine } from "./testing/mesh-history.ts";
 
 let dir: string;
 const listeners: ControlListener[] = [];
@@ -38,6 +44,44 @@ async function exchange(bytes: string): Promise<string> {
 }
 
 describe("control socket", () => {
+  test("mcp-status includes live MCP sessions only, not an hc session or a closed MCP session", async () => {
+    const founder = machine("alpha");
+    const e2ee = e2eeDeps(
+      dir,
+      founder.identity,
+      undefined,
+      {
+        listen: { hostname: "127.0.0.1", port: 0 },
+        token: "t".repeat(32),
+        hc: "hc",
+        policy: OPEN_POLICY,
+        log: () => {},
+      },
+      undefined,
+    );
+    e2ee.mcp.setEnabled(true);
+    const gateway = gatewayOn(founder, machine("beta"), { dir, mcp: e2ee.mcp, serveMcp: () => {} });
+    listeners.push(openControl(dir, { ...e2ee, sessions: gateway.sessions }, undefined, undefined));
+    const phone = generateX25519();
+    const tablet = generateX25519();
+    gateway.devices.add(phone.publicKey, "phone");
+    gateway.devices.add(tablet.publicKey, "tablet");
+    const hc = await dial(gateway, phone, founder, undefined, "hc");
+    const mcp = await dial(gateway, tablet, founder, undefined, "mcp");
+    try {
+      const ended = await dial(gateway, phone, founder, undefined, "mcp");
+      // Close on the host side so the registry's onClose has run before we ask for status.
+      ended.hostEnd.close();
+      await ended.closed;
+      expect(await requestControl(dir, { op: "mcp-status" })).toEqual({
+        sessions: [{ key: base64urlEncode(tablet.publicKey) }],
+      });
+    } finally {
+      hc.client.close();
+      mcp.client.close();
+    }
+  });
+
   test("the control client asks on the first reply and returns only the final reply", async () => {
     listeners.push(listenControl(dir, async (_, __, question) => ({ confirmed: await question("123 456") })));
     const seen: string[] = [];

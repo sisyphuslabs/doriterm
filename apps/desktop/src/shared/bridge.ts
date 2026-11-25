@@ -57,6 +57,8 @@ export const Channel = {
   pairedDevices: "doriface:paired-devices",
   /** Renderer to main: revoke one paired device by its short id. */
   revokeDevice: "doriface:revoke-device",
+  /** Renderer to main: this computer's MCP switch and connected clients (`state` reads, `on` and `off` set). */
+  mcp: "doriface:mcp",
   /** Renderer to main: the Direct address the page saved, checked by the shell before it forwards anything (chosen). */
   setDirectTarget: "doriface:set-direct-target",
   /** Renderer to main: one capability to forward bytes to the saved Direct address, or why not (#449). */
@@ -241,6 +243,38 @@ export type RevokeDeviceAnswer =
   | { readonly state: "not-found"; readonly devices: readonly PairedDevice[] }
   | { readonly state: "unavailable"; readonly reason: string };
 
+/** One MCP client connected to this computer now; `name` is null for a mesh client this computer did not pair. */
+export interface McpClient {
+  readonly id: string;
+  readonly name: string | null;
+}
+
+export type McpRequest = "state" | "on" | "off";
+
+/** What `mcp` answers: the switch and who is connected through it, or why this app cannot ask its host. */
+export type McpAnswer =
+  | { readonly state: "read"; readonly enabled: boolean; readonly clients: readonly McpClient[] }
+  | { readonly state: "unavailable"; readonly reason: string };
+
+export function isMcpClient(value: unknown): value is McpClient {
+  if (typeof value !== "object" || value === null) return false;
+  const name: unknown = Reflect.get(value, "name");
+  return typeof Reflect.get(value, "id") === "string" && (name === null || typeof name === "string");
+}
+
+export function isMcpAnswer(value: unknown): value is McpAnswer {
+  if (typeof value !== "object" || value === null) return false;
+  const state: unknown = Reflect.get(value, "state");
+  if (state === "unavailable") return typeof Reflect.get(value, "reason") === "string";
+  const clients: unknown = Reflect.get(value, "clients");
+  return (
+    state === "read" &&
+    typeof Reflect.get(value, "enabled") === "boolean" &&
+    Array.isArray(clients) &&
+    clients.every(isMcpClient)
+  );
+}
+
 export function isPairedDevice(value: unknown): value is PairedDevice {
   return (
     typeof value === "object" &&
@@ -375,6 +409,8 @@ export interface DorifaceBridge {
   /** This computer's paired devices; revoking one from here closes its sessions on the host. */
   pairedDevices(): Promise<PairedDevicesAnswer>;
   revokeDevice(id: string): Promise<RevokeDeviceAnswer>;
+  /** This computer's MCP switch: `state` reads it with the connected clients; `on` and `off` set it. Never throws. */
+  mcp(request: McpRequest): Promise<McpAnswer>;
   /** Calls `listener` with an app path to show, e.g. `/settings` from the app menu. */
   onNavigate(listener: (path: string) => void): void;
   /** Paints the window, now and at the next launch, with the in-app theme's background (`#rrggbb`). */

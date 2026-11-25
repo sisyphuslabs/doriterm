@@ -79,6 +79,7 @@ for (const { name, shape } of SHAPES) {
   }) => {
     await openPhoneTerminal(page, SIZE.width, shape);
     await pressShowKeyboard(page);
+    await key(page, "Type in a field").click();
     await expectAboveKeyboard(page);
     await field(page).click();
     await expect(field(page)).toBeFocused();

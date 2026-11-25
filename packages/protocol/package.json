@@ -13,7 +13,7 @@
     "./layout": "./src/layout/index.ts"
   },
   "scripts": {
-    "gen:api": "bun scripts/gen-api.ts",
-    "gen:api:check": "bun scripts/gen-api.ts --check"
+    "gen:api": "bun scripts/gen-api.ts && bun scripts/gen-mcp-tools.ts",
+    "gen:api:check": "bun scripts/gen-api.ts --check && bun scripts/gen-mcp-tools.ts --check"
   }
 }

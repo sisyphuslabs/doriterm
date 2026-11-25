@@ -1,4 +1,5 @@
 import type { Agent, Space } from "@doriface/ui";
+import { ancestorsOf, withShape } from "./agent-tree.ts";
 import { type AgentGroup, type MachineGroup, tabsIn } from "./sidebar-model.ts";
 
 /** The query's words, lower-cased; none for a blank query. */
@@ -35,8 +36,9 @@ const spaceLabels = (space: Space, hideMachine: boolean): string[] => [
 
 /**
  * The agent groups narrowed to the rows matching the query: membership only (the rows are the same objects in the same
- * order), the selected row kept as context, empty groups left out and counts following. A blank query gives back the
- * same array, so clearing the field restores the lists exactly.
+ * order), the selected row kept as context, empty groups left out and counts following. A kept sub-agent keeps the
+ * agents above it, so it still reads as theirs, and the rows are shaped as the narrowed list draws them (#2746). A
+ * blank query gives back the same array, so clearing the field restores the lists exactly.
  */
 export function filterAgentGroups(
   groups: readonly AgentGroup[],
@@ -45,7 +47,13 @@ export function filterAgentGroups(
 ): readonly AgentGroup[] {
   if (words(query).length === 0) return groups;
   return groups.flatMap((group) => {
-    const agents = group.agents.filter((agent) => agent.id === selected || matchesQuery(query, agentLabels(agent)));
+    const keep = new Set<string>();
+    group.agents.forEach((agent, index) => {
+      if (agent.id !== selected && !matchesQuery(query, agentLabels(agent))) return;
+      keep.add(agent.id);
+      for (const above of ancestorsOf(group.agents, index)) keep.add(above);
+    });
+    const agents = withShape(group.agents.filter((agent) => keep.has(agent.id)));
     return agents.length === 0 ? [] : [{ ...group, agents, count: agents.length }];
   });
 }
