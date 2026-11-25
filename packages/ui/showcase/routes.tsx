@@ -1,6 +1,8 @@
 import type { ComponentType } from "react";
 import { ApprovalScreen } from "./screens/approval.tsx";
 import { ConceptKeyboardScreen } from "./screens/concept-keyboard.tsx";
+import { McpAgentsScreen } from "./screens/mcp-agents.tsx";
+import { McpAttachScreen } from "./screens/mcp-attach.tsx";
 import { MobileAgentsScreen, MobileScreen } from "./screens/mobile.tsx";
 import { PairScreen } from "./screens/pair.tsx";
 import { PaletteScreen } from "./screens/palette.tsx";
@@ -35,6 +37,8 @@ export const ROUTES = [
   { id: "sidebar-recompose", title: "Sidebar recompose (#206)", render: SidebarRecomposeScreen },
   { id: "states", title: "Empty, offline and error states", render: StatesScreen },
   { id: "approval", title: "Permission banner", render: ApprovalScreen },
+  { id: "mcp-agents", title: "MCP clients: Settings", render: McpAgentsScreen },
+  { id: "mcp-attach", title: "MCP clients: connect", render: McpAttachScreen },
   { id: "voice", title: "Voice input", render: VoiceScreen },
   { id: "terminal-find", title: "Find in terminal", render: TerminalFindScreen },
   { id: "concept-keyboard", title: "Concept: Settings keyboard", render: ConceptKeyboardScreen },

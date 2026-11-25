@@ -1,19 +1,16 @@
-import { Bot, SquareTerminal, Terminal } from "lucide-react";
+import { AgentMark } from "@doriface/ui";
 import type { ReactElement, ReactNode } from "react";
-import { programKind, type Session, terminalTitle } from "./model.ts";
+import { markKind, type Session, terminalTitle } from "./model.ts";
 import { useShown } from "./use-shown.ts";
 
-/** herdr-app's program icons for what a tab runs: an agent, a shell, or another program (its `defaults/icons`). */
-export const PROGRAM_ICON = {
-  agent: <Bot aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
-  shell: <Terminal aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
-  program: <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
-};
-
-/** The icon of what runs in front of a pane's shell now: it alone draws again as a program starts or ends (#2607). */
+/**
+ * The mark of what runs in front of a pane's shell now, as herdr-app's tab strip draws its program icons: the agent's
+ * own where it has one, else an agent's, a shell's or another program's. It alone draws again as a program starts or
+ * ends (#2607). The tab's title names it, so the mark is for the eye only.
+ */
 function FrontIcon({ terminal }: { readonly terminal: Session }) {
-  const [now = terminal] = useShown([terminal], programKind);
-  return PROGRAM_ICON[programKind(now)];
+  const [now = terminal] = useShown([terminal], markKind);
+  return <AgentMark kind={markKind(now)} size={14} className="text-muted-foreground" decorative />;
 }
 
 const fronts = new WeakMap<Session, ReactElement>();

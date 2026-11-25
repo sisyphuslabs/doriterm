@@ -10,6 +10,7 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(Channel.pairOffer, (event, candidate: unknown) => handlers.pairOffer(event, candidate));
   ipcMain.handle(Channel.pairedDevices, (event) => handlers.pairedDevices(event));
   ipcMain.handle(Channel.revokeDevice, (event, candidate: unknown) => handlers.revokeDevice(event, candidate));
+  ipcMain.handle(Channel.mcp, (event, candidate: unknown) => handlers.mcp(event, candidate));
   ipcMain.handle(Channel.setWindowBackground, (event, candidate: unknown) =>
     handlers.setWindowBackground(event, candidate),
   );

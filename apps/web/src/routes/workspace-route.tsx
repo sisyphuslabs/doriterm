@@ -1,4 +1,4 @@
-import { Button, DelayedSpinner, EmptyState, Notice } from "@doriface/ui";
+import { Button, EmptyState, Notice } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { PlugZap } from "lucide-react";
 import { hostFailure } from "../connection/host-failure.ts";
@@ -10,6 +10,7 @@ import { FirstRun } from "../pair/first-run.tsx";
 import { HostStartNotice } from "../pair/host-start-notice.tsx";
 import { useOnline } from "../pwa/use-online.ts";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
+import { ConnectingState } from "./connecting-state.tsx";
 import { lazy, Suspense, useState } from "react";
 import { restoreMembership, useBrowserMembership, useMembershipFailure } from "../mesh/membership-state.ts";
 import { RemovedMembership } from "../settings/membership-device.tsx";
@@ -88,7 +89,7 @@ export function WorkspaceRoute() {
           </Notice>
         ) : null}
         {state.phase === "connecting" ? (
-          <EmptyState icon={<DelayedSpinner />} title="Connecting to your host" description="Opening the session." />
+          <ConnectingState />
         ) : state.phase === "failed" ? (
           <EmptyState
             icon={<PlugZap aria-hidden className="size-5" />}

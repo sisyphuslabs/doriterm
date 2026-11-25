@@ -1,3 +1,4 @@
+import { keepStorage } from "../storage/keep-storage.ts";
 import { base64urlEncode, closeCodeOf, PAIRING_TTL_MS } from "@doriface/crypto";
 import { JOINER_EXPECTS, MeshLines } from "@doriface/mesh/join";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -65,10 +66,7 @@ export function useBrowserJoin() {
           expiresAt: Date.now() + PAIRING_TTL_MS,
         };
         await deviceStore.put("mesh.browser-name", context.name);
-        void navigator.storage?.persist?.().then(
-          () => undefined,
-          () => undefined,
-        );
+        void keepStorage().catch(() => undefined);
         await controller.run(
           { lines: new MeshLines(session, JOINER_EXPECTS), handshakeHash: session.handshakeHash },
           {

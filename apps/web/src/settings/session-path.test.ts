@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DirectReason } from "../connection/direct-attempt.ts";
+import { installShellForwarder } from "../connection/direct-forward.test-support.ts";
 import { sessionPathLabel } from "./session-path.ts";
 
 const REASONS: readonly DirectReason[] = [
@@ -11,7 +12,7 @@ const REASONS: readonly DirectReason[] = [
 ];
 
 describe("sessionPathLabel", () => {
-  test("the desktop shell names the path the session actually took", () => {
+  test("with the direct path on, the desktop shell names the path the session actually took", () => {
     expect(sessionPathLabel("direct", undefined, true)).toBe("Direct to this host on this network");
     expect(sessionPathLabel("loopback", undefined, true)).toBe("On this computer");
     expect(sessionPathLabel("relay", undefined, true)).toBe("Through the relay");
@@ -21,6 +22,17 @@ describe("sessionPathLabel", () => {
     expect(sessionPathLabel("direct")).toBe("Through the relay");
     expect(sessionPathLabel("relay", "no-answer")).toBe("Through the relay");
     expect(sessionPathLabel("loopback")).toBe("On this computer");
+  });
+
+  test("the desktop shell says the relay too while the direct path is off (#2070)", () => {
+    const shell = installShellForwarder();
+    try {
+      expect(sessionPathLabel("relay")).toBe("Through the relay");
+      expect(sessionPathLabel("relay", "no-answer")).toBe("Through the relay");
+      expect(sessionPathLabel("loopback")).toBe("On this computer");
+    } finally {
+      shell.restore();
+    }
   });
 
   test("the shell gives each reason its own words, so none is a silent fallback", () => {

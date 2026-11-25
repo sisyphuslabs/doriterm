@@ -8,9 +8,10 @@ import {
   terminalSpaceName,
 } from "@doriface/protocol";
 import { docSpaces, panesOf, tabsOf } from "@doriface/protocol/layout";
-import type { Agent, AgentStatus, Space } from "@doriface/ui";
+import { hasAgentMark, type Agent, type AgentStatus, type Space } from "@doriface/ui";
 import { spaceKey } from "../layout/view.ts";
 import { isOpeningName } from "../terminal/opening-attach.ts";
+import { agentKind } from "./agent-kind.ts";
 import { agentStatus } from "./attention.ts";
 import type { Session } from "./attention.ts";
 import { type GitFactsOf, shownGit } from "./git-facts.ts";
@@ -46,6 +47,16 @@ export function programKind(terminal: Session): "agent" | "shell" | "program" {
   if (terminal.status?.state !== undefined) return "agent";
   const front = terminal.foreground?.argv[0] ?? terminal.foreground?.name ?? terminal.argv[0] ?? "";
   return SHELLS.has(programName(front)) ? "shell" : "program";
+}
+
+/**
+ * The mark key drawn for a terminal: its known agent kind when `@doriface/ui` ships a mark for it, `"agent"` for a
+ * known agent without its own mark, else {@link programKind} (`"agent"`, `"shell"`, or `"program"`).
+ */
+export function markKind(terminal: Session): string {
+  const known = agentKind(terminal);
+  if (known !== null) return hasAgentMark(known) ? known : "agent";
+  return programKind(terminal);
 }
 
 /**
@@ -132,6 +143,7 @@ export function toAgent(terminal: Terminal, nowMs: number): Agent {
     status: agentStatus(terminal),
     detail,
     age: formatAge(terminal.status_ms ?? terminal.created_ms, nowMs),
+    kind: markKind(terminal),
   };
   return machine === undefined ? agent : Object.assign(agent, { machine });
 }

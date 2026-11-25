@@ -119,6 +119,27 @@ describe("answering every prompt shape", () => {
     expect(core.sent).toEqual([{ address: "t3", text: "MySQL 8" }]);
   });
 
+  test.each(["closed", "open"] as const)("a document read fails while the typed row is %s", async (failWhen) => {
+    const terminal = terminalAt("t3", { ...CLAUDE_BLOCKED, kind: "question" });
+    const core = new MemoryApprovalCore(terminal, screens.CLAUDE_QUESTION_SCREEN);
+    const mark = markApproval(terminal, screens.CLAUDE_QUESTION_SCREEN);
+    if (mark === undefined) throw new Error("no prompt");
+    let polls = 0;
+    const pause = () => {
+      const open = ++polls >= 2;
+      if (open) core.show(terminal, screens.CLAUDE_QUESTION_TYPING_SCREEN);
+      if (polls === (failWhen === "closed" ? 1 : 2)) core.failNext("doc");
+      return noWait();
+    };
+    const reply: PromptReply = { kind: "text", option: "4", text: "MySQL 8" };
+    const result = await answerApproval(core, mark, reply, phone, 1, { pause });
+    const outcome = failWhen === "closed" ? "sent" : "unknown";
+    expect(result.kind).toBe(outcome);
+    expect(await readApprovalRecord(core, mark)).toMatchObject({ outcome });
+    expect(core.pressed).toEqual([{ address: "t3", keys: ["4"] }]);
+    expect(core.sent).toEqual(failWhen === "closed" ? [{ address: "t3", text: "MySQL 8" }] : []);
+  });
+
   test("a typed answer whose row never opens: the keys were pressed, the text is not sent, and the outcome is unknown", async () => {
     const terminal = terminalAt("t3", { ...CLAUDE_BLOCKED, kind: "question" });
     const core = new MemoryApprovalCore(terminal, screens.CLAUDE_QUESTION_SCREEN);

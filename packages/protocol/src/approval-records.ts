@@ -1,3 +1,4 @@
+import { type ApprovalClock, clockOf, liveForRetention } from "./approval-clock.ts";
 import type { ApprovalCore } from "./approval-live.ts";
 import { type ApprovalMark, approvalKey } from "./approval-prompt.ts";
 import type { ApprovalAnswer } from "./approval-screen.ts";
@@ -30,7 +31,7 @@ export interface ApprovalRecord extends Answerer {
   readonly outcome: ApprovalOutcome;
 }
 
-/** Records kept per terminal: newest last. Older prompts' records drop off; they only ever serve "answered on ...". */
+/** Hard limit per terminal, newest last. History may make room for a claim; a live claim may not. */
 const KEPT = 16;
 const ATTEMPTS = 8;
 
@@ -65,7 +66,7 @@ function recordsIn(value: JsonValue): ApprovalRecord[] {
   return Array.isArray(list) ? list.filter(isRecord) : [];
 }
 
-export const recordJson = (record: ApprovalRecord, outcome = record.outcome): JsonValue => ({
+const recordJson = (record: ApprovalRecord): JsonValue => ({
   prompt: record.prompt,
   answer: record.answer,
   ...(record.choice === undefined ? {} : { choice: record.choice }),
@@ -73,39 +74,68 @@ export const recordJson = (record: ApprovalRecord, outcome = record.outcome): Js
   client: record.client,
   atMs: record.atMs,
   ...(record.attempt === undefined ? {} : { attempt: record.attempt }),
-  outcome,
+  outcome: record.outcome,
 });
 
 /** The terminal's records with `change` applied, or undefined to leave the document as it is. */
-export type Change = (records: readonly ApprovalRecord[]) => readonly JsonValue[] | undefined;
+export type Change = (records: readonly ApprovalRecord[]) => readonly ApprovalRecord[] | undefined;
+
+function retained(records: readonly ApprovalRecord[], clock: ApprovalClock): readonly ApprovalRecord[] {
+  let excess = records.length - KEPT;
+  if (excess <= 0) return records;
+  // Never drop the new record to make its own write succeed. An abandoned claim is eligible only after this
+  // writer has observed it for a full TTL; another device's atMs does not establish its age.
+  const kept = records.filter((record, index) => {
+    if (excess === 0 || index === records.length - 1 || liveForRetention(record, clock)) {
+      return true;
+    }
+    excess -= 1;
+    return false;
+  });
+  if (excess > 0) throw new Error("approval document is full of live claims; retry after a claim settles or lapses");
+  return kept;
+}
+
+/** The terminal's records as one read of its approval document found them, and that document's version. */
+export interface RecordsRead {
+  readonly records: readonly ApprovalRecord[];
+  readonly version: number;
+}
 
 /**
  * The terminal's approval document, then `change` applied and written back at the version read, retried on a conflict.
- * Returns the records as read when `change` left the document alone, undefined once its write landed.
+ * Returns the records as read when `change` left the document alone, undefined once its write landed. `read` is a read
+ * the caller just made: the first write goes at its version without reading again, and a conflict reads afresh (#2718).
  */
 export async function update(
   core: ApprovalCore,
   address: string,
   change: Change,
-  attempt = 1,
+  read?: RecordsRead,
+  clock = clockOf(core),
+  // A cached fence version can already be stale before settlement starts. On conflict give the fresh read/write
+  // loop its normal eight attempts, just as if there had been no cached version.
+  attempt = read === undefined ? 1 : 0,
 ): Promise<readonly ApprovalRecord[] | undefined> {
   const { name, on } = docOf(address);
-  const current = await core.doc(name, on);
-  const next = change(recordsIn(current.value));
-  if (next === undefined) return recordsIn(current.value);
-  if ((await core.setDoc(name, on, { records: next.slice(-KEPT) }, current.version)) === "ok") return undefined;
+  const current = read ?? (await readRecords(core, address));
+  const next = change(current.records);
+  if (next === undefined) return current.records;
+  const records = retained(next, clock).map(recordJson);
+  if ((await core.setDoc(name, on, { records }, current.version)) === "ok") return undefined;
   if (attempt >= ATTEMPTS) throw new Error(`approval document ${name} kept moving: ${ATTEMPTS} conflicts in a row`);
-  return update(core, address, change, attempt + 1);
+  return update(core, address, change, undefined, clock, attempt + 1);
 }
 
-/** Every record of the terminal that holds the marked prompt, as the core has them now. */
-export async function readRecords(core: ApprovalCore, address: string): Promise<readonly ApprovalRecord[]> {
+/** The terminal's records, as the core has them now. */
+export async function readRecords(core: ApprovalCore, address: string): Promise<RecordsRead> {
   const { name, on } = docOf(address);
-  return recordsIn((await core.doc(name, on)).value);
+  const doc = await core.doc(name, on);
+  return { records: recordsIn(doc.value), version: doc.version };
 }
 
 /** What was recorded for the marked prompt, by whichever client answered it. */
 export async function readApprovalRecord(core: ApprovalCore, mark: ApprovalMark): Promise<ApprovalRecord | undefined> {
   const key = approvalKey(mark);
-  return (await readRecords(core, mark.terminal)).findLast((record) => record.prompt === key);
+  return (await readRecords(core, mark.terminal)).records.findLast((record) => record.prompt === key);
 }
