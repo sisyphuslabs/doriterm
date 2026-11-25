@@ -37,7 +37,7 @@
   },
   "packageManager": "bun@1.4.4",
   "patchedDependencies": {
-    "@wterm/dom@0.5.9": "patches/@wterm%2Fdom@0.5.9.patch",
-    "@wterm/ghostty@0.5.9": "patches/@wterm%2Fghostty@0.5.9.patch"
+    "@wterm/dom@0.6.0": "patches/@wterm%2Fdom@0.6.0.patch",
+    "@wterm/ghostty@0.6.0": "patches/@wterm%2Fghostty@0.6.0.patch"
   }
 }
