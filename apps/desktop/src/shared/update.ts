@@ -17,6 +17,14 @@ export type UpdateStatus =
   | { readonly state: "ready"; readonly version: string }
   | { readonly state: "failed"; readonly reason: UpdateFailure; readonly message: string };
 
+export interface DesktopAppUpdateBridge {
+  /** Current status and subsequent changes, or null in a build without an updater. */
+  onUpdateStatus(listener: (status: UpdateStatus | null) => void): () => void;
+  updateChannel(): Promise<UpdateChannel | null>;
+  setUpdateChannel(channel: UpdateChannel): Promise<boolean>;
+  checkForUpdates(): Promise<void>;
+}
+
 const STATES = new Set(["idle", "checking", "current", "downloading", "ready", "failed"]);
 const REASONS = new Set(["check", "download", "stalled", "below-floor"]);
 

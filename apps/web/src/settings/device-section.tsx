@@ -2,11 +2,13 @@ import { Button, SegmentedControl, SettingRow, Switch } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { desktopBackgroundSetting } from "../desktop/bridge.ts";
+import { coreUpdateSetting } from "../desktop/core-update-setting.ts";
 import { guideStore } from "../pair/first-run-guide.ts";
 import { install, useInstallOffer } from "../device/install.ts";
 import { keepAwakeStore, screenWakeLock, useKeepAwake } from "../device/keep-awake.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { BackgroundRow } from "./background-row.tsx";
+import { CoreUpdateRow } from "./core-update-row.tsx";
 import { desktopUpdateSetting } from "../desktop/update-setting.ts";
 import { UpdateChannelRow } from "./update-channel-row.tsx";
 import type { DisplayMode } from "../terminal/prediction-display.ts";
@@ -27,9 +29,11 @@ export function DeviceSection() {
   const mesh = useBrowserMembership();
   const [background] = useState(() => desktopBackgroundSetting());
   const [updates] = useState(() => desktopUpdateSetting());
+  const [coreUpdates] = useState(() => coreUpdateSetting());
   const rows = [
     background === null ? null : <BackgroundRow key="background" setting={background} />,
     updates === null ? null : <UpdateChannelRow key="update-channel" setting={updates} />,
+    coreUpdates === null ? null : <CoreUpdateRow key="core-update" setting={coreUpdates} />,
     screenWakeLock() === null ? null : (
       <SettingRow
         key="keep-awake"

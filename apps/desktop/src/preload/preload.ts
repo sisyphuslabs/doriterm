@@ -22,6 +22,13 @@ import {
 } from "../shared/bridge.ts";
 import { isUpdateChannel, isUpdateStatus } from "../shared/update.ts";
 import { isPasteInviteAnswer } from "../shared/paste-invite.ts";
+import { coreUpdateChannels, isCoreUpdateAnswer, type CoreUpdateAnswer } from "../shared/core-update.ts";
+
+async function coreUpdateRequest(channel: string): Promise<CoreUpdateAnswer> {
+  const answer: unknown = await ipcRenderer.invoke(channel);
+  if (!isCoreUpdateAnswer(answer)) throw new Error("The main process returned no core update answer.");
+  return answer;
+}
 
 const version = process.argv.find((arg) => arg.startsWith(VERSION_ARG))?.slice(VERSION_ARG.length) ?? "0.0.0";
 
@@ -57,6 +64,8 @@ const dictation: Pick<
 
 const bridge: DorifaceBridge = {
   ...dictation,
+  checkCoreUpdate: () => coreUpdateRequest(coreUpdateChannels.check),
+  applyCoreUpdate: () => coreUpdateRequest(coreUpdateChannels.apply),
   version,
   platform: parsePlatform(process.platform),
   async openExternal(url) {
