@@ -2,6 +2,94 @@
 
 ## Unreleased
 
+## v0.1.25 - 2026-11-25
+
+### Workspace
+
+- omo agents now show omo's own cat mark instead of a placeholder, in the agents list, tabs and on the phone. (#2814)
+
+### Phone
+
+- In the iOS home-screen app the keys bar sits right on the soft keyboard again; it stood about a header's height
+  above it, an empty band, when iOS scrolled the page to show the Type field. (#2820)
+- A phone brought back to a terminal (from another app, or the phone unlocked) gives its program the phone's size
+  again. After a desktop had used the same terminal, an agent's output was drawn for the desktop's width and its lines
+  were copied once per redraw on the phone. (#2819)
+
+### Connection and offline wording
+
+- A pane's "Opening…" that appears after a second now stays at least half a second, even when the terminal attaches
+  right after it appeared, so it never blinks over the terminal. (#2768, #2785)
+- `doriface-host` (the host, `connect` and `connect --mcp`) reaches the relay through the proxy the environment names
+  (`WSS_PROXY`, `HTTPS_PROXY` or `ALL_PROXY`, minus `NO_PROXY`), so a machine or sandbox that only lets traffic out through
+  a proxy, such as a cloud agent's VM, no longer fails every dial with 1006. A proxy that re-signs TLS needs its CA in
+  `NODE_EXTRA_CA_CERTS`. (#2735)
+
+### Phone, iPad and foldables
+
+- A split tab on a phone opens both of its terminals at once, stacked when the phone is upright and side by side when
+  it is on its side. One tap moves the focus, and the keys bar, dictation and keyboard go with it; a handle sets how
+  much each half gets, and each half's expand button fills the screen with it until Back. (#2790)
+- An iPad in portrait, an iPad window at half width and an open foldable (Galaxy Z Fold, iPhone Duo) get the tablet
+  layout: the sidebar is a rail whose expand opens a drawer over the terminals, and a side-by-side split stacks top to
+  bottom. A phone turned on its side keeps the phone layout. Folding or unfolding keeps the terminal you had open.
+  (#2790)
+- On a dual-screen device a two-pane split puts one pane on each screen, its line on the hinge. (#2790)
+
+## v0.1.24 - 2026-11-24
+
+### Workspace
+
+- An agent started from the tab strip's + menu (such as omo) opens as a tab of the selected space, instead of in a new
+  space when it takes a few seconds to get ready. (#2748)
+- The Agents list keeps an agent's helpers with it: a terminal another agent started is listed right under that agent,
+  and the agent is placed by the most urgent of itself and its helpers, so a helper that needs you brings its agent to
+  Needs you. A helper that finished does not move a working agent out of Working. (#2752)
+- The Agents list draws helpers as an indented tree with a fold control that shows the hidden count and whether any
+  helper needs you, on desktop and phone. (#2755)
+- Agent rows and tabs show a single-colour mark for what they run: the agent's own for Claude, Cursor, Copilot, Gemini,
+  OpenCode, Kimi and Qwen, a distinct glyph for Codex, Grok, Amp, Antigravity, omo, omp and Droid, and the generic
+  agent, shell and program glyphs for everything else. The agent is read from its own report, else from the program it
+  runs. (#2757)
+
+### Keys
+
+- Next agent and Previous agent step through the agents in the order the Agents list draws them, so a helper comes
+  right after the agent that started it and the keys follow the filter and the folds on screen. (#2756)
+
+### Phone
+
+- In the phone's text field, Enter now starts a new line, on the phone's keyboard and a hardware keyboard alike, and
+  only the Send button sends. A message can be written over several lines before it goes. (#2766, #2767)
+- The terminal's keys on a phone now sit in two pills in one row, as in the Herdr app: the keys on the left in pages you
+  swipe through, with a dot per page, and Return, the keyboard toggle and the text field's toggle on the right. The text
+  field moved into its own card above the row, which opens and closes with its toggle; Enter there still starts a new
+  line and only Send sends. The arrow keys open as a small inverted-T bubble over their key. (#2778)
+
+### Connection and offline wording
+
+- Loading and reconnecting messages no longer flash for short waits. "Connecting to your host", "Loading the
+  workspace…", "Loading agents…", "Reconnecting…" in the status bar, the phone's line and a pane's header show only
+  once a wait has taken a second, and then stay at least half a second, so a quick reload or a quick return to the
+  app shows nothing, and none blinks. Being offline is still said at once. (#2768, #2769)
+
+### MCP clients
+
+- MCP is on by default: a paired device can open an MCP session on a host that never set the switch, new installs
+  and existing hosts alike. `doriface-host mcp off` still turns it off, and that setting survives updates; an unpaired
+  or revoked device is still refused. (#2735)
+- An MCP client can follow terminals as they change: terminals are MCP resources it can read and subscribe to
+  (`subscriptions/listen`), and the MCP Events extension delivers `terminal.changed` with what changed
+  (`events/stream`). Each subscription ends when it is cancelled or the session closes. (#2735)
+
+### Pairing and adding machines
+
+- Add a machine and Pair a host are one flow. The same place shows the line to run on the other machine and takes an
+  invite from another machine: a link, its code, or the whole install line as it was pasted. (#2795, #2803)
+- This app's own install line pasted back into its invite field is refused with a note to run it on the other machine,
+  and the invite still works there. Before, it read as a different kind of invite, the host refused it, and every retry
+  said it was used already. (#2795, #2803)
+
 ## v0.1.23 - 2026-11-24
 
 v0.1.22 was prepared but never published; everything listed under v0.1.22 below ships in this release.

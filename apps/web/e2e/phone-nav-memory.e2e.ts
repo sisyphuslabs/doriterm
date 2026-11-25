@@ -140,8 +140,13 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await spaceRow(page, "website").first().click();
         await expect(heading(page, "website")).toBeVisible();
         const more = page.getByRole("banner").getByRole("button", { name: "More for website" });
-        const box = await more.boundingBox();
-        expect(Math.min(box?.width ?? 0, box?.height ?? 0)).toBeGreaterThanOrEqual(44);
+        // The arriving screen translates during its push. Measure the actual touch target after that motion settles.
+        await expect
+          .poll(async () => {
+            const box = await more.boundingBox();
+            return Math.min(box?.width ?? 0, box?.height ?? 0);
+          })
+          .toBeGreaterThanOrEqual(44);
         await more.click();
         await expect(page.getByRole("menuitem", { name: "Close space…" })).toBeVisible();
         await page.getByRole("menuitem", { name: "Rename space…" }).click();

@@ -34,10 +34,7 @@ test.beforeAll(async () => {
     Object.entries({ ...process.env, ...hc.env }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
   scratch = { hc, profile, env };
-  launched = await electron.launch({
-    ...launchOptions([profileArg(profile)]),
-    env,
-  });
+  launched = await electron.launch(await launchOptions([profileArg(profile)], { env }));
 });
 
 test.afterAll(async () => {

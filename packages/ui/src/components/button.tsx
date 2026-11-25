@@ -8,12 +8,12 @@ import { Spinner } from "./spinner.tsx";
 export const buttonVariants = cva(
   [
     "relative inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium",
-    "outline-none transition-[background-color,color,opacity,transform] duration-(--duration-micro) ease-out",
+    "outline-none transition-[background-color,color,opacity,transform] duration-(--duration-press) ease-out",
     "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
     // Disabled is dimmed with its own colours, never a fade of the whole button, which fades the label with its fill
     // (#1031): a label of at least 4.5:1 on every variant (#1496) and a ghost icon of 3:1, on every surface in both themes.
     // Loading also sets disabled, but a working button is busy, not unavailable: it keeps its colours (aria-busy).
-    "active:scale-[0.97] data-disabled:pointer-events-none",
+    "active:scale-[0.97] motion-reduce:active:scale-none data-disabled:pointer-events-none",
     "[&_svg:not([data-slot=spinner])]:size-4 [&_svg]:shrink-0",
     "after:absolute after:-inset-1 coarse:after:min-h-11 coarse:after:min-w-11",
   ],

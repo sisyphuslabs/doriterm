@@ -6,6 +6,7 @@ import {
   Menu,
   nativeTheme,
   Notification,
+  safeStorage,
   screen,
   session,
   shell,
@@ -30,8 +31,11 @@ import { DictationHost } from "./dictation.ts";
 import { DirectForwarder } from "./direct-forward.ts";
 import { applyDevCsp, hardenContents, lockPermissions } from "./harden.ts";
 import { InputGestures } from "./paste-invite.ts";
-import { findHc, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
+import { findHc, hostChildEnv, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
 import { registerIpc } from "./ipc.ts";
+import { registerVaultIpc } from "./ipc-vault.ts";
+import { openVaultKey } from "./vault-key.ts";
+import { localKeyholder, serveKeyholder } from "@doriface/vault";
 import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
 import { showNotice } from "./notice.ts";
@@ -223,7 +227,7 @@ function ready(): void {
     searched: () => usualHcDirs(context),
     // A new terminal with no directory opens in the home folder, not where the app was launched from (#2047).
     cwd: context.home,
-    env: process.env,
+    env: hostChildEnv(context),
     log: (line) => console.log(line),
   });
   app.on("will-quit", () => void localHost.stop());
@@ -276,6 +280,22 @@ function ready(): void {
   if (devUrl === undefined) serveApp(webRoot(), csp);
   else applyDevCsp(session.defaultSession, origin, csp);
   showMenu(new Map());
+  let vaultServe: Promise<(request: unknown) => Promise<unknown>> | undefined;
+  registerVaultIpc({
+    origin,
+    serve: () => {
+      vaultServe ??= openVaultKey(app.getPath("userData"), {
+        available: () => safeStorage.isEncryptionAvailable(),
+        backend: () => (process.platform === "linux" ? safeStorage.getSelectedStorageBackend() : "os"),
+        encrypt: (text) => safeStorage.encryptString(text),
+        decrypt: (data) => safeStorage.decryptString(data),
+      }).then((key) => serveKeyholder(localKeyholder(key)));
+      vaultServe.catch(() => {
+        vaultServe = undefined;
+      });
+      return vaultServe;
+    },
+  });
   registerIpc({
     origin,
     startLocalHost: () => localHost.start(),

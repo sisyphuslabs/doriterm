@@ -25,6 +25,7 @@ import {
 } from "./terminal-settle.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
+import type { HostSize } from "./host-size.ts";
 
 const encoder = new TextEncoder();
 
@@ -56,6 +57,8 @@ interface AttachSources {
    * every render, so a hold set on the terminal alone is let go by the next render of the view, mid-replay.
    */
   readonly holdPaint: (hold: PaintHold, held: boolean) => boolean;
+  /** When this view's grid may size the host (D1): a touch view only watching joins without taking its size. */
+  readonly hostSize: HostSize;
 }
 
 /**
@@ -88,7 +91,7 @@ export interface Attachment {
 /** What a pane does when a connection arrives: attach, replay, settle what the core says is left, and report unsent input. */
 export function useTerminalAttach(sources: AttachSources): Attachment {
   const { connection, address, pid, live, shown, wt, setWt, stream, pending, pacer, output } = sources;
-  const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint } = sources;
+  const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint, hostSize } = sources;
   const toasts = useToastManager();
   // Read when a reattach is answered: the core's version as it is then, not when the effect last ran.
   const repaintingCore = useRef<string | undefined>(undefined);
@@ -202,7 +205,8 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     noteViewSize(cols, rows);
     const display = readDisplay(ready.element);
     // A reattach after a reconnect says so: the core applies its size only once this viewer is active again.
-    const resumed = attachedBefore.current ? { resumed: true } : {};
+    // A touch view only watching joins the same way, so the device in use keeps its size (D1, host-size.ts).
+    const resumed = attachedBefore.current || hostSize.attachDeferred() ? { resumed: true } : {};
     // A reattach to a view the core has painted keeps the history it holds and asks for the screen alone, as hc does
     // when it reattaches a viewer on another core: 2,000 lines again played the history back, over a MiB that a slow
     // link hands over for longer than the replay's paint hold, so the view climbed through all of it (#1997). Lines that
@@ -245,9 +249,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         // makes it active again, so the core applies its size now. Other views send no FOCUS, which would report
         // focus-in to their programs; their size applies when they are focused or resized.
         const inUse = isFocused.current && document.hasFocus() && ready.element.contains(document.activeElement);
-        if (attachedBefore.current && inUse) attached.focus(true);
+        if (attachedBefore.current && inUse) hostSize.focus(attached, true);
         // A fit while the attach was in flight had no stream to resize.
-        if (ready.cols !== askedCols || ready.rows !== askedRows) attached.resize(ready.cols, ready.rows);
+        if (ready.cols !== askedCols || ready.rows !== askedRows) hostSize.resize(attached, ready.cols, ready.rows);
         // Reattached after a reconnect: the core repaints the screen, and the history above it stays as the view holds it
         // (#1997). The view clears its screen first, so the repaint's ESC[2J has no marked prompt to scroll into history.
         if (attachedBefore.current) {

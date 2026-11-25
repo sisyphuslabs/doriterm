@@ -19,7 +19,7 @@ export function Switch({ className, ...props }: SwitchProps) {
       {...props}
       className={cn(
         "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border border-input bg-hover p-0.5 outline-none",
-        "transition-colors duration-(--duration-micro) data-checked:border-transparent data-checked:bg-brand",
+        "transition-colors duration-(--duration-color) data-checked:border-transparent data-checked:bg-brand",
         "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
         "data-disabled:border-border data-disabled:bg-muted data-disabled:data-checked:border-transparent data-disabled:data-checked:bg-muted-foreground",
         "after:absolute after:-inset-2",

@@ -49,7 +49,7 @@ export function SegmentedControl<T extends string>({
             // between two choices always lands on one of them (#1530).
             "inline-flex h-[calc(var(--control)-6px)] flex-1 border-x border-transparent first:border-l-0 last:border-r-0 coarse:h-(--control) items-center justify-center gap-1.5 rounded-sm text-sm whitespace-nowrap text-muted-foreground",
             compact ? "px-1.5 coarse:min-w-[max(var(--hit),min-content)]" : "px-3",
-            "outline-none transition-colors duration-(--duration-micro) hover:text-foreground",
+            "outline-none transition-colors duration-(--duration-color) hover:text-foreground",
             "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring data-pressed:bg-popover data-pressed:text-foreground data-pressed:shadow-[0_0_0_1px_var(--border)]",
           )}
         >

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHcSession, type HcSession } from "@doriface/host/testing";
 import { stopLeftUnder } from "@doriface/host/testing/run-dir";
-import { addMachine, DEMO_MACHINE, replyPid, running, viaCommand } from "./machine.ts";
+import { addMachine, CORE_EXIT_BOUND_MS, DEMO_MACHINE, replyPid, running, viaCommand } from "./machine.ts";
 
 let dialer: HcSession | undefined;
 let root: string | undefined;
@@ -108,6 +108,9 @@ test("a dial that reaches an added machine after its stop is refused, so the sto
   expect(await stopLeftUnder(join(root, "machine"))).toEqual([]);
 }, 60_000);
 
+/** The dispose before the stop and the refused dial after it: event waits that each take well under a second idle. */
+const DIAL_MARGIN_MS = 5_000;
+
 describe("a dial held past the final gate (#2525)", () => {
   let machine = "";
   let stop: (() => Promise<void>) | undefined;
@@ -143,18 +146,24 @@ describe("a dial held past the final gate (#2525)", () => {
     output = undefined;
   });
 
-  test("released after the machine's stop, it cannot restart the stopped core", async () => {
-    if (line === undefined || dialer === undefined || stop === undefined) {
-      throw new Error("the held dial was not set up");
-    }
-    await dialer.dispose();
-    await stop();
-    line.stdin.write('\n{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
-    await line.stdin.end();
-    const code = await line.exited;
-    expect(await stopLeftUnder(machine)).toEqual([]);
-    expect(code).not.toBe(0);
-  });
+  // Ratchet #2802: this test awaits a real core exit the product bounds at CORE_EXIT_BOUND_MS (the machine's stop), so
+  // its deadline is that bound plus the margin for the dispose and the refused dial, and moves with the contract.
+  test(
+    "released after the machine's stop, it cannot restart the stopped core",
+    async () => {
+      if (line === undefined || dialer === undefined || stop === undefined) {
+        throw new Error("the held dial was not set up");
+      }
+      await dialer.dispose();
+      await stop();
+      line.stdin.write('\n{"jsonrpc":"2.0","id":0,"method":"hello","params":{}}\n');
+      await line.stdin.end();
+      const code = await line.exited;
+      expect(await stopLeftUnder(machine)).toEqual([]);
+      expect(code).not.toBe(0);
+    },
+    CORE_EXIT_BOUND_MS + DIAL_MARGIN_MS,
+  );
 });
 
 test("a slow dial that passed the check before the machine stopped is refused once it wakes (#2158)", async () => {

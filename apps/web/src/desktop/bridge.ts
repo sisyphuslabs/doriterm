@@ -6,6 +6,7 @@ export interface LocalHostEndpoint {
   readonly url: string;
   readonly token: string;
 }
+import type { KeyholderRequest } from "@doriface/vault";
 
 /** Why this computer's host did not start; `details` is its raw output, shown only on request. */
 export interface HostStartFailure {
@@ -225,6 +226,18 @@ export function installDesktopUpdate(scope: object = globalThis): void {
   const installing = bridgeMethod("installUpdate", scope)?.();
   if (installing instanceof Promise)
     installing.catch((error: unknown) => console.error(`install update: ${String(error)}`));
+}
+
+/** The desktop app's vault keyholder (main process, OS key store) as one call, or null outside the desktop app. */
+export function desktopKeyholderCall(
+  scope: object = globalThis,
+): ((request: KeyholderRequest) => Promise<unknown>) | null {
+  const bridge: unknown = Reflect.get(scope, "doriface");
+  const holder: unknown =
+    typeof bridge === "object" && bridge !== null ? Reflect.get(bridge, "vaultKeyholder") : undefined;
+  const call: unknown = typeof holder === "object" && holder !== null ? Reflect.get(holder, "call") : undefined;
+  if (typeof call !== "function") return null;
+  return async (request) => Reflect.apply(call, holder, [request]);
 }
 
 export function desktopBridge(scope: object = globalThis): DesktopBridge | null {

@@ -111,6 +111,10 @@
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  /* --- Motion curves (redesign T4, #2787; DESIGN.md 6). --- */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
   --animate-spin-status: spin 900ms linear infinite;
 }
 
@@ -144,6 +148,13 @@
   --sidebar-width: 16.75rem;
   /* The sidebar dragged narrow: an icon rail. The macOS desktop app widens it to clear the window buttons. */
   --sidebar-rail-width: 2.75rem;
+  /* --- Layout tiers (redesign T3, #2788). Widths: compact < 600, medium 600-1023, wide >= 1024 (apps/web/src/layout/
+     width-tier.ts; media queries cannot read custom properties, so the numbers live there). Split focus 55:45 within
+     30:70 is split-focus.ts's. --- */
+  /* A medium screen's sidebar: always the rail, 64 px, whose expand opens a drawer over the content. */
+  --sidebar-rail-width-medium: 4rem;
+  --sidebar-drawer-width: 18.75rem;
+  /* --- end layout tiers --- */
   /* Space avatars: one strong colour per hue, the same in light and dark, with a white initial (decorative). */
   --avatar-teal: #1f9688;
   --avatar-orange: #c96a3a;
@@ -162,6 +173,17 @@
 
   --duration-micro: 120ms;
   --duration-standard: 220ms;
+  /* --- Motion durations (redesign T4, #2787; DESIGN.md 6, mirrored in motion-tokens.test.ts). --- */
+  --duration-press: 100ms;
+  --duration-color: 150ms;
+  --duration-push: 320ms;
+  --duration-back: 200ms;
+  --duration-sheet-in: 320ms;
+  --duration-sheet-out: 200ms;
+  --duration-split: 240ms;
+  --duration-handle: 150ms;
+  --duration-card: 240ms;
+  --duration-settle: 120ms;
   --overlay-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.12);
 }
 

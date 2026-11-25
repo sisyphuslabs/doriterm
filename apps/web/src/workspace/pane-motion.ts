@@ -1,12 +1,15 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import type { Direction } from "../layout/neighbor.ts";
 import type { Rect } from "../layout/rects.ts";
+import { layoutMotion } from "./layout-motion.ts";
 import type { Bump } from "./use-pane-moves.ts";
 
-/** DESIGN.md section 6: a pane moves at Standard (220 ms) and a nudge at Micro (120 ms), both on `--ease-out`. */
-const DURATION = 220;
+/**
+ * DESIGN.md section 6: splits and pane moves animate on touch (240 ms `--ease-standard`, via `layoutMotion`) and snap
+ * on desktop (as herdr-app); a focus nudge stays 120 ms on `--ease-out` on every pointer.
+ */
 const NUDGE_DURATION = 120;
-const EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
+const NUDGE_EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
 const NUDGE: Readonly<Record<Direction, string>> = {
   left: "translateX(-4px)",
   right: "translateX(4px)",
@@ -34,9 +37,9 @@ const UNCLIPPED = "inset(0px 0px 0px 0px round 8px)";
  * Moves a pane to its new rectangle (FLIP) with `translate` for its place and `clip-path` for its size: the box takes
  * its final size at once and the drawing slides and opens from where it was. No `scale`: the terminal measures its cell
  * with getBoundingClientRect, which a transform's scale would distort while its ResizeObserver reads the new size
- * (@wterm/dom 0.5.9 `_measureCharSize`), leaving every row drawn at the wrong cell width. A new pane opens from the edge
- * it was split from, and a key that cannot move focus nudges the focused pane toward that edge. A window resize moves
- * every pane at once, so it plays no motion.
+ * (@wterm/dom 0.5.9 `_measureCharSize`), leaving every row drawn at the wrong cell width. Split open and FLIP moves run
+ * only on touch (`layoutMotion`); on desktop panes take their place at once (as herdr-app), and a window resize plays
+ * no motion. A key that cannot move focus nudges the focused pane toward that edge on every pointer.
  */
 export function usePaneMotion(
   ref: RefObject<HTMLElement | null>,
@@ -56,10 +59,12 @@ export function usePaneMotion(
     last.current = rect;
     lastFrame.current = frame;
     if (element === null || rect.width === 0 || rect.height === 0 || resized) return;
+    const timing = layoutMotion((query) => matchMedia(query).matches);
+    if (timing === null) return;
     if (before === null) {
       if (grow === null) return;
       if (reduced()) {
-        element.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DURATION, easing: EASE });
+        element.animate([{ opacity: 0 }, { opacity: 1 }], timing);
         return;
       }
       const from = grow === "row" ? clipTo(rect, 0, rect.height) : clipTo(rect, rect.width, 0);
@@ -68,10 +73,7 @@ export function usePaneMotion(
           { clipPath: from, opacity: 0.4 },
           { clipPath: UNCLIPPED, opacity: 1 },
         ],
-        {
-          duration: DURATION,
-          easing: EASE,
-        },
+        timing,
       );
       return;
     }
@@ -84,7 +86,7 @@ export function usePaneMotion(
         { transform: `translate(${dx}px, ${dy}px)`, clipPath: clipTo(rect, before.width, before.height) },
         { transform: "none", clipPath: UNCLIPPED },
       ],
-      { duration: DURATION, easing: EASE },
+      timing,
     );
   }, [ref, x, y, width, height, frame, grow]);
   useLayoutEffect(() => {
@@ -94,6 +96,6 @@ export function usePaneMotion(
     const keyframes = reduced()
       ? [{ opacity: 1 }, { opacity: 0.7 }, { opacity: 1 }]
       : [{ transform: "none" }, { transform: NUDGE[bump.direction] }, { transform: "none" }];
-    element.animate(keyframes, { duration: NUDGE_DURATION, easing: EASE });
+    element.animate(keyframes, { duration: NUDGE_DURATION, easing: NUDGE_EASE });
   }, [ref, bump]);
 }

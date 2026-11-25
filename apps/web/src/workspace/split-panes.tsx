@@ -2,7 +2,10 @@ import type { HcConnection } from "@doriface/client";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { type Axis, type Node, nodeAt, pathTo, resizeAt } from "@doriface/protocol/layout";
 import { dropPreview } from "../layout/drop-zone.ts";
-import { arrange, type Rect } from "../layout/rects.ts";
+import { arrangeOnHinge, hingeIn, useViewportSegments } from "../layout/hinge.ts";
+import { stackRows } from "../layout/portrait.ts";
+import type { Rect } from "../layout/rects.ts";
+import { usePortrait, useWidthTier } from "../layout/width-tier.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import type { LayoutTab } from "./layout-model.ts";
 import type { Session } from "./model.ts";
@@ -10,7 +13,8 @@ import type { PaneSends } from "./pane-sends.ts";
 import { type PaneActions, PlacedPane } from "./pane-slot.tsx";
 import { PaneDivider } from "./pane-divider.tsx";
 import { linePosition } from "./line-position.ts";
-import { usePaneDrag } from "./use-pane-drag.ts";
+import { targetIn, usePaneDrag } from "./use-pane-drag.ts";
+import { useTerminalDrag, useTerminalDropSurface } from "./terminal-drag.tsx";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 
 /** Space between panes, px: the gap shows the canvas, so panes read as separate cards. */
@@ -18,22 +22,33 @@ export const PANE_GAP = 8;
 
 export const panelId = (tab: string): string => `tab-panel-${tab}`;
 
-function useBoxSize(): [React.RefObject<HTMLDivElement | null>, Rect] {
+/** The panes' box: its size, for laying them out, and its place on the page, for finding the hinge in it. */
+function useBoxSize(): [React.RefObject<HTMLDivElement | null>, Rect, Rect] {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Rect>({ x: 0, y: 0, width: 0, height: 0 });
+  const [page, setPage] = useState<Rect>({ x: 0, y: 0, width: 0, height: 0 });
   useLayoutEffect(() => {
     const element = ref.current;
     if (element === null) return undefined;
     const measure = (): void => {
       const { clientWidth: width, clientHeight: height } = element;
       setSize((prev) => (prev.width === width && prev.height === height ? prev : { x: 0, y: 0, width, height }));
+      const { left: x, top: y } = element.getBoundingClientRect();
+      setPage((prev) =>
+        prev.x === x && prev.y === y && prev.width === width && prev.height === height ? prev : { x, y, width, height },
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
+    // A fold moves the box on the page without always resizing it (the sidebar rail widens past the hinge).
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
   }, []);
-  return [ref, size];
+  return [ref, size, page];
 }
 
 export interface SplitPanesProps {
@@ -103,7 +118,12 @@ function usePaneActions(props: SplitPanesProps): PaneActions {
 export function SplitPanes(props: SplitPanesProps) {
   const { connection, terminals, layout, titles, sends, dock } = props;
   const actions = usePaneActions(props);
-  const [ref, box] = useBoxSize();
+  const [ref, box, page] = useBoxSize();
+  // A medium screen in portrait stacks side-by-side panes; a two-pane split along a device's hinge puts its line there.
+  const tier = useWidthTier();
+  const portrait = usePortrait();
+  const stacked = tier === "medium" && portrait;
+  const hinge = hingeIn(useViewportSegments(), page);
   const [held, setPreview] = useState<Preview | null>(null);
   const preview = shownPreview(held, layout.tabs);
   useEffect(() => {
@@ -117,6 +137,18 @@ export function SplitPanes(props: SplitPanesProps) {
     (tab) => laidOut.current.get(tab),
     (_tab, pane, target) => void layout.move(pane, target.pane, target.zone),
   );
+  // A terminal dragged from the sidebar drops on the tab in view, as a pane dragged by its header does.
+  const fromList = useTerminalDrag();
+  useTerminalDropSurface({
+    targetAt: (address, x, y) => {
+      const tab = layout.active;
+      if (tab === null || layout.zoomed !== null || !layout.takesTerminal(address, tab.key)) return null;
+      const own = tab.panes.find((pane) => pane.address === address)?.id ?? "";
+      const target = targetIn(ref.current, laidOut.current.get(tab.key), own, x, y);
+      return target === null ? null : { tab: tab.key, ...target };
+    },
+    drop: (address, target) => void layout.dropTerminal(address, target),
+  });
   // A divider drag lays panes out on every move; like a window resize it plays no motion, its release included: the
   // dropped drag stays on screen until its write lands, and that render changes the frame, so it moves no pane either.
   const frame = `${box.width}x${box.height}${preview === null ? "" : `:${preview.delta}`}`;
@@ -128,13 +160,14 @@ export function SplitPanes(props: SplitPanesProps) {
           const zoomed = selected ? layout.zoomed : null;
           const dragged =
             preview?.tab === tab.key ? resizeAt(tab.root, preview.container, preview.index, preview.delta) : null;
-          const root = dragged ?? tab.root;
-          const { panes, dividers, containers } = arrange(root, box, PANE_GAP, zoomed);
+          const root = stacked ? stackRows(dragged ?? tab.root) : (dragged ?? tab.root);
+          const { panes, dividers, containers } = arrangeOnHinge(root, box, PANE_GAP, zoomed, hinge);
           laidOut.current.set(tab.key, panes);
           // herdr-app drags panes only in a split tab that is not zoomed, and only where the layout takes edits.
           const movable =
             selected && zoomed === null && tab.panes.length > 1 && !tab.transient && tab.readOnly === null;
-          const dropping = drag?.tab === tab.key ? drag.target : null;
+          const dropping =
+            drag?.tab === tab.key ? drag.target : fromList?.target?.tab === tab.key ? fromList.target : null;
           const dropOn = dropping === null ? undefined : panes.get(dropping.pane);
           return (
             <div
@@ -201,7 +234,9 @@ export function SplitPanes(props: SplitPanesProps) {
                     />
                   ))
                 : null}
-              {drag?.tab === tab.key ? <div aria-hidden className="absolute inset-0 z-10 cursor-grabbing" /> : null}
+              {drag?.tab === tab.key || (selected && fromList !== null) ? (
+                <div aria-hidden className="absolute inset-0 z-10 cursor-grabbing" />
+              ) : null}
               {dropping !== null && dropOn !== undefined ? (
                 <div
                   aria-hidden

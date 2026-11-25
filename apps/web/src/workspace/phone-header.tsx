@@ -8,6 +8,8 @@ import { machineOf, type Session, spaceOfAddress, terminalTitle } from "./model.
 import { useShown } from "./use-shown.ts";
 import { useSpaceSelection } from "./space-selection.ts";
 import { PhoneSessionSheet } from "./phone-session-sheet.tsx";
+import { backWithMotion } from "./phone-back-motion.ts";
+import { readoutText, usePinchReadout } from "../terminal/pinch-readout.ts";
 
 export interface PhoneHeaderProps {
   readonly terminal: Session;
@@ -44,7 +46,9 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
   // Where it is: the layout space whose tab shows it (#404), else where it runs.
   const { spaces } = useSpaceSelection();
   const space = spaceOfAddress(spaces, terminal.address)?.name ?? terminalSpaceName(terminal);
-  const where = `${machine ?? host} · ${space}`;
+  // While a pinch moves, the line under the title reads the size and grid instead; nothing is drawn over the terminal.
+  const pinch = usePinchReadout(terminal.address);
+  const where = pinch === null ? `${machine ?? host} · ${space}` : readoutText(pinch);
   return (
     <header
       data-titlebar
@@ -54,7 +58,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
         variant="ghost"
         aria-label={backTo === null ? "Back to agents" : backTo === "" ? "Back" : `Back to ${backTo}`}
         className="max-w-[7.5rem] min-w-11 shrink-0 gap-0.5 px-1.5 text-foreground [&>span]:min-w-0"
-        onClick={onBack}
+        onClick={(event) => backWithMotion(event.currentTarget, onBack)}
       >
         <ChevronLeft aria-hidden />
         {/* Under 360 px the chevron alone: the title keeps the row (its accessible name still says where Back goes). */}
@@ -78,7 +82,11 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
           <StatusChip status={agentStatus(terminal)} className="hidden @min-[22rem]:inline-flex" />
           <StatusIndicator status={agentStatus(terminal)} className="mt-1 size-3.5 shrink-0 @min-[22rem]:hidden" />
         </div>
-        <p title={where} className="min-w-0 truncate text-xs leading-tight text-muted-foreground">
+        <p
+          title={where}
+          data-pinch-readout={pinch === null ? undefined : ""}
+          className="min-w-0 truncate text-xs leading-tight text-muted-foreground tabular-nums"
+        >
           {where}
         </p>
       </div>

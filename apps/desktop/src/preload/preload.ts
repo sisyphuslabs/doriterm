@@ -22,6 +22,7 @@ import {
 } from "../shared/bridge.ts";
 import { isUpdateChannel, isUpdateStatus } from "../shared/update.ts";
 import { isPasteInviteAnswer } from "../shared/paste-invite.ts";
+import { VaultChannel } from "../shared/vault.ts";
 
 const version = process.argv.find((arg) => arg.startsWith(VERSION_ARG))?.slice(VERSION_ARG.length) ?? "0.0.0";
 
@@ -55,8 +56,14 @@ const dictation: Pick<
     }
   : {};
 
+/** The mesh vault keyholder in the main process: the page sends it calls and gets handles, never a key. */
+const vaultKeyholder = {
+  call: (request: unknown): Promise<unknown> => ipcRenderer.invoke(VaultChannel.keyholder, request),
+};
+
 const bridge: DorifaceBridge = {
   ...dictation,
+  vaultKeyholder,
   version,
   platform: parsePlatform(process.platform),
   async openExternal(url) {

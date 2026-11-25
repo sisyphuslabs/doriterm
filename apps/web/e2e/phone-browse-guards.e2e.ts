@@ -12,14 +12,12 @@ const input = (page: Page) => page.locator("[data-terminal] textarea");
 
 const touchAction = (locator: Locator) => locator.evaluate((el) => getComputedStyle(el).touchAction);
 
-test("the terminal pans vertically and pinch-zooms only", async ({ page }) => {
+test("the terminal pans vertically only: its pinch is its own (#2787)", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
-  expect(await touchAction(terminal.locator("xpath=ancestor-or-self::*[contains(@class,'wterm')][1]"))).toBe(
-    "pan-y pinch-zoom",
-  );
+  expect(await touchAction(terminal.locator("xpath=ancestor-or-self::*[contains(@class,'wterm')][1]"))).toBe("pan-y");
 });
 
-test("the rest of the page keeps the base's manipulation beside the terminal's pan-y pinch-zoom", async ({ page }) => {
+test("the rest of the page keeps the base's manipulation beside the terminal's pan-y", async ({ page }) => {
   await openPhoneTerminal(page);
   const base = await touchAction(page.getByRole("banner"));
   test.skip(

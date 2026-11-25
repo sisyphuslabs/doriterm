@@ -28,8 +28,15 @@ export const fitsViewportWidth = "max-w-(--available-width)";
  */
 export const modalLayer = "z-50";
 
-export const backdropClass = cn(
+const backdropBase = cn(
   modalLayer,
-  "fixed inset-0 bg-black/40 transition-opacity duration-(--duration-standard)",
+  "fixed inset-0 bg-black/40 transition-opacity",
   "data-starting-style:opacity-0 data-ending-style:opacity-0",
+);
+
+export const backdropClass = cn(backdropBase, "duration-(--duration-standard)");
+
+export const sheetBackdropClass = cn(
+  backdropBase,
+  "duration-(--duration-sheet-in) data-ending-style:duration-(--duration-sheet-out)",
 );

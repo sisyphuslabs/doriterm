@@ -45,6 +45,8 @@ interface InputSources {
   readonly typesComposition: boolean;
   /** Told of every input before it is sent or queued, in the order it reaches the program: the predictor (#1595). */
   readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
+  /** Told before each input is sent or queued: the person is using this view, so its grid may size the host (D1). */
+  readonly inputStarts?: () => void;
 }
 
 /**
@@ -89,8 +91,11 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   const pending = useRef(held.pending);
   const latestPredict = useRef(predict);
   latestPredict.current = predict;
+  const latestInputStarts = useRef(sources.inputStarts);
+  latestInputStarts.current = sources.inputStarts;
   const [order] = useState(() =>
     inputOrder((data) => {
+      latestInputStarts.current?.();
       latestPredict.current?.current?.(data);
       held.send(data);
     }),

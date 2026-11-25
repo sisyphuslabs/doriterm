@@ -1,25 +1,20 @@
-import {
-  Bot,
-  CodeXml,
-  Cpu,
-  Feather,
-  Mountain,
-  Orbit,
-  Pi,
-  SquareTerminal,
-  Terminal,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+import { Bot, CodeXml, Cpu, Feather, Orbit, Pi, SquareTerminal, Terminal, Zap, type LucideIcon } from "lucide-react";
 
-/** One single-colour mark for what a terminal runs, from Simple Icons (CC0-1.0) or Lucide (ISC). */
+/** One single-colour mark for what a terminal runs, from Simple Icons (CC0-1.0), Lucide (ISC), or our own mark. */
 export type AgentMarkEntry =
   | { readonly label: string; readonly from: "simple-icons"; readonly slug: string; readonly path: string }
-  | { readonly label: string; readonly from: "lucide"; readonly name: string; readonly icon: LucideIcon };
+  | { readonly label: string; readonly from: "lucide"; readonly name: string; readonly icon: LucideIcon }
+  | {
+      readonly label: string;
+      readonly from: "own";
+      readonly viewBox: string;
+      readonly transform: string;
+      readonly path: string;
+    };
 
 /**
- * The 17 single-colour marks: seven Simple Icons 16.38.1 paths verbatim (viewBox 0 0 24 24), seven neutral Lucide
- * stand-ins for agents without a permissive mark, and the three generic glyphs (agent, shell, program).
+ * The 17 single-colour marks: seven Simple Icons 16.38.1 paths verbatim (viewBox 0 0 24 24), six neutral Lucide
+ * stand-ins for agents without a permissive mark, omo's own mark, and the three generic glyphs (agent, shell, program).
  * See `packages/ui/NOTICES.md` for sources and licences.
  */
 export const AGENT_MARKS: Readonly<Record<string, AgentMarkEntry>> = {
@@ -63,7 +58,13 @@ export const AGENT_MARKS: Readonly<Record<string, AgentMarkEntry>> = {
     path: "M21.765.351C22.998.351 24 1.353 24 2.586S22.998 4.82 21.765 4.82h-1.974c-.15 0-.26-.12-.26-.26V2.586A2.237 2.237 0 0 1 21.765.35M9.41 13.388l8.447-8.377c.16-.16.07-.471-.14-.471h-4.55s-.1.02-.14.06l-9.099 9.029c-.14.14-.35.02-.35-.21V4.81c0-.15-.1-.27-.221-.27H.22c-.12 0-.22.12-.22.27v18.57c0 .15.1.27.22.27h3.137c.12 0 .22-.12.22-.27v-3.79c0-.08.03-.16.08-.21l2.826-2.796c.07-.07.16-.08.241-.03l7.546 5.551a8.9 8.9 0 0 0 4.018 1.493c.12.01.23-.11.23-.27V19.76c0-.14-.08-.25-.19-.26a5.8 5.8 0 0 1-2.355-.942l-6.533-4.73c-.14-.09-.15-.32-.03-.441",
   },
   antigravity: { label: "Antigravity", from: "lucide", name: "feather", icon: Feather },
-  omo: { label: "omo", from: "lucide", name: "mountain", icon: Mountain },
+  omo: {
+    label: "omo",
+    from: "own",
+    viewBox: "189.5 185 645 645",
+    transform: "scale(0.5) translate(0 2048) scale(0.05 -0.05)",
+    path: "M9270 32167 c-309 -64 -456 -152 -621 -373 -562 -748 -776 -2689\n-547 -4984 118 -1187 325 -2600 570 -3890 143 -753 152 -653 -128 -1380 -403\n-1045 -643 -1873 -812 -2800 -853 -4689 1979 -7986 7858 -9148 1140 -225 2514\n-397 3202 -400 l361 -2 79 55 c264 182 210 642 -111 942 -387 362 -950 532\n-2801 845 -3004 507 -4249 965 -5520 2030 -1358 1138 -2012 2878 -1809 4810\n545 5195 6617 8726 13529 7866 5506 -684 9480 -4255 9480 -8518 0 -2607 -1462\n-4522 -4157 -5448 -927 -318 -1534 -459 -3203 -740 -1851 -313 -2414 -483\n-2801 -845 -321 -300 -375 -760 -111 -942 l79 -55 361 2 c688 3 2062 175 3202\n400 5879 1162 8711 4459 7858 9148 -169 927 -409 1755 -812 2800 -280 727\n-271 627 -128 1380 245 1290 452 2703 570 3890 271 2720 -77 4861 -855 5259\n-758 388 -2310 -238 -5021 -2024 -868 -571 -764 -557 -1489 -211 -3271 1558\n-6755 1558 -10026 0 -725 -346 -621 -360 -1489 211 -2371 1562 -3959 2278\n-4708 2122z m4132 -3345 c175 -175 124 -268 -409 -739 -1028 -910 -1995 -2053\n-2713 -3209 -97 -156 -200 -318 -228 -359 -221 -321 -646 -76 -469 270 153\n301 883 1334 1388 1965 578 723 1466 1614 2029 2035 191 142 288 151 402 37z\nm14507 -1 c496 -341 1482 -1323 2080 -2071 505 -631 1235 -1664 1388 -1965\n177 -346 -248 -591 -469 -270 -28 41 -131 203 -228 359 -718 1156 -1685 2299\n-2713 3209 -535 473 -585 564 -407 742 100 100 199 99 349 -4z M19910 25308 c-4039 -205 -7212 -1666 -9086 -4184 -1840 -2473 -1753\n-5794 196 -7540 1161 -1040 2447 -1518 5420 -2015 1374 -229 1998 -380 2456\n-591 754 -348 1163 -1000 1033 -1650 -10 -49 -1 -72 47 -124 l60 -64 444 0\n444 0 60 64 c48 52 57 75 47 124 -130 650 279 1302 1033 1650 458 211 1082\n362 2456 591 2973 497 4259 975 5420 2015 2084 1866 2026 5374 -131 7956\n-2063 2469 -5995 3966 -9899 3768z m-4644 -4374 c1356 -360 2272 -1909 1998\n-3378 -426 -2278 -2856 -3144 -4424 -1576 -1497 1496 -924 4218 1031 4899 393\n137 996 161 1395 55z m11480 35 c1491 -261 2504 -1921 2154 -3532 -487 -2247\n-3108 -3024 -4525 -1341 -1719 2042 -129 5310 2371 4873z m-6948 -2980 c172\n-40 341 -133 495 -273 95 -86 143 -116 187 -116 44 0 92 30 187 116 718 650\n1716 188 1854 -860 35 -267 18 -968 -25 -1048 -119 -219 -350 -251 -491 -68\n-68 89 -73 124 -85 670 -13 623 -25 675 -200 838 -212 198 -516 199 -735 2\n-180 -161 -192 -212 -205 -840 -12 -546 -17 -581 -85 -670 -122 -159 -308\n-159 -430 0 -68 89 -73 124 -85 670 -13 628 -25 679 -205 840 -219 197 -523\n196 -735 -2 -175 -163 -187 -215 -200 -838 -12 -546 -17 -581 -85 -670 -141\n-183 -372 -151 -491 68 -74 136 -54 1039 30 1332 170 594 758 978 1304 849z M14340 20290 c-1858 -372 -2230 -3228 -546 -4191 1280 -732 2786 338\n2786 1981 0 1391 -1068 2445 -2240 2210z M25990 20291 c-1733 -343 -2208 -2981 -732 -4069 1287 -949 2981 108\n2982 1860 0 1392 -1070 2443 -2250 2209z",
+  },
   omp: { label: "omp", from: "lucide", name: "pi", icon: Pi },
   droid: { label: "Droid", from: "lucide", name: "cpu", icon: Cpu },
   qwen: {

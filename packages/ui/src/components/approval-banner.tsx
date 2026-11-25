@@ -126,7 +126,7 @@ export function approvalAnnouncement(prompt: ApprovalPrompt, state: ApprovalBann
 }
 
 const frame =
-  "flex flex-col gap-2 rounded-lg border border-border bg-popover px-3 py-2.5 text-sm text-popover-foreground shadow-overlay coarse:gap-3 coarse:p-3";
+  "motion-arrive flex flex-col gap-2 rounded-lg border border-border bg-popover px-3 py-2.5 text-sm text-popover-foreground shadow-overlay coarse:gap-3 coarse:p-3 [--arrive-from:translateY(8px)] [--arrive-duration:var(--duration-card)] [--arrive-ease:var(--ease-enter)]";
 const block =
   "m-0 rounded-md bg-raised px-2.5 py-1.5 font-mono text-[0.8125rem] leading-[1.45] break-all whitespace-pre-wrap text-foreground";
 const chip = "[&>span]:border-current/30 [&>span]:bg-transparent [&>span]:text-current";

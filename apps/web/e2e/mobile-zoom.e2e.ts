@@ -136,7 +136,9 @@ for (const [name, device] of PHONES) {
       expect(await zoomingFields(page)).toEqual([]);
     });
 
-    test("a double tap is two taps, not a zoom, and a pinch still zooms", async ({ page }) => {
+    test("a double tap is two taps, not a zoom; a pinch zooms the page, and on the terminal its text (#2787)", async ({
+      page,
+    }) => {
       const terminal = await openPhoneTerminal(page);
       const surfaces: [string, Locator][] = [
         ["html", page.locator("html")],
@@ -151,10 +153,10 @@ for (const [name, device] of PHONES) {
           async ([label, target]) => `${label}: ${await target.evaluate((el) => getComputedStyle(el).touchAction)}`,
         ),
       );
-      // #1396 keeps the terminal on `pan-y pinch-zoom` so one finger pans the scrollback and a pinch still zooms;
-      // every other surface stays `manipulation`, where horizontal panning has nothing to move.
+      // The terminal is `pan-y`: one finger pans the scrollback and two change its text size (pinch-zoom.ts, #2787), never
+      // the page's zoom; every other surface stays `manipulation`, where a pinch still zooms the page.
       expect(actions).toEqual(
-        surfaces.map(([label]) => `${label}: ${label === "terminal" ? "pan-y pinch-zoom" : "manipulation"}`),
+        surfaces.map(([label]) => `${label}: ${label === "terminal" ? "pan-y" : "manipulation"}`),
       );
 
       // `manipulation` keeps pinch-zoom; the viewport must not take it away either.
