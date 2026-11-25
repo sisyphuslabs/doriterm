@@ -200,9 +200,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     const screens: unknown = Reflect.get(globalThis, "__dorifaceTerminalScreens");
     if (typeof screens === "object" && screens !== null) {
       let drawn: string | null = null;
-      ready.onGpuDraw = () => {
+      ready.onGpuDrawn(() => {
         drawn = screenText(ready);
-      };
+      });
       Reflect.set(screens, address, () => drawn ?? screenText(ready));
     }
     // wterm pins the row height it measured at mount inline, over the stylesheet's font-size-derived one; without this

@@ -824,15 +824,15 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..a62af6668ec274970b07b68726e15389
              scrollTop: viewport.scrollTop,
              clientHeight: viewport.clientHeight,
 diff --git a/dist/wterm.d.ts b/dist/wterm.d.ts
-index a6746f499859ba9da2d7884dfd71694205c6d819..ad6d0da4f744013fa792b24f394661bd6a4d1e99 100644
+index a6746f499859ba9da2d7884dfd71694205c6d819..a8c247d11ea8ee2b1d526ff074a284bc3a2686dc 100644
 --- a/dist/wterm.d.ts
 +++ b/dist/wterm.d.ts
 @@ -113,6 +113,8 @@ export declare class WTerm {
      onTitle: ((title: string) => void) | null;
      onWorkingDirectory: ((uri: string) => void) | null;
      onBell: ((count: number) => void) | null;
-+    /** Called after a frame is drawn with WebGL, the core still holding what that frame shows. */
-+    onGpuDraw: (() => void) | null;
++    /** Calls `listener` after each frame drawn with WebGL; returns what stops it. */
++    onGpuDrawn(listener: () => void): () => void;
      onShellIntegration: ((state: ShellIntegrationState) => void) | null;
      onClipboardWrite: ((text: string) => void) | null;
      onResize: ((cols: number, rows: number) => void) | null;
@@ -868,7 +868,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..ad6d0da4f744013fa792b24f394661bd
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443c4816d30 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..c9241a1f964508e4effc693f7e699a851768f969 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
 @@ -13,6 +13,8 @@ import { registerWebMCPTerminal, } from "./webmcp.js";
@@ -929,7 +929,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
          this.onTitle = options.onTitle || null;
          this.onWorkingDirectory = options.onWorkingDirectory || null;
          this.onBell = options.onBell || null;
-+        this.onGpuDraw = null;
++        this._gpuDrawListeners = new Set();
          this.onShellIntegration = options.onShellIntegration || null;
          this.onClipboardWrite = options.onClipboardWrite || null;
          this.onResize = options.onResize || null;
@@ -967,16 +967,19 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -418,6 +451,8 @@ export class WTerm {
+@@ -418,6 +451,11 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
                  renderer: this._rendererOption,
              });
-+            this.renderer.onGpuDraw = () => this.onGpuDraw?.();
++            this.renderer.onGpuDraw = () => {
++                for (const listener of this._gpuDrawListeners)
++                    listener();
++            };
 +            this.renderer.setWideGlyphScale(this._wideGlyphScale ?? null);
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -453,7 +488,6 @@ export class WTerm {
+@@ -453,7 +491,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -984,7 +987,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -465,12 +499,33 @@ export class WTerm {
+@@ -465,12 +502,33 @@ export class WTerm {
          }
          return this;
      }
@@ -1018,7 +1021,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -508,6 +563,29 @@ export class WTerm {
+@@ -508,6 +566,29 @@ export class WTerm {
              throw new Error("This terminal core cannot change its scrollback");
          this.bridge.setScrollbackLines(this._scrollbackLines);
      }
@@ -1048,7 +1051,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -553,7 +631,7 @@ export class WTerm {
+@@ -553,7 +634,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -1057,7 +1060,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +810,30 @@ export class WTerm {
+@@ -732,9 +813,30 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -1090,7 +1093,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -751,6 +850,19 @@ export class WTerm {
+@@ -751,6 +853,19 @@ export class WTerm {
          if (this.onResize)
              this.onResize(this.cols, this.rows);
      }
@@ -1110,7 +1113,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
      /** Search retained history and the active screen, using plain text. */
      search(query, options = {}) {
          if (this._destroyed)
-@@ -798,6 +910,7 @@ export class WTerm {
+@@ -798,6 +913,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -1118,7 +1121,22 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1049,12 +1162,24 @@ export class WTerm {
+@@ -893,6 +1009,14 @@ export class WTerm {
+             !this._renderingPaused &&
+             this.element.ownerDocument.visibilityState !== "hidden");
+     }
++    /**
++     * Calls `listener` after each frame drawn with WebGL, the core still holding what that frame shows; returns what
++     * stops it. A WebGL frame changes no DOM, so a layer that follows painted output listens here as well.
++     */
++    onGpuDrawn(listener) {
++        this._gpuDrawListeners.add(listener);
++        return () => this._gpuDrawListeners.delete(listener);
++    }
+     /** Capture retained history and the active screen without changing selection. */
+     readText(options = {}) {
+         if (this._destroyed || !this.renderer || !this.bridge)
+@@ -1049,12 +1173,24 @@ export class WTerm {
      }
      /** Brings the DOM text current once GPU-painted output goes quiet. */
      _scheduleTextSync() {
@@ -1145,7 +1163,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
      }
      _syncText() {
          if (!this.renderer?.textStale || this._destroyed)
-@@ -1127,14 +1252,20 @@ export class WTerm {
+@@ -1127,14 +1263,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -1168,7 +1186,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1275,10 @@ export class WTerm {
+@@ -1144,9 +1286,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -1180,7 +1198,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1289,7 @@ export class WTerm {
+@@ -1157,7 +1300,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -1189,7 +1207,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1708,16 @@ export class WTerm {
+@@ -1576,14 +1719,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
@@ -1209,7 +1227,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443
      }
      destroy() {
          this._destroyed = true;
-@@ -1604,6 +1738,8 @@ export class WTerm {
+@@ -1604,6 +1749,8 @@ export class WTerm {
              clearTimeout(this._textSyncTimer);
          this._textSyncTimer = null;
          this.element.removeEventListener("mousedown", this._onTextNeeded, true);

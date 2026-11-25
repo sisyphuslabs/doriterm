@@ -107,16 +107,21 @@ export function usePredictionOverlay(
     );
     const changed = new MutationObserver(() => held.rendered());
     const resized = new ResizeObserver(() => schedule());
+    // A frame drawn with WebGL changes no DOM, so the observer above never sees it: the renderer says so itself (#2810).
+    let stopGpu: (() => void) | null = null;
     const watch = (on: boolean): void => {
       if (on === watching) return;
       watching = on;
       if (on) {
         // The layer sits outside the grid, so painting it does not wake these.
         changed.observe(grid, { childList: true, subtree: true, characterData: true, attributes: true });
+        stopGpu = view.onGpuDrawn(() => held.rendered());
         resized.observe(element);
         element.addEventListener("scroll", schedule, { passive: true });
       } else {
         changed.disconnect();
+        stopGpu?.();
+        stopGpu = null;
         resized.disconnect();
         element.removeEventListener("scroll", schedule);
       }
