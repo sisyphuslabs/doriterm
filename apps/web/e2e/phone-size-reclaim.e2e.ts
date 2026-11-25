@@ -40,7 +40,7 @@ async function desktopWindow(browser: Browser, loopbackUrl: string): Promise<Pag
 }
 
 /** The phone and a desktop window on one shell, the desktop active last. */
-async function sharedShell(phonePage: Page, browser: Browser, loopbackUrl: string, name: string) {
+async function sharedShell(phonePage: Page, browser: Browser, loopbackUrl: string, name: string, startsInput: boolean) {
   const address = startShell("host", name);
   shells.push(address);
   seedLayout([{ id: `tb-${name}`, root: [{ pane: "p1", terminal: address }] }]);
@@ -51,7 +51,10 @@ async function sharedShell(phonePage: Page, browser: Browser, loopbackUrl: strin
     .click();
   const onPhone = phonePage.locator(`[data-terminal="${address}"]:visible`);
   await expect(onPhone).toContainText("$", { timeout: 20_000 });
-  await expect.poll(() => coreSize(address), { timeout: 15_000 }).toBe(await gridSize(onPhone));
+  if (startsInput) {
+    await phonePage.getByRole("button", { name: "Show keyboard", exact: true }).click();
+    await expect.poll(() => coreSize(address), { timeout: 15_000 }).toBe(await gridSize(onPhone));
+  }
 
   const desktopPage = await desktopWindow(browser, loopbackUrl);
   await desktopPage.goto("/");
@@ -65,7 +68,7 @@ async function sharedShell(phonePage: Page, browser: Browser, loopbackUrl: strin
   await onDesktop.getByRole("textbox").focus();
   await expect.poll(() => coreSize(address), { timeout: 15_000 }).toBe(await gridSize(onDesktop));
   expect(await gridSize(onDesktop)).not.toBe(await gridSize(onPhone));
-  return { address, onPhone };
+  return { address, onPhone, deskSize: await gridSize(onDesktop) };
 }
 
 /** The page goes to the background and comes back, as switching apps or locking the phone does. */
@@ -79,12 +82,25 @@ async function backAndForth(page: Page): Promise<void> {
   });
 }
 
-test("a phone brought back to a terminal the desktop took over gives the program the phone's size again", async ({
+test("a phone that started input and comes back to a terminal the desktop took over reclaims the size", async ({
   page,
   browser,
   loopbackUrl,
 }) => {
-  const { address, onPhone } = await sharedShell(page, browser, loopbackUrl, "reclaim-visible");
+  const { address, onPhone } = await sharedShell(page, browser, loopbackUrl, "reclaim-visible", true);
   await backAndForth(page);
   await expect.poll(() => coreSize(address), { timeout: 15_000 }).toBe(await gridSize(onPhone));
+});
+
+test("a phone only watching does not reclaim the desktop's size on return (D1)", async ({
+  page,
+  browser,
+  loopbackUrl,
+}) => {
+  const { address, deskSize } = await sharedShell(page, browser, loopbackUrl, "watch-visible", false);
+  await backAndForth(page);
+  await page.evaluate(
+    () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+  );
+  expect(coreSize(address)).toBe(deskSize);
 });
