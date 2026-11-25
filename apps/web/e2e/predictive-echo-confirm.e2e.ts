@@ -31,6 +31,7 @@ for (const device of ["desktop", "phone"] as const) {
       await predictTyping(page);
       // The cursor's cell is measured on the page's rows, which a WebGL frame brings current a moment after its pixels.
       await textCaughtUp(terminal);
+      await expect(terminal.locator(".term-grid .term-cursor")).toBeAttached();
       return { terminal, link };
     }
 
