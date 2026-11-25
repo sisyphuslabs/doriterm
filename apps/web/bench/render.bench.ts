@@ -60,7 +60,15 @@ const program = (dir: string, pane: number): string[] => [
 async function addProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const probe = { recording: false, frames: [] as number[], longTasks: [] as number[] };
-    Object.assign(window, { benchProbe: probe });
+    // Each terminal registers its core's screen in __dorifaceTerminalScreens (use-terminal-attach.ts): a build drawing
+    // with WebGL keeps no row text in the DOM (#2810). A pane's text is its DOM rows, then that screen where registered.
+    const screens: Record<string, () => string> = {};
+    const benchPaneText = (address: string): string => {
+      const shown = document.querySelector(`[data-terminal="${address}"]`)?.textContent ?? "";
+      const screen = screens[address];
+      return screen === undefined ? shown : `${shown}\n${screen()}`;
+    };
+    Object.assign(window, { benchProbe: probe, benchPaneText, __dorifaceTerminalScreens: screens });
     const tick = (stamp: number): void => {
       if (probe.recording) probe.frames.push(stamp);
       requestAnimationFrame(tick);
@@ -105,34 +113,46 @@ async function producersDone(dir: string, panes: number, phase: number | "prompt
   }
 }
 
-/** Resolves once every listed terminal shows `text`. */
-const allShow = (page: Page, addresses: readonly string[], text: string) =>
-  page.waitForFunction(
-    ({ addresses: list, text: wanted }) =>
-      list.every((address) =>
-        (document.querySelector(`[data-terminal="${address}"]`)?.textContent ?? "").includes(wanted),
-      ),
+type PaneText = (address: string) => string;
+
+const nextFrame = (page: Page) =>
+  page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+/**
+ * Resolves once every listed terminal shows `text`, then lets one more frame pass: with WebGL the text is read from the
+ * core, so that frame is the one that draws it; a DOM build waits the same frame, so both are measured alike.
+ */
+const allShow = async (page: Page, addresses: readonly string[], text: string) => {
+  await page.waitForFunction(
+    ({ addresses: list, text: wanted }) => {
+      const read = Reflect.get(window, "benchPaneText") as PaneText;
+      return list.every((address) => read(address).includes(wanted));
+    },
     { addresses, text },
     { polling: 50, timeout: 120_000 },
   );
+  await nextFrame(page);
+};
 
 /** Every listed terminal's text as the page shows it now. */
 const shownText = (page: Page, addresses: readonly string[]) =>
-  page.evaluate(
-    (list) => list.map((address) => document.querySelector(`[data-terminal="${address}"]`)?.textContent ?? ""),
-    addresses,
-  );
+  page.evaluate((list) => {
+    const read = Reflect.get(window, "benchPaneText") as PaneText;
+    return list.map((address) => read(address));
+  }, addresses);
 
 /** Resolves once every listed terminal's text differs from `before`: output written since then is on the page. */
-const allChanged = (page: Page, addresses: readonly string[], before: readonly string[]) =>
-  page.waitForFunction(
-    ({ addresses: list, before: was }) =>
-      list.every(
-        (address, at) => (document.querySelector(`[data-terminal="${address}"]`)?.textContent ?? "") !== was[at],
-      ),
+const allChanged = async (page: Page, addresses: readonly string[], before: readonly string[]) => {
+  await page.waitForFunction(
+    ({ addresses: list, before: was }) => {
+      const read = Reflect.get(window, "benchPaneText") as PaneText;
+      return list.every((address, at) => read(address) !== was[at]);
+    },
     { addresses, before },
     { polling: 50, timeout: 120_000 },
   );
+  await nextFrame(page);
+};
 
 /** The grid as a herdr-app split tree: one column of rows, each row its panes. */
 function grid(addresses: readonly string[]): Tree[] {

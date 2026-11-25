@@ -11,6 +11,7 @@ import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
+import { screenText } from "./screen-text.ts";
 import { afterLeaving, leaveUnopened, noteLeaving } from "./leaving-attach.ts";
 import { HISTORY_LINES, noteViewSize, viewAttach } from "./opening-attach.ts";
 import type { OutputPacer, ReplayOptions } from "./output-pacer.ts";
@@ -193,6 +194,10 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     // a link came back (#639). Inert in the product, where nothing sets it.
     const attachLog: unknown = Reflect.get(globalThis, "__dorifaceAttachLog");
     if (Array.isArray(attachLog)) attachLog.push(address);
+    // A test hook for the render bench (#2810): a spec sets window.__dorifaceTerminalScreens to an object and reads each
+    // terminal's screen from its core, which WebGL drawing keeps out of the DOM. Inert in the product, where nothing sets it.
+    const screens: unknown = Reflect.get(globalThis, "__dorifaceTerminalScreens");
+    if (typeof screens === "object" && screens !== null) Reflect.set(screens, address, () => screenText(ready));
     // wterm pins the row height it measured at mount inline, over the stylesheet's font-size-derived one; without this
     // a font-size change (zoom, Settings) keeps the old row height, so the grid gains columns but never rows.
     ready.element.style.removeProperty("--term-row-height");
