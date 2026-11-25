@@ -33,7 +33,8 @@ test("a terminal on an added machine resized while its line is down has its grid
   const away = page.getByRole("status").filter({ hasText: `Reconnecting to ${MACHINE_NAME}.` });
   await expect(away).toBeVisible({ timeout: 15_000 });
   const before = await gridSize(terminal);
-  await page.setViewportSize({ width: 900, height: 600 });
+  // Narrower, yet still the wide layout (>= 1024, width-tier.ts): only the grid changes, not the shell around it.
+  await page.setViewportSize({ width: 1100, height: 600 });
   await expect.poll(() => gridSize(terminal)).not.toBe(before);
 
   reconnect();

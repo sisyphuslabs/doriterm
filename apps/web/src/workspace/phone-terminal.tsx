@@ -17,6 +17,8 @@ import { useShown } from "./use-shown.ts";
 import { PackSheet } from "./pack-sheet.tsx";
 import { PhoneHeader } from "./phone-header.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
+import { focusPair } from "./split-focus.ts";
+import { SplitFocusView } from "./split-focus-view.tsx";
 import { PhoneTabSwitcher, useSpaceTabs } from "./phone-tab-switcher.tsx";
 import { KEYS_BAR_HEIGHT, keysBottom, PhoneKeys, ROUND_BUTTON_CLEARANCE } from "./phone-keys.tsx";
 import { keysPlacement } from "./phone-keys-placement.ts";
@@ -70,6 +72,21 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
     dictate,
   } = props;
   const { sheet, onSheet } = props;
+  // Split focus (design proposal section 6): a split tab shows two of its panes at once, the open one in focus, until
+  // one of them fills the screen; Back from there returns to the split.
+  const [seen, setSeen] = useState<{ readonly open: string; readonly before: string | null }>({
+    open: terminal.address,
+    before: null,
+  });
+  if (seen.open !== terminal.address) setSeen({ open: terminal.address, before: seen.open });
+  const [full, setFull] = useState(false);
+  const pairAddresses = full ? null : focusPair(panes, terminal.address, seen.before);
+  const pairSessions = pairAddresses?.map((address) => terminals.find((each) => each.address === address));
+  const pair =
+    pairSessions?.[0] === undefined || pairSessions[1] === undefined
+      ? null
+      : ([pairSessions[0], pairSessions[1]] as const);
+  const back = (): void => (full && panes.length > 1 ? setFull(false) : onBack());
   const port = useRef<TerminalPort | null>(null);
   const onPort = useCallback((next: TerminalPort | null) => {
     port.current = next;
@@ -130,6 +147,61 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const placed = keysPlacement({ riding, held, mouseOnly, ended, dictating, browsing, offline, inTab, pad });
   const { keysOpen, tabsBar, docked, jumpClearance: keysControls } = placed;
 
+  // One terminal of the screen: the open one, or in a split the half out of focus, which takes no keys of its own.
+  const view = (session: Session, focused: boolean) => {
+    const sessionMachine = machineOf(session.address);
+    const sessionKey = `${session.address}#${session.pid ?? ""}`;
+    return (
+      <RegionBoundary
+        region={`pane:${session.address}`}
+        title="This terminal could not be drawn"
+        detail="The program keeps running on the host."
+      >
+        {session.offline === true && sessionMachine !== undefined ? (
+          <MachineOffline machine={sessionMachine} />
+        ) : (
+          <>
+            <ApprovalOverlay connection={connection} terminal={session} />
+            <TerminalView
+              key={sessionKey}
+              connection={connection}
+              address={session.address}
+              pid={session.pid ?? null}
+              live={session.state === "live"}
+              focused={focused}
+              // Opening a terminal, a session picked from the keys bar included, leaves the soft keyboard down: only the
+              // keyboard button raises it (#1375).
+              claimed={false}
+              // A soft keyboard is the phone's to ask for, so opening a terminal leaves it down (#1375); a narrow window
+              // driven by a mouse has none to raise, and keeps taking the focus as it starts (#287).
+              softKeyboard={!mouseOnly}
+              label={`${focused ? title : terminalTitle(session)} output`}
+              {...(focused
+                ? {
+                    transformInput: sticky.transform,
+                    typesComposition: sticky.latched.size > 0,
+                    browsing,
+                    onPort,
+                    onEnded: () => setEndedView(sessionKey),
+                    ...(keysControls === null ? {} : { jumpClearance: keysControls }),
+                  }
+                : {})}
+              // An End of this session leaves the screen only once it has removed the terminal (see afterEnd), and a
+              // program that ended in its first seconds stays for the just-born grace, so its failure shows (afterGrace).
+              onEnd={(address, end) =>
+                closesTab(end)
+                  ? afterGrace(session.created_ms, () => afterEnd(address, () => onEnded(address)))
+                  : undefined
+              }
+              // The header already has Back; this one closes the ended session.
+              closeLabel="Close"
+            />
+          </>
+        )}
+      </RegionBoundary>
+    );
+  };
+
   return (
     // isolate: the keys float above the terminal (z-10) but stay under a dialog and its backdrop, which portal to the body.
     <div
@@ -141,13 +213,15 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
         terminals={terminals}
         host={connection.hello.core.name}
         tabTitle={tabTitle}
-        backTo={backTo}
-        onBack={onBack}
+        backTo={full && panes.length > 1 ? "Split" : backTo}
+        onBack={back}
         onOpen={onOpen}
         action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
       />
       <ConnectionLine address={terminal.address} {...(offline ? {} : { connection })} />
-      <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
+      {pair === null || panes.length > 2 ? (
+        <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
+      ) : null}
       {/* The page's one main landmark: the terminal, under its header (#1378). */}
       <main
         className="relative flex min-h-0 flex-1 flex-col"
@@ -159,47 +233,21 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             : undefined
         }
       >
-        <RegionBoundary
-          region={`pane:${terminal.address}`}
-          title="This terminal could not be drawn"
-          detail="The program keeps running on the host."
-        >
-          {offline ? null : <ApprovalOverlay connection={connection} terminal={terminal} />}
-          {offline ? (
-            <MachineOffline machine={machine} />
-          ) : (
-            <TerminalView
-              key={viewKey}
-              connection={connection}
-              address={terminal.address}
-              pid={terminal.pid ?? null}
-              live={terminal.state === "live"}
-              focused
-              // Opening a terminal, a session picked from the keys bar included, leaves the soft keyboard down: only the
-              // keyboard button raises it (#1375).
-              claimed={false}
-              // A soft keyboard is the phone's to ask for, so opening a terminal leaves it down (#1375); a narrow window
-              // driven by a mouse has none to raise, and keeps taking the focus as it starts (#287).
-              softKeyboard={!mouseOnly}
-              label={`${title} output`}
-              transformInput={sticky.transform}
-              typesComposition={sticky.latched.size > 0}
-              browsing={browsing}
-              onPort={onPort}
-              // An End of this session leaves the screen only once it has removed the terminal (see afterEnd), and a
-              // program that ended in its first seconds stays for the just-born grace, so its failure shows (afterGrace).
-              onEnd={(address, end) =>
-                closesTab(end)
-                  ? afterGrace(terminal.created_ms, () => afterEnd(address, () => onEnded(address)))
-                  : undefined
-              }
-              // The header already has Back; this one closes the ended session.
-              closeLabel="Close"
-              {...(keysControls === null ? {} : { jumpClearance: keysControls })}
-              onEnded={() => setEndedView(viewKey)}
-            />
-          )}
-        </RegionBoundary>
+        {pair === null ? (
+          view(terminal, true)
+        ) : (
+          <SplitFocusView
+            pair={pair}
+            focused={terminal.address}
+            ratioKey={panes.join(" ")}
+            terminal={view}
+            onFocus={onOpen}
+            onExpand={(address) => {
+              setFull(true);
+              if (address !== terminal.address) onOpen(address);
+            }}
+          />
+        )}
         {browsing ? (
           <p
             role="status"
