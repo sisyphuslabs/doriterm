@@ -602,10 +602,18 @@ index dbff0264a6d9d0fe4feea8d7de0ef8c617216b8b..b9be38a24246578ff2713e1e8798a5a8
      invalidateColors(): void;
      /** Replaces decorations only, preserving native text selection. */
 diff --git a/dist/renderer.js b/dist/renderer.js
-index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770fd0a2d634 100644
+index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..f51db7d63e328acb8fe0d1de98335ae27b8efe33 100644
 --- a/dist/renderer.js
 +++ b/dist/renderer.js
-@@ -158,8 +158,42 @@ function cellSpanPart(className, style, text) {
+@@ -1,5 +1,7 @@
+ import { GraphicsLayer } from "./graphics-layer.js";
+ import { GpuGrid } from "./gpu-renderer.js";
++/** How often GPU frames resize a growing history; see _gpuFrame. */
++const GPU_HISTORY_SIZE_MS = 250;
+ import { getSelectionText, offsetAtCell, textPoint, } from "./selection.js";
+ import { selectionRange } from "./selection-range.js";
+ import { rectangleSelection } from "./rectangle-selection.js";
+@@ -158,8 +160,42 @@ function cellSpanPart(className, style, text) {
          html: `${opening}${content}</span>`,
          opening: flat ? opening : undefined,
          text: flat ? text : undefined,
@@ -648,7 +656,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
  function safeLinkHref(uri) {
      if (!uri)
          return undefined;
-@@ -571,6 +605,8 @@ export class Renderer {
+@@ -571,6 +607,8 @@ export class Renderer {
          // Keeping their boundaries lets a redraw preserve unchanged Unicode cells.
          const parts = [];
          let linkHtml = "";
@@ -657,7 +665,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
          const content = {
              text: "",
              specialCells: [],
-@@ -612,14 +648,18 @@ export class Renderer {
+@@ -612,14 +650,18 @@ export class Renderer {
              const nextLinkKey = href ? linkKey : "";
              if (nextLinkKey !== outputLinkKey) {
                  if (outputLinkKey)
@@ -678,7 +686,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
              else
                  parts.push(content);
          };
-@@ -768,7 +808,10 @@ export class Renderer {
+@@ -768,7 +810,10 @@ export class Renderer {
                  }
                  const ch = cell.chars ?? (cp >= 32 ? String.fromCodePoint(cp) : " ");
                  recordText(ch, col, 2);
@@ -690,7 +698,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
                  const cursor = cursorCol >= col && cursorCol < col + 2;
                  const cls = cursor ? "term-wide term-cursor" : "term-wide";
                  appendStyledSpan(cls, cursor ? cursorCellStyle(style) : style, ch, cellLinkKey, cellLinkUri);
-@@ -840,7 +883,7 @@ export class Renderer {
+@@ -840,7 +885,7 @@ export class Renderer {
          flushRun(this.cols);
          flushCanvasRun();
          if (outputLinkKey)
@@ -699,7 +707,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
          this.updateRowParts(rowEl, parts);
          this.rowText.set(rowEl, content);
          if (canvasTop)
-@@ -893,9 +936,9 @@ export class Renderer {
+@@ -893,9 +938,9 @@ export class Renderer {
          }
          const retained = start + parts.length - newEnd;
          const replaced = Math.max(oldEnd - start, newEnd - start);
@@ -711,7 +719,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
          }
          else {
              // Replace only the changed middle, retaining the native text nodes and
-@@ -904,12 +947,12 @@ export class Renderer {
+@@ -904,12 +949,12 @@ export class Renderer {
              range.setStart(row, start);
              range.setEnd(row, oldEnd);
              range.deleteContents();
@@ -730,7 +738,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
          }
          this.rowParts.set(row, parts);
      }
-@@ -1054,6 +1097,33 @@ export class Renderer {
+@@ -1054,6 +1099,33 @@ export class Renderer {
              this._scrollbackBottomSpacer.style.height = `${ordered.length ? (scrollbackCount - ordered[ordered.length - 1] - 1) * rowHeight : 0}px`;
          }
      }
@@ -764,7 +772,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
      /** Applies application color overrides; true when any changed. */
      syncColorOverrides(colors = {}) {
          let changed = false;
-@@ -1330,6 +1400,11 @@ export class Renderer {
+@@ -1330,6 +1402,11 @@ export class Renderer {
      requestSetup() {
          this.needsSetup = true;
      }
@@ -776,7 +784,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
      /** Re-read indexed colors in live and retained rows without rebuilding the grid. */
      invalidateColors() {
          this.colorsChanged = true;
-@@ -1389,6 +1464,8 @@ export class Renderer {
+@@ -1389,6 +1466,8 @@ export class Renderer {
          if (this.colorsChanged || !this.gpuPalette)
              this.gpuPalette = this._readPalette();
          const style = getComputedStyle(this.container);
@@ -785,7 +793,7 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
          const reconfigured = this.gpu.configure(this.cols, this.rows, {
              charWidth: viewport.charWidth ?? 0,
              rowHeight: viewport.rowHeight,
-@@ -1417,8 +1494,14 @@ export class Renderer {
+@@ -1417,8 +1496,20 @@ export class Renderer {
                  return false;
              }
          }
@@ -793,10 +801,16 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770f
 +        const scrollbackCount = core.getScrollbackCount();
 +        if (scrollbackCount !== this._renderedScrollbackCount) {
              this.staleScrollback = true;
-+            // Only a history that shrank (cleared and written again) leaves the old height taller than the new end; a
-+            // grown one is clamped to the old end, which is still the bottom, so it costs no layout per frame.
-+            if (scrollbackCount < this._renderedScrollbackCount)
++            // A history that shrank (cleared and written again) is sized at once: its old height is taller than the new
++            // end the frame scrolls to. A growing one is clamped to the old end, which is still the bottom, so it is sized
++            // at most every GPU_HISTORY_SIZE_MS: a gesture always starts from the real end, and a wall of busy panes does
++            // not lay out on every frame. The text sync sizes it exactly once output goes quiet.
++            const now = performance.now();
++            if (scrollbackCount < this._renderedScrollbackCount ||
++                now - (this._gpuHistorySizedAt ?? 0) >= GPU_HISTORY_SIZE_MS) {
++                this._gpuHistorySizedAt = now;
 +                this._sizeScrollbackForGpu(scrollbackCount);
++            }
 +        }
          const cursor = core.getCursor();
          this.gpuCoreCursor = cursor;
