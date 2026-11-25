@@ -8,6 +8,7 @@ import { checkBaseline } from "./baseline.ts";
 import { CrashProbe } from "./crash/crash-probe.ts";
 import { CrashScreen } from "./crash/crash-screen.tsx";
 import { RenderBoundary } from "./crash/render-boundary.tsx";
+import { DIRECT_PATH_ENABLED } from "./connection/direct-switch.ts";
 import { connectionStore } from "./connection/store.ts";
 import {
   closeDesktopWindow,
@@ -32,6 +33,7 @@ import { runAction, setActionFallback, useKeymapDispatcher } from "./keys/dispat
 import { reportMenuKeys } from "./keys/menu-keys.ts";
 import { router } from "./router.tsx";
 import { guardedSessionStorage } from "./storage/guarded.ts";
+import { keepStorageOnceOpen } from "./storage/keep-storage.ts";
 import { reloadIntoWaitingWorker, resumeUpdate } from "./update/reload-into-waiting.ts";
 import { updateStore } from "./update/update-store.ts";
 import { stepTerminalFont, takesTextSizeKey } from "./workspace/use-app-actions.ts";
@@ -86,6 +88,7 @@ if (!native && (location.protocol === "https:" || location.protocol === "http:")
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintBars);
   }
 }
+keepStorageOnceOpen(connectionStore);
 const desktop = desktopBridge();
 // This computer's host, if it dies while the app runs, is started again before the link to it is tried again (#515).
 if (desktop !== null)
@@ -125,10 +128,12 @@ if (desktopBridge() !== null) {
   // A clicked notification opens its pane in the workspace, from Settings too.
   listenForDesktopNotices(toWorkspace);
   reportMenuKeys();
-  // The shell may forward bytes to this page's saved Direct address and nothing else (#449).
+  // The shell may forward bytes to this page's saved Direct address and nothing else (#449). With the direct path off
+  // (#2070) it is told no target at all, so a saved address is not even handed to the shell.
   const forwarder = directForwardBridge();
   if (forwarder !== null) {
-    const reportTarget = (): void => void forwarder.setTarget(connectionStore.settings.directUrl);
+    const reportTarget = (): void =>
+      void forwarder.setTarget(DIRECT_PATH_ENABLED ? connectionStore.settings.directUrl : "");
     reportTarget();
     connectionStore.subscribe(reportTarget);
   }

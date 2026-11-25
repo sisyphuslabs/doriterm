@@ -1,5 +1,6 @@
 import { HcConnection } from "@doriface/client";
 import {
+  CloseCode,
   closeCodeOf,
   fingerprintOf,
   type KeyPair,
@@ -34,6 +35,8 @@ export interface DialOptions {
   readonly replace?: boolean | undefined;
   /** For tests: the sockets the relay links open. */
   readonly createSocket?: CreateSocket | undefined;
+  /** `"mcp"` opens the host's MCP stream instead of its hc stream (contract v1.12); pairing is the same either way. */
+  readonly stream?: "mcp" | undefined;
 }
 
 export interface Dialed {
@@ -49,10 +52,14 @@ export async function dial(target: ConnectTarget, options: DialOptions): Promise
   const link = await connectRelayClient({ relayUrl, hostId: host.hostId, ...socketOf(options) });
   try {
     const held = new HeldLink(link);
-    const secure = await secureLink(held, initiator(host, options.device));
+    const session = initiator(host, options.device);
+    const secure = await secureLink(
+      held,
+      options.stream === undefined ? session : { ...session, stream: options.stream },
+    );
     return { secure, link, held };
   } catch (error) {
-    throw refusal(host.hostId, error);
+    throw refusal(host.hostId, error, options.stream);
   }
 }
 
@@ -67,9 +74,19 @@ export const REFUSALS: Readonly<Record<number, (hostId: string) => string>> = {
 };
 
 /** One clear line for hc to show as the reason, with the close code when there is one. */
-function refusal(hostId: string, error: unknown): Error {
+/** On the MCP stream 4401 has one more cause than an unknown device: the host's MCP switch is off. */
+const MCP_REFUSED = (hostId: string): string =>
+  `host ${hostId} refused the MCP session: run doriface-host mcp on there, or pair this machine again`;
+
+function refusal(hostId: string, error: unknown, stream?: "mcp"): Error {
   const code = error instanceof Error ? closeCodeOf(error) : undefined;
-  const message = code === undefined ? undefined : REFUSALS[code]?.(hostId);
+  const worded =
+    stream === "mcp" && code === CloseCode.UnknownDevice
+      ? MCP_REFUSED
+      : code === undefined
+        ? undefined
+        : REFUSALS[code];
+  const message = worded?.(hostId);
   if (message === undefined) return error instanceof Error ? error : new Error(String(error));
   return new SecureLinkError(code, `${message} (${code})`, { cause: error });
 }
