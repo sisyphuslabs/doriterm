@@ -3,9 +3,8 @@ import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { PHONE, openPhoneTerminal } from "./phone-key-bar.ts";
 import { shownPrefix, startRowSampler, stopRowSampler } from "./prediction-frames.ts";
-import { painted, predictTyping, realCell } from "./prediction-probe.ts";
+import { painted, predictTyping, realCell, realCursor } from "./prediction-probe.ts";
 import { installPredictor } from "./prediction-stand-in.ts";
-import { textCaughtUp } from "./terminal-points.ts";
 
 // Design review HIGH 4 (#1439): a predicted cell leaves the overlay when its echo is written, synchronously, inside the
 // pacer's frame (mosh's Correct), but the renderer paints that echo only in a later frame. Every frame, as painted, must
@@ -30,8 +29,6 @@ for (const device of ["desktop", "phone"] as const) {
       await terminal.getByRole("textbox").focus();
       await predictTyping(page);
       // The cursor's cell is measured on the page's rows, which a WebGL frame brings current a moment after its pixels.
-      await textCaughtUp(terminal);
-      await expect(terminal.locator(".term-grid .term-cursor")).toBeAttached();
       return { terminal, link };
     }
 
@@ -83,18 +80,8 @@ for (const device of ["desktop", "phone"] as const) {
       }) => {
         const { terminal } = await open(page);
         const typed = "echo predict-ok";
-        const start = await terminal.evaluate((element) => {
-          const first = element
-            .querySelector(".term-grid .term-row:not(.term-scrollback-row)")
-            ?.getBoundingClientRect();
-          const cursor = element.querySelector(".term-grid .term-cursor")?.getBoundingClientRect();
-          const cell = Number.parseFloat(getComputedStyle(element).getPropertyValue("--term-cell-width"));
-          if (first === undefined || cursor === undefined) return null;
-          return {
-            row: Math.round((cursor.top - first.top) / first.height),
-            col: Math.round((cursor.left - first.left) / cell),
-          };
-        });
+        // The cursor's cell as the core holds it: a WebGL frame rebuilds the page's rows after its pixels (#2810).
+        const start = await realCursor(page);
         expect(start).not.toBeNull();
         await startRowSampler(terminal, start?.row ?? 0, start?.col ?? 0, typed.length);
         await page.keyboard.type(typed, { delay: cadence });
