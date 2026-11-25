@@ -5,6 +5,7 @@ interface Predictor {
   add(text: string, width: 1 | 2): { row: number; col: number; width: 1 | 2 };
   typing(on: boolean): void;
   cell(row: number, col: number): string;
+  cursor(): { row: number; col: number };
 }
 
 /** From now on the stand-in predicts each printable key and each committed composition, as the input path will. */
@@ -36,6 +37,10 @@ export const predict = (page: Page, text: string, width: 1 | 2 = 1) =>
   );
 
 /** The text of the terminal's own cell, read from its core: blank ("" or " ") while nothing is printed there. */
+/** The real cursor's cell as the terminal's core holds it, whichever renderer draws it. */
+export const realCursor = (page: Page) =>
+  page.evaluate(() => (Reflect.get(window, "__predictor") as Predictor).cursor());
+
 export const realCell = (page: Page, row: number, col: number) =>
   page.evaluate(([r, c]) => (Reflect.get(window, "__predictor") as Predictor).cell(r, c), [row, col] as const);
 

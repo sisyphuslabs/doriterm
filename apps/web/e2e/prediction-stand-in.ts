@@ -82,6 +82,7 @@ export async function installPredictor(page: Page): Promise<void> {
           changed();
         },
         cell: (row: number, col: number): string => screen.cell(row, col),
+        cursor: (): { row: number; col: number } => screen.cursor(),
       });
       return {
         visible: () => cells,
