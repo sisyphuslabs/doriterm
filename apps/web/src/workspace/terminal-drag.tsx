@@ -156,14 +156,22 @@ export function TerminalDragProvider({ children }: { readonly children: ReactNod
   );
 }
 
-/** The dragged agent's name beside the pointer, so the person sees what they hold over the panes. */
+/**
+ * The dragged agent's name beside the pointer, so the person sees what they hold over the panes: below and right of it,
+ * or left of it in the window's right quarter, where it would run off the edge.
+ */
 function DragChip({ drag }: { readonly drag: TerminalDrag }) {
+  const flip = drag.x > window.innerWidth * 0.75;
   return (
     <div
       aria-hidden
       data-terminal-drag={drag.address}
       className="pointer-events-none fixed z-50 max-w-60 truncate rounded-md border border-border bg-popover px-2 py-1 text-sm text-popover-foreground shadow-md"
-      style={{ left: drag.x + 12, top: drag.y + 12 }}
+      style={{
+        left: drag.x,
+        top: drag.y,
+        transform: flip ? "translate(calc(-100% - 12px), 12px)" : "translate(12px, 12px)",
+      }}
     >
       {drag.name}
     </div>
