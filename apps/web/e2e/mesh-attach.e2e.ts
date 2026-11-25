@@ -27,7 +27,7 @@ async function nextLine(prefix: string): Promise<string> {
   return next.value.startsWith(prefix) ? next.value.slice(prefix.length) : nextLine(prefix);
 }
 
-test.beforeAll(async () => {
+async function startScenario(): Promise<void> {
   test.setTimeout(300_000);
   // Playwright sets FORCE_COLOR for its workers; wrangler would colour the line the helper waits for.
   const { FORCE_COLOR: _colour, ...inherited } = process.env;
@@ -35,14 +35,16 @@ test.beforeAll(async () => {
   if (helper.stdout === null) throw new Error("mesh-hosts has no stdout");
   reader = createInterface({ input: helper.stdout })[Symbol.asyncIterator]();
   ({ relayUrl, machine } = JSON.parse(await nextLine("READY ")) as { relayUrl: string; machine: string });
-});
+}
 
-test.afterAll(async () => {
+async function stopScenario(): Promise<void> {
   const running = helper;
   if (running === undefined) return;
   running.kill("SIGTERM");
   await expect.poll(() => running.exitCode ?? running.signalCode, { timeout: 90_000 }).not.toBeNull();
-});
+  helper = undefined;
+  reader = undefined;
+}
 
 async function pairedWithA(browser: Browser, width: number, theme: "day" | "night"): Promise<Page> {
   const narrow = width < 600;
@@ -85,32 +87,37 @@ for (const [size, width] of [
   ["390", 390],
 ] as const) {
   for (const theme of ["day", "night"] as const) {
-    test(`at ${size} in ${theme}, a terminal on another mesh member is listed under its machine and takes input`, async ({
-      browser,
-    }) => {
-      const page = await pairedWithA(browser, width, theme);
-      const row = page
-        .getByRole("button", { name: /\bon-b\b/ })
-        .filter({ hasText: machine })
-        .first();
-      if (width >= 600) {
-        const group = page
-          .getByRole("complementary", { name: "Workspace" })
-          .getByRole("region", { name: machine, exact: true });
-        await expect(group).toBeVisible({ timeout: 60_000 });
-        await expect(group).toContainText("connected");
-      }
-      await expect(row).toBeVisible({ timeout: 60_000 });
-      await keep(page, `machines-${size}-${theme}`);
+    // Each case pairs an independent browser device. Its private test mesh belongs to that scenario, not the file.
+    test.describe(() => {
+      test.beforeAll(startScenario);
+      test.afterAll(stopScenario);
+      test(`at ${size} in ${theme}, a terminal on another mesh member is listed under its machine and takes input`, async ({
+        browser,
+      }) => {
+        const page = await pairedWithA(browser, width, theme);
+        const row = page
+          .getByRole("button", { name: /\bon-b\b/ })
+          .filter({ hasText: machine })
+          .first();
+        if (width >= 600) {
+          const group = page
+            .getByRole("complementary", { name: "Workspace" })
+            .getByRole("region", { name: machine, exact: true });
+          await expect(group).toBeVisible({ timeout: 60_000 });
+          await expect(group).toContainText("connected");
+        }
+        await expect(row).toBeVisible({ timeout: 60_000 });
+        await keep(page, `machines-${size}-${theme}`);
 
-      await row.click();
-      const terminal = page.locator(`[data-terminal^="${machine}/"]:visible`).first();
-      await expect(terminal).toContainText("$", { timeout: 30_000 });
-      await terminal.click();
-      await page.keyboard.type("echo mesh-$((6*7))-ok\r");
-      await expect(terminal).toContainText("mesh-42-ok", { timeout: 30_000 });
-      await keep(page, `attached-${size}-${theme}`);
-      await page.context().close();
+        await row.click();
+        const terminal = page.locator(`[data-terminal^="${machine}/"]:visible`).first();
+        await expect(terminal).toContainText("$", { timeout: 30_000 });
+        await terminal.click();
+        await page.keyboard.type("echo mesh-$((6*7))-ok\r");
+        await expect(terminal).toContainText("mesh-42-ok", { timeout: 30_000 });
+        await keep(page, `attached-${size}-${theme}`);
+        await page.context().close();
+      });
     });
   }
 }
