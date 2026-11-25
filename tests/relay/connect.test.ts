@@ -259,33 +259,27 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect(await refused.stderr()).toContain("run doriface-host mcp on there");
 
     new McpSwitch(stateDir).setEnabled(true);
-    const run = runConnect(state, relayUrl, hostId, "--mcp", "--tools", "machine");
+    const run = runConnect(state, relayUrl, hostId, "--mcp");
     await run.write(mcpLine(1, "server/discover"));
     const discovered = JSON.parse(decoder.decode(await within(run.reader.line(), "the discover answer")));
     expect(discovered.result.capabilities).toEqual({
       tools: {},
       resources: { listChanged: true },
+      prompts: {},
       extensions: { "io.modelcontextprotocol/events": {} },
     });
-    await run.write(mcpLine(2, "tools/call", { name: "terminal_list", arguments: {} }));
-    const listed = JSON.parse(decoder.decode(await within(run.reader.line(), "the terminal_list answer")));
-    expect(listed.result.isError).toBe(false);
-    expect(Array.isArray(listed.result.structuredContent.terminals)).toBe(true);
-
-    // --tools reached the host before the first line from stdin: the list is the core two and the group asked for.
-    await run.write(mcpLine(3, "tools/list"));
+    // One tool, and the skill that is its manual.
+    await run.write(mcpLine(2, "tools/list"));
     const shown = JSON.parse(decoder.decode(await within(run.reader.line(), "the tools/list answer")));
-    const names: string[] = shown.result.tools.map((tool: { name: string }) => tool.name);
-    expect(names.slice(0, 2)).toEqual(["doriterm_tools", "doriterm_call"]);
-    expect(names.length).toBeGreaterThan(2);
-    expect(names.slice(2).every((name) => name.startsWith("machine_"))).toBe(true);
-    await run.write(mcpLine(4, "tools/call", { name: "doriterm_call", arguments: { tool: "terminal_list" } }));
-    const through = JSON.parse(decoder.decode(await within(run.reader.line(), "the doriterm_call answer")));
-    expect(Array.isArray(through.result.structuredContent.terminals)).toBe(true);
+    expect(shown.result.tools.map((tool: { name: string }) => tool.name)).toEqual(["doriterm"]);
+    await run.write(mcpLine(3, "tools/call", { name: "doriterm", arguments: { args: ["ls"] } }));
+    const listed = JSON.parse(decoder.decode(await within(run.reader.line(), "the ls answer")));
+    expect(listed.result.isError).toBe(false);
+    expect(Array.isArray(JSON.parse(listed.result.structuredContent.stdout).terminals)).toBe(true);
 
-    // A mesh tool answers from the running host itself: this very device is in its list, under the name it paired as.
-    await run.write(mcpLine(5, "tools/call", { name: "mesh_status", arguments: {} }));
-    const mesh = JSON.parse(decoder.decode(await within(run.reader.line(), "the mesh_status answer")));
+    // The mesh answers from the running host itself: this very device is in its list, under the name it paired as.
+    await run.write(mcpLine(5, "tools/call", { name: "doriterm", arguments: { args: ["mesh", "status"] } }));
+    const mesh = JSON.parse(decoder.decode(await within(run.reader.line(), "the mesh status answer")));
     expect(mesh.result.isError).toBe(false);
     expect(mesh.result.structuredContent.devices.map((device: { name: string }) => device.name)).toContain("assistant");
     expect(mesh.result.structuredContent.joins).toEqual([]);
@@ -298,8 +292,8 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect(active.method).toBe("notifications/events/active");
     await run.write(
       mcpLine(7, "tools/call", {
-        name: "doriterm_call",
-        arguments: { tool: "terminal_run", arguments: { argv: ["true"], labels: { mcp: "relay-test" } } },
+        name: "doriterm",
+        arguments: { args: ["run", "--bg", "--no-parent", "--label", "mcp=relay-test", "true"] },
       }),
     );
     // Lines arrive in order: the tool's reply and the terminal's earlier events come first, so read until it finishes.

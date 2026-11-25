@@ -150,3 +150,48 @@ test("long matching lines and many paths stay within one reply line, marked more
   const glob = await tool("file_glob").run({ path: "many", pattern: "*.ts" }, exec);
   expect(replyBytes(glob)).toBeLessThan(MAX_MCP_LINE);
 });
+
+test("a command that fails without a message is a failure, and grep's own errors mark the matches incomplete", async () => {
+  writeFileSync(join(dir, "ok.txt"), "needle\n");
+  mkdirSync(join(dir, "locked"));
+  writeFileSync(join(dir, "locked", "x.txt"), "needle\n");
+  Bun.spawnSync(["chmod", "000", join(dir, "locked")]);
+  const grep = await tool("file_grep").run({ path: ".", pattern: "needle" }, exec);
+  Bun.spawnSync(["chmod", "755", join(dir, "locked")]);
+  if (process.getuid?.() !== 0) expect(grep).toMatchObject({ incomplete: true });
+  await expect(tool("file_glob").run({ path: "README.md", pattern: "*" }, exec)).rejects.toThrow(FileToolRefused);
+});
+
+test("file_read_bytes reports the size of the file a symlink points to, not of the link", async () => {
+  writeFileSync(join(dir, "target.bin"), Buffer.alloc(5000, 1));
+  Bun.spawnSync(["ln", "-s", "target.bin", join(dir, "link.bin")]);
+  expect(await tool("file_read_bytes").run({ path: "link.bin" }, exec)).toMatchObject({ size: 5000 });
+});
+
+test("file_list keeps names with a tab or a newline in them whole", async () => {
+  mkdirSync(join(dir, "odd"));
+  writeFileSync(join(dir, "odd", "a\tb"), "");
+  writeFileSync(join(dir, "odd", "c\nd"), "");
+  const listed = await tool("file_list").run({ path: "odd" }, exec);
+  expect(JSON.stringify(listed)).toContain('"name":"a\\tb"');
+  expect(JSON.stringify(listed)).toContain('"name":"c\\nd"');
+});
+
+test("a search from above the host's state never returns what the state files hold", async () => {
+  for (const name of ["doriface-host", "doriface-host-mesh"]) {
+    mkdirSync(join(dir, ".local", "state", name), { recursive: true });
+    writeFileSync(join(dir, ".local", "state", name, "host-key.json"), '{"secret":"needle-in-key"}\n');
+  }
+  writeFileSync(join(dir, "notes.txt"), "needle-in-key is fine here\n");
+  const found = await tool("file_grep").run({ path: ".", pattern: "needle-in-key" }, exec);
+  expect(found).toMatchObject({ matches: [{ path: "./notes.txt", line: 1 }] });
+  expect(JSON.stringify(found)).not.toContain("host-key");
+});
+
+test("file_grep excludes the extra state dir names it is given", async () => {
+  mkdirSync(join(dir, "studio-state"), { recursive: true });
+  writeFileSync(join(dir, "studio-state", "host-key.json"), "needle-custom\n");
+  writeFileSync(join(dir, "plain.txt"), "needle-custom\n");
+  const found = await tool("file_grep").run({ path: ".", pattern: "needle-custom", exclude: ["studio-state"] }, exec);
+  expect(found).toMatchObject({ matches: [{ path: "./plain.txt", line: 1 }], more: false });
+});

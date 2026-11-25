@@ -21,7 +21,12 @@ const discover = (id: number) => ({
   result: {
     resultType: "complete",
     supportedVersions: [VERSION],
-    capabilities: { tools: {}, resources: { listChanged: true }, extensions: { "io.modelcontextprotocol/events": {} } },
+    capabilities: {
+      tools: {},
+      resources: { listChanged: true },
+      prompts: {},
+      extensions: { "io.modelcontextprotocol/events": {} },
+    },
     _meta: { "io.modelcontextprotocol/serverInfo": { name: "doriterm", version: "1.2.3" } },
     instructions: SERVER_INSTRUCTIONS,
   },
@@ -46,7 +51,7 @@ test("server/discover carries instructions a client can show the model, within w
   expect(SERVER_INSTRUCTIONS.length).toBeGreaterThan(0);
   // Claude Code cuts server instructions at 2,048 characters.
   expect(SERVER_INSTRUCTIONS.length).toBeLessThanOrEqual(2048);
-  expect(SERVER_INSTRUCTIONS).toContain("doriterm_tools");
+  expect(SERVER_INSTRUCTIONS).toContain("doriterm://skill/SKILL.md");
 });
 
 test.each([
@@ -81,7 +86,7 @@ test("a request without a protocol version gets -32022 and requested null", () =
 
 test("a method this host does not serve gets Method not found", () => {
   const { client, answers } = open();
-  client.send(encode(request(12, "prompts/list")));
+  client.send(encode(request(12, "completion/complete")));
   expect(answers()).toEqual([{ jsonrpc: "2.0", id: 12, error: { code: -32601, message: "Method not found" } }]);
 });
 

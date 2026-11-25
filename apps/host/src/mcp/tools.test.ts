@@ -1,13 +1,15 @@
-import { HcRpcError, MCP_EXCLUDED_METHODS, MCP_TOOLS } from "@doriface/protocol";
+import { HcRpcError } from "@doriface/protocol";
 import { expect, test } from "bun:test";
 import type { PushLink } from "../push/push-stream.ts";
-import { FILE_TOOLS } from "./file-tools.ts";
-import { HOST_TOOLS, MESH_TOOLS } from "./mesh-tools.ts";
+import type { CliResult } from "./hc-cli.ts";
+import type { Scope } from "./one-tool.ts";
 import { type HcCaller, serveMcpLines } from "./serve.ts";
 
-const CATALOG_NAMES = [...MCP_TOOLS, ...FILE_TOOLS, ...HOST_TOOLS, ...MESH_TOOLS].map((tool) => tool.name);
-
 const META = { "io.modelcontextprotocol/protocolVersion": "2026-07-28" };
+const SKILL = [
+  { path: "SKILL.md", text: "# Doriterm\nRead me first." },
+  { path: "references/hc.md", text: "# hc" },
+];
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -18,8 +20,8 @@ interface Call {
   readonly answer: PromiseWithResolvers<unknown>;
 }
 
-/** A link and a core driven by hand: each reply resolves the next waiter, each core call waits for the test to answer. */
-function rig() {
+/** A link, a core and an hc CLI driven by hand: each reply resolves the next waiter, each core call waits for the test. */
+function rig(scopes?: readonly Scope[]) {
   const replies: unknown[] = [];
   const waiters: (() => void)[] = [];
   let onData: ((bytes: Uint8Array) => unknown) | undefined;
@@ -27,6 +29,7 @@ function rig() {
   let closedWith: { readonly code: number | undefined; readonly reason: string | undefined } | undefined;
   const calls: Call[] = [];
   const called: (() => void)[] = [];
+  const argvs: (readonly string[])[] = [];
   let coreClosed: ((error: Error | undefined) => void) | undefined;
   let opened = 0;
   const link: PushLink = {
@@ -64,26 +67,40 @@ function rig() {
   };
   serveMcpLines(link, {
     hostVersion: "1.2.3",
+    skill: SKILL,
+    scopes,
+    runHc: (argv): Promise<CliResult> => {
+      argvs.push(argv);
+      const exitCode = argv[0] === "get" ? 1 : 0;
+      return Promise.resolve({
+        exitCode,
+        stdout: `ran ${argv.join(" ")}\n`,
+        stderr: "",
+        truncated: false,
+        timedOut: false,
+      });
+    },
     openHc: () => {
       opened += 1;
       return Promise.resolve(core);
     },
   });
   const send = (message: object): void => void onData?.(enc.encode(`${JSON.stringify(message)}\n`));
-  const call = (id: number, name: string, args?: unknown): void =>
+  const run = (id: number, args: unknown, extra: object = {}): void =>
     send({
       jsonrpc: "2.0",
       id,
       method: "tools/call",
-      params: { _meta: META, name, ...(args === undefined ? {} : { arguments: args }) },
+      params: { _meta: META, name: "doriterm", arguments: { args, ...extra } },
     });
   const reply = (): Promise<void> => new Promise((resolve) => waiters.push(resolve));
   const coreCall = (): Promise<void> => new Promise((resolve) => called.push(resolve));
   return {
     replies,
     calls,
+    argvs,
     send,
-    call,
+    run,
     reply,
     coreCall,
     opened: () => opened,
@@ -92,197 +109,130 @@ function rig() {
     endSession: () => onLinkClose?.(),
   };
 }
+const content = (reply: unknown): unknown =>
+  Reflect.get(Object(Reflect.get(Object(reply), "result")), "structuredContent");
 
-const SHOW = "notifications/doriterm/tools";
-const namesIn = (answer: unknown): readonly string[] =>
-  (JSON.stringify(answer).match(/"name":"[a-z_]+"/g) ?? []).map((pair) => pair.slice(8, -1));
-
-test("tools/list shows two tools until the session asks for more: a group adds to them, all replaces them", () => {
-  const r = rig();
-  const list = (id: number): void => r.send({ jsonrpc: "2.0", id, method: "tools/list", params: { _meta: META } });
-  list(1);
-  expect(namesIn(r.replies[0])).toEqual(["doriterm_tools", "doriterm_call"]);
-  r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: ["machine"] } });
-  list(2);
-  expect(namesIn(r.replies[1])).toEqual([
-    "doriterm_tools",
-    "doriterm_call",
-    ...MCP_TOOLS.filter((tool) => tool.name.startsWith("machine_")).map((tool) => tool.name),
-  ]);
-  r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: "all" } });
-  list(3);
-  expect(namesIn(r.replies[2])).toEqual(CATALOG_NAMES);
-  r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: 7 } });
-  list(4);
-  expect(namesIn(r.replies[3])).toEqual(["doriterm_tools", "doriterm_call"]);
-  expect(r.replies).toHaveLength(4);
-  expect(r.opened()).toBe(0);
-});
-
-test("both listed tools lead with the advice to search first, so a model learns the catalog exists", () => {
+test("tools/list answers exactly one tool, doriterm, whose description opens by pointing at the skill", () => {
   const r = rig();
   r.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: META } });
   const tools: { name: string; description: string }[] = Reflect.get(
-    Reflect.get(r.replies[0] ?? {}, "result") ?? {},
+    Object(Reflect.get(Object(r.replies[0]), "result")),
     "tools",
   );
-  const [first, second] = tools.map((tool) => tool.description.split(":")[0]);
-  expect(tools.map((tool) => tool.name)).toEqual(["doriterm_tools", "doriterm_call"]);
-  expect(first).toBe(second);
-  expect(first).toContain("doriterm_tools");
+  expect(tools.map((tool) => tool.name)).toEqual(["doriterm"]);
+  expect(tools[0]?.description.startsWith("Read doriterm://skill/SKILL.md before your first call")).toBe(true);
+  expect(r.opened()).toBe(0);
 });
 
-test("doriterm_tools answers the catalog without the core: names alone, or the matches with their schemas", () => {
+test('the skill is a resource and a prompt, and args ["skill"] answers its text for clients that read neither', async () => {
   const r = rig();
-  r.call(1, "doriterm_tools");
-  r.call(2, "doriterm_tools", { query: "terminal_kill" });
-  r.call(3, "doriterm_tools", { query: "terminal" });
-  r.call(4, "doriterm_tools", { query: 5 });
-  const content = (index: number): { tools: { name: string; inputSchema?: object }[]; more?: number } =>
-    Reflect.get(Reflect.get(r.replies[index] ?? {}, "result") ?? {}, "structuredContent");
-  expect(content(0).tools.map((tool) => tool.name)).toEqual(CATALOG_NAMES);
-  expect(content(0).tools.every((tool) => tool.inputSchema === undefined)).toBe(true);
-  expect(content(1).tools.map((tool) => tool.name)).toEqual(["terminal_kill"]);
-  expect(content(1).tools[0]?.inputSchema).toEqual(
-    MCP_TOOLS.find((tool) => tool.name === "terminal_kill")?.inputSchema,
-  );
-  const terminals = MCP_TOOLS.filter((tool) => `${tool.name} ${tool.description}`.toLowerCase().includes("terminal"));
-  expect(content(2).tools).toHaveLength(8);
-  expect(content(2).more).toBe(terminals.length - 8);
-  expect(r.replies[3]).toEqual({
+  r.send({
     jsonrpc: "2.0",
-    id: 4,
-    error: { code: -32602, message: "Invalid params: query must be a string" },
+    id: 1,
+    method: "resources/read",
+    params: { _meta: META, uri: "doriterm://skill/SKILL.md" },
   });
-  expect(r.opened()).toBe(0);
-});
-
-test("doriterm_call runs the named tool as a direct call would, and refuses what a direct call refuses", async () => {
-  const r = rig();
-  const reached = r.coreCall();
-  r.call(1, "doriterm_call", { tool: "terminal_list", arguments: { all: true } });
-  await reached;
-  expect(r.calls[0]).toMatchObject({ method: "terminal.list", params: { all: true } });
-  const refused = [
-    "doriterm_call",
-    "no_such_tool",
-    ...MCP_EXCLUDED_METHODS.map((method) => method.replaceAll(".", "_")),
-  ];
-  refused.forEach((tool, index) => r.call(10 + index, "doriterm_call", { tool }));
-  r.call(30, "doriterm_call", { tool: "terminal_list", arguments: [1] });
-  r.call(31, "doriterm_call", {});
-  expect(r.replies).toEqual([
-    ...refused.map((tool, index) => ({
-      jsonrpc: "2.0",
-      id: 10 + index,
-      error: { code: -32602, message: `Unknown tool: ${tool}` },
-    })),
-    { jsonrpc: "2.0", id: 30, error: { code: -32602, message: "Invalid params: arguments must be an object" } },
-    { jsonrpc: "2.0", id: 31, error: { code: -32602, message: "Unknown tool: undefined" } },
-  ]);
-  expect(r.calls).toHaveLength(1);
-});
-
-test("the full list is the generated table, 25 of herdr-core's methods and none of the seven left out, then the file tools, host_status and the mesh tools", () => {
-  const r = rig();
-  r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: "all" } });
-  r.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: META } });
-  const [answer] = r.replies;
-  expect(answer).toMatchObject({ id: 1, result: { resultType: "complete", ttlMs: 300_000, cacheScope: "private" } });
-  const names: readonly string[] = JSON.stringify(answer).match(/"name":"[a-z_]+"/g) ?? [];
-  expect(names).toEqual(CATALOG_NAMES.map((name) => `"name":"${name}"`));
-  expect(MCP_TOOLS).toHaveLength(25);
-  for (const method of MCP_EXCLUDED_METHODS) expect(MCP_TOOLS.some((tool) => tool.method === method)).toBe(false);
-  expect(r.opened()).toBe(0);
-});
-
-test("a tool call reaches the core with the method from the table, never a name from the wire", async () => {
-  const r = rig();
-  const reached = r.coreCall();
-  r.call(2, "terminal_list", { all: true });
-  await reached;
-  expect(r.calls[0]).toMatchObject({ method: "terminal.list", params: { all: true } });
+  expect(r.replies[0]).toMatchObject({
+    result: { contents: [{ uri: "doriterm://skill/SKILL.md", text: SKILL[0]?.text }] },
+  });
+  r.send({ jsonrpc: "2.0", id: 2, method: "prompts/get", params: { _meta: META, name: "doriterm" } });
+  expect(r.replies[1]).toMatchObject({ result: { messages: [{ role: "user", content: { text: SKILL[0]?.text } }] } });
   const answered = r.reply();
-  r.calls[0]?.answer.resolve({ terminals: [] });
+  r.run(3, ["skill"]);
   await answered;
-  expect(r.replies[0]).toEqual({
-    jsonrpc: "2.0",
-    id: 2,
-    result: {
-      resultType: "complete",
-      content: [{ type: "text", text: '{"terminals":[]}' }],
-      structuredContent: { terminals: [] },
-      isError: false,
-    },
-  });
+  expect(content(r.replies[2])).toEqual({ exitCode: 0, stdout: SKILL[0]?.text, stderr: "" });
 });
 
-test("an unknown tool and each method left out are refused by name, and the core is never opened", () => {
+test("an hc verb runs as the hc CLI with exactly the args given; a nonzero exit is a tool error with its output", async () => {
   const r = rig();
-  const names = ["no_such_tool", ...MCP_EXCLUDED_METHODS.map((method) => method.replaceAll(".", "_"))];
-  names.forEach((name, index) => r.call(10 + index, name));
-  expect(r.replies).toEqual(
-    names.map((name, index) => ({
-      jsonrpc: "2.0",
-      id: 10 + index,
-      error: { code: -32602, message: `Unknown tool: ${name}` },
-    })),
-  );
+  const both = Promise.all([r.reply(), r.reply()]);
+  r.run(1, ["send", "t3", "hello there"]);
+  r.run(2, ["get", "t9"]);
+  await both;
+  expect(r.argvs).toEqual([
+    ["send", "t3", "hello there"],
+    ["get", "t9"],
+  ]);
+  expect(r.replies[0]).toMatchObject({
+    id: 1,
+    result: { isError: false, structuredContent: { exitCode: 0, stdout: "ran send t3 hello there\n" } },
+  });
+  expect(r.replies[1]).toMatchObject({ id: 2, result: { isError: true, structuredContent: { exitCode: 1 } } });
   expect(r.opened()).toBe(0);
 });
 
-test("arguments that are not an object are invalid params, not a call", () => {
+test("a refused verb and a verb outside the session's scopes answer a tool error and run nothing", async () => {
+  const r = rig(["read"]);
+  const all = Promise.all([r.reply(), r.reply(), r.reply()]);
+  r.run(1, ["attach", "t1"]);
+  r.run(2, ["send", "t1", "rm -rf ~"]);
+  r.run(3, ["ls"]);
+  await all;
+  expect(content(r.replies[0])).toMatchObject({ kind: "refused" });
+  expect(content(r.replies[1])).toEqual({ kind: "refused", message: "this needs the act scope" });
+  expect(r.argvs).toEqual([["ls"]]);
+});
+
+test("arguments that do not fit are invalid params; any other tool name is unknown", () => {
   const r = rig();
-  r.call(3, "terminal_list", [1]);
+  r.run(1, "ls");
+  r.run(2, ["ls"], { timeoutSeconds: 601 });
+  r.send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: { _meta: META, name: "terminal_list", arguments: {} },
+  });
   expect(r.replies).toEqual([
-    { jsonrpc: "2.0", id: 3, error: { code: -32602, message: "Invalid params: arguments must be an object" } },
+    { jsonrpc: "2.0", id: 1, error: { code: -32602, message: "Invalid params: args must be a list of strings" } },
+    {
+      jsonrpc: "2.0",
+      id: 2,
+      error: { code: -32602, message: "Invalid params: timeoutSeconds must be a whole number from 1 to 600" },
+    },
+    { jsonrpc: "2.0", id: 3, error: { code: -32602, message: "Unknown tool: terminal_list" } },
   ]);
 });
 
-test("a herdr-core error comes back as a tool error with its kind", async () => {
+test("doc get reaches the core with its method, and a herdr-core error comes back as a tool error with its kind", async () => {
   const r = rig();
   const reached = r.coreCall();
-  r.call(4, "terminal_get", { terminal: "t9" });
+  r.run(4, ["doc", "get", "layout"]);
   await reached;
+  expect(r.calls[0]).toMatchObject({ method: "doc.get", params: { name: "layout" } });
   const answered = r.reply();
   r.calls[0]?.answer.reject(new HcRpcError({ code: -32000, message: "not_found", data: { kind: "not_found" } }));
   await answered;
-  expect(r.replies[0]).toMatchObject({
-    id: 4,
-    result: { isError: true, structuredContent: { kind: "not_found", message: "not_found" } },
-  });
+  expect(r.replies[0]).toMatchObject({ id: 4, result: { isError: true, structuredContent: { kind: "not_found" } } });
 });
 
 test("notifications/cancelled aborts the core call and nothing is written for it", async () => {
   const r = rig();
   const reached = r.coreCall();
-  r.call(5, "terminal_wait", { terminal: "t1" });
+  r.run(5, ["doc", "get", "a"]);
   await reached;
   r.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 5 } });
   expect(r.calls[0]?.signal.aborted).toBe(true);
   // A later call is answered first, proving the cancelled one wrote nothing before it.
-  const second = r.coreCall();
-  r.call(6, "terminal_list");
-  await second;
   const answered = r.reply();
-  r.calls[1]?.answer.resolve({ terminals: [] });
+  r.run(6, ["ls"]);
   await answered;
   expect(r.replies).toHaveLength(1);
   expect(r.replies[0]).toMatchObject({ id: 6 });
 });
 
-test("two calls that settle out of order are both answered, each on one whole line", async () => {
+test("two core calls that settle out of order are both answered on one connection, each on one whole line", async () => {
   const r = rig();
   const both = Promise.all([r.coreCall(), r.coreCall()]);
-  r.call(7, "terminal_list");
-  r.call(8, "machine_list");
+  r.run(7, ["doc", "get", "a"]);
+  r.run(8, ["doc", "get", "b"]);
   await both;
   expect(r.opened()).toBe(1);
   const first = r.reply();
-  r.calls[1]?.answer.resolve({ machines: [] });
+  r.calls[1]?.answer.resolve({ text: "b" });
   await first;
   const second = r.reply();
-  r.calls[0]?.answer.resolve({ terminals: [] });
+  r.calls[0]?.answer.resolve({ text: "a" });
   await second;
   expect(r.replies.map((reply) => JSON.stringify(reply).match(/"id":(\d+)/)?.[1])).toEqual(["8", "7"]);
 });
@@ -290,7 +240,7 @@ test("two calls that settle out of order are both answered, each on one whole li
 test("the pipe to the core dying answers the call in flight as unavailable, then ends the session 1011", async () => {
   const r = rig();
   const reached = r.coreCall();
-  r.call(9, "terminal_wait", { terminal: "t1" });
+  r.run(9, ["doc", "get", "a"]);
   await reached;
   r.dropCore();
   expect(r.closed()).toBeUndefined();
@@ -304,7 +254,7 @@ test("the pipe to the core dying answers the call in flight as unavailable, then
 test("ending the session aborts calls in flight", async () => {
   const r = rig();
   const reached = r.coreCall();
-  r.call(11, "terminal_wait", { terminal: "t1" });
+  r.run(11, ["doc", "get", "a"]);
   await reached;
   r.endSession();
   expect(r.calls[0]?.signal.aborted).toBe(true);
