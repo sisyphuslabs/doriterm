@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { cn, ContextMenu, IconButton, skipMenuHandler, skipTouchMenu } from "@doriface/ui";
+import { cn, ContextMenu, IconButton, skipMenuHandler, skipTouchMenu, useShownAfter } from "@doriface/ui";
 import { Columns2, Maximize2, Minimize2, Rows2, X } from "lucide-react";
 import type { Axis } from "@doriface/protocol/layout";
 import { useActionKeys } from "../keys/use-action-keys.ts";
@@ -124,6 +124,8 @@ export function Pane(props: PaneProps) {
   // behind a zoom has the roster read nothing for it (#2505 review). Past the grace the pane body says the machine is
   // offline, and the header no longer says it reconnects.
   const away = useMachineLine(connection, terminal.address, shown && terminal.offline !== true);
+  // A machine line that is back within a second never says it was away; one that says so says it for half a second at least (#2768).
+  const awayShown = useShownAfter(away !== null && terminal.offline !== true);
   return (
     <section
       aria-label={`${title} terminal`}
@@ -158,7 +160,7 @@ export function Pane(props: PaneProps) {
                 {title}
               </h2>
               {/* Each pane says its own machine reconnects, in its header, never over its output (#2464 review). */}
-              {away === null || terminal.offline === true ? null : (
+              {!awayShown ? null : (
                 <span role="status" className="shrink-0 text-muted-foreground">
                   Reconnecting…
                 </span>

@@ -9,6 +9,7 @@ import { assertValidToken, generateToken } from "./auth.ts";
 import { CONNECT_USAGE, connectCommand } from "./commands/connect.ts";
 import { DEVICES_USAGE, devicesCommand } from "./commands/devices.ts";
 import { FINGERPRINT_USAGE, fingerprintCommand } from "./commands/fingerprint.ts";
+import { MCP_USAGE, mcpCommand } from "./commands/mcp.ts";
 import { MESH_JOIN_USAGE, meshJoinCommand } from "./commands/mesh-join.ts";
 import { MESH_USAGE, meshCommand } from "./commands/mesh.ts";
 import { PAIR_USAGE, pairCommand } from "./commands/pair.ts";
@@ -34,6 +35,7 @@ import { defaultStateDir } from "./state/files.ts";
 const USAGE = `usage: doriface-host [options]
        doriface-host pair [options]
        doriface-host devices list|revoke <id>
+       doriface-host mcp on|off|status [--state-dir <dir>]
        doriface-host fingerprint
        doriface-host connect <hostId | pairing link | code>
        doriface-host mesh pair | mesh join <mesh link | code> | mesh join --from-file <file>
@@ -79,6 +81,7 @@ async function main(args: readonly string[]): Promise<void> {
   // The commands that answer an exit code and leave nothing running.
   const coded: Readonly<Record<string, (args: readonly string[]) => Promise<number>>> = {
     devices: (given) => devicesCommand(given, out),
+    mcp: (given) => mcpCommand(given, out),
     mesh: (given) => meshCommand(given, out),
     update: (given) => updateCommand(given, out),
     skill: (given) => skillCommand(given, out, {}),
@@ -247,6 +250,7 @@ main(Bun.argv.slice(2)).catch((error: unknown) => {
   const usages: Readonly<Record<string, string>> = {
     pair: PAIR_USAGE,
     devices: DEVICES_USAGE,
+    mcp: MCP_USAGE,
     fingerprint: FINGERPRINT_USAGE,
     connect: CONNECT_USAGE,
     mesh: `${MESH_JOIN_USAGE}\n${MESH_USAGE}`,

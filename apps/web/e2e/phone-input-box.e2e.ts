@@ -6,8 +6,15 @@ import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "clipboard-write"] });
 
-const field = (page: Page) => page.getByLabel("Type into the terminal");
+const card = (page: Page) => page.getByRole("group", { name: "Input card", exact: true });
+const field = (page: Page) => card(page).getByLabel("Type into the terminal");
 const value = (page: Page) => page.locator("[data-terminal]").evaluate((el) => el.textContent ?? "");
+
+async function openInputCard(page: Page): Promise<void> {
+  await key(page, "Type in a field").click();
+  await expect(field(page)).toBeVisible();
+  await expect(field(page)).toBeFocused();
+}
 
 /** Types a Hangul syllable the way the phone's keyboard composes one: the input method owns it until it commits. */
 async function compose(page: Page, syllable: string): Promise<void> {
@@ -28,9 +35,7 @@ test("the field takes Korean through the input method, and Send writes the line 
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
-  await expect(field(page)).toBeVisible();
-  await expect(field(page)).toBeFocused();
+  await openInputCard(page);
 
   await page.keyboard.type("echo 인사-$((6*7))");
   await expect(field(page)).toHaveValue("echo 인사-$((6*7))");
@@ -42,33 +47,63 @@ test("the field takes Korean through the input method, and Send writes the line 
 
 test("a composed syllable reaches the program as one word, and nothing is sent before Send", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
+  await openInputCard(page);
   await page.keyboard.type("echo ");
   await compose(page, "한글");
   await expect(field(page)).toHaveValue("echo 한글");
   // The terminal keeps what it had: the field holds the line, not the shell.
   expect(await value(page)).not.toContain("한글");
 
-  await page.keyboard.press("Enter");
+  await key(page, "Send").click();
   await expect(terminal).toContainText("한글", { timeout: 15_000 });
   await expect(field(page)).toHaveValue("");
 });
 
-test("the field stays inside the keys bar, and the keyboard's own key takes both away", async ({ page }) => {
+// #2766: in the phone's field Enter starts a new line and only Send sends, on the soft keyboard and a
+// hardware one alike, so a message can be written over several lines before it goes.
+test("Enter starts a new line in the field and sends nothing; Send sends the whole draft", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
-  await expect(field(page)).toBeVisible();
-  const [box, bar, term] = await Promise.all([
+  await openInputCard(page);
+  await page.keyboard.type("echo first");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("echo second");
+  await expect(field(page)).toHaveValue("echo first\necho second");
+  expect(await value(page)).not.toContain("first");
+  await key(page, "Send").click();
+  await expect(terminal).toContainText("second", { timeout: 15_000 });
+  await expect(field(page)).toHaveValue("");
+  await expect(field(page)).toBeFocused();
+});
+
+test("Enter after a composed Hangul syllable keeps the syllable once and sends nothing", async ({ page }) => {
+  await openPhoneTerminal(page);
+  await openInputCard(page);
+  await page.keyboard.type("echo ");
+  await compose(page, "한글");
+  await page.keyboard.press("Enter");
+  await expect(field(page)).toHaveValue("echo 한글\n");
+  expect(await value(page)).not.toContain("한글");
+});
+
+test("the field lives in the card above the keys bar, and stays when the keyboard closes and reopens", async ({
+  page,
+}) => {
+  const terminal = await openPhoneTerminal(page);
+  await expect(card(page)).toHaveCount(0);
+  await openInputCard(page);
+  const [box, cardBox, bar, term] = await Promise.all([
     field(page).boundingBox(),
+    card(page).boundingBox(),
     keysBar(page).boundingBox(),
     terminal.boundingBox(),
   ]);
-  // The field shares the bar's row, and the terminal ends above the bar.
-  expect(box?.y ?? -1).toBeGreaterThanOrEqual(bar?.y ?? 0);
-  expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual((bar?.y ?? 0) + (bar?.height ?? 0));
-  expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((bar?.y ?? 0) + 1);
+  // The field sits inside the Input card above the keys bar, and the terminal ends above the card.
+  expect(box?.y ?? -1).toBeGreaterThanOrEqual(cardBox?.y ?? 0);
+  expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual((cardBox?.y ?? 0) + (cardBox?.height ?? 0));
+  expect((cardBox?.y ?? 0) + (cardBox?.height ?? Infinity)).toBeLessThanOrEqual((bar?.y ?? 0) + 1);
+  expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((cardBox?.y ?? 0) + 1);
 
-  // Putting the keyboard down keeps the panel, the field's row included (#2499).
+  // Putting the keyboard down keeps the bar and the open input card (#2499, #2778).
   await key(page, "Hide keyboard").click();
   await expect(key(page, "Hide keyboard")).toHaveCount(0);
   await expect(keysBar(page)).toBeVisible();
@@ -77,14 +112,16 @@ test("the field stays inside the keys bar, and the keyboard's own key takes both
   await expect(keysBar(page)).toBeVisible();
   await expect(field(page)).toBeVisible();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
+  await key(page, "Type in a field").click();
+  await expect(card(page)).toHaveCount(0);
 });
 
 test("a long line in the field is shown whole, and the keys stay reachable under it", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
+  await openInputCard(page);
   const line = "echo the quick brown fox jumps over the lazy dog 한글 $((6*7))";
   await page.keyboard.type(line);
-  // The field takes the bar's whole width and wraps, so nothing typed is scrolled out of sight.
+  // The field takes the card's width and wraps, so nothing typed is scrolled out of sight.
   const shown = await field(page).evaluate((el) => ({
     width: el.getBoundingClientRect().width,
     hidden: el.scrollWidth - el.clientWidth,
@@ -93,26 +130,33 @@ test("a long line in the field is shown whole, and the keys stay reachable under
   expect(shown.width).toBeGreaterThan(300);
   expect(shown.hidden).toBeLessThanOrEqual(1);
   expect(shown.clipped).toBeLessThanOrEqual(1);
-  // The key row keeps its width: at least six keys in view beside the field.
+  // The key pill keeps its page of keys reachable under the card beside the three action buttons.
   const keysInView = await keysBar(page)
-    .locator('[data-slot="terminal-keys-scroll"] button')
-    .evaluateAll(
-      (keys) =>
-        keys.filter((button) => {
-          const box = button.getBoundingClientRect();
-          return box.left >= 0 && box.right <= window.innerWidth && box.width > 0;
-        }).length,
-    );
-  expect(keysInView).toBeGreaterThanOrEqual(6);
-  // The terminal ends above the taller bar, so its last row is not under the field.
-  const [bar, term] = await Promise.all([keysBar(page).boundingBox(), terminal.boundingBox()]);
-  expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((bar?.y ?? 0) + 1);
+    .locator('[data-slot="terminal-keys-scroll"]')
+    .evaluate((el) => {
+      const edge = el.getBoundingClientRect();
+      return [...el.querySelectorAll("button")].filter((button) => {
+        const rect = button.getBoundingClientRect();
+        return rect.left >= edge.left - 1 && rect.right <= edge.right + 1 && rect.width > 0;
+      }).length;
+    });
+  expect(keysInView).toBeGreaterThanOrEqual(4);
+  await expect(keysBar(page).getByRole("group", { name: "Actions", exact: true }).getByRole("button")).toHaveCount(3);
+  // The terminal ends above the grown input card, and the card ends above the key row.
+  const [cardBox, bar, term] = await Promise.all([
+    card(page).boundingBox(),
+    keysBar(page).boundingBox(),
+    terminal.boundingBox(),
+  ]);
+  expect((cardBox?.y ?? 0) + (cardBox?.height ?? Infinity)).toBeLessThanOrEqual((bar?.y ?? 0) + 1);
+  expect((term?.y ?? 0) + (term?.height ?? 0)).toBeLessThanOrEqual((cardBox?.y ?? 0) + 1);
   await key(page, "Send").click();
   await expect(terminal).toContainText("한글 42", { timeout: 15_000 });
 });
 
 test("an idle, empty field keeps the pill's 44 pt height, and grows only while in use", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
+  await openInputCard(page);
   await terminal.click();
   await expect(field(page)).toBeVisible();
   await expect.poll(async () => (await field(page).boundingBox())?.height).toBe(44);
@@ -125,6 +169,10 @@ test("a press held in the terminal while typing gives the keyboard back as it li
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
+  await openInputCard(page);
+  await key(page, "Hide keyboard").click();
+  await key(page, "Show keyboard").click();
+  await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await expect(field(page)).toBeVisible();
   const box = await terminal.boundingBox();
   if (box === null) throw new Error("the terminal is not laid out");
@@ -137,6 +185,7 @@ test("a press held in the terminal while typing gives the keyboard back as it li
   );
   await page.mouse.up();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
+  await expect(key(page, "Hide keyboard")).toBeVisible();
   await expect(field(page)).toBeVisible();
 });
 
@@ -144,6 +193,10 @@ test("another pointer lifting during a held press in the terminal leaves that pr
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
+  await openInputCard(page);
+  await key(page, "Hide keyboard").click();
+  await key(page, "Show keyboard").click();
+  await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await expect(field(page)).toBeVisible();
   const box = await terminal.boundingBox();
   if (box === null) throw new Error("the terminal is not laid out");
@@ -162,14 +215,15 @@ test("another pointer lifting during a held press in the terminal leaves that pr
   await frames();
   await page.mouse.up();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
+  await expect(key(page, "Hide keyboard")).toBeVisible();
   await expect(field(page)).toBeVisible();
 });
 
 test("what is typed in the field is still there after the keyboard closes and opens again", async ({ page }) => {
   await openPhoneTerminal(page);
-  await field(page).click();
+  await openInputCard(page);
   await page.keyboard.type("git commit -m 초안");
-  // The field stays on screen with the keyboard down (#2499), holding what was typed.
+  // The card stays on screen with the keyboard down (#2499), holding what was typed.
   await key(page, "Hide keyboard").click();
   await expect(key(page, "Hide keyboard")).toHaveCount(0);
   await expect(field(page)).toHaveValue("git commit -m 초안");
@@ -181,7 +235,7 @@ test("Send tapped while a syllable is still composing sends the line once and le
   page,
 }) => {
   const terminal = await openPhoneTerminal(page);
-  await field(page).click();
+  await openInputCard(page);
   await page.keyboard.type("echo once-");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Input.imeSetComposition", { text: "한", selectionStart: 1, selectionEnd: 1 });
@@ -193,14 +247,17 @@ test("Send tapped while a syllable is still composing sends the line once and le
   expect(await value(page)).not.toContain("once-한한");
 });
 
-test("pasting into the fixed field sends the pasted line when Enter is pressed", async ({ page }) => {
+test("a line pasted into the fixed field waits for Send; Enter only adds a line", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
   await page.evaluate(() => navigator.clipboard.writeText("echo pasted-$((6*7))"));
-  await field(page).click();
+  await openInputCard(page);
   await pressWithCommand(page, `${await commandModifier(page)}+v`, "paste");
   await expect(field(page)).toHaveValue("echo pasted-$((6*7))");
   expect(await value(page)).not.toContain("pasted-42");
   await page.keyboard.press("Enter");
+  await expect(field(page)).toHaveValue("echo pasted-$((6*7))\n");
+  expect(await value(page)).not.toContain("pasted-42");
+  await key(page, "Send").click();
   await expect(terminal).toContainText("pasted-42", { timeout: 15_000 });
   await expect(field(page)).toHaveValue("");
   await expect(field(page)).toBeFocused();

@@ -17,6 +17,8 @@ import { AppearanceSection } from "../settings/appearance-section.tsx";
 import { ConnectionSection } from "../settings/connection-section.tsx";
 import { DeviceSection } from "../settings/device-section.tsx";
 import { DevicesSection } from "../settings/devices-section.tsx";
+import { desktopMcp } from "../desktop/mcp-bridge.ts";
+import { McpSection } from "../settings/mcp-section.tsx";
 import { KeybindingsSection } from "../settings/keybindings-section.tsx";
 import { KeyboardSection } from "../settings/keyboard-section.tsx";
 import { MeshSection } from "../settings/mesh-section.tsx";
@@ -287,6 +289,11 @@ export function SettingsRoute() {
                 <Group title="This device">
                   <DeviceSection />
                 </Group>
+                {!joinedBrowser && desktopMcp() !== null ? (
+                  <Group title="MCP">
+                    <McpSection />
+                  </Group>
+                ) : null}
                 {!joinedBrowser ? (
                   <Group title="Advanced connection">
                     <ConnectionSection />

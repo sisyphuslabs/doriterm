@@ -32,14 +32,25 @@ export const devicePeer = (devices: DeviceStore, key: Uint8Array): Peer =>
 /**
  * A session (`0x01`) by its stream: the mesh stream admits only a machine member; the push stream only a paired device
  * (a machine member has no browser to notify, while a client's notices come through the paired entry it keeps); the hc
- * stream (absent or `"hc"`) admits a machine member, then a client member, then such a device.
+ * stream (absent or `"hc"`) admits a machine member, then a client member, then such a device. MCP uses push's rules
+ * when its switch is on.
  */
 export function sessionPeer(
   stream: Stream | undefined,
   key: Uint8Array,
   index: AuthorizeIndex | undefined,
   devices: DeviceStore,
+  mcp?: { readonly enabled: () => boolean; readonly log?: (line: string) => void },
 ): Peer {
+  if (stream === "mcp") {
+    if (mcp === undefined) return { kind: "refused", reason: "this host serves no mcp stream" };
+    try {
+      if (!mcp.enabled()) return { kind: "refused", reason: "MCP is off on this host" };
+    } catch (error) {
+      mcp.log?.(`cannot read the MCP switch: ${String(error)}`);
+      return { kind: "refused", reason: "cannot read the MCP switch" };
+    }
+  }
   const mesh = meshPeer(index, base64urlEncode(key));
   // Each stream decides explicitly, per kind: a client is a member of the roster but not a dialer, so the mesh stream
   // must never admit one, and the push stream keeps serving only a device entry (design of #942).
@@ -51,7 +62,7 @@ export function sessionPeer(
       reason: mesh?.kind === "client" ? "a client does not dial the mesh" : "not a mesh member",
     };
   }
-  if (stream === "push" || stream === "roster") {
+  if (stream === "push" || stream === "roster" || stream === "mcp") {
     // A machine member's keys never open a push stream: a machine has no browser to notify. A client's notices are
     // served by the paired entry it keeps for exactly that purpose, which is what devicePeer answers for.
     if (mesh?.kind === "member") return { kind: "refused", reason: `a mesh member has no ${stream} stream` };
