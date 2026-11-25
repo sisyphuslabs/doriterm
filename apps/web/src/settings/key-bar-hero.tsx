@@ -36,11 +36,6 @@ export function KeyBarHero({ settings, host }: KeyBarHeroProps) {
           onKey={(id) => {
             if (MODIFIERS.has(id)) setLatched((current) => toggle(current, id));
           }}
-          inputField={
-            <span className="mx-1 flex h-9 w-[6.5rem] items-center rounded-full border border-input px-3 text-xs text-muted-foreground">
-              Type
-            </span>
-          }
         />
       </div>
       <p className="px-3 pb-2 text-[0.6875rem] text-muted-foreground">

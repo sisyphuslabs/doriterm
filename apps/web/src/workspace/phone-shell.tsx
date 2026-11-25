@@ -179,9 +179,10 @@ export function PhoneShell(props: PhoneShellProps) {
     );
   }
   return (
-    // Keyed by session: a switch starts with no latched modifier, no open pad and no open menu.
+    // Keyed by session: a switch starts with no latched modifier, no open pad and no open menu. A split tab is keyed by
+    // its panes instead, so moving the split focus between them keeps both terminals mounted.
     <PhoneTerminal
-      key={terminal.address}
+      key={panes.length > 1 && panes.includes(terminal.address) ? `split:${panes.join(" ")}` : terminal.address}
       connection={connection}
       terminal={terminal}
       terminals={terminals}

@@ -28,7 +28,7 @@ import { PIN_LABEL, spacesInOrder } from "./sidebar-model.ts";
 import { PinContext, type PinTerminal } from "./use-pin.ts";
 import { MachinesContext, useMachines } from "./use-machines.ts";
 import { runParamsFor, type StartSpace } from "./new-terminal.ts";
-import { useNarrow } from "./use-narrow.ts";
+import { useWidthTier } from "../layout/width-tier.ts";
 import { machineIds } from "./tab-keys.ts";
 import { findTerminal, type LayoutTab } from "./layout-model.ts";
 import { useLayout, withoutClaim, type PaneTarget } from "./use-layout.ts";
@@ -152,7 +152,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
   // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
   const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
-  const narrow = useNarrow();
+  const narrow = useWidthTier() === "compact";
   const ids = useMemo(() => machineIds(views), [views]);
   // New tab starts its terminal on the machine of the tab in view: offered disabled while that tab's layout takes no
   // edits (use-layout-docs.ts, which also reads a machine past its reconnect grace), never offered and then refused
