@@ -62,7 +62,7 @@ test("mcp off notifies the host after disabling MCP without unpairing devices", 
   expect(devices.list()).toEqual([phone]);
 });
 
-test("status reports MCP off by default and distinguishes a running host with no sessions", async () => {
+test("status reports MCP on by default and distinguishes a running host with no sessions", async () => {
   listeners.push(
     listenControl(dir, (request) => {
       if (request.op !== "mcp-status") throw new Error("expected mcp-status");
@@ -71,7 +71,7 @@ test("status reports MCP off by default and distinguishes a running host with no
   );
   const result = await mcp("status");
   expect(result.code).toBe(0);
-  expect(result.stdout).toBe("MCP is off\nno MCP client is connected\n");
+  expect(result.stdout).toBe("MCP is on\nno MCP client is connected\n");
 });
 
 test("status reports MCP on even when the host is not running", async () => {

@@ -1,4 +1,4 @@
-import { DirectionPad, ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
+import { ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
 import { TextSelect } from "lucide-react";
 import { type CSSProperties, type RefObject, useCallback, useRef, useState } from "react";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";
@@ -16,10 +16,10 @@ export function keysBottom(inset: number): string {
 }
 
 /**
- * The keys bar's own height at rest, which the terminal keeps clear until the bar reports its drawn one: two 2.75rem rows
- * with 0.25rem between them, the panel's 0.25rem padding and 1px border, and 0.25rem above and below it (#1551).
+ * The keys bar's own height at rest, which the terminal keeps clear until the bar reports its drawn one: one row of two
+ * 3.25rem pills and 0.25rem above and below it (#2778). The input card, when open, adds to the reported height.
  */
-export const KEYS_BAR_HEIGHT = "6.875rem";
+export const KEYS_BAR_HEIGHT = "3.75rem";
 
 /** How far up from the terminal's bottom the round keyboard button reaches: its 3rem and the gap below it. */
 export const KEYBOARD_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-bottom) + 0.5rem)) + 3rem)";
@@ -35,8 +35,8 @@ const CORNER =
  */
 export const ROUND_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-right) + 0.5rem)) - var(--safe-right) + 3.5rem)";
 
-/** How far up from the terminal's bottom the arrow pad reaches: its 0.5rem gap, three 3rem rows with their gaps and padding. */
-export const DIRECTION_PAD_CLEARANCE = "calc(0.5rem + 9rem + 0.5rem + 0.75rem + 2px)";
+/** How far up from the terminal's bottom the arrow pad reaches: its 0.75rem gap, two 3rem rows with their gap and padding. */
+export const DIRECTION_PAD_CLEARANCE = "calc(0.75rem + 6rem + 0.375rem + 1rem + 2px)";
 
 export interface PhoneKeysProps {
   readonly port: RefObject<TerminalPort | null>;
@@ -54,7 +54,7 @@ export interface PhoneKeysProps {
   readonly current: string;
   readonly onOpen: (address: string) => void;
   readonly onMenu: (open: boolean) => void;
-  /** The arrow pad is open over the keys bar; the terminal keeps its own controls above it. */
+  /** The arrow pad is open over the arrow key; the terminal keeps its own controls above it. */
   readonly pad: boolean;
   readonly onPad: (open: boolean) => void;
   /** Opens the packs panel: the bar's pack button, or Ctrl held down. */
@@ -126,6 +126,8 @@ export function PhoneKeys(props: PhoneKeysProps) {
   // The same answer as a boolean prop: Base UI keeps a focus that moved elsewhere during the close only for a boolean
   // finalFocus, never for a function's answer (#2174).
   const [returnFocus, setReturnFocus] = useState(false);
+  // The input card (#2778): closed until its toggle opens it, as in the Herdr app; the draft outlives it (input-box.tsx).
+  const [card, setCard] = useState(false);
   const settings = useKeyBarSettings();
   const own = specialEntries(settings, host);
   const packed = activeEntries(settings);
@@ -145,9 +147,6 @@ export function PhoneKeys(props: PhoneKeysProps) {
   };
   const panel = (
     <ExtraKeysBar
-      ref={barRef}
-      // Two rows, typing or not (#1551): the Type field and Send across the top, the keys under them.
-      inputActive
       keyboardDown={!open}
       onShowKeyboard={raise}
       onShowKeyboardStart={letGo}
@@ -158,10 +157,11 @@ export function PhoneKeys(props: PhoneKeysProps) {
       onKeyHold={() => onPacks()}
       padOpen={pad}
       onPad={() => onPad(!pad)}
+      onPadKey={sticky.press}
       onPaste={sticky.paste}
-      inputField={
-        <InputBox className="w-full p-0" draftKey={current} onSend={(text) => port.current?.send(`${text}\r`)} />
-      }
+      onReturn={() => sticky.press("enter")}
+      inputBox={card}
+      onInputBox={() => setCard(!card)}
       {...(onKeys === undefined
         ? { onHideKeyboard: hideKeyboard }
         : { hideLabel: "Hide keys", onHideKeyboard: () => onKeys(false) })}
@@ -212,8 +212,21 @@ export function PhoneKeys(props: PhoneKeysProps) {
   return (
     <>
       {visible ? (
-        <div className={place.className} style={place.style}>
-          {pad ? <DirectionPad onKey={sticky.press} className="absolute right-3 bottom-full z-10 mb-2" /> : null}
+        <div ref={barRef} className={place.className} style={place.style}>
+          {card ? (
+            <div
+              role="group"
+              aria-label="Input card"
+              className="mx-1.5 mb-1 rounded-[1.625rem] border border-border bg-chrome/95 p-1 shadow-lg backdrop-blur-md"
+            >
+              <InputBox
+                autoFocus
+                className="w-full"
+                draftKey={current}
+                onSend={(text) => port.current?.send(`${text}\r`)}
+              />
+            </div>
+          ) : null}
           {panel}
         </div>
       ) : null}
