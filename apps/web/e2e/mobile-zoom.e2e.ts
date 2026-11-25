@@ -96,6 +96,7 @@ for (const [name, device] of PHONES) {
 
     test("the keys bar's Type field and the command palette do not zoom when focused", async ({ page }) => {
       await openPhoneTerminal(page);
+      await key(page, "Type in a field").click();
       await expectNoZoomOnFocus(page.getByLabel("Type into the terminal"));
       expect(await zoomingFields(page)).toEqual([]);
 
