@@ -2,6 +2,8 @@ export {
   type DeviceKey,
   type HolderMemory,
   holderMemory,
+  type StrangerMemory,
+  strangerMemory,
   type KeyProtection,
   type MemberSigner,
   type VaultContext,

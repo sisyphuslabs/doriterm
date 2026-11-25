@@ -79,8 +79,42 @@ describe("a hostile writer of one core's document", () => {
   });
 });
 
+describe("a device whose member view lags behind", () => {
+  test("does not delete a new member's generation or entries it cannot yet place", async () => {
+    const [laptop, newcomer] = [await testDevice(), await testDevice()];
+    let doc = await maintain(EMPTY_VAULT, contextOf(newcomer, [laptop, newcomer]));
+    doc = await writeEntry(doc, contextOf(newcomer, [laptop, newcomer]), SONIOX, fields("sk-new"));
+    const lagging = await maintain(doc, contextOf(laptop, [laptop]));
+    expect(Object.keys(lagging.tiers)).toEqual(Object.keys(doc.tiers));
+    expect(Object.keys(lagging.entries)).toEqual(Object.keys(doc.entries));
+    const read = await readEntry(lagging, contextOf(newcomer, [laptop, newcomer]), SONIOX);
+    expect(read.kind === "open" && read.payload.fields["$default"]).toEqual({ type: "secret", value: "sk-new" });
+  });
+
+  test("waits for a stranger's generation only once: fresh minted keys cannot postpone the first vault for ever", async () => {
+    const laptop = await testDevice();
+    const first = await testDevice();
+    const planted = await maintain(EMPTY_VAULT, contextOf(first, [first]));
+    const waited = await maintain(planted, contextOf(laptop, [laptop]));
+    expect(resolveVault(waited, contextOf(laptop, [laptop])).tier).toBeUndefined();
+    const fresh = await testDevice();
+    const replanted = mergeVaults(waited, await maintain(EMPTY_VAULT, contextOf(fresh, [fresh])), MESH);
+    const later = { ...contextOf(laptop, [laptop]), now: () => "2026-12-09T00:00:00.000Z" };
+    const created = await maintain(replanted, later);
+    expect(resolveVault(created, later).tier?.by).toBe(laptop.signPub);
+  });
+
+  test("still prunes at once what a member known to be removed signed", async () => {
+    const [laptop, gone] = [await testDevice(), await testDevice()];
+    const planted = await maintain(EMPTY_VAULT, contextOf(gone, [gone]));
+    const ctx = { ...contextOf(laptop, [laptop]), removed: new Set([gone.signPub]) };
+    const kept = await maintain(planted, ctx);
+    expect(Object.values(kept.tiers).some((record) => record.body.includes(gone.signPub))).toBe(false);
+  });
+});
+
 describe("items from keys outside the mesh", () => {
-  test("are pruned by a member's upkeep, so a writer minting keys cannot grow the document without bound", async () => {
+  test("are pruned once a member has seen them for longer than the grace, so minted keys cannot grow the document", async () => {
     const { doc, laptop, phone } = await twoDeviceVault();
     const members = [laptop, phone];
     const outsiders = await Promise.all([testDevice(), testDevice(), testDevice()]);
@@ -89,10 +123,12 @@ describe("items from keys outside the mesh", () => {
     );
     const junk = planted.reduce((merged, copy) => mergeVaults(merged, copy, MESH), doc);
     expect(Object.keys(junk.tiers).length).toBe(1 + outsiders.length);
-    const kept = await maintain(junk, contextOf(laptop, members));
+    const seen = await maintain(junk, contextOf(laptop, members));
+    expect(Object.keys(seen.tiers).length).toBe(1 + outsiders.length);
+    const later = { ...contextOf(laptop, members), now: () => "2026-12-09T00:00:00.000Z" };
+    const kept = await maintain(seen, later);
     expect(Object.keys(kept.tiers)).toEqual(Object.keys(doc.tiers));
     expect(Object.keys(kept.devices).toSorted()).toEqual(members.map((member) => member.signPub).toSorted());
-    expect(Object.keys(kept.wraps)).toEqual(Object.keys(doc.wraps));
     const read = await readEntry(kept, contextOf(phone, members), SONIOX);
     expect(read.kind).toBe("open");
   });

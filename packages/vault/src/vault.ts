@@ -11,8 +11,8 @@ import {
 import type { VaultContext } from "./context.ts";
 import type { VaultDoc } from "./doc.ts";
 import { stateFor, TIER, type TierHandle } from "./keyholder.ts";
-import { pruneOlder, pruneOutsiders } from "./prune.ts";
-import { readDevice, recordId, type SignedWrap, signRecord, wrapDigest } from "./records.ts";
+import { pruneOlder, pruneOutsiders, STRANGER_GRACE_MS } from "./prune.ts";
+import { readDevice, readTier, recordId, type SignedWrap, signRecord, wrapDigest } from "./records.ts";
 import {
   memberWraps,
   openersOf,
@@ -181,12 +181,29 @@ async function newGeneration(doc: VaultDoc, ctx: VaultContext, resolved: Resolve
  * member-signed wrap. Without the key, it starts a new generation only when no current member's announced key has a
  * wrap at all (nobody can open it any more); otherwise it waits for a device that can.
  */
+/**
+ * A generation signed by someone this device does not know yet, still inside its grace (`pruneOutsiders` left it): likely
+ * a member that joined after this device's mesh records were read. Starting another generation beside it would fork
+ * the vault, so this device waits for its records to catch up, but on one clock per mesh that started the first time it
+ * waited: fresh keys minted by a hostile writer cannot restart it and postpone the first vault for ever.
+ */
+function strangerTiers(doc: VaultDoc, ctx: VaultContext): boolean {
+  const pending = Object.values(doc.tiers).some((record) => {
+    const by = readTier(record, ctx.mesh)?.by;
+    return by !== undefined && !ctx.members.has(by);
+  });
+  if (!pending) return false;
+  const since = Date.parse(ctx.strangers.firstSeen(`waiting:${ctx.mesh}`, ctx.now()));
+  return Date.parse(ctx.now()) - since <= STRANGER_GRACE_MS;
+}
+
 export async function maintain(doc: VaultDoc, ctx: VaultContext): Promise<VaultDoc> {
   if (!ctx.members.has(ctx.self.signPub)) return doc;
   const announced = await announce(pruneOutsiders(doc, ctx), ctx);
   const resolved = resolveVault(announced, ctx);
   const { tier, devices } = resolved;
-  if (tier === undefined) return resolved.stale ? announced : newGeneration(announced, ctx, resolved, []);
+  if (tier === undefined)
+    return resolved.stale || strangerTiers(announced, ctx) ? announced : newGeneration(announced, ctx, resolved, []);
   const wraps = memberWraps(announced, ctx, tier.id);
   const openers = openersOf(announced, ctx, resolved);
   const handle = await unlockTier(announced, ctx, tier);

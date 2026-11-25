@@ -46,15 +46,37 @@ export function holderMemory(initial: Readonly<Record<string, readonly string[]>
   };
 }
 
+/** When this device first saw each signer outside its member view; kept on the device, like the holder memory. */
+export interface StrangerMemory {
+  /** The first time `signPub` was seen, recording `now` when it is new. */
+  firstSeen(signPub: string, now: string): string;
+}
+
+export function strangerMemory(initial: Readonly<Record<string, string>> = {}) {
+  const seen = new Map(Object.entries(initial));
+  return {
+    firstSeen(signPub: string, now: string): string {
+      const held = seen.get(signPub);
+      if (held !== undefined) return held;
+      seen.set(signPub, now);
+      return now;
+    },
+    snapshot: (): Record<string, string> => Object.fromEntries(seen),
+  };
+}
+
 export interface VaultContext {
   readonly mesh: string;
   /** signPubs of the current members, from the verified mesh records (never the advisory status document). */
   readonly members: ReadonlySet<string>;
+  /** signPubs the verified mesh records revoke: what they signed can go at once. */
+  readonly removed: ReadonlySet<string>;
   readonly self: MemberSigner;
   /** This device's vault key and the tier keys it opens; the tier keys never leave it. */
   readonly key: Keyholder;
   /** The highest entry revision and tier generation this device has seen; a lower one handed over is a rollback. */
   readonly ledger: RevisionLedger;
   readonly memory: HolderMemory;
+  readonly strangers: StrangerMemory;
   readonly now: () => string;
 }

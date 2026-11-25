@@ -28,13 +28,16 @@ export function pruneOlder(doc: VaultDoc, tier: ResolvedTier, ctx: VaultContext)
   return dropTiers(doc, new Set(older));
 }
 
-function withoutSigners<T>(wraps: Nested<Readonly<Record<string, T>>>, members: ReadonlySet<string>) {
+/** How long an unknown signer's items are kept: long enough for every device's mesh records to learn a new member. */
+export const STRANGER_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function withoutSigners<T>(wraps: Nested<Readonly<Record<string, T>>>, drop: (signPub: string) => boolean) {
   return Object.fromEntries(
     Object.entries(wraps).map(([tier, holders]) => [
       tier,
       Object.fromEntries(
         Object.entries(holders).flatMap(([holder, signers]) => {
-          const kept = Object.fromEntries(Object.entries(signers).filter(([by]) => members.has(by)));
+          const kept = Object.fromEntries(Object.entries(signers).filter(([by]) => !drop(by)));
           return Object.keys(kept).length === 0 ? [] : [[holder, kept] as const];
         }),
       ),
@@ -43,20 +46,28 @@ function withoutSigners<T>(wraps: Nested<Readonly<Record<string, T>>>, members: 
 }
 
 /**
- * What only keys outside this device's member set produced: announcements of non-members, tier records they signed
- * (with that generation's wraps and entries), and wraps they signed. Merging keeps such items by signature alone, so
- * a writer minting fresh keys could grow the document without bound; a member's upkeep removes them. Wraps a member
- * signed stay whoever holds them: they are the evidence that a removed device saw a key.
+ * What only keys outside the mesh produced: announcements, tier records (with that generation's wraps and entries)
+ * and wraps signed by them. Merging keeps such items by signature alone, so a writer minting fresh keys could grow the
+ * document without bound. A member removed by the verified mesh records is pruned at once. A signer this device simply
+ * does not know is kept for STRANGER_GRACE_MS from when this device first saw it: its own mesh records may lag behind a
+ * member that just joined, and deleting that member's generation would destroy its entries on every machine. Wraps a
+ * member signed stay whoever holds them: they are the evidence that a removed device saw a key.
  */
 export function pruneOutsiders(doc: VaultDoc, ctx: VaultContext): VaultDoc {
+  const now = Date.parse(ctx.now());
+  const drop = (signPub: string): boolean => {
+    if (ctx.members.has(signPub)) return false;
+    if (ctx.removed.has(signPub)) return true;
+    return now - Date.parse(ctx.strangers.firstSeen(signPub, ctx.now())) > STRANGER_GRACE_MS;
+  };
   const outsideTiers = Object.entries(doc.tiers).flatMap(([id, record]) => {
     const by = readTier(record, ctx.mesh)?.by;
-    return by === undefined || !ctx.members.has(by) ? [id] : [];
+    return by !== undefined && drop(by) ? [id] : [];
   });
   const pruned = dropTiers(doc, new Set(outsideTiers));
   return {
     ...pruned,
-    devices: Object.fromEntries(Object.entries(pruned.devices).filter(([signPub]) => ctx.members.has(signPub))),
-    wraps: withoutSigners(pruned.wraps, ctx.members),
+    devices: Object.fromEntries(Object.entries(pruned.devices).filter(([signPub]) => !drop(signPub))),
+    wraps: withoutSigners(pruned.wraps, drop),
   };
 }
