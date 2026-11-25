@@ -5,6 +5,7 @@ import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { PHONE, openPhoneTerminal } from "./phone-key-bar.ts";
 import { painted, predict, realCell } from "./prediction-probe.ts";
 import { installPredictor } from "./prediction-stand-in.ts";
+import { textCaughtUp } from "./terminal-points.ts";
 
 // A key typed over a slow link is drawn at once as a predicted cell over the grid, underlined, in its own layer: the
 // terminal's own cells never hold it (design D1, plan S5). Placed by the cursor cell's box, at a phone's 3x pixel ratio
@@ -89,6 +90,7 @@ for (const device of ["desktop", "phone"] as const) {
         release();
         await expect(terminal.locator(".term-prediction-cell")).toHaveCount(0);
         await expect.poll(() => realCell(page, at.row, at.col)).toBe("l");
+        await textCaughtUp(terminal);
         const after = await terminal.evaluate(painted);
         expect(after.predicting).toBe(false);
         expect(Math.abs((after.cursor?.left ?? 0) - (shown.predictedCursor?.left ?? Number.NaN))).toBeLessThan(1);

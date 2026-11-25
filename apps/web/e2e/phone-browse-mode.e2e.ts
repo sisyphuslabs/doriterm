@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
 import { reportedRows, reportRowOf, startMouseTracking, stopMouseTracking } from "./mouse-tracking.ts";
 import { key, keysBar, openPhoneTerminal, PHONE, settledGrid } from "./phone-key-bar.ts";
-import { pointOnRowStart, rowEnd } from "./terminal-points.ts";
+import { pointOnRowStart, rowEnd, textCaughtUp } from "./terminal-points.ts";
 import { Touch } from "./touch.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "clipboard-write"] });
@@ -147,6 +147,8 @@ test("browsing read-only, a swipe scrolls the scrollback and the program hears n
   await expect(browse(page)).toHaveAttribute("aria-pressed", "true");
 
   const touch = await Touch.on(page);
+  // Measured once the page holds what the terminal drew: the scroll offset of a page still catching up is not the end.
+  await textCaughtUp(terminal);
   const before = await viewport.evaluate((el) => el.scrollTop);
   const at = await pointOnRowStart(terminal, "delta epsilon zeta");
   const swipeSettled = await scrollEnd(viewport);

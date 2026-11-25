@@ -75,3 +75,26 @@ Measured on 2026-11-07 on `ubuntu-24.04`, 5 rounds: A/A Render bench run 4232854
 - Unpaced drawing at 1 pane is the noisiest (a single pane's 480 KB draws in about half a second; rounds ran from 774 to 884 KiB/s), so its limit is 0.85 times the baseline. Both ends of that window are read on a 50 ms poll: each program waits for the go file with `sleep 0.05`, and the bench checks every pane for the end line every 50 ms. Each poll can add up to about 10% to a window of about 0.55 s, which likely accounts for most of that spread; at 15 and 50 panes A/A medians moved under 1.5%.
 - Those runs had the unpaced phase right after the hidden one. In the merged order, after the prompt phase, A/A run 42566564456 (2026-11-09, dev `47bfb6b5`, same setup) drew 838 / 814 KiB/s at 1 pane (rounds 744 to 846), 3,989 / 3,952 at 15 and 4,002 / 3,967 at 50: medians 2.9%, 0.9% and 0.9% apart.
 - Main busy at 50 panes stays in the table, ungated; at 1 and 15 panes (7% and 39% busy) it still gates.
+
+## WebGL against the DOM (#2810)
+
+Terminals draw with @wterm's WebGL2 renderer where a GPU draws it, and with the DOM everywhere else: a WebGL2 that only a software rasterizer provides (SwiftShader, llvmpipe) costs a core per page and fell behind typed-ahead frames (`predictive-echo-confirm.e2e.ts` on SwiftShader, while it passes on a GPU and with the DOM), and @wterm falls back to the DOM by itself when WebGL2 is missing or its context is lost. `VITE_TERMINAL_RENDERER=dom` builds the DOM one, so the bench can compare the two builds. A WebGL build keeps no row text in the DOM, so each terminal registers its core's screen in `window.__dorifaceTerminalScreens` when a page sets it (the bench's probe does; nothing does in the product), and every wait reads that and then lets one more frame pass, for either build. `BENCH_VIEWPORT` (`WIDTHxHEIGHT`) runs the bench at another size and `BENCH_CHROMIUM_ARGS` launches the browser with GPU flags: headless Chromium draws WebGL with SwiftShader otherwise, and SwiftShader passes `failIfMajorPerformanceCaveat` (measured on Linux and macOS), so a software WebGL cannot be told apart by that flag.
+
+Before the fixes below, measured on 2026-11-25 on an Apple M5 Max (`--use-angle=metal --enable-gpu --ignore-gpu-blocklist`, GL renderer `ANGLE Metal Renderer: Apple M5 Max`), the dom and webgl builds of one commit, 3 alternating rounds, medians, 1920x1080. Every gated metric was within its limit:
+
+| Panes | Main busy, dom / webgl | Drawn MB/s unpaced, dom / webgl | Frame p95 ms, dom / webgl | Show catch-up ms, dom / webgl |
+| ----- | ---------------------- | ------------------------------- | ------------------------- | ----------------------------- |
+| 1     | 6.0% / 4.3%            | 0.84 / 0.82                     | 16.7 / 16.8               | 71 / 24                       |
+| 15    | 17.4% / 10.9%          | 7.6 / 12.2                      | 16.8 / 16.7               | 12 / 8                        |
+| 50    | 32.2% / 14.5%          | 14.1 / 22.2                     | 16.7 / 16.7               | 41 / 13                       |
+
+The same build pair at one pane, phone width (390x844, iPhone 14 emulation) and 1920x1080, 25 keys each, keydown to the first frame showing the echo: p50 23.5 / 22.1 ms (phone, dom / webgl) and 24.1 / 23.5 ms (desktop); the two renderers draw one terminal alike.
+
+That measurement also found where WebGL drew differently from the DOM, each fixed in `patches/@wterm%2Fdom@0.5.9.patch` and held by a spec that runs in WebGL (the whole e2e suite now does):
+
+- Wide glyphs were drawn at their face's own width, narrower than two cells: the host's wide-glyph scale (`setWideGlyphScale`, face-scales.ts) only reached the DOM rows. The atlas now draws each wide glyph at that scale (`terminal-wide-extent.e2e.ts`, WebGL against DOM).
+- On macOS, Latin looked heavier: the page draws text with `-webkit-font-smoothing: antialiased`, canvas text keeps the platform's stem dilation (about 20% more ink on the same words). The shader thins light-on-dark coverage there, by an exponent that matched the DOM's stems; on Linux the two already matched.
+- After a synchronized full redraw (`ESC[3J` and the transcript again, a model switch) a phone's view was left above the bottom: a GPU frame scrolled to the new end while the history spacers kept the old row count. GPU frames now size them to the core's count (`phone-full-redraw-bottom.e2e.ts`).
+- The rows' text, which selection, find and screen readers read, waited for output to go quiet: under steady output it never caught up. The focused terminal's text now catches up at least once a second, and a touch or pen brings it current at the first contact, as a mouse press did. Other panes still wait for quiet, which keeps 50 busy panes cheap.
+
+The numbers after the fixes are on #2831.

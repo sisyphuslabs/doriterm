@@ -1,6 +1,7 @@
 import type { TerminalStream } from "@doriface/client";
 import { cn } from "@doriface/ui";
 import { Terminal, type TerminalHandle, type WTerm } from "@wterm/react";
+import { TERMINAL_RENDERER } from "./renderer-choice.ts";
 import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScreenAwake } from "../device/keep-awake.ts";
 import { useTerminalConfig } from "../ghostty/config-store.ts";
@@ -274,6 +275,7 @@ export function TerminalView(props: TerminalViewProps) {
         ref={handle}
         core={core}
         autoResize
+        renderer={TERMINAL_RENDERER}
         renderingPaused={paintHeld}
         {...(options.cursorBlink === undefined ? {} : { cursorBlink: options.cursorBlink })}
         aria-label={label}

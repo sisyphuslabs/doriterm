@@ -5,6 +5,7 @@ import { PHONE, openPhoneTerminal } from "./phone-key-bar.ts";
 import { shownPrefix, startRowSampler, stopRowSampler } from "./prediction-frames.ts";
 import { painted, predictTyping, realCell } from "./prediction-probe.ts";
 import { installPredictor } from "./prediction-stand-in.ts";
+import { textCaughtUp } from "./terminal-points.ts";
 
 // Design review HIGH 4 (#1439): a predicted cell leaves the overlay when its echo is written, synchronously, inside the
 // pacer's frame (mosh's Correct), but the renderer paints that echo only in a later frame. Every frame, as painted, must
@@ -28,6 +29,8 @@ for (const device of ["desktop", "phone"] as const) {
       link.delay(RTT_MS);
       await terminal.getByRole("textbox").focus();
       await predictTyping(page);
+      // The cursor's cell is measured on the page's rows, which a WebGL frame brings current a moment after its pixels.
+      await textCaughtUp(terminal);
       return { terminal, link };
     }
 

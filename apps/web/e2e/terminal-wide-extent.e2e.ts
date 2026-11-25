@@ -224,6 +224,79 @@ test.describe("desktop", () => {
   });
 });
 
+/** Each wide glyph's ink as the WebGL canvas painted it, in CSS px across the glyph's two cells, from the canvas pixels. */
+const gpuInkOf = (
+  element: HTMLElement,
+): readonly { readonly text: string; readonly ink: number; readonly offCentre: number }[] => {
+  const canvas = element.querySelector("canvas.term-gpu-canvas:not([hidden])");
+  if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no WebGL canvas is showing");
+  const context = canvas.getContext("2d");
+  if (context === null) throw new Error("the WebGL canvas has no 2d output");
+  const row = [...element.querySelectorAll(".term-row")].find((each) => (each.textContent ?? "").includes("doriface"));
+  if (row === undefined) throw new Error("the line with Korean text is not on screen");
+  const frame = canvas.getBoundingClientRect();
+  const scale = canvas.width / frame.width;
+  const box = row.getBoundingClientRect();
+  const top = Math.round((box.top - frame.top) * scale);
+  const height = Math.round(box.height * scale);
+  const pixels = context.getImageData(0, top, canvas.width, height).data;
+  const at = (x: number, y: number): number => (y * canvas.width + x) * 4;
+  // The row's last pixel is ground: the printed line ends far short of the grid's width.
+  const ground = at(canvas.width - 1, Math.floor(height / 2));
+  const inked = (x: number): boolean => {
+    for (let y = 0; y < height; y += 1) {
+      const p = at(x, y);
+      const d = [0, 1, 2].reduce((sum, c) => sum + Math.abs((pixels[p + c] ?? 0) - (pixels[ground + c] ?? 0)), 0);
+      if (d > 90) return true;
+    }
+    return false;
+  };
+  return [...row.querySelectorAll(".term-wide")].map((span) => {
+    const cells = span.getBoundingClientRect();
+    const from = Math.round((cells.left - frame.left) * scale);
+    const to = Math.round((cells.right - frame.left) * scale);
+    let left = -1;
+    let right = -1;
+    for (let x = from; x < to; x += 1) {
+      if (!inked(x)) continue;
+      if (left < 0) left = x;
+      right = x;
+    }
+    const ink = left < 0 ? 0 : (right - left + 1) / scale;
+    const offCentre = left < 0 ? Number.NaN : ((left + right + 1) / 2 - (from + to) / 2) / scale;
+    return { text: span.textContent ?? "", ink, offCentre };
+  });
+};
+
+test.describe("WebGL", () => {
+  // The platform's own fallback face, as terminal-hangul-fallback.e2e.ts takes it: on a Mac the only face with Hangul
+  // is proportional and narrower than two cells, which is where the WebGL atlas drew it narrow (#2810).
+  test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, pinnedFonts: false });
+
+  test("the WebGL canvas paints each wide glyph as the DOM row does: as wide, as centred (#2810)", async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(navigator, "platform", { value: "MacIntel" }));
+    await page.goto("/");
+    const terminal = await openNewTerminal(page);
+    await print(page, terminal, LINE);
+    // Terminals draw with WebGL only on a GPU (renderer-choice.ts); a browser on a software rasterizer draws the DOM.
+    const gpu = await terminal.locator("canvas.term-gpu-canvas:not([hidden])").count();
+    test.skip(gpu === 0, "this browser draws terminals with the DOM: WebGL needs a GPU");
+    const dom = (await terminal.evaluate(extentOf)).wide;
+    const painted = await terminal.evaluate(gpuInkOf);
+    console.log(`wide extent, WebGL against DOM: ${JSON.stringify({ dom, painted })}`);
+    expect(painted.map((glyph) => glyph.text)).toEqual(dom.map((glyph) => glyph.text));
+    for (const [at, glyph] of painted.entries()) {
+      const row = dom[at];
+      if (row === undefined) continue;
+      // A pixel and a half: the canvas and the page each round the glyph's edges to whole pixels.
+      expect.soft(Math.abs(glyph.ink - row.ink), `${glyph.text}: as wide as the DOM draws it`).toBeLessThanOrEqual(1.5);
+      expect
+        .soft(Math.abs(glyph.offCentre - row.offCentre), `${glyph.text}: centred where the DOM centres it`)
+        .toBeLessThanOrEqual(1.5);
+    }
+  });
+});
+
 test.describe("phone", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use({ ...phone, serviceWorkers: "block" });
