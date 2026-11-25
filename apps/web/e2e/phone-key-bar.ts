@@ -35,7 +35,7 @@ export async function fakeSoftKeyboard(
         width: { get: (): number => window.innerWidth },
         offsetTop: { get: (): number => pan + (keyboard > 0 ? panned : 0) },
         offsetLeft: { get: (): number => 0 },
-        pageTop: { get: (): number => window.scrollY },
+        pageTop: { get: (): number => window.scrollY + pan + (keyboard > 0 ? panned : 0) },
         pageLeft: { get: (): number => window.scrollX },
         scale: { get: (): number => 1 },
       });

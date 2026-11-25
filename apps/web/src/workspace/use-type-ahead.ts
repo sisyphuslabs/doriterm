@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useMouseOnly } from "../terminal/keyboard-inset.ts";
-import { useNarrow } from "./use-narrow.ts";
+import { useWidthTier } from "../layout/width-tier.ts";
 import { type HeldInput, keyInit, replay, terminalInput } from "./type-ahead.ts";
 
 /** Why held input was given up: the terminal did not start, or its view did not mount in time. */
@@ -50,7 +50,7 @@ const awake = (input: HTMLTextAreaElement | null, on: boolean): void => {
 };
 
 export function useTypeAhead(dropped: (reason: DropReason) => void): TypeAhead {
-  const narrow = useNarrow();
+  const narrow = useWidthTier() === "compact";
   const mouseOnly = useMouseOnly();
   // Below the desktop layout's width on a device with a soft keyboard, the hold waits for the terminal without taking
   // the keyboard, on the way in or on handover: opening a terminal would otherwise raise the keyboard over the output

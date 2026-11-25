@@ -181,14 +181,22 @@ for (const width of [390, 1440] as const) {
   });
 }
 
-// The inline rename lives in the sidebar, which a phone does not draw (a tap there opens the space, and its Rename
-// dialog labels its field through Field): it is checked at the narrowest window that has the sidebar, and at 1440.
+// The inline rename lives in the full sidebar, which a phone does not draw (a tap there opens the space, and its Rename
+// dialog labels its field through Field): it is checked in the tablet layout's drawer at 768 (its sidebar is a rail,
+// width-tier.ts) and at 1440.
 for (const width of [768, 1440] as const) {
   test(`the inline space rename shows its label at ${width}`, async ({ page }) => {
     const address = startAgent("host", `visible-label-${width}`, "idle", "website");
     try {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/");
+      if (width === 768) {
+        await page.getByRole("button", { name: "Show sidebar" }).click({ timeout: 20_000 });
+        // The drawer fades in as it opens (motion-arrive): its label is read once it has arrived, not halfway.
+        await page
+          .locator("[data-sidebar-drawer]")
+          .evaluate((drawer) => Promise.all(drawer.getAnimations({ subtree: true }).map((each) => each.finished)));
+      }
       const sidebar = page.getByRole("complementary", { name: "Workspace" });
       await sidebar.getByRole("button", { name: /^website\b/ }).dblclick({ timeout: 20_000 });
       const field = sidebar.getByRole("textbox", { name: "Rename space website" });
