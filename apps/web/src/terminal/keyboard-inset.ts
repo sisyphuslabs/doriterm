@@ -3,17 +3,21 @@ import { useEffect, useState } from "react";
 export interface ViewportBox {
   readonly height: number;
   readonly offsetTop: number;
+  /** The visual viewport's top in the document: its offset in the layout viewport plus the document's own scroll. */
+  readonly pageTop: number;
   readonly scale: number;
 }
 
 /**
- * How far the soft keyboard reaches up from the bottom of the layout viewport, in CSS px: iOS Safari and Chrome on
- * Android shrink the visual viewport over the keyboard and leave the layout viewport alone. A pinch zoom shrinks it
- * too, so a zoomed viewport reads as no keyboard.
+ * How far the soft keyboard reaches up from the bottom of the page's first screen, in CSS px: iOS Safari and Chrome on
+ * Android shrink the visual viewport over the keyboard and leave the layout viewport alone. The keys are placed in the
+ * page, so the visual viewport is measured from the page's top (pageTop): an installed iOS app scrolls the document
+ * itself to show a focused field, and measured from the layout viewport the keys then stood that scroll's height over
+ * the keyboard. A pinch zoom shrinks the visual viewport too, so a zoomed viewport reads as no keyboard.
  */
 export function keyboardInset(layoutHeight: number, viewport: ViewportBox): number {
   if (Math.abs(viewport.scale - 1) > 0.01) return 0;
-  return Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
+  return Math.max(0, Math.round(layoutHeight - viewport.height - viewport.pageTop));
 }
 
 /**

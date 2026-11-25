@@ -190,7 +190,13 @@ for (const width of [768, 1440] as const) {
     try {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/");
-      if (width === 768) await page.getByRole("button", { name: "Show sidebar" }).click({ timeout: 20_000 });
+      if (width === 768) {
+        await page.getByRole("button", { name: "Show sidebar" }).click({ timeout: 20_000 });
+        // The drawer fades in as it opens (motion-arrive): its label is read once it has arrived, not halfway.
+        await page
+          .locator("[data-sidebar-drawer]")
+          .evaluate((drawer) => Promise.all(drawer.getAnimations({ subtree: true }).map((each) => each.finished)));
+      }
       const sidebar = page.getByRole("complementary", { name: "Workspace" });
       await sidebar.getByRole("button", { name: /^website\b/ }).dblclick({ timeout: 20_000 });
       const field = sidebar.getByRole("textbox", { name: "Rename space website" });
