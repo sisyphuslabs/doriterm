@@ -1,3 +1,73 @@
+diff --git a/dist/gpu-renderer.js b/dist/gpu-renderer.js
+index b754b373bfbe44d76ab13c4e9a7e53000e9537da..b27ef193b0c8cf934e807519df968610486a4ef6 100644
+--- a/dist/gpu-renderer.js
++++ b/dist/gpu-renderer.js
+@@ -53,8 +53,20 @@ void main() {
+   vMisc = misc;
+   vSpan = w;
+ }`;
++/**
++ * How much light text on a dark ground is thinned. macOS draws the page's own text with -webkit-font-smoothing:
++ * antialiased (no stem dilation) while canvas text keeps the platform's dilation, so glyphs from the atlas came out
++ * about 20% heavier there (measured: ink of the same words, DOM against WebGL); 2.0 matched the stems. Elsewhere,
++ * iPadOS included (it reports MacIntel with touch points), page and canvas text already matched.
++ */
++const TEXT_GAMMA = typeof navigator !== "undefined" &&
++    navigator.platform.startsWith("Mac") &&
++    navigator.maxTouchPoints === 0
++    ? "2.0"
++    : "0.0";
+ const FRAGMENT = `#version 300 es
+ precision highp float;
++#define TEXT_GAMMA ${TEXT_GAMMA}
+ in vec2 vLocal;
+ in vec2 vUv;
+ flat in vec4 vBg;
+@@ -89,7 +101,12 @@ void main() {
+   } else {
+     vec4 t = texture(atlas, vUv);
+     if ((deco & ${DECO_COLOR_GLYPH}u) != 0u) c = vec4(mix(vBg.rgb, t.rgb / max(t.a, 0.001), t.a), 1.0);
+-    else c = mix(vBg, vFg, t.a);
++    else {
++      // Coverage blended linearly draws light text on a dark ground heavier than the browser's own text, which thins it
++      // with a contrast curve: thin it the same way, by how much lighter the text is than its ground.
++      float lift = max(0.0, dot(vFg.rgb - vBg.rgb, vec3(0.2126, 0.7152, 0.0722)));
++      c = mix(vBg, vFg, pow(t.a, 1.0 + TEXT_GAMMA * lift));
++    }
+   }
+   float py = vLocal.y * cellSize.y;
+   float thick = max(1.0, floor(cellSize.y / 16.0));
+@@ -183,8 +200,8 @@ class GlyphAtlas {
+         this.generation++;
+     }
+     /** Packed slot coordinate, with bit 31 set for color (emoji) glyphs. */
+-    slot(text, bold, italic, wide) {
+-        const key = `${bold ? "b" : ""}${italic ? "i" : ""}${wide ? "w" : ""}${text}`;
++    slot(text, bold, italic, wide, scale = 1) {
++        const key = `${bold ? "b" : ""}${italic ? "i" : ""}${wide ? "w" : ""}${scale === 1 ? "" : `s${scale}:`}${text}`;
+         const known = this.slots.get(key);
+         if (known !== undefined)
+             return known;
+@@ -203,7 +220,8 @@ class GlyphAtlas {
+         ctx.beginPath();
+         ctx.rect(x, y, this.slotW * span, this.slotH);
+         ctx.clip();
+-        ctx.font = `${italic ? "italic " : ""}${bold ? "bold " : ""}${this.font.size * this.dpr}px ${this.font.family}`;
++        // A wide glyph takes the size the host gives it so its advance fits the two cells, as the DOM path's font-size em.
++        ctx.font = `${italic ? "italic " : ""}${bold ? "bold " : ""}${this.font.size * this.dpr * scale}px ${this.font.family}`;
+         // Center the font box in the row the way CSS line-height does.
+         ctx.textBaseline = "alphabetic";
+         ctx.fillStyle = "#fff";
+@@ -515,7 +533,8 @@ export class GpuGrid {
+                 deco |= DECO_STRIKE;
+             let slot = 0;
+             if (!mask && text) {
+-                const packed = atlas.slot(text, (flags & FLAG_BOLD) !== 0, (flags & FLAG_ITALIC) !== 0, wide);
++                const scale = wide ? (this.wideGlyphScale?.(text) ?? 1) : 1;
++                const packed = atlas.slot(text, (flags & FLAG_BOLD) !== 0, (flags & FLAG_ITALIC) !== 0, wide, scale);
+                 slot = packed & 0x7fffffff;
+                 if (packed & 0x80000000)
+                     deco |= DECO_COLOR_GLYPH;
 diff --git a/dist/input.d.ts b/dist/input.d.ts
 index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02f1804d30 100644
 --- a/dist/input.d.ts
@@ -23,7 +93,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ff..6fa7805 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..6fa7805742f6ca8ea702784b91a02a222edd8b82 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -67,9 +67,48 @@ const FIXED_KEYS = {
@@ -532,7 +602,7 @@ index dbff0264a6d9d0fe4feea8d7de0ef8c617216b8b..b9be38a24246578ff2713e1e8798a5a8
      invalidateColors(): void;
      /** Replaces decorations only, preserving native text selection. */
 diff --git a/dist/renderer.js b/dist/renderer.js
-index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..7b0dbf34c37f51d6bc357688567a895755d386c3 100644
+index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..cc02cd7986847c9b83bc25f7f0c1047678a8b99e 100644
 --- a/dist/renderer.js
 +++ b/dist/renderer.js
 @@ -158,8 +158,42 @@ function cellSpanPart(className, style, text) {
@@ -660,7 +730,41 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..7b0dbf34c37f51d6bc357688567a8957
          }
          this.rowParts.set(row, parts);
      }
-@@ -1330,6 +1373,11 @@ export class Renderer {
+@@ -1054,6 +1097,33 @@ export class Renderer {
+             this._scrollbackBottomSpacer.style.height = `${ordered.length ? (scrollbackCount - ordered[ordered.length - 1] - 1) * rowHeight : 0}px`;
+         }
+     }
++    /**
++     * A GPU frame leaves the history rows' text for later (staleScrollback), but the view scrolls to the new end in the
++     * same frame: the spacers take the new row count now, so the scroll height matches the scrollTop the frame sets and
++     * a view following output stays at the bottom instead of reading as scrolled away until the text catches up.
++     */
++    _sizeScrollbackForGpu(count) {
++        const rowHeight = this._scrollbackRowHeight;
++        if (!rowHeight || !this._scrollbackTopSpacer || !this._scrollbackBottomSpacer)
++            return;
++        const keys = this._scrollbackKeys;
++        if (keys.length === 0) {
++            this._scrollbackTopSpacer.style.height = `${count * rowHeight}px`;
++            this._scrollbackBottomSpacer.style.height = "0px";
++            return;
++        }
++        const first = keys[0] - this._renderedDiscardedCount;
++        const last = keys[keys.length - 1] - this._renderedDiscardedCount;
++        if (first >= 0 && last < count) {
++            this._scrollbackTopSpacer.style.height = `${first * rowHeight}px`;
++            this._scrollbackBottomSpacer.style.height = `${(count - last - 1) * rowHeight}px`;
++            return;
++        }
++        // The mounted rows no longer fit the new count (history cleared or dropped under them): keep them at the end
++        // of the history, which holds the total at the new count wherever it can.
++        this._scrollbackTopSpacer.style.height = `${Math.max(0, count - (last - first + 1)) * rowHeight}px`;
++        this._scrollbackBottomSpacer.style.height = "0px";
++    }
+     /** Applies application color overrides; true when any changed. */
+     syncColorOverrides(colors = {}) {
+         let changed = false;
+@@ -1330,6 +1400,11 @@ export class Renderer {
      requestSetup() {
          this.needsSetup = true;
      }
@@ -672,6 +776,27 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..7b0dbf34c37f51d6bc357688567a8957
      /** Re-read indexed colors in live and retained rows without rebuilding the grid. */
      invalidateColors() {
          this.colorsChanged = true;
+@@ -1389,6 +1464,8 @@ export class Renderer {
+         if (this.colorsChanged || !this.gpuPalette)
+             this.gpuPalette = this._readPalette();
+         const style = getComputedStyle(this.container);
++        // The host's wide-glyph sizes, the same ones the DOM rows use (setWideGlyphScale rebuilds every row).
++        this.gpu.wideGlyphScale = this.wideGlyphScale ?? null;
+         const reconfigured = this.gpu.configure(this.cols, this.rows, {
+             charWidth: viewport.charWidth ?? 0,
+             rowHeight: viewport.rowHeight,
+@@ -1417,8 +1494,10 @@ export class Renderer {
+                 return false;
+             }
+         }
+-        if (core.getScrollbackCount() !== this._renderedScrollbackCount)
++        if (core.getScrollbackCount() !== this._renderedScrollbackCount) {
+             this.staleScrollback = true;
++            this._sizeScrollbackForGpu(core.getScrollbackCount());
++        }
+         const cursor = core.getCursor();
+         this.gpuCoreCursor = cursor;
+         this._applyGpuCursor();
 diff --git a/dist/wterm.d.ts b/dist/wterm.d.ts
 index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f022c96f7 100644
 --- a/dist/wterm.d.ts
@@ -708,10 +833,19 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874fbdf43c80 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..0ca436b2d7caf6e2f0d358ce0febbdb80424cd15 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
-@@ -120,6 +120,8 @@ export class WTerm {
+@@ -13,6 +13,8 @@ import { registerWebMCPTerminal, } from "./webmcp.js";
+ const SYNCHRONIZED_OUTPUT_TIMEOUT_MS = 1000;
+ const PROGRAMMATIC_SCROLL_TOLERANCE = 1;
+ const TEXT_SYNC_IDLE_MS = 150;
++/** Under output that never goes quiet, the DOM text still catches up this often: find and screen readers read it. */
++const TEXT_SYNC_MAX_MS = 1000;
+ function findQueryPrefix(data, from) {
+     if (typeof data === "string")
+         return data.indexOf("\x1b[1", from);
+@@ -120,10 +122,13 @@ export class WTerm {
          this._synchronizedOutputTimer = null;
          this._synchronizedOutputState = "idle";
          this._synchronizedOutputGeneration = 0;
@@ -720,7 +854,12 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._rendererNeedsSetup = false;
          this.resizeObserver = null;
          this._destroyed = false;
-@@ -131,9 +133,19 @@ export class WTerm {
+         this._textSyncTimer = null;
++        this._textStaleSince = null;
+         /** Selection and wheel scrolling start from current DOM text. */
+         this._onTextNeeded = () => {
+             this._syncText();
+@@ -131,9 +136,19 @@ export class WTerm {
          };
          this._shouldScrollToBottom = false;
          this._pinnedToBottom = true;
@@ -740,7 +879,18 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._rowHeight = 0;
          this._charWidth = 0;
          this._windowSizeQueryState = 0;
-@@ -227,6 +239,7 @@ export class WTerm {
+@@ -195,6 +210,10 @@ export class WTerm {
+         this._rendererOption = options.renderer ?? "dom";
+         if (this._rendererOption === "webgl") {
+             element.addEventListener("mousedown", this._onTextNeeded, true);
++            // A touch or pen sends its pointerdown (and a touch its touchstart) long before any mousedown, and a
++            // long-press selects from the DOM text: bring it current at the first contact.
++            element.addEventListener("pointerdown", this._onTextNeeded, true);
++            element.addEventListener("touchstart", this._onTextNeeded, { capture: true, passive: true });
+             element.addEventListener("wheel", this._onTextNeeded, {
+                 capture: true,
+                 passive: true,
+@@ -227,6 +246,7 @@ export class WTerm {
                  const match = this._search.matches[this.getSearchState().activeIndex];
                  if (match) {
                      this._shouldScrollToBottom = false;
@@ -748,7 +898,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
                      this._pendingResizeScrollTop = null;
                      this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
                          this.element.clientHeight / 2);
-@@ -336,6 +349,16 @@ export class WTerm {
+@@ -336,6 +356,16 @@ export class WTerm {
          this._onScroll = () => {
              if (this._pendingResizeScrollTop !== null)
                  return;
@@ -765,7 +915,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
              const atBottom = this._isScrolledToBottom();
              if (this._shouldScrollToBottom && atBottom) {
                  this._programmaticScrollTop = null;
-@@ -349,6 +372,8 @@ export class WTerm {
+@@ -349,6 +379,8 @@ export class WTerm {
              }
              this._programmaticScrollTop = null;
              this._shouldScrollToBottom = false;
@@ -774,7 +924,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -418,6 +443,7 @@ export class WTerm {
+@@ -418,6 +450,7 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
                  renderer: this._rendererOption,
              });
@@ -782,7 +932,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -453,7 +479,6 @@ export class WTerm {
+@@ -453,7 +486,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -790,7 +940,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -465,12 +490,33 @@ export class WTerm {
+@@ -465,12 +497,33 @@ export class WTerm {
          }
          return this;
      }
@@ -824,7 +974,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -508,6 +554,29 @@ export class WTerm {
+@@ -508,6 +561,29 @@ export class WTerm {
              throw new Error("This terminal core cannot change its scrollback");
          this.bridge.setScrollbackLines(this._scrollbackLines);
      }
@@ -854,7 +1004,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -553,7 +622,7 @@ export class WTerm {
+@@ -553,7 +629,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -863,7 +1013,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +801,30 @@ export class WTerm {
+@@ -732,9 +808,30 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -896,7 +1046,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -751,6 +841,19 @@ export class WTerm {
+@@ -751,6 +848,19 @@ export class WTerm {
          if (this.onResize)
              this.onResize(this.cols, this.rows);
      }
@@ -916,7 +1066,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
      /** Search retained history and the active screen, using plain text. */
      search(query, options = {}) {
          if (this._destroyed)
-@@ -798,6 +901,7 @@ export class WTerm {
+@@ -798,6 +908,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -924,7 +1074,30 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1127,14 +1231,20 @@ export class WTerm {
+@@ -1049,12 +1160,20 @@ export class WTerm {
+     }
+     /** Brings the DOM text current once GPU-painted output goes quiet. */
+     _scheduleTextSync() {
+-        if (this._textSyncTimer !== null)
++        const now = performance.now();
++        this._textStaleSince ?? (this._textStaleSince = now);
++        const due = this._textStaleSince + TEXT_SYNC_MAX_MS;
++        if (this._textSyncTimer !== null) {
++            // Output that keeps coming pushes the sync back only until the text has been stale for the longest wait.
++            if (now >= due)
++                return;
+             clearTimeout(this._textSyncTimer);
++        }
+         this._textSyncTimer = setTimeout(() => {
+             this._textSyncTimer = null;
++            this._textStaleSince = null;
+             this._syncText();
+-        }, TEXT_SYNC_IDLE_MS);
++        }, Math.max(0, Math.min(TEXT_SYNC_IDLE_MS, due - now)));
+     }
+     _syncText() {
+         if (!this.renderer?.textStale || this._destroyed)
+@@ -1127,14 +1246,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -947,7 +1120,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1254,10 @@ export class WTerm {
+@@ -1144,9 +1269,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -959,7 +1132,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1268,7 @@ export class WTerm {
+@@ -1157,7 +1283,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -968,7 +1141,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1687,16 @@ export class WTerm {
+@@ -1576,14 +1702,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
@@ -988,3 +1161,12 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
      }
      destroy() {
          this._destroyed = true;
+@@ -1604,6 +1732,8 @@ export class WTerm {
+             clearTimeout(this._textSyncTimer);
+         this._textSyncTimer = null;
+         this.element.removeEventListener("mousedown", this._onTextNeeded, true);
++        this.element.removeEventListener("pointerdown", this._onTextNeeded, true);
++        this.element.removeEventListener("touchstart", this._onTextNeeded, true);
+         this.element.removeEventListener("wheel", this._onTextNeeded, true);
+         if (this.resizeObserver)
+             this.resizeObserver.disconnect();

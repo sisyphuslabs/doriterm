@@ -1,5 +1,13 @@
 import type { Locator } from "@playwright/test";
+import { expect } from "./fixtures.ts";
 import type { TouchPoint } from "./touch.ts";
+
+/**
+ * Waits until a row of the terminal holds `row` in the page: a terminal drawn with WebGL paints the pixels first and
+ * brings its rows' text current a moment later (#2810), and every point below is measured on that text.
+ */
+const rowShown = (terminal: Locator, row: string) =>
+  expect(terminal.locator(".term-row", { hasText: row }).first()).toBeAttached();
 
 /**
  * The middle of `needle`'s first appearance on the terminal row that holds `row`, in page px, once the row has stopped
@@ -7,6 +15,7 @@ import type { TouchPoint } from "./touch.ts";
  * while it does lands somewhere else by the time a finger presses it.
  */
 export async function pointOn(terminal: Locator, row: string, needle: string): Promise<TouchPoint> {
+  await rowShown(terminal, row);
   return terminal.evaluate(
     async (root, [wanted, text]) => {
       const rowOf = (): Element | undefined =>
@@ -58,6 +67,7 @@ export async function pointOn(terminal: Locator, row: string, needle: string): P
 
 /** A point inside the first word of `row`, far enough from both edges that a finger lands on the text. */
 export async function pointOnRowStart(terminal: Locator, row: string): Promise<TouchPoint> {
+  await rowShown(terminal, row);
   return terminal.evaluate((root, wanted) => {
     const line = [...root.querySelectorAll(".term-row")].find(
       (candidate) => candidate.textContent?.includes(wanted) === true,
@@ -78,6 +88,7 @@ export async function pointOnRowStart(terminal: Locator, row: string): Promise<T
 
 /** A point past `row`'s last text, where a drag to the end of the line lands. */
 export async function rowEnd(terminal: Locator, row: string): Promise<TouchPoint> {
+  await rowShown(terminal, row);
   return terminal.evaluate((root, wanted) => {
     const line = [...root.querySelectorAll(".term-row")].find(
       (candidate) => candidate.textContent?.includes(wanted) === true,
