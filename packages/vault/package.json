@@ -1,0 +1,20 @@
+{
+  "name": "@doriface/vault",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "files": [
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@doriface/crypto": "workspace:*",
+    "@doriface/mesh": "workspace:*",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "typevault": "github:typeclaw/typevault#c8e05fe78e13a0d0a4d4faae1b35062b7d5a142c"
+  }
+}

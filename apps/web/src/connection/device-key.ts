@@ -84,7 +84,7 @@ const keepsKeys = new WeakMap<KeyValueStore, Promise<boolean>>();
  * Any other failure (busy, quota, abort) says nothing about whether it can keep a CryptoKey, so it is raised rather
  * than read as "this browser cannot": answering false there would quietly drop a working browser to raw bytes.
  */
-async function keepsStoredKeys(storage: KeyValueStore, subtle: SubtleCrypto): Promise<boolean> {
+export async function keepsStoredKeys(storage: KeyValueStore, subtle: SubtleCrypto): Promise<boolean> {
   const held = keepsKeys.get(storage);
   if (held !== undefined) return held;
   const probe = (async (): Promise<boolean> => {

@@ -40,15 +40,17 @@ function fakeLink(): ByteLink & { readonly closes: (number | undefined)[] } {
   };
 }
 
+// 255 is ssh's "the connection itself failed": herdr keeps the one reason instead of dialing again with its Windows
+// line (exit-code.ts, #2019).
 describe("connect --mesh refusals (R-12)", () => {
-  test("no host running: exit 1 with one reason line", async () => {
+  test("no host running: exit 255 with one reason line", async () => {
     expect(await bridge("--mesh", "--state-dir", local.stateDir, b.hostId)).toEqual({
-      code: 1,
+      code: 255,
       reason: "doriface-host connect: doriface-host is not running",
     });
   });
 
-  test("not a member, offline-gated, out of budget: exit 1 with the reason, never 127, and no dial", async () => {
+  test("not a member, offline-gated, out of budget: exit 255 with the reason, never 127, and no dial", async () => {
     const policy = new DialPolicy({ clock: monotonicClock, random: seededRandom(1), onDue: () => undefined });
     const dialed: string[] = [];
     const lines = new LineGrants({
@@ -63,15 +65,15 @@ describe("connect --mesh refusals (R-12)", () => {
     const socket = await local.serve(lines);
     try {
       const outsider = await bridge("--mesh", "--state-dir", local.stateDir, hostIdFor("zed"));
-      expect(outsider).toEqual({ code: 1, reason: "doriface-host connect: not a member of this mesh" });
+      expect(outsider).toEqual({ code: 255, reason: "doriface-host connect: not a member of this mesh" });
       policy.report(b.signPub, 4404);
       const offline = await bridge("--mesh", "--state-dir", local.stateDir, b.hostId);
-      expect(offline.code).toBe(1);
+      expect(offline.code).toBe(255);
       expect(offline.reason).toMatch(/^doriface-host connect: b is offline \(4404 ×1\); next try in (29|30) s$/);
       policy.report(b.signPub, "connected");
       await Promise.all(Array.from({ length: 12 }, (_, i) => policy.acquire(`m${i}`, "push")));
       const budget = await bridge("--mesh", "--state-dir", local.stateDir, b.hostId);
-      expect(budget).toEqual({ code: 1, reason: "doriface-host connect: waiting for the dial budget" });
+      expect(budget).toEqual({ code: 255, reason: "doriface-host connect: waiting for the dial budget" });
       expect(dialed).toEqual([]);
     } finally {
       socket.stop();
