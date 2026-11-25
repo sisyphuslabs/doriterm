@@ -4,23 +4,24 @@ import { startOffscreenProbe } from "../perf/offscreen-probe.ts";
 import { RateCounter, type RateSnapshot } from "../perf/rate-counter.ts";
 import { readScrollController } from "../perf/scroll-controller.ts";
 
-/** Logical size of the scroll controller surface before devicePixelRatio scaling. */
-const SURFACE_EXTENT_PX = 4000;
-const CONTROLLER_HEIGHT_PX = 240;
-const CANVAS_WIDTH = 320;
-const CANVAS_HEIGHT = 72;
-const BAR_STEP_PX = 4;
-const BAR_WIDTH_PX = 16;
-const UI_THROTTLE_MS = 100;
-const DECAY_TICK_MS = 250;
+/** Logical extent of the scroll controller surface before devicePixelRatio scaling. */
+const SURFACE_PX = 4000;
+const CONTROLLER_H = 240;
+const CANVAS_W = 320;
+const CANVAS_H = 72;
+/** Each canvas probe runs alone for three seconds so WebKit's main thread and worker do not starve each other. */
+const PHASE_MS = 3000;
+const PANEL = "flex flex-col gap-2 rounded-lg border border-border bg-card p-3";
+const ROW = "flex flex-wrap items-baseline justify-between gap-2";
+const CANVAS_BOX = "h-[72px] w-full rounded-md border border-border bg-surface";
 
-/** Peak measurements kept across the lifetime of the probe page for clipboard export. */
-interface PeakResults {
-  controllerUpdates: number;
-  controllerUnique: number;
-  mainFps: number;
-  workerFps: number;
-}
+type FrameTestPhase = "main" | "worker" | "done";
+
+const PHASE_LABEL: Readonly<Record<FrameTestPhase, string>> = {
+  main: "Measuring main thread…",
+  worker: "Measuring worker…",
+  done: "Done",
+};
 
 /** Packs two-axis scroll coordinates into one finite integer key with 0.001 px resolution. */
 function packScrollPosition(x: number, y: number): number {
@@ -39,20 +40,17 @@ function startMainCanvasProbe(canvas: HTMLCanvasElement, onRate: (fps: number) =
     if (context !== null) {
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = "#34d399";
-      context.fillRect(barX, 0, BAR_WIDTH_PX, canvas.height);
-      barX = (barX + BAR_STEP_PX) % Math.max(1, canvas.width);
+      context.fillRect(barX, 0, 16, canvas.height);
+      barX = (barX + 4) % Math.max(1, canvas.width);
     }
     if (windowStart === null) {
+      windowStart = now;
+    } else if (now - windowStart >= 1000) {
+      onRate(Math.round(((frames + 1) * 1000) / (now - windowStart)));
       windowStart = now;
       frames = 0;
     } else {
       frames += 1;
-      const elapsed = now - windowStart;
-      if (elapsed >= 1000) {
-        onRate(Math.round((frames * 1000) / elapsed));
-        windowStart = now;
-        frames = 0;
-      }
     }
     rafId = window.requestAnimationFrame(tick);
   };
@@ -64,23 +62,25 @@ function startMainCanvasProbe(canvas: HTMLCanvasElement, onRate: (fps: number) =
 /**
  * Standalone device refresh-rate probe page at /perf. Measures native scroll read rates,
  * main-thread requestAnimationFrame presentation, and worker OffscreenCanvas presentation
- * without touching the workspace or dialling any host.
+ * sequentially without touching the workspace or dialling any host.
  */
 export function PerfRoute() {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const workerHostRef = useRef<HTMLDivElement>(null);
-  const peaksRef = useRef<PeakResults>({ controllerUpdates: 0, controllerUnique: 0, mainFps: 0, workerFps: 0 });
+  const peaksRef = useRef({ controllerUpdates: 0, controllerUnique: 0, mainFps: 0, workerFps: 0 });
 
   const [controllerRate, setControllerRate] = useState<RateSnapshot>({ perSecond: 0, uniquePerSecond: 0 });
   const [mainFps, setMainFps] = useState(0);
   const [workerFps, setWorkerFps] = useState(0);
   const [workerAvailable, setWorkerAvailable] = useState(true);
+  const [phase, setPhase] = useState<FrameTestPhase>("main");
+  const [runId, setRunId] = useState(1);
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied" | "failed">("idle");
 
-  const dpr = typeof window !== "undefined" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-  const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "";
-  const screenSize = typeof window !== "undefined" ? `${window.screen.width}x${window.screen.height}` : "0x0";
+  const dpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+  const userAgent = navigator.userAgent;
+  const screenSize = `${window.screen.width}x${window.screen.height}`;
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -94,7 +94,7 @@ export function PerfRoute() {
       const snapshot = counter.rates(at);
       peaksRef.current.controllerUpdates = Math.max(peaksRef.current.controllerUpdates, snapshot.perSecond);
       peaksRef.current.controllerUnique = Math.max(peaksRef.current.controllerUnique, snapshot.uniquePerSecond);
-      if (!shownSample || at - lastUiPush >= UI_THROTTLE_MS) {
+      if (!shownSample || at - lastUiPush >= 100) {
         shownSample = true;
         lastUiPush = at;
         setControllerRate(snapshot);
@@ -102,11 +102,11 @@ export function PerfRoute() {
     });
 
     const decayTimer = window.setInterval(() => {
-      const snapshot = counter.rates(performance.now());
+      const next = counter.rates(performance.now());
       setControllerRate((prev) =>
-        prev.perSecond === snapshot.perSecond && prev.uniquePerSecond === snapshot.uniquePerSecond ? prev : snapshot,
+        prev.perSecond === next.perSecond && prev.uniquePerSecond === next.uniquePerSecond ? prev : next,
       );
-    }, DECAY_TICK_MS);
+    }, 250);
 
     return () => {
       stopController();
@@ -115,51 +115,79 @@ export function PerfRoute() {
   }, []);
 
   useEffect(() => {
-    const canvas = mainCanvasRef.current;
-    if (canvas === null) return;
-    return startMainCanvasProbe(canvas, (fps) => {
-      peaksRef.current.mainFps = Math.max(peaksRef.current.mainFps, fps);
-      setMainFps(fps);
-    });
-  }, []);
+    let cancelled = false;
+    let stopProbe: (() => void) | null = null;
+    let timer: number | null = null;
 
-  useEffect(() => {
-    const host = workerHostRef.current;
-    if (host === null) return;
-    // Create a fresh canvas per effect lifecycle because transferControlToOffscreen is one-shot per element.
-    const canvas = document.createElement("canvas");
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
-    canvas.className = "block h-full w-full";
-    host.append(canvas);
+    const clearActive = (): void => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      stopProbe?.();
+      stopProbe = null;
+    };
 
-    const stop = startOffscreenProbe(canvas, (fps) => {
-      peaksRef.current.workerFps = Math.max(peaksRef.current.workerFps, fps);
-      setWorkerFps(fps);
-    });
-    if (stop === null) {
-      canvas.remove();
-      setWorkerAvailable(false);
-      return;
+    const runPhase = (stop: () => void, after: () => void): void => {
+      stopProbe = stop;
+      timer = window.setTimeout(() => {
+        clearActive();
+        if (!cancelled) after();
+      }, PHASE_MS);
+    };
+
+    const startWorkerPhase = (): void => {
+      const host = workerHostRef.current;
+      if (host === null) {
+        setPhase("done");
+        return;
+      }
+      setPhase("worker");
+      // Create a fresh canvas per run because transferControlToOffscreen is one-shot per element.
+      const canvas = Object.assign(document.createElement("canvas"), {
+        width: CANVAS_W,
+        height: CANVAS_H,
+        className: "block h-full w-full",
+      });
+      host.replaceChildren(canvas);
+
+      const stop = startOffscreenProbe(canvas, (fps) => {
+        if (cancelled) return;
+        peaksRef.current.workerFps = Math.max(peaksRef.current.workerFps, fps);
+        setWorkerFps(fps);
+      });
+      if (stop === null) {
+        canvas.remove();
+        setWorkerAvailable(false);
+        setPhase("done");
+        return;
+      }
+      setWorkerAvailable(true);
+      runPhase(stop, () => setPhase("done"));
+    };
+
+    const mainCanvas = mainCanvasRef.current;
+    if (mainCanvas === null) {
+      startWorkerPhase();
+    } else {
+      setPhase("main");
+      runPhase(
+        startMainCanvasProbe(mainCanvas, (fps) => {
+          if (cancelled) return;
+          peaksRef.current.mainFps = Math.max(peaksRef.current.mainFps, fps);
+          setMainFps(fps);
+        }),
+        startWorkerPhase,
+      );
     }
 
-    setWorkerAvailable(true);
     return () => {
-      stop();
-      canvas.remove();
+      cancelled = true;
+      clearActive();
+      workerHostRef.current?.replaceChildren();
     };
-  }, []);
+  }, [runId]);
 
   const copyResults = (): void => {
-    const line = JSON.stringify({
-      ua: userAgent,
-      dpr,
-      controllerUpdates: peaksRef.current.controllerUpdates,
-      controllerUnique: peaksRef.current.controllerUnique,
-      mainFps: peaksRef.current.mainFps,
-      workerFps: peaksRef.current.workerFps,
-      at: new Date().toISOString(),
-    });
+    const line = JSON.stringify({ ua: userAgent, dpr, ...peaksRef.current, at: new Date().toISOString() });
     void (async () => {
       try {
         await navigator.clipboard.writeText(line);
@@ -170,42 +198,41 @@ export function PerfRoute() {
     })();
   };
 
+  const scaledBoxStyle = {
+    width: `${dpr * 100}%`,
+    height: `${CONTROLLER_H * dpr}px`,
+    transform: `scale(${1 / dpr})`,
+    transformOrigin: "0 0",
+  };
+  const surfaceStyle = { width: `${SURFACE_PX * dpr}px`, height: `${SURFACE_PX * dpr}px` };
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col gap-4 bg-background px-4 py-6 text-foreground">
-      <header className="flex flex-col gap-1">
+      <header className="flex flex-col gap-2">
         <h1 className="text-lg font-semibold">Refresh-rate probe</h1>
-        <p className="text-sm text-muted-foreground">
-          Drag or flick the scroll surface below to compare native scroll reads against main-thread and worker frames.
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" size="sm" onClick={() => setRunId((id) => id + 1)}>
+            Run frame test
+          </Button>
+          <div role="status" aria-label="Frame test phase" className="font-mono text-xs text-muted-foreground">
+            {PHASE_LABEL[phase]}
+          </div>
+        </div>
       </header>
 
-      <section
-        role="group"
-        aria-label="Scroll controller"
-        className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
-      >
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <section role="group" aria-label="Scroll controller" className={PANEL}>
+        <div className={ROW}>
           <h2 className="text-sm font-medium">Scroll controller</h2>
           <div role="status" aria-label="Scroll controller rate" className="flex flex-wrap gap-3 font-mono text-xs">
             <span>Updates/s {controllerRate.perSecond}</span>
             <span>Unique values/s {controllerRate.uniquePerSecond}</span>
           </div>
         </div>
-        <div
-          className="relative w-full overflow-hidden rounded-md border border-border bg-surface"
-          style={{ height: `${CONTROLLER_HEIGHT_PX}px` }}
-        >
+        <div className="relative h-[240px] w-full overflow-hidden rounded-md border border-border bg-surface">
           {/* Scale the container by 1/dpr and its inner surface by dpr so sub-point positions survive integer scrollTop. */}
-          <div
-            style={{
-              width: `${dpr * 100}%`,
-              height: `${CONTROLLER_HEIGHT_PX * dpr}px`,
-              transform: `scale(${1 / dpr})`,
-              transformOrigin: "0 0",
-            }}
-          >
+          <div style={scaledBoxStyle}>
             <div ref={scrollerRef} data-perf-scroller className="h-full w-full overflow-scroll">
-              <div style={{ width: `${SURFACE_EXTENT_PX * dpr}px`, height: `${SURFACE_EXTENT_PX * dpr}px` }}>
+              <div style={surfaceStyle}>
                 <div className="p-4 text-sm text-muted-foreground">Swipe or scroll in any direction</div>
               </div>
             </div>
@@ -213,61 +240,40 @@ export function PerfRoute() {
         </div>
       </section>
 
-      <section
-        role="group"
-        aria-label="Main thread canvas"
-        className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
-      >
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <section role="group" aria-label="Main thread canvas" className={PANEL}>
+        <div className={ROW}>
           <h2 className="text-sm font-medium">Main thread canvas</h2>
           <div role="status" aria-label="Main thread rate" className="font-mono text-xs">
             Frames/s {mainFps}
           </div>
         </div>
-        <canvas
-          ref={mainCanvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          className="block h-[72px] w-full rounded-md border border-border bg-surface"
-        />
+        <canvas ref={mainCanvasRef} width={CANVAS_W} height={CANVAS_H} className={`block ${CANVAS_BOX}`} />
       </section>
 
-      <section
-        role="group"
-        aria-label="Worker canvas"
-        className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
-      >
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <section role="group" aria-label="Worker canvas" className={PANEL}>
+        <div className={ROW}>
           <h2 className="text-sm font-medium">Worker canvas</h2>
           <div role="status" aria-label="Worker rate" className="font-mono text-xs">
             {workerAvailable ? `Frames/s ${workerFps}` : "OffscreenCanvas is not available here"}
           </div>
         </div>
-        <div
-          ref={workerHostRef}
-          className="h-[72px] w-full overflow-hidden rounded-md border border-border bg-surface"
-        />
+        <div ref={workerHostRef} className={`overflow-hidden ${CANVAS_BOX}`} />
       </section>
 
-      <footer className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
-        <dl className="flex flex-col gap-1">
-          <div className="flex flex-wrap gap-x-2">
-            <dt className="font-medium text-foreground">DPR</dt>
-            <dd className="font-mono">{dpr}</dd>
-            <dt className="ml-2 font-medium text-foreground">Screen</dt>
-            <dd className="font-mono">{screenSize}</dd>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <dt className="font-medium text-foreground">User agent</dt>
-            <dd className="break-all font-mono">{userAgent}</dd>
-          </div>
-        </dl>
+      <footer className={`${PANEL} gap-3 text-xs text-muted-foreground`}>
+        <div className="flex flex-col gap-1 font-mono">
+          <span>{`DPR ${dpr} · Screen ${screenSize}`}</span>
+          <span className="break-all">{userAgent}</span>
+        </div>
         <div className="flex items-center gap-3">
           <Button variant="primary" size="md" onClick={copyResults}>
             Copy results
           </Button>
-          {copyFeedback === "copied" ? <span className="text-foreground">Copied</span> : null}
-          {copyFeedback === "failed" ? <span className="text-destructive">Copy failed</span> : null}
+          {copyFeedback !== "idle" ? (
+            <span className={copyFeedback === "copied" ? "text-foreground" : "text-destructive"}>
+              {copyFeedback === "copied" ? "Copied" : "Copy failed"}
+            </span>
+          ) : null}
         </div>
       </footer>
     </main>

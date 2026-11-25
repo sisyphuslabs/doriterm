@@ -24,11 +24,14 @@ test("the standalone /perf probe reports main-thread, worker, and scroll rates a
   await expect(mainGroup).toBeVisible();
   await expect(workerGroup).toBeVisible();
 
+  const phaseStatus = page.getByRole("status", { name: "Frame test phase" });
+  await expect(phaseStatus).toHaveText("Done", { timeout: 20_000 });
+
   const mainRate = page.getByRole("status", { name: "Main thread rate" });
-  await expect(mainRate).toHaveText(POSITIVE_FRAMES, { timeout: 5_000 });
+  await expect(mainRate).toHaveText(POSITIVE_FRAMES);
 
   const workerRate = page.getByRole("status", { name: "Worker rate" });
-  await expect(workerRate).toHaveText(WORKER_READY, { timeout: 5_000 });
+  await expect(workerRate).toHaveText(WORKER_READY);
 
   const scroller = controllerGroup.locator("[data-perf-scroller]");
   await scroller.scrollIntoViewIfNeeded();
