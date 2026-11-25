@@ -602,7 +602,7 @@ index dbff0264a6d9d0fe4feea8d7de0ef8c617216b8b..b9be38a24246578ff2713e1e8798a5a8
      invalidateColors(): void;
      /** Replaces decorations only, preserving native text selection. */
 diff --git a/dist/renderer.js b/dist/renderer.js
-index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..f51db7d63e328acb8fe0d1de98335ae27b8efe33 100644
+index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..508e41c2db8a8bfde981f4e6464de342719c4594 100644
 --- a/dist/renderer.js
 +++ b/dist/renderer.js
 @@ -1,5 +1,7 @@
@@ -815,11 +815,28 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..f51db7d63e328acb8fe0d1de98335ae2
          const cursor = core.getCursor();
          this.gpuCoreCursor = cursor;
          this._applyGpuCursor();
+@@ -1427,6 +1518,7 @@ export class Renderer {
+         this.colorsChanged = false;
+         this.prevCursorRow = -1;
+         this.gpu.draw();
++        this.onGpuDraw?.();
+         this.graphics.reconcile(core, {
+             scrollTop: viewport.scrollTop,
+             clientHeight: viewport.clientHeight,
 diff --git a/dist/wterm.d.ts b/dist/wterm.d.ts
-index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f022c96f7 100644
+index a6746f499859ba9da2d7884dfd71694205c6d819..ad6d0da4f744013fa792b24f394661bd6a4d1e99 100644
 --- a/dist/wterm.d.ts
 +++ b/dist/wterm.d.ts
-@@ -131,6 +131,17 @@ export declare class WTerm {
+@@ -113,6 +113,8 @@ export declare class WTerm {
+     onTitle: ((title: string) => void) | null;
+     onWorkingDirectory: ((uri: string) => void) | null;
+     onBell: ((count: number) => void) | null;
++    /** Called after a frame is drawn with WebGL, the core still holding what that frame shows. */
++    onGpuDraw: (() => void) | null;
+     onShellIntegration: ((state: ShellIntegrationState) => void) | null;
+     onClipboardWrite: ((text: string) => void) | null;
+     onResize: ((cols: number, rows: number) => void) | null;
+@@ -131,6 +133,17 @@ export declare class WTerm {
       * Pass `null` to drop them and answer color queries from the page's CSS again.
       */
      setThemeColors(colors: TerminalThemeColors | null): void;
@@ -837,7 +854,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      write(data: string | Uint8Array): void;
      /**
       * Hands the core the theme colors the page's CSS resolves to, unless the
-@@ -156,6 +167,12 @@ export declare class WTerm {
+@@ -156,6 +169,12 @@ export declare class WTerm {
      getSearchState(): SearchState;
      /** Scroll to the previous (-1) or next (1) shell prompt from the viewport top. */
      scrollToPrompt(direction: -1 | 1): boolean;
@@ -851,7 +868,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c15970cd12 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..40640cab31618afa5b5f7dcf8ae02443c4816d30 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
 @@ -13,6 +13,8 @@ import { registerWebMCPTerminal, } from "./webmcp.js";
@@ -908,7 +925,15 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
              element.addEventListener("wheel", this._onTextNeeded, {
                  capture: true,
                  passive: true,
-@@ -227,6 +246,7 @@ export class WTerm {
+@@ -217,6 +236,7 @@ export class WTerm {
+         this.onTitle = options.onTitle || null;
+         this.onWorkingDirectory = options.onWorkingDirectory || null;
+         this.onBell = options.onBell || null;
++        this.onGpuDraw = null;
+         this.onShellIntegration = options.onShellIntegration || null;
+         this.onClipboardWrite = options.onClipboardWrite || null;
+         this.onResize = options.onResize || null;
+@@ -227,6 +247,7 @@ export class WTerm {
                  const match = this._search.matches[this.getSearchState().activeIndex];
                  if (match) {
                      this._shouldScrollToBottom = false;
@@ -916,7 +941,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
                      this._pendingResizeScrollTop = null;
                      this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
                          this.element.clientHeight / 2);
-@@ -336,6 +356,16 @@ export class WTerm {
+@@ -336,6 +357,16 @@ export class WTerm {
          this._onScroll = () => {
              if (this._pendingResizeScrollTop !== null)
                  return;
@@ -933,7 +958,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
              const atBottom = this._isScrolledToBottom();
              if (this._shouldScrollToBottom && atBottom) {
                  this._programmaticScrollTop = null;
-@@ -349,6 +379,8 @@ export class WTerm {
+@@ -349,6 +380,8 @@ export class WTerm {
              }
              this._programmaticScrollTop = null;
              this._shouldScrollToBottom = false;
@@ -942,15 +967,16 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -418,6 +450,7 @@ export class WTerm {
+@@ -418,6 +451,8 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
                  renderer: this._rendererOption,
              });
++            this.renderer.onGpuDraw = () => this.onGpuDraw?.();
 +            this.renderer.setWideGlyphScale(this._wideGlyphScale ?? null);
              this.renderer.setup(this.cols, this.rows);
              this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -453,7 +486,6 @@ export class WTerm {
+@@ -453,7 +488,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -958,7 +984,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -465,12 +497,33 @@ export class WTerm {
+@@ -465,12 +499,33 @@ export class WTerm {
          }
          return this;
      }
@@ -992,7 +1018,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -508,6 +561,29 @@ export class WTerm {
+@@ -508,6 +563,29 @@ export class WTerm {
              throw new Error("This terminal core cannot change its scrollback");
          this.bridge.setScrollbackLines(this._scrollbackLines);
      }
@@ -1022,7 +1048,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -553,7 +629,7 @@ export class WTerm {
+@@ -553,7 +631,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -1031,7 +1057,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +808,30 @@ export class WTerm {
+@@ -732,9 +810,30 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -1064,7 +1090,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -751,6 +848,19 @@ export class WTerm {
+@@ -751,6 +850,19 @@ export class WTerm {
          if (this.onResize)
              this.onResize(this.cols, this.rows);
      }
@@ -1084,7 +1110,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
      /** Search retained history and the active screen, using plain text. */
      search(query, options = {}) {
          if (this._destroyed)
-@@ -798,6 +908,7 @@ export class WTerm {
+@@ -798,6 +910,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -1092,7 +1118,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1049,12 +1160,24 @@ export class WTerm {
+@@ -1049,12 +1162,24 @@ export class WTerm {
      }
      /** Brings the DOM text current once GPU-painted output goes quiet. */
      _scheduleTextSync() {
@@ -1119,7 +1145,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
      }
      _syncText() {
          if (!this.renderer?.textStale || this._destroyed)
-@@ -1127,14 +1250,20 @@ export class WTerm {
+@@ -1127,14 +1252,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -1142,7 +1168,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1273,10 @@ export class WTerm {
+@@ -1144,9 +1275,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -1154,7 +1180,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1287,7 @@ export class WTerm {
+@@ -1157,7 +1289,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -1163,7 +1189,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1706,16 @@ export class WTerm {
+@@ -1576,14 +1708,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
@@ -1183,7 +1209,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c1
      }
      destroy() {
          this._destroyed = true;
-@@ -1604,6 +1736,8 @@ export class WTerm {
+@@ -1604,6 +1738,8 @@ export class WTerm {
              clearTimeout(this._textSyncTimer);
          this._textSyncTimer = null;
          this.element.removeEventListener("mousedown", this._onTextNeeded, true);

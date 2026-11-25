@@ -66,6 +66,9 @@ export const test = base.extend<
   // switched.
   macPage: [process.env["E2E_PAGE_PLATFORM"] === "mac", { option: true }],
   context: async ({ context, macPage }, use) => {
+    // Every terminal's screen as its last WebGL frame drew it, for specs that read what a frame showed (#2810): WebGL
+    // keeps the rows' text out of the DOM until output goes quiet. See use-terminal-attach.ts.
+    await context.addInitScript(() => Object.assign(window, { __dorifaceTerminalScreens: {} }));
     if (macPage) {
       await context.addInitScript(() =>
         Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel", configurable: true }),

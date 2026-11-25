@@ -34,7 +34,27 @@ export async function sampleWhile(page: Page, address: string, change: () => Pro
         const seen: Sample[] = [];
         const record = (): void => {
           const element = document.querySelector(selector);
-          if (element !== null) {
+          // A frame drawn with WebGL shows the core's screen as it was when drawn, not the DOM rows, which catch up later.
+          const drawn = (
+            Reflect.get(window, "__dorifaceTerminalScreens") as Record<string, () => string> | undefined
+          )?.[element?.getAttribute("data-terminal") ?? ""];
+          const gpuShown =
+            element?.querySelector("canvas.term-gpu-canvas:not([hidden])") !== null && drawn !== undefined;
+          if (element !== null && gpuShown) {
+            const numbers = drawn()
+              .split("\n")
+              .map((line) => Number(/row (\d{5})/.exec(line)?.[1] ?? 0))
+              .filter((number) => number > 0);
+            const screen = drawn().split("\n").length;
+            seen.push({
+              away: element.scrollHeight - element.clientHeight - element.scrollTop,
+              newest: Math.max(0, ...numbers),
+              top: numbers.length === 0 ? 0 : Math.min(...numbers),
+              screen,
+              inView: screen,
+              t: performance.now(),
+            });
+          } else if (element !== null) {
             const rows = [...element.querySelectorAll(".term-row:not(.term-scrollback-row)")];
             // The visible box is the content box: both edges start below the border.
             const edge = element.getBoundingClientRect().top + element.clientTop;

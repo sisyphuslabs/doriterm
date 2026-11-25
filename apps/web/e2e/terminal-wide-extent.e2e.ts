@@ -228,7 +228,7 @@ test.describe("desktop", () => {
 const gpuInkOf = (
   element: HTMLElement,
 ): readonly { readonly text: string; readonly ink: number; readonly offCentre: number }[] => {
-  const canvas = element.querySelector("canvas:not([hidden])");
+  const canvas = element.querySelector("canvas.term-gpu-canvas:not([hidden])");
   if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no WebGL canvas is showing");
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("the WebGL canvas has no 2d output");
@@ -278,7 +278,7 @@ test.describe("WebGL", () => {
     await page.goto("/");
     const terminal = await openNewTerminal(page);
     await print(page, terminal, LINE);
-    await expect(terminal.locator("canvas:not([hidden])")).toHaveCount(1);
+    await expect(terminal.locator("canvas.term-gpu-canvas:not([hidden])")).toHaveCount(1);
     const dom = (await terminal.evaluate(extentOf)).wide;
     const painted = await terminal.evaluate(gpuInkOf);
     console.log(`wide extent, WebGL against DOM: ${JSON.stringify({ dom, painted })}`);

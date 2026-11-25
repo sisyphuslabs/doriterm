@@ -194,10 +194,17 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     // a link came back (#639). Inert in the product, where nothing sets it.
     const attachLog: unknown = Reflect.get(globalThis, "__dorifaceAttachLog");
     if (Array.isArray(attachLog)) attachLog.push(address);
-    // A test hook for the render bench (#2810): a spec sets window.__dorifaceTerminalScreens to an object and reads each
-    // terminal's screen from its core, which WebGL drawing keeps out of the DOM. Inert in the product, where nothing sets it.
+    // A test hook (#2810): a spec sets window.__dorifaceTerminalScreens to an object and reads each terminal's screen as
+    // its last WebGL frame drew it (or the core's, before one), text WebGL drawing keeps out of the DOM. Inert in the
+    // product, where nothing sets it.
     const screens: unknown = Reflect.get(globalThis, "__dorifaceTerminalScreens");
-    if (typeof screens === "object" && screens !== null) Reflect.set(screens, address, () => screenText(ready));
+    if (typeof screens === "object" && screens !== null) {
+      let drawn: string | null = null;
+      ready.onGpuDraw = () => {
+        drawn = screenText(ready);
+      };
+      Reflect.set(screens, address, () => drawn ?? screenText(ready));
+    }
     // wterm pins the row height it measured at mount inline, over the stylesheet's font-size-derived one; without this
     // a font-size change (zoom, Settings) keeps the old row height, so the grid gains columns but never rows.
     ready.element.style.removeProperty("--term-row-height");
