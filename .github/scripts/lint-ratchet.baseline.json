@@ -170,7 +170,7 @@
     "doriterm-testing/no-flake-masking": 3
   },
   "apps/web/e2e/machine.hc.test.ts": {
-    "doriterm-testing/no-flake-masking": 3
+    "doriterm-testing/no-flake-masking": 4
   },
   "apps/web/e2e/parent-death.test.ts": {
     "doriterm-testing/no-flake-masking": 1

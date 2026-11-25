@@ -3,7 +3,54 @@ import { PING, PONG, sendableCloseCode } from "./wire/index.ts";
 /** Creates the WebSocket for a relay URL; injectable so tests and other runtimes can supply their own. */
 export type CreateSocket = (url: string) => WebSocket;
 
-export const defaultCreateSocket: CreateSocket = (url) => new WebSocket(url);
+type Env = Readonly<Record<string, string | undefined>>;
+
+const read = (env: Env, name: string): string | undefined => {
+  const value = env[name] ?? env[name.toLowerCase()];
+  return value === undefined || value === "" ? undefined : value;
+};
+
+/** Whether NO_PROXY (comma list of hosts, `.suffix`, `host:port` or `*`) exempts this URL's host. */
+function exempt(url: URL, env: Env): boolean {
+  const port = url.port || (url.protocol === "wss:" ? "443" : "80");
+  return (read(env, "NO_PROXY") ?? "").split(",").some((raw) => {
+    const entry = raw.trim().toLowerCase();
+    if (entry === "") return false;
+    if (entry === "*") return true;
+    const [host = "", entryPort] = entry.split(":");
+    if (entryPort !== undefined && entryPort !== port) return false;
+    const bare = host.replace(/^\./, "");
+    return url.hostname === bare || url.hostname.endsWith(`.${bare}`);
+  });
+}
+
+/**
+ * The proxy the environment names for a relay URL, as curl and most tools read it: WSS_PROXY, HTTPS_PROXY, then
+ * ALL_PROXY for wss (WS_PROXY, HTTP_PROXY, ALL_PROXY for ws), unless NO_PROXY exempts the host. Bun's WebSocket
+ * reads none of these itself, so a machine that only lets traffic out through a proxy closed every dial with 1006.
+ */
+export function proxyFor(socketUrl: string, env: Env): string | undefined {
+  const url = new URL(socketUrl);
+  if (exempt(url, env)) return undefined;
+  const names = url.protocol === "wss:" ? ["WSS_PROXY", "HTTPS_PROXY"] : ["WS_PROXY", "HTTP_PROXY"];
+  return [...names, "ALL_PROXY"].map((name) => read(env, name)).find((value) => value !== undefined);
+}
+
+/**
+ * Opens relay sockets through the proxy `env` names, if any. A proxy that re-signs TLS needs its CA trusted, which
+ * Bun takes from NODE_EXTRA_CA_CERTS at start.
+ */
+export function createRelaySocket(env: Env | undefined): CreateSocket {
+  return (url) => {
+    const proxy = env === undefined ? undefined : proxyFor(url, env);
+    return proxy === undefined ? new WebSocket(url) : new WebSocket(url, { proxy });
+  };
+}
+
+/** In a browser there is no `process` and the browser applies its own proxy settings. */
+export const defaultCreateSocket: CreateSocket = createRelaySocket(
+  typeof process === "undefined" ? undefined : process.env,
+);
 
 const OPEN = 1;
 
