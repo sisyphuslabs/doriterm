@@ -41,7 +41,7 @@ test.beforeAll(async ({}, testInfo) => {
       (entry): entry is [string, string] => entry[1] !== undefined,
     ),
   );
-  app = await electron.launch({ ...launchOptions([`--user-data-dir=${profile}`]), env });
+  app = await electron.launch(await launchOptions([`--user-data-dir=${profile}`], { env }));
   page = await app.firstWindow();
   const started = page.getByRole("button", { name: "Use this computer" });
   const workspace = page

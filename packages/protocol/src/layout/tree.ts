@@ -179,8 +179,37 @@ export function swapPanes(root: Node, a: string, b: string): Node | null {
   return replaceAt(once, pathB, () => inSlotOf(nodeA, nodeB));
 }
 
+/** The pane `id` of the tree (a block, never a container), or null when the tree has no such pane. */
+export function paneNode(root: Node, id: string): Node | null {
+  const path = pathTo(root, id);
+  const node = path === null ? null : nodeAt(root, path);
+  return node === null || isContainer(node) ? null : node;
+}
+
+/**
+ * The tree with pane `id` replaced by `node` in its place, which keeps the place's size: the move of a pane from another
+ * tab into this one, or a swap across tabs. Null when `id` is not a pane of this tree.
+ */
+export function replacePane(root: Node, id: string, node: Node): Node | null {
+  const path = pathTo(root, id);
+  const old = path === null ? null : nodeAt(root, path);
+  if (path === null || old === null || isContainer(old)) return null;
+  return replaceAt(root, path, () => inSlotOf(node, old));
+}
+
 /** A side of a pane another is dropped on: the drop puts it there, sharing that pane's place. */
 export type Edge = "left" | "right" | "top" | "bottom";
+
+/**
+ * The tree with `block` beside pane `target` on `edge` of it: it splits the target's place along the edge's axis, before
+ * the target for left and top, as herdr-app's `move_pane` puts a dropped pane. Null when the target is not a pane here.
+ */
+export function placeBeside(root: Node, target: string, edge: Edge, block: Node, containerId: string): Node | null {
+  const axis: Axis = edge === "left" || edge === "right" ? "row" : "column";
+  const split = splitPane(root, target, axis, withoutField(block, "size"), containerId);
+  if (split === null) return null;
+  return edge === "left" || edge === "top" ? swapPanes(split, idOf(block), target) : split;
+}
 
 /**
  * The tree with pane `source` moved beside pane `target` on `edge` of it, herdr-app's `move_pane` with an edge: the
@@ -196,11 +225,7 @@ export function movePane(root: Node, source: string, target: string, edge: Edge,
   const targetNode = targetPath === null ? null : nodeAt(root, targetPath);
   if (moving === null || isContainer(moving) || targetNode === null || isContainer(targetNode)) return null;
   const without = removePane(root, source);
-  if (without === null) return null;
-  const axis: Axis = edge === "left" || edge === "right" ? "row" : "column";
-  const split = splitPane(without, target, axis, withoutField(moving, "size"), containerId);
-  if (split === null) return null;
-  return edge === "left" || edge === "top" ? swapPanes(split, source, target) : split;
+  return without === null ? null : placeBeside(without, target, edge, moving, containerId);
 }
 
 const halved = (node: Node, share: number): Node =>

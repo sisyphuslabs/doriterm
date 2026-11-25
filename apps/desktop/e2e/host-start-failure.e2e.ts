@@ -26,7 +26,7 @@ test("with herdr-core missing, This computer says so plainly, offers Retry, and 
       XDG_STATE_HOME: join(dir, "state"),
     }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
-  const app = await electron.launch({ ...launchOptions([`--user-data-dir=${join(dir, "profile")}`]), env });
+  const app = await electron.launch(await launchOptions([`--user-data-dir=${join(dir, "profile")}`], { env }));
   try {
     const page = await app.firstWindow();
     await page.waitForSelector("#root > *");

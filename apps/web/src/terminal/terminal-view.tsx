@@ -309,9 +309,12 @@ export function TerminalView(props: TerminalViewProps) {
           if (!regainingFocus(event.target)) stream.current?.focus(false);
         }}
       />
-      {attachment.opening ? (
-        <QuietBusy label="Opening terminal" text="Opening…" className="absolute inset-0 z-10 bg-term-bg" />
-      ) : null}
+      <QuietBusy
+        busy={attachment.opening}
+        label="Opening terminal"
+        text="Opening…"
+        className="absolute inset-0 z-10 bg-term-bg"
+      />
       {wt === null ? null : (
         <>
           <TerminalScrollbar wt={wt} scroll={scroll} />

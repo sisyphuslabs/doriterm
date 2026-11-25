@@ -32,10 +32,7 @@ test.beforeAll(async () => {
     }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
   const args = [`--user-data-dir=${profile}`];
-  launched = await electron.launch({
-    ...launchOptions(args),
-    env,
-  });
+  launched = await electron.launch(await launchOptions(args, { env }));
 });
 
 test.afterAll(async () => {

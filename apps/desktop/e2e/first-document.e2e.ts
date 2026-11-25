@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scratchHcSession } from "./hc-session.ts";
-import { appDir, launchOptions, packagedExecutable } from "./launch.ts";
+import { appDir, guardedEnv, launchOptions, packagedExecutable } from "./launch.ts";
 import { buildPreloadShim } from "./preload-shim.ts";
 
 test.skip(process.platform !== "linux" || packagedExecutable === undefined, "the race is the packaged app's, on Linux");
@@ -14,7 +14,7 @@ test("the packaged launch settles when the first navigation's commit event would
   try {
     const shim = join(dir, "hold-gpu-process.so");
     buildPreloadShim("hold-gpu-process.c", shim);
-    const launch = launchOptions([`--user-data-dir=${join(dir, "profile")}`]);
+    const launch = await launchOptions([`--user-data-dir=${join(dir, "profile")}`]);
     if (!("executablePath" in launch)) throw new Error("the skip above keeps this spec to packaged launches");
     const raceReport = join(dir, "race-report");
     const env = Object.fromEntries(
@@ -28,7 +28,11 @@ test("the packaged launch settles when the first navigation's commit event would
         DORIFACE_E2E_RACE_REPORT: raceReport,
       }).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
-    const app = await electron.launch({ executablePath: join(appDir, "e2e", "late-page-enable.ts"), args: [], env });
+    const app = await electron.launch({
+      executablePath: join(appDir, "e2e", "late-page-enable.ts"),
+      args: [],
+      env: await guardedEnv(env),
+    });
     try {
       const page = await app.firstWindow();
       await page.waitForSelector("#root > *");

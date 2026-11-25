@@ -94,8 +94,20 @@ test.describe("loading feedback waits a second before it shows (#1498, #2768)", 
     await expect(text).toBeVisible();
     await expect(opening.locator('[data-slot="spinner"]')).toBeVisible();
 
+    // Once shown it stays half a second, even when the attach is answered right after (review of #2775): no 50 ms blink.
+    await page.clock.runFor(50);
     release();
-    await expect(opening).toHaveCount(0, { timeout: 20_000 });
+    // The attach is answered: the pane is no longer busy (set from the attach itself, not from a timer).
+    await expect(page.locator(`[data-terminal="${address}"]`).locator("xpath=..")).not.toHaveAttribute(
+      "aria-busy",
+      "true",
+      { timeout: 20_000 },
+    );
+    await expect(text).toBeVisible();
+    await page.clock.runFor(449);
+    await expect(text).toBeVisible();
+    await page.clock.runFor(1);
+    await expect(opening).toHaveCount(0);
   });
 
   test("a connect that stays unanswered shows nothing for a second, then names the session with a spinner", async ({

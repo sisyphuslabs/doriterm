@@ -2,7 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findHc, hostCommand, saveHc, savedHc, usualHcDirs, type HostContext } from "../src/main/host-command.ts";
+import {
+  findHc,
+  hostChildEnv,
+  hostCommand,
+  saveHc,
+  savedHc,
+  usualHcDirs,
+  type HostContext,
+} from "../src/main/host-command.ts";
 
 const context = (overrides: Partial<HostContext>): HostContext => ({
   packaged: false,
@@ -83,5 +91,23 @@ describe("finding hc", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the host child env (#2399)", () => {
+  test("a production launch skips the resolution entirely: the env passes through untouched", () => {
+    const env: Record<string, string | undefined> = { PATH: "/bin" };
+    const ctx = context({ packaged: true, resourcesPath: "/res", env: {} });
+    // Identity, not a copy: no override is active, so no new key is added and the object is the very one given.
+    expect(hostChildEnv(ctx, env)).toBe(env);
+    expect(env["DORIFACE_HOST_RESOLVED"]).toBeUndefined();
+  });
+
+  test("an e2e-overridden launch carries the host the app itself resolved", () => {
+    const env: Record<string, string | undefined> = { PATH: "/bin", DORIFACE_HOST_BIN: "/run/host-wrapper.ts" };
+    const ctx = context({ packaged: true, resourcesPath: "/res", env });
+    const out = hostChildEnv(ctx, env);
+    expect(out).not.toBe(env);
+    expect(out["DORIFACE_HOST_RESOLVED"]).toBe(join("/res", "bin", "doriface-host"));
   });
 });

@@ -32,10 +32,9 @@ test("a working agent's spinner is turned by the compositor at a display scale o
   // Launched inside the try: a launch that fails still stops the scratch session and removes the profile.
   let app: ElectronApplication | undefined;
   try {
-    app = await electron.launch({
-      ...launchOptions([`--user-data-dir=${profile}`, "--force-device-scale-factor=2"]),
-      env,
-    });
+    app = await electron.launch(
+      await launchOptions([`--user-data-dir=${profile}`, "--force-device-scale-factor=2"], { env }),
+    );
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Use this computer" }).click();
     await expect(page.getByRole("region", { name: "Agents", exact: true })).toBeVisible({ timeout: 30_000 });
