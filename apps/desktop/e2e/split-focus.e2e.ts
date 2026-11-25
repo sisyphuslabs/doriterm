@@ -29,7 +29,7 @@ test.beforeAll(async () => {
       BASH_SILENCE_DEPRECATION_WARNING: "1",
     }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
-  launched = await electron.launch({ ...launchOptions([`--user-data-dir=${profile}`]), env });
+  launched = await electron.launch(await launchOptions([`--user-data-dir=${profile}`], { env }));
   cleanup = async () => {
     await hc.dispose();
     rmSync(profile, { recursive: true, force: true });

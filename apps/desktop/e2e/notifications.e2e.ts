@@ -27,7 +27,7 @@ test.beforeAll(async () => {
     ),
   );
   scratch = { hc: session, profile, env };
-  launched = await electron.launch({ ...launchOptions([`--user-data-dir=${profile}`]), env });
+  launched = await electron.launch(await launchOptions([`--user-data-dir=${profile}`], { env }));
   // The main process's own Notification, stubbed: each show() is recorded instead of reaching the OS.
   await launched.evaluate(({ Notification }) => {
     const shown: unknown[] = [];

@@ -18,9 +18,9 @@ let launched: ElectronApplication | undefined;
 // One app, one profile: the last test relaunches it to read the text size it saved.
 test.describe.configure({ mode: "serial" });
 
-const launch = (): Promise<ElectronApplication> => {
+const launch = async (): Promise<ElectronApplication> => {
   if (scratch === undefined) throw new Error("no scratch session");
-  return electron.launch({ ...launchOptions([`--user-data-dir=${scratch.profile}`]), env: scratch.env });
+  return electron.launch(await launchOptions([`--user-data-dir=${scratch.profile}`], { env: scratch.env }));
 };
 
 test.beforeAll(async () => {

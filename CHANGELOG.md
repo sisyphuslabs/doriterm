@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+## v0.1.25 - 2026-11-25
+
+### Workspace
+
+- omo agents now show omo's own cat mark instead of a placeholder, in the agents list, tabs and on the phone. (#2814)
+
+### Phone
+
+- In the iOS home-screen app the keys bar sits right on the soft keyboard again; it stood about a header's height
+  above it, an empty band, when iOS scrolled the page to show the Type field. (#2820)
+- A phone brought back to a terminal (from another app, or the phone unlocked) gives its program the phone's size
+  again. After a desktop had used the same terminal, an agent's output was drawn for the desktop's width and its lines
+  were copied once per redraw on the phone. (#2819)
+
+### Connection and offline wording
+
+- A pane's "Opening…" that appears after a second now stays at least half a second, even when the terminal attaches
+  right after it appeared, so it never blinks over the terminal. (#2768, #2785)
+- `doriface-host` (the host, `connect` and `connect --mcp`) reaches the relay through the proxy the environment names
+  (`WSS_PROXY`, `HTTPS_PROXY` or `ALL_PROXY`, minus `NO_PROXY`), so a machine or sandbox that only lets traffic out through
+  a proxy, such as a cloud agent's VM, no longer fails every dial with 1006. A proxy that re-signs TLS needs its CA in
+  `NODE_EXTRA_CA_CERTS`. (#2735)
+
+### Phone, iPad and foldables
+
+- A split tab on a phone opens both of its terminals at once, stacked when the phone is upright and side by side when
+  it is on its side. One tap moves the focus, and the keys bar, dictation and keyboard go with it; a handle sets how
+  much each half gets, and each half's expand button fills the screen with it until Back. (#2790)
+- An iPad in portrait, an iPad window at half width and an open foldable (Galaxy Z Fold, iPhone Duo) get the tablet
+  layout: the sidebar is a rail whose expand opens a drawer over the terminals, and a side-by-side split stacks top to
+  bottom. A phone turned on its side keeps the phone layout. Folding or unfolding keeps the terminal you had open.
+  (#2790)
+- On a dual-screen device a two-pane split puts one pane on each screen, its line on the hinge. (#2790)
+
 ## v0.1.24 - 2026-11-24
 
 ### Workspace

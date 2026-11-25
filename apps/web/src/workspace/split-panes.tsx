@@ -13,7 +13,8 @@ import type { PaneSends } from "./pane-sends.ts";
 import { type PaneActions, PlacedPane } from "./pane-slot.tsx";
 import { PaneDivider } from "./pane-divider.tsx";
 import { linePosition } from "./line-position.ts";
-import { usePaneDrag } from "./use-pane-drag.ts";
+import { targetIn, usePaneDrag } from "./use-pane-drag.ts";
+import { useTerminalDrag, useTerminalDropSurface } from "./terminal-drag.tsx";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 
 /** Space between panes, px: the gap shows the canvas, so panes read as separate cards. */
@@ -136,6 +137,18 @@ export function SplitPanes(props: SplitPanesProps) {
     (tab) => laidOut.current.get(tab),
     (_tab, pane, target) => void layout.move(pane, target.pane, target.zone),
   );
+  // A terminal dragged from the sidebar drops on the tab in view, as a pane dragged by its header does.
+  const fromList = useTerminalDrag();
+  useTerminalDropSurface({
+    targetAt: (address, x, y) => {
+      const tab = layout.active;
+      if (tab === null || layout.zoomed !== null || !layout.takesTerminal(address, tab.key)) return null;
+      const own = tab.panes.find((pane) => pane.address === address)?.id ?? "";
+      const target = targetIn(ref.current, laidOut.current.get(tab.key), own, x, y);
+      return target === null ? null : { tab: tab.key, ...target };
+    },
+    drop: (address, target) => void layout.dropTerminal(address, target),
+  });
   // A divider drag lays panes out on every move; like a window resize it plays no motion, its release included: the
   // dropped drag stays on screen until its write lands, and that render changes the frame, so it moves no pane either.
   const frame = `${box.width}x${box.height}${preview === null ? "" : `:${preview.delta}`}`;
@@ -153,7 +166,8 @@ export function SplitPanes(props: SplitPanesProps) {
           // herdr-app drags panes only in a split tab that is not zoomed, and only where the layout takes edits.
           const movable =
             selected && zoomed === null && tab.panes.length > 1 && !tab.transient && tab.readOnly === null;
-          const dropping = drag?.tab === tab.key ? drag.target : null;
+          const dropping =
+            drag?.tab === tab.key ? drag.target : fromList?.target?.tab === tab.key ? fromList.target : null;
           const dropOn = dropping === null ? undefined : panes.get(dropping.pane);
           return (
             <div
@@ -220,7 +234,9 @@ export function SplitPanes(props: SplitPanesProps) {
                     />
                   ))
                 : null}
-              {drag?.tab === tab.key ? <div aria-hidden className="absolute inset-0 z-10 cursor-grabbing" /> : null}
+              {drag?.tab === tab.key || (selected && fromList !== null) ? (
+                <div aria-hidden className="absolute inset-0 z-10 cursor-grabbing" />
+              ) : null}
               {dropping !== null && dropOn !== undefined ? (
                 <div
                   aria-hidden

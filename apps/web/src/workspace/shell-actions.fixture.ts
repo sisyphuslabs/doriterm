@@ -60,6 +60,8 @@ export const layout: Layout = {
   toggleZoom: () => true,
   move: () => Promise.resolve(false),
   swap: () => true,
+  takesTerminal: () => false,
+  dropTerminal: () => Promise.resolve(false),
   moveTab: noop,
   renameTab: () => Promise.resolve(),
   pinTab: () => Promise.resolve(),

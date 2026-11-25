@@ -23,7 +23,7 @@ test("the window is captured while the system GL driver is slow to load", async 
         DORIFACE_E2E_SLOW_GL_SECONDS: "120",
       }).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
-    const app = await electron.launch({ ...launchOptions([`--user-data-dir=${join(dir, "profile")}`]), env });
+    const app = await electron.launch(await launchOptions([`--user-data-dir=${join(dir, "profile")}`], { env }));
     try {
       const page = await app.firstWindow();
       await page.waitForSelector("#root > *");
