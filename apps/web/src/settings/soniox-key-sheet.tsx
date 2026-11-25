@@ -3,6 +3,7 @@ import { Button, Field, Input, Notice, Sheet } from "@doriface/ui";
 import { Monitor } from "lucide-react";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { SONIOX_DEFAULTS } from "../vault/mesh-vault.ts";
+import { isSonioxHost } from "../voice/soniox-recognizer.ts";
 import { meshVault, useMeshVault } from "../vault/use-mesh-vault.ts";
 
 export interface SonioxKeySheetProps {
@@ -26,6 +27,7 @@ function validateBaseUrl(raw: string): string | undefined {
     return "Enter a valid https URL.";
   }
   if (parsed.protocol !== "https:") return "Base URL must use https.";
+  if (!isSonioxHost(parsed.hostname)) return "Base URL must be a soniox.com address.";
   return undefined;
 }
 

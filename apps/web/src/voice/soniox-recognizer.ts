@@ -19,10 +19,14 @@ export interface SonioxDeps {
   readonly recorder: () => Promise<SonioxRecorder>;
 }
 
+/** Whether a host is Soniox's own: the key in the vault is only ever sent there, whoever wrote the Base URL. */
+export const isSonioxHost = (host: string): boolean => host === "soniox.com" || host.endsWith(".soniox.com");
+
 /** Soniox's real-time endpoint for a Base URL: `api.soniox.com` streams at `stt-rt.soniox.com`; https only. */
 export function sonioxSocketUrl(baseUrl: string): string {
   const url = new URL(baseUrl);
   if (url.protocol !== "https:") throw new Error("the Soniox Base URL must be https");
+  if (!isSonioxHost(url.hostname)) throw new Error("the Soniox Base URL must be a soniox.com address");
   const host = url.host === "api.soniox.com" ? "stt-rt.soniox.com" : url.host;
   return `wss://${host}/transcribe-websocket`;
 }

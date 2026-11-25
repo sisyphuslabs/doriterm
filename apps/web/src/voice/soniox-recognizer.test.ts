@@ -117,9 +117,11 @@ describe("Soniox dictation", () => {
     expect(keyless.events.find((event) => event.type === "error")?.error).toBe("service-not-allowed");
   });
 
-  test("the socket address follows the Base URL, and only https is accepted", () => {
+  test("the socket address follows the Base URL, only on Soniox's own https hosts", () => {
     expect(sonioxSocketUrl("https://api.soniox.com")).toBe("wss://stt-rt.soniox.com/transcribe-websocket");
-    expect(sonioxSocketUrl("https://stt.example.eu/")).toBe("wss://stt.example.eu/transcribe-websocket");
+    expect(sonioxSocketUrl("https://stt-rt.eu.soniox.com/")).toBe("wss://stt-rt.eu.soniox.com/transcribe-websocket");
     expect(() => sonioxSocketUrl("http://api.soniox.com")).toThrow("https");
+    expect(() => sonioxSocketUrl("https://stt.example.eu/")).toThrow("soniox.com");
+    expect(() => sonioxSocketUrl("https://evilsoniox.com/")).toThrow("soniox.com");
   });
 });
