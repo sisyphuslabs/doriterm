@@ -16,6 +16,15 @@
   again. After a desktop had used the same terminal, an agent's output was drawn for the desktop's width and its lines
   were copied once per redraw on the phone. (#2819)
 
+### Connection and offline wording
+
+- A pane's "Opening…" that appears after a second now stays at least half a second, even when the terminal attaches
+  right after it appeared, so it never blinks over the terminal. (#2768, #2785)
+- `doriface-host` (the host, `connect` and `connect --mcp`) reaches the relay through the proxy the environment names
+  (`WSS_PROXY`, `HTTPS_PROXY` or `ALL_PROXY`, minus `NO_PROXY`), so a machine or sandbox that only lets traffic out through
+  a proxy, such as a cloud agent's VM, no longer fails every dial with 1006. A proxy that re-signs TLS needs its CA in
+  `NODE_EXTRA_CA_CERTS`. (#2735)
+
 ### Phone, iPad and foldables
 
 - A split tab on a phone opens both of its terminals at once, stacked when the phone is upright and side by side when
