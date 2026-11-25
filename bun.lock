@@ -15,7 +15,7 @@
     },
     "apps/desktop": {
       "name": "@doriface/desktop",
-      "version": "0.1.24",
+      "version": "0.1.25",
       "devDependencies": {
         "@doriface/crypto": "workspace:*",
         "@doriface/host": "workspace:*",

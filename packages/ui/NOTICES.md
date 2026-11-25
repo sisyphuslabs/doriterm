@@ -1,28 +1,28 @@
 # Agent mark notices
 
-`@doriface/ui` draws a single-colour mark for what each terminal runs (`src/components/agent-marks.ts`). Every drawing comes from Simple Icons 16.38.1 or Lucide (`lucide-react`).
+`@doriface/ui` draws a single-colour mark for what each terminal runs (`src/components/agent-marks.ts`). Every drawing comes from Simple Icons 16.38.1, Lucide (`lucide-react`), or our own omo mark.
 
-| kind        | source                                        | upstream name                  | licence       |
-| ----------- | --------------------------------------------- | ------------------------------ | ------------- |
-| claude      | Simple Icons 16.38.1                          | `claude`                       | CC0-1.0       |
-| codex       | Lucide                                        | `code-xml`                     | ISC           |
-| cursor      | Simple Icons 16.38.1                          | `cursor`                       | CC0-1.0       |
-| copilot     | Simple Icons 16.38.1 (GitHub Primer Octicons) | `githubcopilot` (`copilot-24`) | CC0-1.0 / MIT |
-| gemini      | Simple Icons 16.38.1                          | `googlegemini`                 | CC0-1.0       |
-| grok        | Lucide                                        | `orbit`                        | ISC           |
-| opencode    | Simple Icons 16.38.1                          | `opencode`                     | CC0-1.0       |
-| amp         | Lucide                                        | `zap`                          | ISC           |
-| kimi        | Simple Icons 16.38.1                          | `kimi`                         | CC0-1.0       |
-| antigravity | Lucide (Feather)                              | `feather`                      | ISC / MIT     |
-| omo         | Lucide                                        | `mountain`                     | ISC           |
-| omp         | Lucide                                        | `pi`                           | ISC           |
-| droid       | Lucide                                        | `cpu`                          | ISC           |
-| qwen        | Simple Icons 16.38.1                          | `qwen`                         | CC0-1.0       |
-| agent       | Lucide                                        | `bot`                          | ISC           |
-| shell       | Lucide (Feather)                              | `terminal`                     | ISC / MIT     |
-| program     | Lucide                                        | `square-terminal`              | ISC           |
+| kind        | source                                        | upstream name                                         | licence       |
+| ----------- | --------------------------------------------- | ----------------------------------------------------- | ------------- |
+| claude      | Simple Icons 16.38.1                          | `claude`                                              | CC0-1.0       |
+| codex       | Lucide                                        | `code-xml`                                            | ISC           |
+| cursor      | Simple Icons 16.38.1                          | `cursor`                                              | CC0-1.0       |
+| copilot     | Simple Icons 16.38.1 (GitHub Primer Octicons) | `githubcopilot` (`copilot-24`)                        | CC0-1.0 / MIT |
+| gemini      | Simple Icons 16.38.1                          | `googlegemini`                                        | CC0-1.0       |
+| grok        | Lucide                                        | `orbit`                                               | ISC           |
+| opencode    | Simple Icons 16.38.1                          | `opencode`                                            | CC0-1.0       |
+| amp         | Lucide                                        | `zap`                                                 | ISC           |
+| kimi        | Simple Icons 16.38.1                          | `kimi`                                                | CC0-1.0       |
+| antigravity | Lucide (Feather)                              | `feather`                                             | ISC / MIT     |
+| omo         | omo (Sisyphus Labs), our own mark             | `packages/web/public/brand/omo-mark.svg` (glyph path) | own           |
+| omp         | Lucide                                        | `pi`                                                  | ISC           |
+| droid       | Lucide                                        | `cpu`                                                 | ISC           |
+| qwen        | Simple Icons 16.38.1                          | `qwen`                                                | CC0-1.0       |
+| agent       | Lucide                                        | `bot`                                                 | ISC           |
+| shell       | Lucide (Feather)                              | `terminal`                                            | ISC / MIT     |
+| program     | Lucide                                        | `square-terminal`                                     | ISC           |
 
-The Lucide glyphs for `codex`, `grok`, `amp`, `antigravity`, `omo`, `omp` and `droid` are neutral stand-ins and not those projects' logos.
+The Lucide glyphs for `codex`, `grok`, `amp`, `antigravity`, `omp` and `droid` are neutral stand-ins and not those projects' logos.
 
 These licences cover the drawings only. Product names and logos are trademarks of their owners; no trademark rights are granted, and their use here only identifies the program a terminal runs.
 
@@ -67,3 +67,9 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## omo
+
+Source: `github.com/code-yeongyu/oh-my-openagent`, `packages/web/public/brand/omo-mark.svg` at commit `c9b324948d` (our own product's mark, Sisyphus Labs).
+
+Only the glyph path is embedded; the rounded-square background is dropped and the mark is drawn in `currentColor`.

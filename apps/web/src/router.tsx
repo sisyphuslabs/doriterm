@@ -8,6 +8,7 @@ import { ActionsPaused } from "./keys/dispatcher.ts";
 import { keyboardIsIdle, mayTakeFocus } from "./terminal/may-take-focus.ts";
 import { capturePairingLink } from "./pair/link-capture.ts";
 import { PairRoute } from "./routes/pair-route.tsx";
+import { PerfRoute } from "./routes/perf-route.tsx";
 import { JoinLanding } from "./pair/join-landing.tsx";
 import { SettingsRoute } from "./routes/settings-route.tsx";
 import { SettingsDialog, SettingsInDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
@@ -73,13 +74,13 @@ function Root() {
   const refocus = useRef<HTMLElement | null>(null);
   const scroll = useRef<KeptScroll | null>(null);
   useEffect(() => {
-    if (settings) return;
+    if (path !== "/") return;
     // Back at the workspace while a reconnect waits out its back-off: try now, not up to 10 s on (#403).
     connectionStore.retryNow();
     const input = document.querySelector<HTMLElement>('[data-focused="true"] [data-terminal] textarea');
     const terminal = input?.closest<HTMLElement>("[data-terminal]");
     if (input && terminal && mayTakeFocus(terminal) && keyboardIsIdle(terminal)) input.focus({ preventScroll: true });
-  }, [settings]);
+  }, [path]);
   if (path !== "/" && !settings) return <Outlet />;
   return (
     <>
@@ -140,6 +141,7 @@ const root = createRootRoute({ component: Root });
 const routes = [
   createRoute({ getParentRoute: () => root, path: "/", component: () => null }),
   createRoute({ getParentRoute: () => root, path: "/pair", component: PairRoute }),
+  createRoute({ getParentRoute: () => root, path: "/perf", component: PerfRoute }),
   createRoute({ getParentRoute: () => root, path: "/join", component: JoinLanding }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: SettingsRoute }),
 ];

@@ -45,21 +45,40 @@ export interface Dialed {
   readonly held: HeldLink;
 }
 
+/**
+ * Reaching the host failed: the relay, the handshake, or the host's answer (as against a refusal this machine makes
+ * itself before dialing: not paired, no fingerprint, a saved host that needs --replace). Keep the wire code
+ * separate from the diagnostic so exit-code.ts can classify an initial refusal by stream.
+ */
+export class HostUnreachableError extends Error {
+  override readonly name = "HostUnreachableError";
+  readonly code: number | undefined;
+
+  constructor(cause: Error) {
+    super(cause.message, { cause });
+    this.code = closeCodeOf(cause);
+  }
+}
+
 /** Pairs first when the target is a link or code (again, if this machine paired before), then opens an IK session. */
 export async function dial(target: ConnectTarget, options: DialOptions): Promise<Dialed> {
   const host = await resolveHost(target, options);
   const relayUrl = options.relayUrl ?? host.relayUrl;
-  const link = await connectRelayClient({ relayUrl, hostId: host.hostId, ...socketOf(options) });
   try {
-    const held = new HeldLink(link);
-    const session = initiator(host, options.device);
-    const secure = await secureLink(
-      held,
-      options.stream === undefined ? session : { ...session, stream: options.stream },
-    );
-    return { secure, link, held };
+    const link = await connectRelayClient({ relayUrl, hostId: host.hostId, ...socketOf(options) });
+    try {
+      const held = new HeldLink(link);
+      const session = initiator(host, options.device);
+      const secure = await secureLink(
+        held,
+        options.stream === undefined ? session : { ...session, stream: options.stream },
+      );
+      return { secure, link, held };
+    } catch (error) {
+      throw refusal(host.hostId, error, options.stream);
+    }
   } catch (error) {
-    throw refusal(host.hostId, error, options.stream);
+    throw new HostUnreachableError(error instanceof Error ? error : new Error(String(error)));
   }
 }
 
@@ -73,7 +92,6 @@ export const REFUSALS: Readonly<Record<number, (hostId: string) => string>> = {
   4429: () => "the relay is rate limiting this machine or that host: try again in a minute",
 };
 
-/** One clear line for hc to show as the reason, with the close code when there is one. */
 /** On the MCP stream 4401 has one more cause than an unknown device: the host's MCP switch is off. */
 const MCP_REFUSED = (hostId: string): string =>
   `host ${hostId} refused the MCP session: run doriface-host mcp on there, or pair this machine again`;

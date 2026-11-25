@@ -33,7 +33,7 @@ test.beforeAll(async () => {
   const env = Object.fromEntries(
     Object.entries({ ...process.env, ...hc.env }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
-  launched = await electron.launch({ ...launchOptions([`--user-data-dir=${profile}`]), env });
+  launched = await electron.launch(await launchOptions([`--user-data-dir=${profile}`], { env }));
 });
 
 test.afterAll(async () => {

@@ -407,19 +407,22 @@ export const SHOTS: readonly Shot[] = [
     },
   },
   {
-    // Per-agent marks in the sidebar and phone Agents list: Claude, Gemini and a plain agent (#2746).
+    // Per-agent marks in the sidebar and phone Agents list: Claude, Gemini, omo and a plain agent (#2746).
     name: "agent-icons",
     start: "connected",
     run: async (page) => {
       const claude = startAppAgent("claude-run", "working", "claude");
       const gemini = startAppAgent("gemini-run", "working", "gemini");
+      const omo = startAppAgent("omo-run", "working", "omo");
       const plain = startAgent("host", "plain-run", "working", "website");
-      iconShot = [claude, gemini, plain];
+      iconShot = [claude, gemini, omo, plain];
       await page.goto("/");
       const working = page.getByRole("region", { name: "Working", exact: true });
       await expect(working.locator('[data-floor="name"][title="claude-run"]')).toBeVisible({ timeout: 20_000 });
       await expect(working.locator('[data-floor="name"][title="gemini-run"]')).toBeVisible({ timeout: 20_000 });
+      await expect(working.locator('[data-floor="name"][title="omo-run"]')).toBeVisible({ timeout: 20_000 });
       await expect(working.locator('[data-floor="name"][title="plain-run"]')).toBeVisible({ timeout: 20_000 });
+      await expect(working.getByRole("img", { name: "omo" })).toBeVisible();
       await expect(working.getByRole("img", { name: "Claude" })).toBeVisible();
       await expect(working.getByRole("img", { name: "Gemini" })).toBeVisible();
       await expect(working.getByRole("img", { name: "Agent" }).first()).toBeVisible();

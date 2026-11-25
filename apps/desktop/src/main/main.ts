@@ -30,7 +30,7 @@ import { DictationHost } from "./dictation.ts";
 import { DirectForwarder } from "./direct-forward.ts";
 import { applyDevCsp, hardenContents, lockPermissions } from "./harden.ts";
 import { InputGestures } from "./paste-invite.ts";
-import { findHc, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
+import { findHc, hostChildEnv, hostCommand, type HostContext, saveHc, savedHc, usualHcDirs } from "./host-command.ts";
 import { registerIpc } from "./ipc.ts";
 import { LocalHost } from "./local-host.ts";
 import { menuTemplate } from "./menu.ts";
@@ -223,7 +223,7 @@ function ready(): void {
     searched: () => usualHcDirs(context),
     // A new terminal with no directory opens in the home folder, not where the app was launched from (#2047).
     cwd: context.home,
-    env: process.env,
+    env: hostChildEnv(context),
     log: (line) => console.log(line),
   });
   app.on("will-quit", () => void localHost.stop());

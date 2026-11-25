@@ -4,6 +4,9 @@
  */
 export const HC_VERSION_FLOOR = "0.1.17";
 
+/** The hc a host brings itself up to when it starts on an older one; `hc update` keeps every terminal running. */
+export const HC_VERSION_RECOMMENDED = "0.1.22";
+
 const numbers = (version: string): number[] =>
   version
     .replace(/^hc /, "")
