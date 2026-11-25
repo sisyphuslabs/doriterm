@@ -112,7 +112,7 @@ test("a phone only watching leaves the size of the device typing; asking for the
     await deskTerminal.getByRole("textbox").focus();
     await desk.keyboard.insertText("echo desk");
     await desk.keyboard.press("Enter");
-    await expect.poll(() => coreSize(address), { timeout: 15_000 }).toBe(await gridSize(deskTerminal));
+    await settledGrid(desk, deskTerminal);
     const deskSize = coreSize(address);
 
     await page.goto("/");
@@ -127,7 +127,7 @@ test("a phone only watching leaves the size of the device typing; asking for the
     expect(coreSize(address)).toBe(deskSize);
 
     await page.getByRole("button", { name: "Show keyboard", exact: true }).click();
-    await expect.poll(() => coreSize(address), { timeout: 10_000 }).toBe(await gridSize(phoneTerminal));
+    await settledGrid(page, phoneTerminal);
   } finally {
     await deskContext.close();
     endAgent("host", address);
