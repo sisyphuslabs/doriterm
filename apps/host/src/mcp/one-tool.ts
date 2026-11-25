@@ -1,6 +1,6 @@
 import type { JsonObject } from "@doriface/protocol";
 import { realpathSync } from "node:fs";
-import { isAbsolute, normalize, posix, resolve } from "node:path";
+import { basename, isAbsolute, normalize, posix, resolve } from "node:path";
 import { FILE_TOOLS, type FileTool } from "./file-tools.ts";
 import { HOST_TOOLS, MESH_TOOLS, type MeshTool } from "./mesh-tools.ts";
 
@@ -206,7 +206,9 @@ function planFile(sub: string, rest: readonly string[], args: readonly string[],
       scope: "read",
     };
   if (sub === "grep") {
-    const grep = { path, pattern: positional[1] ?? "", ignoreCase: named["ignore-case"] === true, ...where };
+    // Every state dir is left out of the walk by its own name, a custom --state-dir name included.
+    const exclude = context.stateDirs.map((dir) => basename(dir));
+    const grep = { path, pattern: positional[1] ?? "", ignoreCase: named["ignore-case"] === true, exclude, ...where };
     return { kind: "file", tool: fileTool("file_grep"), args: grep, scope: "read" };
   }
   if (sub === "bytes") {

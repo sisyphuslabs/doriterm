@@ -203,3 +203,11 @@ test("a long s or other compatibility spelling does not get past the name check"
     expect([args, plan(args).kind]).toEqual([args, "refused"]);
   }
 });
+
+test("a search from above a custom-named state dir excludes that dir by its name", () => {
+  const custom = { stateDirs: ["/srv/hosts/studio-state"], home: "/home/me", cwd: "/" };
+  expect(planCall(["file", "grep", "/srv/hosts", "needle"], custom)).toMatchObject({
+    kind: "file",
+    args: { path: "/srv/hosts", pattern: "needle", exclude: ["studio-state"] },
+  });
+});

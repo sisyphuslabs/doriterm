@@ -62,4 +62,4 @@ doriface-host pair                     # QR code, link and code for a phone or b
 
 ## Over MCP
 
-An agent connected over MCP gets one tool, `doriterm`, which takes the same commands as `hc`. Reading (`ls`, `read`, `file read`) needs the read scope; `exec`, `run` and `send` need act, and act can run any program on the machine, so granting act is granting the host's identity. Paths into the host's own state are refused.
+An agent connected over MCP gets one tool, `doriterm`, which takes the same commands as `hc`. Reading (`ls`, `read`, `file read`) needs the read scope; `exec`, `run` and `send` need act, and act can run any program on the machine, so granting act is granting the host's identity. Paths into the host's own state are refused, but read scope still reads any other file the user can (SSH keys included), so grant it only to an agent you would let read your files.

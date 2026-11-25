@@ -26,7 +26,7 @@ const SCRIPTS = {
   stat: `${STAT}; [ -e "$1" ] || [ -L "$1" ] || exit 3; st "$1"`,
   list: `${STAT}; [ -d "$1" ] || exit 4; n=0; for f in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$f" ] || [ -L "$f" ] || continue; n=$((n+1)); [ $n -gt ${LIST_LIMIT} ] && { printf 'more\\0'; break; }; printf '%s\t%s\\0' "$(st "$f")" "\${f##*/}"; done | head -c ${OUTPUT_BUDGET}`,
   glob: `[ -d "$1" ] || exit 4; find "$1" \\( -name .git -o -name node_modules \\) -prune -o -type f -name "$2" -print | head -n ${LIST_LIMIT + 1} | head -c ${OUTPUT_BUDGET}`,
-  grep: `[ -e "$1" ] || exit 3; { grep -rnIH --null $3 --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=doriface-host --exclude-dir='doriface-host-*' -E -e "$2" -- "$1"; echo "grep-exit $?" >&2; } | head -n ${MATCH_LIMIT + 1} | head -c ${OUTPUT_BUDGET}`,
+  grep: `[ -e "$1" ] || exit 3; { grep -rnIH --null $3 --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=doriface-host --exclude-dir='doriface-host-*' --exclude-dir="$4" --exclude-dir="$5" -E -e "$2" -- "$1"; echo "grep-exit $?" >&2; } | head -n ${MATCH_LIMIT + 1} | head -c ${OUTPUT_BUDGET}`,
   bytes: `${STAT}; [ -f "$1" ] || exit 4; st -L "$1"; tail -c +$(($2 + 1)) -- "$1" | head -c $3`,
 } as const;
 
@@ -149,7 +149,18 @@ export const FILE_TOOLS: readonly FileTool[] = [
       "pattern",
     ]),
     run: async (args, exec) => {
-      const values = [text(args, "path"), text(args, "pattern"), args["ignoreCase"] === true ? "-i" : "-s"];
+      const extra = Array.isArray(args["exclude"])
+        ? args["exclude"].filter((name) => typeof name === "string" && name !== "")
+        : [];
+      // Two slots cover this host's own state dir and the default one; an unused slot repeats a name grep already skips.
+      const [first = "doriface-host", second = first] = extra as string[];
+      const values = [
+        text(args, "path"),
+        text(args, "pattern"),
+        args["ignoreCase"] === true ? "-i" : "-s",
+        first,
+        second,
+      ];
       const { out, err } = await runScript(exec, args, SCRIPTS.grep, values);
       const rows = lines(out);
       // grep exits 2 when it could not read something; what it found is then not the whole answer.

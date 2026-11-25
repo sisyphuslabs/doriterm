@@ -187,3 +187,11 @@ test("a search from above the host's state never returns what the state files ho
   expect(found).toMatchObject({ matches: [{ path: "./notes.txt", line: 1 }] });
   expect(JSON.stringify(found)).not.toContain("host-key");
 });
+
+test("file_grep excludes the extra state dir names it is given", async () => {
+  mkdirSync(join(dir, "studio-state"), { recursive: true });
+  writeFileSync(join(dir, "studio-state", "host-key.json"), "needle-custom\n");
+  writeFileSync(join(dir, "plain.txt"), "needle-custom\n");
+  const found = await tool("file_grep").run({ path: ".", pattern: "needle-custom", exclude: ["studio-state"] }, exec);
+  expect(found).toMatchObject({ matches: [{ path: "./plain.txt", line: 1 }], more: false });
+});
