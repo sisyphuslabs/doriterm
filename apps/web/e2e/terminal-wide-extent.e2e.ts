@@ -269,29 +269,29 @@ const gpuInkOf = (
 };
 
 test.describe("WebGL", () => {
-  test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  // The platform's own fallback face, as terminal-hangul-fallback.e2e.ts takes it: on a Mac the only face with Hangul
+  // is proportional and narrower than two cells, which is where the WebGL atlas drew it narrow (#2810).
+  test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, pinnedFonts: false });
 
-  test("the WebGL canvas paints each wide glyph across its two cells, as the DOM rows do (#2810)", async ({ page }) => {
+  test("the WebGL canvas paints each wide glyph as the DOM row does: as wide, as centred (#2810)", async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(navigator, "platform", { value: "MacIntel" }));
     await page.goto("/");
-    await loadKoreanFonts(page);
-    await openNewTerminal(page);
-    await useReportedFont(page);
-    const terminal = page.locator('[data-focused="true"] [data-terminal]');
+    const terminal = await openNewTerminal(page);
     await print(page, terminal, LINE);
     await expect(terminal.locator("canvas:not([hidden])")).toHaveCount(1);
-    const extent = await terminal.evaluate(extentOf);
-    const ideograph = Math.min(extent.asciiInk, 2 * extent.cell);
+    const dom = (await terminal.evaluate(extentOf)).wide;
     const painted = await terminal.evaluate(gpuInkOf);
-    console.log(`wide extent, WebGL: ${JSON.stringify({ cell: extent.cell, ideograph, painted })}`);
-    expect(painted.length).toBeGreaterThanOrEqual(12);
-    for (const glyph of painted) {
-      expect.soft(glyph.ink, `${glyph.text}: ink inside its cells`).toBeGreaterThanOrEqual(ideograph * 0.7);
+    console.log(`wide extent, WebGL against DOM: ${JSON.stringify({ dom, painted })}`);
+    expect(painted.map((glyph) => glyph.text)).toEqual(dom.map((glyph) => glyph.text));
+    for (const [at, glyph] of painted.entries()) {
+      const row = dom[at];
+      if (row === undefined) continue;
+      // A pixel and a half: the canvas and the page each round the glyph's edges to whole pixels.
+      expect.soft(Math.abs(glyph.ink - row.ink), `${glyph.text}: as wide as the DOM draws it`).toBeLessThanOrEqual(1.5);
       expect
-        .soft(Math.abs(glyph.offCentre), `${glyph.text}: ink centred in its cells`)
-        .toBeLessThan(Math.max(1.5, extent.cell / 4));
+        .soft(Math.abs(glyph.offCentre - row.offCentre), `${glyph.text}: centred where the DOM centres it`)
+        .toBeLessThanOrEqual(1.5);
     }
-    const meanInk = painted.reduce((sum, glyph) => sum + glyph.ink, 0) / painted.length;
-    expect.soft(meanInk, "the face's ink covers its ideograph width").toBeGreaterThanOrEqual(ideograph * 0.82);
   });
 });
 
