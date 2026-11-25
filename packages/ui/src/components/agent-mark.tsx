@@ -17,21 +17,42 @@ export function AgentMark({ kind, size = 16, className, decorative = false }: Ag
   if (entry === undefined) return null;
   const classes = cn("shrink-0", className);
   const named = decorative ? ({ "aria-hidden": true } as const) : ({ role: "img", "aria-label": entry.label } as const);
-  if (entry.from === "simple-icons") {
-    return (
-      <svg
-        {...named}
-        viewBox="0 0 24 24"
-        width={size}
-        height={size}
-        fill="currentColor"
-        data-agent-mark={kind}
-        className={classes}
-      >
-        <path d={entry.path} />
-      </svg>
-    );
+  switch (entry.from) {
+    case "simple-icons":
+      return (
+        <svg
+          {...named}
+          viewBox="0 0 24 24"
+          width={size}
+          height={size}
+          fill="currentColor"
+          data-agent-mark={kind}
+          className={classes}
+        >
+          <path d={entry.path} />
+        </svg>
+      );
+    case "own":
+      return (
+        <svg
+          {...named}
+          viewBox={entry.viewBox}
+          width={size}
+          height={size}
+          fill="currentColor"
+          data-agent-mark={kind}
+          className={classes}
+        >
+          <path d={entry.path} fillRule="evenodd" transform={entry.transform} />
+        </svg>
+      );
+    case "lucide": {
+      const Icon = entry.icon;
+      return <Icon {...named} data-agent-mark={kind} width={size} height={size} className={classes} />;
+    }
+    default: {
+      const exhaustive: never = entry;
+      return exhaustive;
+    }
   }
-  const Icon = entry.icon;
-  return <Icon {...named} data-agent-mark={kind} width={size} height={size} className={classes} />;
 }

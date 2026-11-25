@@ -60,6 +60,17 @@ describe("AGENT_MARKS", () => {
     expect(renderToStaticMarkup(<AgentMark kind="toString" />)).toBe("");
   });
 
+  test("omo draws its own cat mark: the glyph path alone, framed tight, single colour, holes kept by evenodd", () => {
+    const entry = AGENT_MARKS["omo"];
+    expect(entry?.from).toBe("own");
+    const markup = renderToStaticMarkup(<AgentMark kind="omo" />);
+    expect(readAttr(markup, "viewBox")).toBe("189.5 185 645 645");
+    expect(readAttr(markup, "fill")).toBe("currentColor");
+    expect(readAttr(markup, "fill-rule")).toBe("evenodd");
+    expect(readAttr(markup, "d")).toMatch(/^M9270 32167 c-309 -64/u);
+    expect(markup).not.toMatch(/#[0-9a-fA-F]{3,8}\b/u);
+  });
+
   test("packages/ui/NOTICES.md lists every mark in AGENT_MARKS and no extra key", () => {
     const listed = noticedKinds(NOTICES);
     const expected = Object.keys(AGENT_MARKS);
