@@ -30,7 +30,7 @@
     "electron-builder": "26.18.0",
     "electron-updater": "6.8.11",
     "node-api-headers": "1.9.0",
-    "typevault": "github:code-yeongyu/typevault#c8e05fe78e13a0d0a4d4faae1b35062b7d5a142c",
+    "typevault": "github:typeclaw/typevault#c8e05fe78e13a0d0a4d4faae1b35062b7d5a142c",
     "ws": "8.18.3"
   },
   "productName": "Doriterm"

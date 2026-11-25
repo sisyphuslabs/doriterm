@@ -23,7 +23,7 @@ async function device(replica: VaultReplica, members: () => readonly string[]) {
   const base = contextOf(me, []);
   const deps: MeshVaultDeps = {
     replicas: async () => [replica],
-    member: async () => ({ mesh: base.mesh, members: new Set(members()), self: me.signer }),
+    member: async () => ({ mesh: base.mesh, members: new Set(members()), removed: new Set<string>(), self: me.signer }),
     key: async () => me.key,
     storage: memoryStore(),
     now: base.now,

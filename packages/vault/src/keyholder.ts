@@ -30,9 +30,10 @@ export interface EntryDraft {
 }
 
 /**
- * The use of one tier key, never the key: open an entry, seal one, seal the key to a recipient. Every method runs where
- * the key is held (the desktop main process, the browser's vault worker); a page that holds a handle can use the key
- * while the app runs, but cannot take it away to use later.
+ * The use of one tier key without handing out its bytes: open an entry, seal one, seal the key to a recipient. Every
+ * method runs where the key is held (the desktop main process, the browser's vault worker). This keeps the key out of
+ * the page's memory; it is not a boundary against script in the app origin, which can wrap the key to a recipient of
+ * its own (see #2828 for the desktop fix and #2791 for the threat model).
  */
 export interface TierHandle {
   readonly gen: number;
@@ -86,7 +87,7 @@ async function handleOf(key: SecretKey, gen: number): Promise<TierHandle> {
   };
 }
 
-/** A keyholder over a device key, run in the trusted context: its tier keys never leave this object. */
+/** A keyholder over a device key, for the worker or the main process: its tier keys are never returned as bytes. */
 export function localKeyholder(device: DeviceKey): Keyholder {
   return {
     recipient: device.recipient,

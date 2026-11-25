@@ -1,6 +1,7 @@
 import {
   type EntryRead,
   holderMemory,
+  strangerMemory,
   type Keyholder,
   type KeyProtection,
   maintain,
@@ -23,6 +24,8 @@ export interface MeshMember {
   readonly mesh: string;
   /** signPubs of the current members, from this device's verified mesh records. */
   readonly members: ReadonlySet<string>;
+  /** signPubs those records revoke. */
+  readonly removed: ReadonlySet<string>;
   readonly self: MemberSigner;
 }
 
@@ -74,12 +77,20 @@ export interface SonioxKey {
 
 const LEDGER = "vault-ledger";
 const HOLDERS = "vault-holders";
+const STRANGERS = "vault-strangers";
 const INITIAL: MeshVaultSnapshot = { phase: "loading", soniox: { kind: "none" }, members: [], protection: undefined };
 
 function ledgerOf(value: unknown): Record<string, number> {
   if (typeof value !== "object" || value === null) return {};
   return Object.fromEntries(
     Object.entries(value).filter((pair): pair is [string, number] => Number.isSafeInteger(pair[1])),
+  );
+}
+
+function stringsOf(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((pair): pair is [string, string] => typeof pair[1] === "string"),
   );
 }
 
@@ -109,6 +120,7 @@ export class MeshVault {
   #doc: VaultDoc | undefined;
   #ledger: RevisionLedger | undefined;
   #memory: ReturnType<typeof holderMemory> | undefined;
+  #strangers: ReturnType<typeof strangerMemory> | undefined;
 
   constructor(deps: MeshVaultDeps) {
     this.#deps = deps;
@@ -161,7 +173,15 @@ export class MeshVault {
     if (member === undefined || !member.members.has(member.self.signPub)) return undefined;
     this.#ledger ??= new RevisionLedger(ledgerOf(await this.#deps.storage.get(LEDGER)));
     this.#memory ??= holderMemory(holdersOf(await this.#deps.storage.get(HOLDERS)));
-    return { ...member, key: await this.#deps.key(), ledger: this.#ledger, memory: this.#memory, now: this.#deps.now };
+    this.#strangers ??= strangerMemory(stringsOf(await this.#deps.storage.get(STRANGERS)));
+    return {
+      ...member,
+      key: await this.#deps.key(),
+      ledger: this.#ledger,
+      memory: this.#memory,
+      strangers: this.#strangers,
+      now: this.#deps.now,
+    };
   }
 
   async #round(step: (doc: VaultDoc, ctx: VaultContext) => Promise<VaultDoc>, rethrow = false): Promise<void> {
@@ -170,8 +190,12 @@ export class MeshVault {
       if (ctx === undefined) return this.#set({ ...INITIAL, phase: "not-member" });
       const { doc } = await syncVault(await this.#deps.replicas(), (merged) => step(merged, ctx), ctx.mesh);
       this.#doc = doc;
-      if (this.#ledger?.dirty === true) await this.#deps.storage.put(LEDGER, this.#ledger.snapshot());
+      if (this.#ledger?.dirty === true) {
+        await this.#deps.storage.put(LEDGER, this.#ledger.snapshot());
+        this.#ledger.saved();
+      }
       if (this.#memory !== undefined) await this.#deps.storage.put(HOLDERS, this.#memory.snapshot());
+      if (this.#strangers !== undefined) await this.#deps.storage.put(STRANGERS, this.#strangers.snapshot());
       this.#set(await this.#view(doc, ctx));
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);

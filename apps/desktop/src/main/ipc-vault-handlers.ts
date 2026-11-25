@@ -21,7 +21,8 @@ function assertAppFrame(event: IpcSender, origin: string): void {
 
 /**
  * The vault keyholder for the app's own page only. The page asks it to open, seal and wrap with tier keys this process
- * holds; no answer carries a key, so a script in the page can use the vault while the app runs but cannot take a key.
+ * holds; no answer carries key bytes. Script in the app origin can still have a key wrapped to a recipient of its own;
+ * #2828 moves recipient choice here so it cannot.
  */
 export function vaultHandlers(deps: VaultDeps): VaultHandlers {
   return {

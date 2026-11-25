@@ -1,5 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { base64urlEncode } from "@doriface/crypto";
+import { viewOf } from "@doriface/mesh";
 import { type Keyholder, remoteKeyholder, VAULT_DOC } from "@doriface/vault";
 import { useEffect, useSyncExternalStore } from "react";
 import { connectionStore, useConnection } from "../connection/store.ts";
@@ -57,7 +58,8 @@ export const meshVault = new MeshVault({
     const card = await loadSignKey();
     const signPub = base64urlEncode(card.publicKey);
     const members = new Set(memberCards(view.records).map((member) => member.signPub));
-    return { mesh: view.mesh, members, self: { signPub, sign: (message) => card.sign(message) } };
+    const removed = viewOf(view.records).revoked;
+    return { mesh: view.mesh, members, removed, self: { signPub, sign: (message) => card.sign(message) } };
   },
   key: () => {
     keyholder ??= openKeyholder();
