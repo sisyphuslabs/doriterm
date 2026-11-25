@@ -15,6 +15,6 @@
     "@doriface/mesh": "workspace:*",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "typevault": "github:code-yeongyu/typevault#ecce7187c7173c6ea77f72363dd415f4625bcb26"
+    "typevault": "github:code-yeongyu/typevault#c8e05fe78e13a0d0a4d4faae1b35062b7d5a142c"
   }
 }
