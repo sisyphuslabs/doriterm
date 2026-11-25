@@ -833,7 +833,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..0ca436b2d7caf6e2f0d358ce0febbdb80424cd15 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..01116ae356b645d33a94848817d037c15970cd12 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
 @@ -13,6 +13,8 @@ import { registerWebMCPTerminal, } from "./webmcp.js";
@@ -1074,14 +1074,18 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..0ca436b2d7caf6e2f0d358ce0febbdb8
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1049,12 +1160,20 @@ export class WTerm {
+@@ -1049,12 +1160,24 @@ export class WTerm {
      }
      /** Brings the DOM text current once GPU-painted output goes quiet. */
      _scheduleTextSync() {
 -        if (this._textSyncTimer !== null)
 +        const now = performance.now();
 +        this._textStaleSince ?? (this._textStaleSince = now);
-+        const due = this._textStaleSince + TEXT_SYNC_MAX_MS;
++        // Only the terminal being used reads its text while output keeps coming (find, a screen reader, a caret): the
++        // others catch up once their output goes quiet or a pointer touches them, so a wall of busy panes stays cheap.
++        const due = this.element.contains(this.element.ownerDocument.activeElement)
++            ? this._textStaleSince + TEXT_SYNC_MAX_MS
++            : Number.POSITIVE_INFINITY;
 +        if (this._textSyncTimer !== null) {
 +            // Output that keeps coming pushes the sync back only until the text has been stale for the longest wait.
 +            if (now >= due)
@@ -1097,7 +1101,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..0ca436b2d7caf6e2f0d358ce0febbdb8
      }
      _syncText() {
          if (!this.renderer?.textStale || this._destroyed)
-@@ -1127,14 +1246,20 @@ export class WTerm {
+@@ -1127,14 +1250,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -1120,7 +1124,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..0ca436b2d7caf6e2f0d358ce0febbdb8
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1269,10 @@ export class WTerm {
+@@ -1144,9 +1273,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -1132,7 +1136,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..0ca436b2d7caf6e2f0d358ce0febbdb8
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1283,7 @@ export class WTerm {
+@@ -1157,7 +1287,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -1141,7 +1145,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..0ca436b2d7caf6e2f0d358ce0febbdb8
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1702,16 @@ export class WTerm {
+@@ -1576,14 +1706,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));
@@ -1161,7 +1165,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..0ca436b2d7caf6e2f0d358ce0febbdb8
      }
      destroy() {
          this._destroyed = true;
-@@ -1604,6 +1732,8 @@ export class WTerm {
+@@ -1604,6 +1736,8 @@ export class WTerm {
              clearTimeout(this._textSyncTimer);
          this._textSyncTimer = null;
          this.element.removeEventListener("mousedown", this._onTextNeeded, true);
