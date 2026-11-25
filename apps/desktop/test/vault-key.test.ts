@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seal } from "typevault/core";
@@ -49,9 +49,10 @@ describe("the desktop vault key", () => {
     await expect(openVaultKey(at, store)).rejects.toThrow("cannot open the vault key");
   });
 
-  test("Linux without a keyring (basic_text) says the key is unprotected rather than claiming custody", async () => {
-    const key = await openVaultKey(dir(), osStore("basic_text"));
-    expect(key.protection).toBe("unprotected");
+  test("Linux without a keyring (basic_text, a constant key) is refused like no key store at all", async () => {
+    const at = dir();
+    await expect(openVaultKey(at, osStore("basic_text"))).rejects.toThrow("no OS key store");
+    expect(existsSync(join(at, "vault-key"))).toBe(false);
   });
 
   test("with no OS key store at all it refuses instead of writing the key in the clear", async () => {
