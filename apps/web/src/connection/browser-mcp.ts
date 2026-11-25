@@ -12,7 +12,7 @@ export async function openBrowserMcp(settings: ConnectionSettings, signal: Abort
     throw new Error("Pair this browser with a host first.");
   }
   signal.throwIfAborted();
-  const link = await connectRelayClient({ relayUrl: settings.relayUrl, hostId: settings.hostId, bestOf: 1 });
+  const link = await connectRelayClient({ relayUrl: settings.relayUrl, hostId: settings.hostId, bestOf: 1, signal });
   const close = () => link.close();
   signal.addEventListener("abort", close, { once: true });
   try {

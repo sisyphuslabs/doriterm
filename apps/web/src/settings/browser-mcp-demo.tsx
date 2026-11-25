@@ -3,9 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { listBrowserMcpTerminals, openBrowserMcp } from "../connection/browser-mcp.ts";
 import { connectionStore } from "../connection/store.ts";
 
-export function browserMcpDemoEnabled(location: Pick<Location, "hostname" | "search">): boolean {
+export function browserMcpDemoEnabled(
+  location: Pick<Location, "hostname" | "search">,
+  previewFlag: string | undefined = import.meta.env["VITE_BROWSER_MCP_PREVIEW"],
+): boolean {
   return (
-    import.meta.env["VITE_BROWSER_MCP_PREVIEW"] === "1" &&
+    previewFlag === "1" &&
     location.hostname.endsWith(".workers.dev") &&
     new URLSearchParams(location.search).get("mcp-demo") === "1"
   );

@@ -3,6 +3,44 @@ import { expect, test } from "bun:test";
 import { listBrowserMcpTerminals, openBrowserMcp } from "./browser-mcp.ts";
 import { DEFAULT_SETTINGS } from "./settings.ts";
 
+test("closing settings aborts the pending relay upgrade with the caller's reason", async () => {
+  const arrived = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<Response>();
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch() {
+      arrived.resolve();
+      return release.promise;
+    },
+  });
+  const controller = new AbortController();
+  const reason = new Error("settings closed");
+  try {
+    const attempt = openBrowserMcp(
+      {
+        ...DEFAULT_SETTINGS,
+        hostId: "a".repeat(26),
+        hostKey: "paired",
+        relayUrl: server.url.href,
+      },
+      controller.signal,
+    ).catch((error: unknown) => error);
+    await Promise.race([
+      arrived.promise,
+      attempt.then(() => {
+        throw new Error("dial ended before upgrade");
+      }),
+    ]);
+    controller.abort(reason);
+    release.resolve(new Response(null, { status: 503 }));
+    expect(await attempt).toBe(reason);
+  } finally {
+    release.resolve(new Response(null, { status: 503 }));
+    await server.stop(true);
+  }
+});
+
 test("the browser discovers tools, requests only the terminal list and disconnects", async () => {
   const [browser, host] = createMemoryLinkPair();
   const closed = Promise.withResolvers<void>();
