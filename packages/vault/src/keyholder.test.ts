@@ -45,6 +45,18 @@ describe("tier keys behind a keyholder", () => {
     expect(Object.keys(handle).toSorted()).toEqual(["gen", "open", "publicKey", "seal", "wrapFor"]);
   });
 
+  test("handle ids cannot be derived from what the document makes public", async () => {
+    const device = await testDevice();
+    const serve = serveKeyholder(localKeyholder(device.deviceKey));
+    const created = await serve({ op: "generate", gen: 1 });
+    const id = String(Reflect.get(Object(created), "id"));
+    const signPublic = String(Reflect.get(Object(Reflect.get(Object(created), "publicKey")), "signPublic"));
+    expect(id).not.toContain(signPublic);
+    await expect(serve({ op: "wrap", id: `1:${signPublic}`, recipient: device.deviceKey.recipient })).rejects.toThrow(
+      "no such tier key",
+    );
+  });
+
   test("unwrap refuses a wrap of any other key than the expected tier key", async () => {
     const device = await testDevice();
     const holder = localKeyholder(device.deviceKey);

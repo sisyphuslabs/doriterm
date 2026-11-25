@@ -64,7 +64,10 @@ function parseRequest(value: unknown): KeyholderRequest {
 export function serveKeyholder(holder: Keyholder): (request: unknown) => Promise<unknown> {
   const handles = new Map<string, TierHandle>();
   const keep = (handle: TierHandle): HandleInfo => {
-    const id = `${handle.gen}:${handle.publicKey.signPublic}`;
+    // Random: only code that was handed this id can use the handle, not code that read the public document.
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
     handles.set(id, handle);
     return { id, gen: handle.gen, publicKey: handle.publicKey };
   };

@@ -93,7 +93,9 @@ describe("rollback", () => {
     const rotated = await maintain(stale, contextOf(laptop, [laptop]));
     expect(resolveVault(rotated, contextOf(laptop, [laptop])).tier?.gen).toBe(2);
 
-    expect(await maintain(stale, contextOf(laptop, [laptop]))).toEqual(stale);
+    const kept = await maintain(stale, contextOf(laptop, [laptop]));
+    expect(kept.tiers).toEqual(stale.tiers);
+    expect(kept.entries).toEqual(stale.entries);
   });
 });
 

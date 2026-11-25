@@ -11,7 +11,8 @@ import {
 import type { VaultContext } from "./context.ts";
 import type { VaultDoc } from "./doc.ts";
 import { stateFor, TIER, type TierHandle } from "./keyholder.ts";
-import { readDevice, readTier, recordId, type SignedWrap, signRecord, wrapDigest } from "./records.ts";
+import { pruneOlder, pruneOutsiders } from "./prune.ts";
+import { readDevice, recordId, type SignedWrap, signRecord, wrapDigest } from "./records.ts";
 import {
   memberWraps,
   openersOf,
@@ -173,36 +174,16 @@ async function newGeneration(doc: VaultDoc, ctx: VaultContext, resolved: Resolve
   return { ...next, wraps: { ...next.wraps, [tierId]: await signedWraps(ctx, tierId, handle, resolved.devices) } };
 }
 
-/** Drops generations older than the current one, with their wraps and entries: the ledger refuses them anyway. */
-function pruneOlder(doc: VaultDoc, tier: ResolvedTier, ctx: VaultContext): VaultDoc {
-  const older = new Set(
-    Object.entries(doc.tiers).flatMap(([id, record]) => {
-      const gen = readTier(record, ctx.mesh)?.gen ?? 0;
-      return gen < tier.gen && id !== tier.id ? [id] : [];
-    }),
-  );
-  if (older.size === 0) return doc;
-  const keep = <T>(record: Readonly<Record<string, T>>) =>
-    Object.fromEntries(Object.entries(record).filter(([id]) => !older.has(id)));
-  const entries = Object.fromEntries(
-    Object.entries(doc.entries).flatMap(([id, byTier]) => {
-      const kept = keep(byTier);
-      return Object.keys(kept).length === 0 ? [] : [[id, kept] as const];
-    }),
-  );
-  return { ...doc, tiers: keep(doc.tiers), wraps: keep(doc.wraps), entries };
-}
-
 /**
  * One device's share of keeping the vault: announce this device's key; start a generation when there is no trusted one
- * (never over a stale copy); with the current key in hand, rotate when a device that is no longer a member was ever
+ * (never over a stale copy), after dropping what only keys outside the mesh produced; with the current key in hand, rotate when a device that is no longer a member was ever
  * seen holding a member-signed wrap of it (in this copy or remembered on this device: it saw the key), and otherwise wrap the key to every announced member whose current key has no
  * member-signed wrap. Without the key, it starts a new generation only when no current member's announced key has a
  * wrap at all (nobody can open it any more); otherwise it waits for a device that can.
  */
 export async function maintain(doc: VaultDoc, ctx: VaultContext): Promise<VaultDoc> {
   if (!ctx.members.has(ctx.self.signPub)) return doc;
-  const announced = await announce(doc, ctx);
+  const announced = await announce(pruneOutsiders(doc, ctx), ctx);
   const resolved = resolveVault(announced, ctx);
   const { tier, devices } = resolved;
   if (tier === undefined) return resolved.stale ? announced : newGeneration(announced, ctx, resolved, []);

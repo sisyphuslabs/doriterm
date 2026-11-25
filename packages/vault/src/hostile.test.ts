@@ -79,6 +79,25 @@ describe("a hostile writer of one core's document", () => {
   });
 });
 
+describe("items from keys outside the mesh", () => {
+  test("are pruned by a member's upkeep, so a writer minting keys cannot grow the document without bound", async () => {
+    const { doc, laptop, phone } = await twoDeviceVault();
+    const members = [laptop, phone];
+    const outsiders = await Promise.all([testDevice(), testDevice(), testDevice()]);
+    const planted = await Promise.all(
+      outsiders.map((outsider) => maintain(EMPTY_VAULT, contextOf(outsider, [outsider]))),
+    );
+    const junk = planted.reduce((merged, copy) => mergeVaults(merged, copy, MESH), doc);
+    expect(Object.keys(junk.tiers).length).toBe(1 + outsiders.length);
+    const kept = await maintain(junk, contextOf(laptop, members));
+    expect(Object.keys(kept.tiers)).toEqual(Object.keys(doc.tiers));
+    expect(Object.keys(kept.devices).toSorted()).toEqual(members.map((member) => member.signPub).toSorted());
+    expect(Object.keys(kept.wraps)).toEqual(Object.keys(doc.wraps));
+    const read = await readEntry(kept, contextOf(phone, members), SONIOX);
+    expect(read.kind).toBe("open");
+  });
+});
+
 describe("a machine that deletes a removed device's wrap", () => {
   test("cannot stop the rotation: a device that saw the wrap still rotates once that device is removed", async () => {
     const [laptop, phone, lost] = [await testDevice(), await testDevice(), await testDevice()];
