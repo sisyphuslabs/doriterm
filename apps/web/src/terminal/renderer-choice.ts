@@ -1,10 +1,40 @@
 /**
- * Which renderer draws terminals: the DOM (the default) or WebGL2, which `@wterm/dom` falls back from to the DOM by
- * itself when WebGL2 is unavailable. Chosen at build time for now, so the render bench can compare the two builds
- * (#2810); the runtime choice replaces this once the numbers decide it.
+ * Which renderer draws terminals (#2810). WebGL2 on a GPU: under heavy output the render bench measured it halving the
+ * main thread's work and drawing about 60% more bytes a second. The DOM everywhere else: a WebGL2 that only software
+ * provides (SwiftShader, llvmpipe: no GPU, a blocklisted one, most VMs) costs a core per page, more than the DOM does.
+ * `@wterm/dom` also falls back to the DOM by itself when WebGL2 is missing or its context is lost.
+ *
+ * `VITE_TERMINAL_RENDERER` (`dom` or `webgl`) forces one, so the render bench and the e2e suite can build each.
  */
 export type TerminalRenderer = "dom" | "webgl";
+export type RendererChoice = TerminalRenderer | "auto";
 
-export const terminalRenderer = (value: string | undefined): TerminalRenderer => (value === "webgl" ? "webgl" : "dom");
+export const rendererChoice = (value: string | undefined): RendererChoice =>
+  value === "dom" || value === "webgl" ? value : "auto";
 
-export const TERMINAL_RENDERER: TerminalRenderer = terminalRenderer(import.meta.env["VITE_TERMINAL_RENDERER"]);
+/** A software rasterizer's name in `UNMASKED_RENDERER_WEBGL`, as Chromium, Firefox and Mesa report it. */
+const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render/i;
+
+/**
+ * Whether this browser draws WebGL2 on a GPU. Headless Chromium's SwiftShader passes `failIfMajorPerformanceCaveat`
+ * (measured), so the renderer's name decides too; a browser that hides it is taken at its caveat answer.
+ */
+export function gpuWebgl2(): boolean {
+  if (typeof OffscreenCanvas === "undefined") return false;
+  const gl = new OffscreenCanvas(1, 1).getContext("webgl2", { failIfMajorPerformanceCaveat: true });
+  if (gl === null) return false;
+  const info = gl.getExtension("WEBGL_debug_renderer_info");
+  const name = info === null ? "" : String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL));
+  gl.getExtension("WEBGL_lose_context")?.loseContext();
+  return isGpuRenderer(name);
+}
+
+export const isGpuRenderer = (name: string): boolean => !SOFTWARE.test(name);
+
+export const terminalRenderer = (choice: RendererChoice, onGpu: () => boolean): TerminalRenderer =>
+  choice === "auto" ? (onGpu() ? "webgl" : "dom") : choice;
+
+export const TERMINAL_RENDERER: TerminalRenderer = terminalRenderer(
+  rendererChoice(import.meta.env["VITE_TERMINAL_RENDERER"]),
+  gpuWebgl2,
+);
