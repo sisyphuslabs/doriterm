@@ -1,5 +1,5 @@
 import { HcRpcError, type JsonValue } from "@doriface/protocol";
-import { mergeVaults, parseVaultDoc, type VaultDoc } from "@doriface/vault";
+import { EMPTY_VAULT, mergeVaults, parseVaultDoc, type VaultDoc } from "@doriface/vault";
 
 /** One machine's copy of the `doriface-vault` document: `on` is the machine's name, null for the connected core. */
 export interface VaultReplica {
@@ -34,6 +34,7 @@ async function writeBack(
   doc: VaultDoc,
   version: number,
   held: VaultDoc,
+  merge: (a: VaultDoc, b: VaultDoc) => VaultDoc,
   attempt = 1,
 ): Promise<VaultDoc> {
   if (canonical(held) === canonical(doc)) return doc;
@@ -45,7 +46,7 @@ async function writeBack(
   }
   const again = await replica.get();
   const current = parseVaultDoc(again.value);
-  return writeBack(replica, mergeVaults(doc, current), again.version, current, attempt + 1);
+  return writeBack(replica, merge(doc, current), again.version, current, merge, attempt + 1);
 }
 
 /**
@@ -56,7 +57,9 @@ async function writeBack(
 export async function syncVault(
   replicas: readonly VaultReplica[],
   step: (merged: VaultDoc) => Promise<VaultDoc>,
+  mesh: string,
 ): Promise<VaultSync> {
+  const merge = (a: VaultDoc, b: VaultDoc): VaultDoc => mergeVaults(a, b, mesh);
   const failed: { on: string | null; message: string }[] = [];
   const read = await Promise.all(
     replicas.map(async (replica) => {
@@ -70,20 +73,20 @@ export async function syncVault(
     }),
   );
   const copies = read.flat();
-  const first = copies[0];
-  if (first === undefined) throw new Error("no machine holds the mesh vault right now");
-  const merged = copies.slice(1).reduce((doc, copy) => mergeVaults(doc, copy.doc), first.doc);
+  if (copies.length === 0) throw new Error("no machine holds the mesh vault right now");
+  // Every copy goes through the merge, which drops whatever is not signed by who it claims, before `step` sees it.
+  const merged = copies.reduce((doc, copy) => merge(doc, copy.doc), EMPTY_VAULT);
   let result = await step(merged);
   const written = await Promise.all(
     copies.map(async (copy) => {
       try {
-        return await writeBack(copy.replica, result, copy.version, copy.doc);
+        return await writeBack(copy.replica, result, copy.version, copy.doc, merge);
       } catch (cause) {
         failed.push({ on: copy.replica.on, message: messageOf(cause) });
         return result;
       }
     }),
   );
-  result = written.reduce(mergeVaults, result);
+  result = written.reduce(merge, result);
   return { doc: result, failed };
 }

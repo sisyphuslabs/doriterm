@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { HcRpcError, type JsonValue } from "@doriface/protocol";
-import { EMPTY_VAULT, mergeVaults, parseVaultDoc, type VaultDoc } from "@doriface/vault";
+import { EMPTY_VAULT, maintain, mergeVaults, parseVaultDoc, type VaultDoc } from "@doriface/vault";
+import { contextOf, MESH, testDevice, type TestDevice } from "../../../../packages/vault/src/testing.ts";
 import { syncVault, type VaultReplica } from "./vault-sync.ts";
 
 interface Held {
@@ -34,75 +35,78 @@ function replica(on: string | null, held: Held, options: { conflictOnce?: () => 
   return self;
 }
 
-/** A well-formed envelope under a recognisable id; merge keeps it as is (signatures are checked on read). */
-const withDevice = (doc: VaultDoc, tag: string): VaultDoc => {
-  const id = `mesh.${tag
-    .padEnd(32, "0")
-    .replace(/[^0-9a-f]/g, "0")
-    .slice(0, 32)}`;
-  const envelope = {
-    v: 1,
-    id,
-    tier: "mesh",
-    gen: 1,
-    rev: 1,
-    at: "2026-11-24T00:00:00.000Z",
-    payload: tag,
-    signer: { kind: "owner" },
-    sig: tag,
-  } as const;
-  return { ...doc, entries: { ...doc.entries, [id]: envelope } };
-};
-const tags = (doc: VaultDoc): string[] =>
-  Object.values(doc.entries)
-    .map((entry) => entry.payload)
-    .toSorted();
 const asJson = (doc: VaultDoc): JsonValue => JSON.parse(JSON.stringify(doc));
+const announcers = (doc: VaultDoc): string[] => Object.keys(doc.devices).toSorted();
+
+async function members(
+  count: number,
+): Promise<{ devices: TestDevice[]; announce: (doc: VaultDoc, at: number) => Promise<VaultDoc> }> {
+  const devices = await Promise.all(Array.from({ length: count }, () => testDevice()));
+  const ctx = (at: number) => {
+    const device = devices[at];
+    if (device === undefined) throw new Error("no such device");
+    return contextOf(device, devices);
+  };
+  return { devices, announce: (doc, at) => maintain(doc, ctx(at)) };
+}
 
 describe("syncVault", () => {
   test("merges every reachable copy, applies the step once, and writes the result where it differs", async () => {
-    const a = replica(null, { value: asJson(withDevice(EMPTY_VAULT, "a")), version: 3 });
+    const { devices, announce } = await members(2);
+    const a = replica(null, { value: asJson(await announce(EMPTY_VAULT, 0)), version: 3 });
     const b = replica("other", { value: null, version: 0 });
-    const step = async (doc: VaultDoc) => withDevice(doc, "c");
-    const result = await syncVault([a, b], step);
-    expect(tags(result.doc)).toEqual(["a", "c"]);
+    const result = await syncVault([a, b], (doc) => announce(doc, 1), MESH);
+    expect(announcers(result.doc)).toEqual(devices.map((device) => device.signPub).toSorted());
     expect(parseVaultDoc(a.writes.at(-1))).toEqual(result.doc);
     expect(parseVaultDoc(b.writes.at(-1))).toEqual(result.doc);
     expect(result.failed).toEqual([]);
   });
 
   test("leaves a copy that already holds the result untouched", async () => {
-    const doc = withDevice(EMPTY_VAULT, "a");
+    const { announce } = await members(1);
+    const doc = await announce(EMPTY_VAULT, 0);
     const a = replica(null, { value: asJson(doc), version: 1 });
-    await syncVault([a], async (merged) => merged);
+    await syncVault([a], async (merged) => merged, MESH);
     expect(a.writes).toEqual([]);
   });
 
+  test("never writes an item that is not signed by who it claims to another machine", async () => {
+    const { devices, announce } = await members(1);
+    const genuine = await announce(EMPTY_VAULT, 0);
+    const signPub = devices[0]?.signPub ?? "";
+    const forged = {
+      ...genuine,
+      devices: { [signPub]: { body: "{}", sig: "forged" }, intruder: { body: "{}", sig: "x" } },
+    };
+    const hostile = replica(null, { value: asJson(forged), version: 1 });
+    const honest = replica("other", { value: asJson(genuine), version: 1 });
+    const result = await syncVault([hostile, honest], async (doc) => doc, MESH);
+    expect(result.doc).toEqual(mergeVaults(EMPTY_VAULT, genuine, MESH));
+    expect(honest.writes).toEqual([]);
+  });
+
   test("a write that lost a race re-reads that copy and keeps both changes", async () => {
-    const held: Held = { value: asJson(withDevice(EMPTY_VAULT, "a")), version: 1 };
-    const racing = replica(null, held, {
+    const { devices, announce } = await members(3);
+    const held: Held = { value: asJson(await announce(EMPTY_VAULT, 0)), version: 1 };
+    const raced = await announce(parseVaultDoc(held.value), 1);
+    const conflict = replica(null, held, {
       conflictOnce: () => {
-        held.value = asJson(withDevice(parseVaultDoc(held.value), "raced"));
+        held.value = asJson(raced);
         held.version += 1;
       },
     });
-    const result = await syncVault([racing], async (doc) => withDevice(doc, "mine"));
-    expect(tags(parseVaultDoc(held.value))).toEqual(["a", "mine", "raced"]);
+    const result = await syncVault([conflict], (doc) => announce(doc, 2), MESH);
+    expect(announcers(parseVaultDoc(held.value))).toEqual(devices.map((device) => device.signPub).toSorted());
     expect(result.doc).toEqual(parseVaultDoc(held.value));
   });
 
   test("an unreachable machine is reported and the others still sync; none reachable is an error", async () => {
+    const { announce } = await members(1);
     const up = replica(null, { value: null, version: 0 });
     const down = replica("away", { value: null, version: 0 }, { down: true });
-    const result = await syncVault([up, down], async (doc) => withDevice(doc, "a"));
+    const result = await syncVault([up, down], (doc) => announce(doc, 0), MESH);
     expect(result.failed).toEqual([{ on: "away", message: "machine unreachable" }]);
     expect(up.writes).toHaveLength(1);
-    await expect(syncVault([down], async (doc) => doc)).rejects.toThrow("no machine");
-  });
-
-  test("the merge is the same whichever copy answers first", () => {
-    const x = withDevice(EMPTY_VAULT, "x");
-    const y = withDevice(EMPTY_VAULT, "y");
-    expect(mergeVaults(x, y)).toEqual(mergeVaults(y, x));
+    await expect(syncVault([down], async (doc) => doc, MESH)).rejects.toThrow("no machine");
   });
 });

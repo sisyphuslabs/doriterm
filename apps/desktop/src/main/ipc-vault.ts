@@ -6,7 +6,5 @@ export type { VaultDeps } from "./ipc-vault-handlers.ts";
 
 export function registerVaultIpc(deps: VaultDeps): void {
   const handlers = vaultHandlers(deps);
-  ipcMain.handle(VaultChannel.recipient, (event) => handlers.recipient(event));
-  ipcMain.handle(VaultChannel.protection, (event) => handlers.protection(event));
-  ipcMain.handle(VaultChannel.unseal, (event, candidate: unknown) => handlers.unseal(event, candidate));
+  ipcMain.handle(VaultChannel.keyholder, (event, request: unknown) => handlers.keyholder(event, request));
 }

@@ -1,6 +1,4 @@
-/** Renderer to main: the mesh vault key the main process holds behind the OS key store. */
+/** Renderer to main: the mesh vault keyholder, whose keys stay in the main process behind the OS key store. */
 export const VaultChannel = {
-  recipient: "doriface:vault-recipient",
-  protection: "doriface:vault-protection",
-  unseal: "doriface:vault-unseal",
+  keyholder: "doriface:vault-keyholder",
 } as const;

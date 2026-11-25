@@ -1,15 +1,15 @@
 import type { HcConnection } from "@doriface/client";
 import { base64urlEncode } from "@doriface/crypto";
-import { VAULT_DOC } from "@doriface/vault";
+import { type Keyholder, remoteKeyholder, VAULT_DOC } from "@doriface/vault";
 import { useEffect, useSyncExternalStore } from "react";
 import { connectionStore, useConnection } from "../connection/store.ts";
-import { desktopVaultKey } from "../desktop/bridge.ts";
+import { desktopKeyholderCall } from "../desktop/bridge.ts";
 import { memberCards } from "../mesh/bundle-view.ts";
 import { loadSignKey } from "../mesh/identity.ts";
 import { membershipSnapshot } from "../mesh/membership-state.ts";
 import { deviceStore } from "../storage/idb.ts";
+import { callOver } from "./vault-channel.ts";
 import { MeshVault, type MeshVaultSnapshot } from "./mesh-vault.ts";
-import { loadVaultKey } from "./vault-key.ts";
 import type { VaultReplica } from "./vault-sync.ts";
 
 function openConnection(): HcConnection {
@@ -36,7 +36,18 @@ async function replicas(): Promise<readonly VaultReplica[]> {
   return [replicaOn(connection, null), ...live.map((name) => replicaOn(connection, name))];
 }
 
-let vaultKey: ReturnType<typeof loadVaultKey> | undefined;
+/**
+ * Where this device's tier keys are held: the desktop app's main process, else a worker of this page. Either way the
+ * page gets handles that use a key, never the key.
+ */
+function openKeyholder(): Promise<Keyholder> {
+  const desktop = desktopKeyholderCall();
+  if (desktop !== null) return remoteKeyholder(desktop);
+  const worker = new Worker(new URL("./vault-worker.ts", import.meta.url), { type: "module", name: "vault" });
+  return remoteKeyholder(callOver(worker));
+}
+
+let keyholder: Promise<Keyholder> | undefined;
 
 export const meshVault = new MeshVault({
   replicas,
@@ -49,11 +60,11 @@ export const meshVault = new MeshVault({
     return { mesh: view.mesh, members, self: { signPub, sign: (message) => card.sign(message) } };
   },
   key: () => {
-    vaultKey ??= loadVaultKey(deviceStore, globalThis.crypto?.subtle ?? null, desktopVaultKey());
-    vaultKey.catch(() => {
-      vaultKey = undefined;
+    keyholder ??= openKeyholder();
+    keyholder.catch(() => {
+      keyholder = undefined;
     });
-    return vaultKey;
+    return keyholder;
   },
   storage: deviceStore,
   now: () => new Date().toISOString(),

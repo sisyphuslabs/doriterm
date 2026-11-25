@@ -394,12 +394,8 @@ export interface LocalHostStartFailed {
 /** What the desktop shell exposes to the renderer as `window.doriface`. */
 export interface DorifaceBridge {
   readonly version: string;
-  /** The mesh vault key in the main process, behind the OS key store; the page never sees the key itself. */
-  readonly vaultKey: {
-    recipient(): Promise<string>;
-    protection(): Promise<string>;
-    unseal(sealed: Uint8Array): Promise<Uint8Array>;
-  };
+  /** The mesh vault keyholder in the main process; its answers carry handles, never a key. */
+  readonly vaultKeyholder: { call(request: unknown): Promise<unknown> };
   readonly platform: DesktopPlatform;
   /** Opens an allowlisted https link in the system browser; resolves false when the link is refused. */
   openExternal(url: string): Promise<boolean>;

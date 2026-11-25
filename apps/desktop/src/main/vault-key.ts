@@ -11,11 +11,9 @@ export interface KeyStore {
   decrypt(data: Buffer): string;
 }
 
-export type DesktopKeyProtection = "os-keystore" | "unprotected";
-
 export interface DesktopVaultKey {
   readonly recipient: string;
-  readonly protection: DesktopKeyProtection;
+  readonly protection: "os-keystore";
   unseal(sealed: Uint8Array): Promise<Uint8Array>;
 }
 
@@ -24,10 +22,12 @@ const FILE = "vault-key";
 /**
  * This computer's vault key: an age X25519 identity, on disk only as OS key store ciphertext (owner-only file), opened
  * once per launch into this process's memory and never handed to the page. A copy of the file without this user's
- * login (Keychain, DPAPI) opens nothing. Without any OS key store it refuses rather than write the key in the clear.
+ * login (Keychain, DPAPI) opens nothing. Without a real OS key store (none, or Linux's constant-key `basic_text`) it
+ * refuses rather than write the key in the clear.
  */
 export async function openVaultKey(dir: string, store: KeyStore): Promise<DesktopVaultKey> {
-  if (!store.available()) throw new Error("no OS key store is available to hold the vault key");
+  if (!store.available() || store.backend() === "basic_text")
+    throw new Error("no OS key store is available to hold the vault key");
   const path = join(dir, FILE);
   let identity: string;
   if (existsSync(path)) {
@@ -45,7 +45,7 @@ export async function openVaultKey(dir: string, store: KeyStore): Promise<Deskto
   }
   return {
     recipient: await recipientOf(identity),
-    protection: store.backend() === "basic_text" ? "unprotected" : "os-keystore",
+    protection: "os-keystore",
     unseal: (sealed) => unseal([identity], sealed),
   };
 }

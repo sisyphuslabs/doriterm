@@ -1,14 +1,7 @@
-import type { DeviceKey, KeyProtection } from "@doriface/vault";
+import type { DeviceKey } from "@doriface/vault";
 import { generateSecretKey, recipientOf, unseal } from "typevault/core";
 import { keepsStoredKeys } from "../connection/device-key.ts";
 import type { KeyValueStore } from "../storage/idb.ts";
-
-/** The desktop app's vault key, held by its main process behind the OS key store (Keychain, DPAPI, Secret Service). */
-export interface VaultKeyBridge {
-  recipient(): Promise<string>;
-  protection(): Promise<KeyProtection>;
-  unseal(sealed: Uint8Array): Promise<Uint8Array>;
-}
 
 const KEY = "vault-key";
 const ALGORITHM = { name: "X25519" } as const;
@@ -53,19 +46,11 @@ async function create(storage: KeyValueStore, subtle: SubtleCrypto | null): Prom
 }
 
 /**
- * This device's vault key. The desktop app's lives in its main process; a browser's is a non-extractable X25519
- * CryptoKey in IndexedDB, generated on first use, so script can use it but never read it. It is a key apart from the
+ * This browser's vault key: a non-extractable X25519 CryptoKey in IndexedDB, generated on first use, so script can use
+ * it but never read it. It is loaded only in the vault worker, with the tier keys it opens (vault-worker.ts). It is a key apart from the
  * device's Noise key: a vault key may be replaced without re-pairing, and the Noise key never decrypts stored data.
  */
-export async function loadVaultKey(
-  storage: KeyValueStore,
-  subtle: SubtleCrypto | null,
-  bridge: VaultKeyBridge | null,
-): Promise<DeviceKey> {
-  if (bridge !== null) {
-    const [recipient, protection] = await Promise.all([bridge.recipient(), bridge.protection()]);
-    return { recipient, protection, unseal: (sealed) => bridge.unseal(sealed) };
-  }
+export async function loadVaultKey(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<DeviceKey> {
   const held = storedOf(await storage.get(KEY));
   return deviceKeyOf(held ?? (await create(storage, subtle)));
 }

@@ -56,28 +56,14 @@ const dictation: Pick<
     }
   : {};
 
-/** The mesh vault key, held by the main process; the page gets its recipient and opened wraps, never the key. */
-const vaultKey = {
-  async recipient(): Promise<string> {
-    const recipient: unknown = await ipcRenderer.invoke(VaultChannel.recipient);
-    if (typeof recipient !== "string") throw new Error("the main process returned no vault key");
-    return recipient;
-  },
-  async protection(): Promise<string> {
-    const protection: unknown = await ipcRenderer.invoke(VaultChannel.protection);
-    if (typeof protection !== "string") throw new Error("the main process returned no vault key protection");
-    return protection;
-  },
-  async unseal(sealed: Uint8Array): Promise<Uint8Array> {
-    const opened: unknown = await ipcRenderer.invoke(VaultChannel.unseal, sealed);
-    if (!(opened instanceof Uint8Array)) throw new Error("the main process returned no opened wrap");
-    return opened;
-  },
+/** The mesh vault keyholder in the main process: the page sends it calls and gets handles, never a key. */
+const vaultKeyholder = {
+  call: (request: unknown): Promise<unknown> => ipcRenderer.invoke(VaultChannel.keyholder, request),
 };
 
 const bridge: DorifaceBridge = {
   ...dictation,
-  vaultKey,
+  vaultKeyholder,
   version,
   platform: parsePlatform(process.platform),
   async openExternal(url) {

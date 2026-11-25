@@ -1,8 +1,9 @@
 import {
-  type DeviceKey,
   type EntryRead,
+  type Keyholder,
   type KeyProtection,
   maintain,
+  openersOf,
   type MemberSigner,
   readEntry,
   resolveVault,
@@ -28,7 +29,7 @@ export interface MeshVaultDeps {
   readonly replicas: () => Promise<readonly VaultReplica[]>;
   /** This device's place in the mesh, or undefined when it has not joined one. */
   readonly member: () => Promise<MeshMember | undefined>;
-  readonly key: () => Promise<DeviceKey>;
+  readonly key: () => Promise<Keyholder>;
   readonly storage: KeyValueStore;
   readonly now: () => string;
 }
@@ -154,7 +155,7 @@ export class MeshVault {
     try {
       const ctx = await this.#context();
       if (ctx === undefined) return this.#set({ ...INITIAL, phase: "not-member" });
-      const { doc } = await syncVault(await this.#deps.replicas(), (merged) => step(merged, ctx));
+      const { doc } = await syncVault(await this.#deps.replicas(), (merged) => step(merged, ctx), ctx.mesh);
       this.#doc = doc;
       if (this.#ledger?.dirty === true) await this.#deps.storage.put(LEDGER, this.#ledger.snapshot());
       this.#set(await this.#view(doc, ctx));
@@ -166,8 +167,9 @@ export class MeshVault {
   }
 
   async #view(doc: VaultDoc, ctx: VaultContext): Promise<MeshVaultSnapshot> {
-    const { devices, tier } = resolveVault(doc, ctx);
-    const holders = new Set(Object.keys(tier === undefined ? {} : (doc.wraps[tier.id] ?? {})));
+    const resolved = resolveVault(doc, ctx);
+    const { devices } = resolved;
+    const holders = openersOf(doc, ctx, resolved);
     const members = [...devices.values()].map((device) => ({
       signPub: device.signPub,
       protection: device.protection,
