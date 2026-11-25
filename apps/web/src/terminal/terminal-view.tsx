@@ -49,6 +49,7 @@ import { useTerminalInput } from "./use-terminal-input.ts";
 import { usePaneVisibility } from "./use-pane-visibility.ts";
 import { type PaintHold, useTerminalAttach } from "./use-terminal-attach.ts";
 import { useKeyboardClaim } from "./use-keyboard-claim.ts";
+import { useSizeReclaim } from "./use-size-reclaim.ts";
 import { useCursor } from "./use-cursor.ts";
 
 /**
@@ -159,6 +160,7 @@ export function TerminalView(props: TerminalViewProps) {
   useEffect(() => {
     if (wt !== null && softKeyboard) quietKeyboard(wt.element);
   }, [wt, softKeyboard]);
+  useSizeReclaim(softKeyboard, wt, stream);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
   // The real predictor reads every input and write of this view (#1595); a spec's stand-in replaces it when installed.

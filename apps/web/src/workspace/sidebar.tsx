@@ -19,17 +19,32 @@ export interface SidebarProps {
   readonly active: string | null;
   readonly onOpen: (address: string) => void;
   readonly onPalette: () => void;
+  /** Overrides the stored rail preference when given. */
+  readonly rail?: boolean;
+  /** Called by the rail's Expand sidebar item instead of clearing the stored rail preference. */
+  readonly onExpand?: () => void;
+  /** Renders as a fixed-width overlay drawer: never a rail and without a resize edge. */
+  readonly drawer?: boolean;
 }
 
 /** Until it is measured, the rail's width on the web (--sidebar-rail-width, 2.75rem). */
 const RAIL_PX = 44;
 
-export function Sidebar({ terminals, active, onOpen, onPalette }: SidebarProps) {
+export function Sidebar({
+  terminals,
+  active,
+  onOpen,
+  onPalette,
+  rail: railProp,
+  onExpand,
+  drawer = false,
+}: SidebarProps) {
   const paletteKeys = useActionKeys("app.palette");
   const filter = useSidebarFilter();
   const machines = useMachinesContext();
   const update = usePendingUpdate();
-  const [{ sidebarWidth, rail }, setSize] = useSidebarSize();
+  const [{ sidebarWidth, rail: storedRail }, setSize] = useSidebarSize();
+  const rail = drawer ? false : (railProp ?? storedRail);
   // The rail has no room for the field: its rows are not filtered either.
   const query = rail ? "" : filter.query;
   const [dragging, setDragging] = useState(false);
@@ -40,7 +55,7 @@ export function Sidebar({ terminals, active, onOpen, onPalette }: SidebarProps) 
   }, [rail]);
   // A width the person dragged to wins over --sidebar-width; the default leaves the token in charge.
   const style: CSSProperties | undefined =
-    rail || sidebarWidth === DEFAULT_SIDEBAR_WIDTH ? undefined : { width: `${sidebarWidth}px` };
+    drawer || rail || sidebarWidth === DEFAULT_SIDEBAR_WIDTH ? undefined : { width: `${sidebarWidth}px` };
   return (
     <aside
       ref={aside}
@@ -49,7 +64,7 @@ export function Sidebar({ terminals, active, onOpen, onPalette }: SidebarProps) 
       style={style}
       className={cn(
         "motion-arrive relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar [--arrive-from:none]",
-        rail ? "w-(--sidebar-rail-width)" : "w-(--sidebar-width)",
+        drawer ? "h-full w-(--sidebar-drawer-width)" : rail ? "w-(--sidebar-rail-width)" : "w-(--sidebar-width)",
         // One transition list: the arrival's opacity and transform (motion-arrive) and, unless a drag is under way, the width.
         dragging
           ? "transition-[opacity,transform] duration-(--duration-standard) ease-out"
@@ -97,7 +112,7 @@ export function Sidebar({ terminals, active, onOpen, onPalette }: SidebarProps) 
             rail
             icon={<PanelLeftOpen aria-hidden />}
             label="Expand sidebar"
-            onClick={() => setSize({ rail: false })}
+            onClick={onExpand ?? (() => setSize({ rail: false }))}
           />
         ) : null}
         <SidebarFooterItem
@@ -114,7 +129,9 @@ export function Sidebar({ terminals, active, onOpen, onPalette }: SidebarProps) 
           onClick={machines.openAddMachine}
         />
       </SidebarFooter>
-      <SidebarEdge width={sidebarWidth} rail={rail} railWidth={railPx} onChange={setSize} onDragging={setDragging} />
+      {drawer || railProp !== undefined ? null : (
+        <SidebarEdge width={sidebarWidth} rail={rail} railWidth={railPx} onChange={setSize} onDragging={setDragging} />
+      )}
     </aside>
   );
 }
