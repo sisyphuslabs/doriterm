@@ -602,7 +602,7 @@ index dbff0264a6d9d0fe4feea8d7de0ef8c617216b8b..b9be38a24246578ff2713e1e8798a5a8
      invalidateColors(): void;
      /** Replaces decorations only, preserving native text selection. */
 diff --git a/dist/renderer.js b/dist/renderer.js
-index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..cc02cd7986847c9b83bc25f7f0c1047678a8b99e 100644
+index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..1f20ae624797fb56a46d5a0daed7770fd0a2d634 100644
 --- a/dist/renderer.js
 +++ b/dist/renderer.js
 @@ -158,8 +158,42 @@ function cellSpanPart(className, style, text) {
@@ -785,14 +785,18 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..cc02cd7986847c9b83bc25f7f0c10476
          const reconfigured = this.gpu.configure(this.cols, this.rows, {
              charWidth: viewport.charWidth ?? 0,
              rowHeight: viewport.rowHeight,
-@@ -1417,8 +1494,10 @@ export class Renderer {
+@@ -1417,8 +1494,14 @@ export class Renderer {
                  return false;
              }
          }
 -        if (core.getScrollbackCount() !== this._renderedScrollbackCount)
-+        if (core.getScrollbackCount() !== this._renderedScrollbackCount) {
++        const scrollbackCount = core.getScrollbackCount();
++        if (scrollbackCount !== this._renderedScrollbackCount) {
              this.staleScrollback = true;
-+            this._sizeScrollbackForGpu(core.getScrollbackCount());
++            // Only a history that shrank (cleared and written again) leaves the old height taller than the new end; a
++            // grown one is clamped to the old end, which is still the bottom, so it costs no layout per frame.
++            if (scrollbackCount < this._renderedScrollbackCount)
++                this._sizeScrollbackForGpu(scrollbackCount);
 +        }
          const cursor = core.getCursor();
          this.gpuCoreCursor = cursor;
