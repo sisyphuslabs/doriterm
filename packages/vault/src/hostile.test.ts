@@ -79,6 +79,25 @@ describe("a hostile writer of one core's document", () => {
   });
 });
 
+describe("a machine that deletes a removed device's wrap", () => {
+  test("cannot stop the rotation: a device that saw the wrap still rotates once that device is removed", async () => {
+    const [laptop, phone, lost] = [await testDevice(), await testDevice(), await testDevice()];
+    const all = [laptop, phone, lost];
+    let doc = await maintain(EMPTY_VAULT, contextOf(laptop, all));
+    doc = await maintain(doc, contextOf(phone, all));
+    doc = await maintain(doc, contextOf(lost, all));
+    doc = await maintain(doc, contextOf(laptop, all));
+    doc = await writeEntry(doc, contextOf(laptop, all), SONIOX, fields("sk-1"));
+    const tier = resolveVault(doc, contextOf(laptop, all)).tier;
+    if (tier === undefined) throw new Error("expected a tier");
+    const holders = { ...doc.wraps[tier.id] };
+    delete holders[lost.signPub];
+    const stripped: VaultDoc = { ...doc, wraps: { ...doc.wraps, [tier.id]: holders } };
+    const after = await maintain(stripped, contextOf(laptop, [laptop, phone]));
+    expect(resolveVault(after, contextOf(laptop, [laptop, phone])).tier?.gen).toBe(tier.gen + 1);
+  });
+});
+
 describe("a generation no current member can open", () => {
   test("is replaced by a new one instead of staying locked forever", async () => {
     const [laptop, phone] = [await testDevice(), await testDevice()];

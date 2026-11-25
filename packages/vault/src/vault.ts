@@ -169,6 +169,7 @@ async function newGeneration(doc: VaultDoc, ctx: VaultContext, resolved: Resolve
     ctx.ledger.accept(entryMark(envelope.id), draft.rev);
   }
   ctx.ledger.accept(TIER_MARK, gen);
+  ctx.memory.remember(tierId, resolved.devices.keys());
   return { ...next, wraps: { ...next.wraps, [tierId]: await signedWraps(ctx, tierId, handle, resolved.devices) } };
 }
 
@@ -194,8 +195,8 @@ function pruneOlder(doc: VaultDoc, tier: ResolvedTier, ctx: VaultContext): Vault
 
 /**
  * One device's share of keeping the vault: announce this device's key; start a generation when there is no trusted one
- * (never over a stale copy); with the current key in hand, rotate when a member signed a wrap for a device that is no
- * longer a member (it saw the key), and otherwise wrap the key to every announced member whose current key has no
+ * (never over a stale copy); with the current key in hand, rotate when a device that is no longer a member was ever
+ * seen holding a member-signed wrap of it (in this copy or remembered on this device: it saw the key), and otherwise wrap the key to every announced member whose current key has no
  * member-signed wrap. Without the key, it starts a new generation only when no current member's announced key has a
  * wrap at all (nobody can open it any more); otherwise it waits for a device that can.
  */
@@ -210,11 +211,13 @@ export async function maintain(doc: VaultDoc, ctx: VaultContext): Promise<VaultD
   const handle = await unlockTier(announced, ctx, tier);
   if (handle === undefined) return openers.size > 0 ? announced : newGeneration(announced, ctx, resolved, []);
   const kept = pruneOlder(announced, tier, ctx);
-  if ([...wraps.keys()].some((holder) => !ctx.members.has(holder)))
+  ctx.memory.remember(tier.id, wraps.keys());
+  if ([...ctx.memory.holders(tier.id)].some((holder) => !ctx.members.has(holder)))
     return newGeneration(kept, ctx, resolved, await openAll(kept, tier, handle));
   const missing = new Map([...devices].filter(([holder]) => !openers.has(holder)));
   if (missing.size === 0) return kept;
   const added = await signedWraps(ctx, tier.id, handle, missing);
+  ctx.memory.remember(tier.id, Object.keys(added));
   const merged = { ...kept.wraps[tier.id] };
   for (const [holder, bySigner] of Object.entries(added)) merged[holder] = { ...merged[holder], ...bySigner };
   return { ...kept, wraps: { ...kept.wraps, [tier.id]: merged } };

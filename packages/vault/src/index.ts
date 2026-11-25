@@ -1,4 +1,11 @@
-export type { DeviceKey, KeyProtection, MemberSigner, VaultContext } from "./context.ts";
+export {
+  type DeviceKey,
+  type HolderMemory,
+  holderMemory,
+  type KeyProtection,
+  type MemberSigner,
+  type VaultContext,
+} from "./context.ts";
 export { EMPTY_VAULT, mergeVaults, parseVaultDoc, VAULT_DOC, type VaultDoc } from "./doc.ts";
 export { type EntryDraft, type Keyholder, localKeyholder, type TierHandle } from "./keyholder.ts";
 export { type KeyholderRequest, remoteKeyholder, serveKeyholder } from "./keyholder-rpc.ts";

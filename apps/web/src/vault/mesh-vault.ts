@@ -1,5 +1,6 @@
 import {
   type EntryRead,
+  holderMemory,
   type Keyholder,
   type KeyProtection,
   maintain,
@@ -72,12 +73,22 @@ export interface SonioxKey {
 }
 
 const LEDGER = "vault-ledger";
+const HOLDERS = "vault-holders";
 const INITIAL: MeshVaultSnapshot = { phase: "loading", soniox: { kind: "none" }, members: [], protection: undefined };
 
 function ledgerOf(value: unknown): Record<string, number> {
   if (typeof value !== "object" || value === null) return {};
   return Object.fromEntries(
     Object.entries(value).filter((pair): pair is [string, number] => Number.isSafeInteger(pair[1])),
+  );
+}
+
+function holdersOf(value: unknown): Record<string, string[]> {
+  if (typeof value !== "object" || value === null) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([tier, holders]) =>
+      Array.isArray(holders) ? [[tier, holders.filter((holder): holder is string => typeof holder === "string")]] : [],
+    ),
   );
 }
 
@@ -97,6 +108,7 @@ export class MeshVault {
   #snapshot: MeshVaultSnapshot = INITIAL;
   #doc: VaultDoc | undefined;
   #ledger: RevisionLedger | undefined;
+  #memory: ReturnType<typeof holderMemory> | undefined;
 
   constructor(deps: MeshVaultDeps) {
     this.#deps = deps;
@@ -148,7 +160,8 @@ export class MeshVault {
     const member = await this.#deps.member();
     if (member === undefined || !member.members.has(member.self.signPub)) return undefined;
     this.#ledger ??= new RevisionLedger(ledgerOf(await this.#deps.storage.get(LEDGER)));
-    return { ...member, key: await this.#deps.key(), ledger: this.#ledger, now: this.#deps.now };
+    this.#memory ??= holderMemory(holdersOf(await this.#deps.storage.get(HOLDERS)));
+    return { ...member, key: await this.#deps.key(), ledger: this.#ledger, memory: this.#memory, now: this.#deps.now };
   }
 
   async #round(step: (doc: VaultDoc, ctx: VaultContext) => Promise<VaultDoc>, rethrow = false): Promise<void> {
@@ -158,6 +171,7 @@ export class MeshVault {
       const { doc } = await syncVault(await this.#deps.replicas(), (merged) => step(merged, ctx), ctx.mesh);
       this.#doc = doc;
       if (this.#ledger?.dirty === true) await this.#deps.storage.put(LEDGER, this.#ledger.snapshot());
+      if (this.#memory !== undefined) await this.#deps.storage.put(HOLDERS, this.#memory.snapshot());
       this.#set(await this.#view(doc, ctx));
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);

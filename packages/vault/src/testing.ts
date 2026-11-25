@@ -1,7 +1,7 @@
 import { base64urlEncode } from "@doriface/crypto";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { RevisionLedger, recipientOf, unseal } from "typevault/core";
-import type { DeviceKey, MemberSigner, VaultContext } from "./context.ts";
+import { type DeviceKey, type HolderMemory, holderMemory, type MemberSigner, type VaultContext } from "./context.ts";
 import { type Keyholder, localKeyholder } from "./keyholder.ts";
 
 export const MESH = "mesh-test";
@@ -15,6 +15,7 @@ export interface TestDevice {
   readonly deviceKey: DeviceKey;
   readonly key: Keyholder;
   readonly ledger: RevisionLedger;
+  readonly memory: HolderMemory;
 }
 
 /** A member device: an Ed25519 mesh signing key and a non-extractable WebCrypto X25519 vault key, as a browser holds. */
@@ -35,6 +36,7 @@ export async function testDevice(): Promise<TestDevice> {
     deviceKey,
     key: localKeyholder(deviceKey),
     ledger: new RevisionLedger(),
+    memory: holderMemory(),
   };
 }
 
@@ -44,5 +46,6 @@ export const contextOf = (device: TestDevice, members: readonly TestDevice[]): V
   self: device.signer,
   key: device.key,
   ledger: device.ledger,
+  memory: device.memory,
   now: () => NOW,
 });
