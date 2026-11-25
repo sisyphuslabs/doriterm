@@ -42,10 +42,10 @@ for (const colorScheme of ["light", "dark"] as const) {
         // Only the phone shell renders this container (phone-shell.tsx, ScrollArea slot="agents-list" -> data-slot), so the
         // wide sidebar's identical AgentRows can never satisfy the count (#527: they did, before the phone had mounted).
         const agents = page.locator("[data-slot='agents-list'] button:has([data-floor='name']):has(time)");
-        // Wait for the narrow layout's own switch: the query apps/web/src/workspace/use-narrow.ts:3 reads, which commits the
+        // Wait for the compact tier's own switch: the width apps/web/src/layout/width-tier.ts reads, which commits the
         // phone tree a frame or more after setViewportSize resolves (and after Close settings' history.back() lands). The old
         // isVisible() read the screen before that commit, skipped the click and left the phone on the terminal (#527).
-        await page.waitForFunction(() => matchMedia("(max-width: 767.98px)").matches);
+        await page.waitForFunction(() => window.innerWidth < 600);
         await expect(agents, "the phone lists the one terminal this test opened").toHaveCount(1, { timeout: 30_000 });
         await agents.click();
       }
