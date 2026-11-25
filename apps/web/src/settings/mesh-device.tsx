@@ -25,7 +25,7 @@ export function MeshDevice({
       description={
         <>
           <span className="block">{installed ? "Home-screen app" : "Browser"}</span>
-          <span className="block">{`Member of ${mesh} · ${online} machines online`}</span>
+          <span className="block">{`Member of ${mesh} · ${online} ${online === 1 ? "machine" : "machines"} online`}</span>
           <details className="mt-2 text-xs">
             <summary className="cursor-pointer">Details</summary>
             <span className="font-mono [overflow-wrap:anywhere]">{fingerprint}</span>

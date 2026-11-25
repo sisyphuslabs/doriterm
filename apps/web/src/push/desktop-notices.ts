@@ -15,6 +15,7 @@ import { type NoticeBridge, noticeBridge, permissionOf } from "./notice-bridge.t
 import { NoticeTrigger, type Trigger, wanted } from "./notice-trigger.ts";
 import type { NoticeStep, PushView } from "./push-settings.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 export const DESKTOP_NOTICES_KEY = "doriface.desktop-notices";
 
@@ -197,7 +198,7 @@ export class DesktopNotices {
   /** The connected host's core as its hello names it: the machine `local` stands for. */
   #hostName(): string {
     const state = this.#options.connection.state;
-    return state.phase === "open" ? state.connection.hello.core.name : "the host";
+    return state.phase === "open" ? machineName(state.connection) : "the host";
   }
 
   /** The pane this window shows focused and visible, or null: no notification comes about it. */

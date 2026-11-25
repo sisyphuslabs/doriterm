@@ -19,6 +19,8 @@ export interface FakeRelayHost {
   readonly join: (link: string) => Promise<string>;
   readonly meshOffer: (auto?: boolean) => Promise<{ readonly link: string; readonly code: string }>;
   readonly memberIds: () => Promise<readonly string[]>;
+  /** Renames this host's own mesh member, as `doriface-host mesh rename` does; its hc core keeps the name it had. */
+  readonly renameSelf: (name: string) => Promise<void>;
   /**
    * The devices this host has paired, as `doriface-host devices list` reads them: the static public key each one
    * presented when it paired, and the name it gave. A reload that presents another key is another device.
@@ -349,6 +351,11 @@ async function startDriver(options: Startup): Promise<FakeRelayHost> {
       pairingOffer: readOffer,
       pairingLink: async () => (await readOffer()).link,
       meshOffer: (auto = false) => readOffer(auto ? "mesh-link-auto" : "mesh-link"),
+      async renameSelf(name: string) {
+        input.write(`rename-self ${name}\n`);
+        const { renamed } = await protocol.next("the host's own member renamed");
+        if (renamed !== name) throw new Error(`the host did not rename its member to ${name}`);
+      },
       async memberIds() {
         input.write("members\n");
         const { members } = await protocol.next("the host's current member identities");

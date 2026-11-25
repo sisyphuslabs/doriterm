@@ -27,6 +27,7 @@ import { afterEnd } from "./session-actions.ts";
 import { afterGrace } from "./use-dead-panes.ts";
 import { useQuietKeyboard } from "./use-quiet-keyboard.ts";
 import { useStickyKeys } from "./use-sticky-keys.ts";
+import { machineName } from "../connection/attached-name.ts";
 
 export interface PhoneTerminalProps {
   readonly connection: HcConnection;
@@ -211,7 +212,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
       <PhoneHeader
         terminal={terminal}
         terminals={terminals}
-        host={connection.hello.core.name}
+        host={machineName(connection)}
         tabTitle={tabTitle}
         backTo={full && panes.length > 1 ? "Split" : backTo}
         onBack={back}

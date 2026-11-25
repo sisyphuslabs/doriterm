@@ -16,6 +16,7 @@ import { desktopBridge } from "../desktop/bridge.ts";
 import { useConnectionSettings } from "../connection/store.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { MembershipMachines } from "./membership-device.tsx";
+import { machineName } from "../connection/attached-name.ts";
 import { AgentSkill, type SkillParts } from "./agent-skill-line.tsx";
 
 const NO_TERMINALS: readonly Terminal[] = [];
@@ -100,12 +101,12 @@ function MachineRows({ connection, onAdd }: { readonly connection: HcConnection;
   return (
     <div className="flex flex-col gap-3">
       <ul aria-label="Machines" className="flex flex-col divide-y divide-border">
-        <AgentSkill connection={connection} machine={undefined} name={connection.hello.core.name}>
+        <AgentSkill connection={connection} machine={undefined} name={machineName(connection)}>
           {(skill) => (
             <li>
               <SettingRow
                 className="border-b-0"
-                title={title(<Monitor aria-hidden />, connection.hello.core.name)}
+                title={title(<Monitor aria-hidden />, machineName(connection))}
                 description={
                   <>
                     {ownComputer ? "This machine" : "Online · Relay"}
