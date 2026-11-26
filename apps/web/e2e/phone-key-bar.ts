@@ -87,6 +87,24 @@ export async function scrollDocument(page: Page, px: number): Promise<void> {
   await page.evaluate((offset) => (Reflect.get(window, "scrollDocument") as (px: number) => void)(offset), px);
 }
 
+/**
+ * Resizes the page as a phone does for its keyboard, split screen or a rotation, and returns once the page has handled
+ * that size: its next window resize, listened for before the size changes, after the app's own listener. Sizes set back
+ * to back otherwise reach the page as one resize, which a phone never sends: the keyboard logic then sees a rotation and
+ * the keyboard closing as one change (#2553). `size` must differ from the page's size now, or no resize comes.
+ */
+export async function resizeSeen(page: Page, size: { readonly width: number; readonly height: number }): Promise<void> {
+  await page.evaluate(() => {
+    Reflect.set(
+      window,
+      "__resizeSeen",
+      new Promise<void>((resolve) => window.addEventListener("resize", () => resolve(), { once: true })),
+    );
+  });
+  await page.setViewportSize(size);
+  await page.evaluate(() => Reflect.get(window, "__resizeSeen") as Promise<void>);
+}
+
 export async function showKeyboard(page: Page, px: number): Promise<void> {
   await page.evaluate((height) => (Reflect.get(window, "softKeyboard") as (px: number) => void)(height), px);
 }
