@@ -251,18 +251,28 @@ test.describe("a touch phone", () => {
     // cat -t shows a tab as ^I; with echo off, each line the program prints is its one copy of what it was sent.
     await page.keyboard.type("stty -echo; cat -vt\r");
     await keysAtRest(page);
-    // The keyboard closes by its own key: the panel rides down to its dock. The ride is held at 120 ms of its 240.
-    await showKeyboard(page, 0);
-    const tab = key(page, "Tab");
-    const point = await tab.evaluate((button) => {
-      const panel = button.closest('[role="toolbar"]')?.parentElement;
-      const [ride] = panel?.getAnimations() ?? [];
-      if (ride === undefined) throw new Error("no ride under way");
-      ride.pause();
-      ride.currentTime = 120;
-      const { x, y, width, height } = button.getBoundingClientRect();
-      return { x: x + width / 2, y: y + height / 2 };
-    });
+    // The keyboard closes by its own key and the panel rides down to its dock. The watch is armed before the keyboard
+    // moves, and catches the ride as the panel's move lands (its layout effect starts the ride in that same commit);
+    // the ride is held at 120 ms of its 240 while Tab is hit where it is drawn.
+    const point = await key(page, "Tab").evaluate(
+      (button) =>
+        new Promise<{ readonly x: number; readonly y: number }>((resolve, reject) => {
+          const panel = button.closest('[role="toolbar"]')?.parentElement;
+          if (!(panel instanceof HTMLElement)) throw new Error("no keys panel");
+          new MutationObserver((_records, observer) => {
+            const [ride] = panel.getAnimations();
+            if (ride === undefined) return;
+            observer.disconnect();
+            ride.pause();
+            ride.currentTime = 120;
+            const { x, y, width, height } = button.getBoundingClientRect();
+            resolve({ x: x + width / 2, y: y + height / 2 });
+          }).observe(panel, { attributes: true });
+          const closeKeyboard = Reflect.get(window, "softKeyboard");
+          if (typeof closeKeyboard !== "function") reject(new Error("no fake keyboard"));
+          else closeKeyboard(0);
+        }),
+    );
     await page.touchscreen.tap(point.x, point.y);
     await keysBar(page).evaluate((toolbar) => {
       for (const ride of toolbar.parentElement?.getAnimations() ?? []) ride.play();
