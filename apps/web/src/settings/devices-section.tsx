@@ -29,7 +29,7 @@ function describe(state: ConnectionState): ReactNode {
         <>
           {hostFailure(state.error)}
           {/* The transport's own words (a close code) only behind a disclosure, for a report (#477). */}
-          <details className="mt-1 text-xs">
+          <details className="mt-1">
             <summary className="cursor-pointer">Details</summary>
             <span className="[overflow-wrap:anywhere]">{state.error.message}</span>
           </details>

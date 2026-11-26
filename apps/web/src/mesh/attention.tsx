@@ -69,7 +69,7 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             <span className="block">Update the inviting machine to compare a join code.</span>
           ) : (
             <>
-              <span aria-label="Join code" className="my-3 block text-3xl font-semibold tracking-widest tabular-nums">
+              <span aria-label="Join code" className="my-3 block font-mono text-2xl tracking-widest tabular-nums">
                 {join.code}
               </span>
               <span className="block">
@@ -90,7 +90,6 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
         state === "open" ? (
           <div className="flex gap-2" data-mesh-answer={state}>
             <Button
-              size="sm"
               data-mesh-verdict="deny"
               loading={busy === "deny"}
               disabled={busy !== undefined}
@@ -99,7 +98,6 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
               The codes differ
             </Button>
             <Button
-              size="sm"
               variant="primary"
               data-mesh-verdict="approve"
               loading={busy === "approve"}

@@ -21,8 +21,13 @@ const ROW_FLOOR = 48;
 /** What Settings used before #2878 (`py-3.5`), which the scale may not grow past: Q asked for compact, as herdr-app is. */
 const ROW_PADDING_CEILING = 14;
 
-/** Keybindings' rows (one line each, so the count does not depend on the font) fully on a 390x844 phone before #2878. */
-const KEYBINDING_ROWS_ON_PHONE = 4;
+/**
+ * The other spacing Settings used before #2878, which the scale may not grow past either: 4 px under a section title
+ * (`pb-1`) and 20 px between a section's blocks (`gap-5`, the widest of Terminal's and Keybindings'). With rows padded
+ * no more than before, a phone shows at least as many rows as it did, whatever the font wraps (#2882 review).
+ */
+const TITLE_GAP_CEILING = 4;
+const BLOCK_GAP_CEILING = 20;
 
 interface Scale {
   readonly headers: readonly number[];
@@ -40,8 +45,15 @@ async function measure(scope: Locator): Promise<Scale> {
       // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function as source, so its helpers live inside it
       const shown = (el: Element): boolean => {
         const box = el.getBoundingClientRect();
+        // A closed disclosure keeps its content's boxes in Chromium, so its content would count though nobody sees it.
+        const closed = el.closest("details:not([open])");
+        const folded = closed !== null && el.closest("summary")?.parentElement !== closed;
         return (
-          box.width > 1 && box.height > 1 && !el.closest(".sr-only") && getComputedStyle(el).visibility !== "hidden"
+          box.width > 1 &&
+          box.height > 1 &&
+          !folded &&
+          !el.closest(".sr-only") &&
+          getComputedStyle(el).visibility !== "hidden"
         );
       };
       // oxlint-disable-next-line unicorn/consistent-function-scoping -- as above
@@ -162,18 +174,22 @@ test.describe("390x844 phone", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use({ ...phone, viewport: { width: 390, height: 844 } });
 
-  test("Settings > Keybindings shows as many rows as before the scale", async ({ page }) => {
-    await page.goto("/settings");
-    const settings = settingsView(page);
-    await settings.getByRole("tab", { name: "Keybindings", exact: true }).click();
-    await expect(settings.getByRole("heading", { name: "Keybindings", level: 2 })).toBeVisible();
-    const whole = await settings.locator('[data-slot="settings-body"]').evaluate((body) => {
-      const view = body.getBoundingClientRect();
-      return [...body.querySelectorAll("[data-setting-row]")].filter((row) => {
-        const box = row.getBoundingClientRect();
-        return box.height > 1 && box.top >= view.top - 0.5 && box.bottom <= view.bottom + 0.5;
-      }).length;
+  for (const section of ["Terminal", "Keybindings"] as const) {
+    test(`Settings > ${section} spaces its title and blocks no wider than before the scale`, async ({ page }) => {
+      await page.goto("/settings");
+      const settings = settingsView(page);
+      await settings.getByRole("tab", { name: section, exact: true }).click();
+      const title = settings.getByRole("heading", { name: section, level: 2 });
+      await expect(title).toBeVisible();
+      const titleGap = await title.evaluate((heading) =>
+        Number.parseFloat(getComputedStyle(heading.parentElement ?? heading).paddingBottom),
+      );
+      const blockGap = await settings.locator('[data-slot="settings-body"] input[type=search]').evaluate((field) => {
+        const stack = field.parentElement?.parentElement?.parentElement;
+        return stack === null || stack === undefined ? Number.NaN : Number.parseFloat(getComputedStyle(stack).rowGap);
+      });
+      expect(titleGap, "space under the section title").toBeLessThanOrEqual(TITLE_GAP_CEILING);
+      expect(blockGap, "space between the section's blocks").toBeLessThanOrEqual(BLOCK_GAP_CEILING);
     });
-    expect(whole).toBeGreaterThanOrEqual(KEYBINDING_ROWS_ON_PHONE);
-  });
+  }
 });
