@@ -77,12 +77,13 @@ test("a tab's menu hands the keyboard to the question its item opened, and never
   await page.evaluate(() => new Promise((settled) => requestAnimationFrame(() => requestAnimationFrame(settled))));
   await expect.poll(() => page.evaluate(() => document.activeElement?.closest("[data-tab-id]") !== null)).toBe(false);
 
-  // Once it has the keyboard, the question renames as any other: an empty name gives the tab its number back.
+  // Once it has the keyboard, the question renames as any other: an empty name gives the tab back the name its shell
+  // was started with (#2670).
   await page.evaluate(() => {
     const release = Reflect.get(window, "releaseQuestion");
     if (typeof release === "function") Reflect.apply(release, window, []);
   });
   await field.fill("");
   await question.getByRole("button", { name: "Rename" }).click();
-  await expect(tabBar(page)).toHaveText(["1", /a-two/], { timeout: 15_000 });
+  await expect(tabBar(page)).toHaveText(["menu-a1", /a-two/], { timeout: 15_000 });
 });
