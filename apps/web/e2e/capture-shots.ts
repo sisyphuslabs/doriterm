@@ -20,7 +20,8 @@ import {
 } from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
 
-export type Width = "1440" | "390";
+/** 390 a phone; 750 an open fold and 820 an iPad in portrait, both the tablet shell (a rail and the panes); 1440 a desktop. */
+export type Width = "1440" | "820" | "750" | "390";
 /** Which stored connection a shot starts from: the e2e host, pairing against the fake relay, or none. */
 export type Start = "connected" | "pairing" | "none";
 
@@ -255,7 +256,7 @@ export const SHOTS: readonly Shot[] = [
     start: "connected",
     run: async (page, width) => {
       await page.goto("/");
-      if (width === "1440") return openTerminal(page, /shell/, "$");
+      if (width !== "390") return openTerminal(page, /shell/, "$");
       await page
         .getByRole("button", { name: /deploy/ })
         .first()
@@ -389,12 +390,14 @@ export const SHOTS: readonly Shot[] = [
     // The agent tree in the sidebar and phone Agents list: a working parent, a blocked child and a grandchild (#2746).
     name: "agents-tree",
     start: "connected",
-    run: async (page) => {
+    run: async (page, width) => {
       const parent = startAgent("host", "release", "working", "website");
       const child = startTreeHelper("migrate", "blocked", parent);
       const grandchild = startTreeHelper("lint", "working", child);
       treeShot = [grandchild, child, parent];
       await page.goto("/");
+      // The tablet shell keeps a rail of glyphs: its drawer draws the tree.
+      if (width === "750" || width === "820") await page.getByRole("button", { name: "Show sidebar" }).click();
       const needsYou = page.getByRole("region", { name: "Needs you", exact: true });
       await expect(needsYou.locator('[data-floor="name"][title="release"]')).toBeVisible({ timeout: 20_000 });
       await expect(needsYou.locator('[data-floor="name"][title="migrate"]')).toBeVisible({ timeout: 20_000 });

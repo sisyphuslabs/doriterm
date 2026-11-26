@@ -32,14 +32,30 @@ const FOUR_K = process.env["CAPTURE_PRESET"] === "4k";
 const FOUR_K_FONT_PX = 21;
 const SUFFIX = FOUR_K ? "-4k" : "";
 
+/** A tablet-size touch screen: open Galaxy Z Fold7 (750 x 832, see fold.ts) or an iPad Air in portrait (820 x 1180). */
+const touchTablet = (width: number, height: number, deviceScaleFactor: number) => ({
+  ...devices["iPad (gen 7)"],
+  viewport: { width, height },
+  deviceScaleFactor,
+});
+
 const contextFor = (width: Width) =>
   width === "1440"
     ? FOUR_K
       ? { viewport: { width: 1280, height: 900 }, deviceScaleFactor: 3 }
       : { viewport: { width: 1440, height: 900 } }
-    : devices["iPhone 14"];
+    : width === "750"
+      ? touchTablet(750, 832, 2.625)
+      : width === "820"
+        ? touchTablet(820, 1180, 2)
+        : devices["iPhone 14"];
 
-for (const width of ["1440", "390"] as const) {
+/** CAPTURE_WIDTHS=390,750,820,1440 adds the fold and iPad sizes the redesign reviews use; the default is 1440 and 390. */
+const WIDTHS: readonly Width[] = (process.env["CAPTURE_WIDTHS"] ?? "1440,390")
+  .split(",")
+  .filter((width): width is Width => ["1440", "820", "750", "390"].includes(width));
+
+for (const width of WIDTHS) {
   for (const theme of ["day", "night"] as const) {
     for (const shot of SHOTS.filter((entry) => entry.only === undefined || entry.only === width)) {
       test(`${shot.name} ${width} ${theme}`, async ({ browser }) => {
