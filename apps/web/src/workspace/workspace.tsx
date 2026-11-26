@@ -52,7 +52,6 @@ import { LiveTerminalsContext } from "./use-shown.ts";
 import { rosterFor } from "../roster/roster.ts";
 import { useForgetEndedHistoryGaps } from "../terminal/history-gap-notice.ts";
 import { useResumeEnds } from "./resume-ends.ts";
-import { useRedrawNotice } from "./use-redraw-notice.ts";
 import { useSteady } from "./steady.ts";
 import { useStableCallback } from "./use-stable-callback.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
@@ -77,7 +76,6 @@ export function Workspace({ connection }: WorkspaceProps) {
 
 function WorkspaceScreen({ connection }: WorkspaceProps) {
   const fed = useTerminals(connection);
-  useRedrawNotice(connection);
   useForgetEndedHistoryGaps(fed.loaded, fed.terminals);
   const {
     entries: listed,
