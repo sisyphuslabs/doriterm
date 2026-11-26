@@ -8,9 +8,26 @@ import { useTabDrag } from "./tab-drag.ts";
 import { DropCaret, DropIndicator, placement } from "./tab-drop.tsx";
 import { TabItem, type WorkspaceTab } from "./tab-item.tsx";
 import { TabOverflowMenu } from "./tab-overflow-menu.tsx";
-import { useTabOverflow } from "./tab-overflow.ts";
+import { type TabOverflow, useTabOverflow } from "./tab-overflow.ts";
 
 export type { WorkspaceTab } from "./tab-item.tsx";
+
+/**
+ * One group of tabs, pinned or not: it scrolls sideways once its tabs no longer fit, fading the edge that hides tabs.
+ * The other tabs shrink with the strip; the pinned stay whole up to half of it (#1621) and scroll past that, so neither
+ * group takes the whole strip from the other (review of #2865).
+ */
+const STRIP_GROUP = cn(
+  "relative flex min-w-0 items-center gap-[3px] overflow-x-auto overflow-y-hidden px-1 py-1 coarse:pr-2",
+  "data-overflow-start:[mask-image:linear-gradient(to_right,transparent,black_16px)]",
+  "data-overflow-end:[mask-image:linear-gradient(to_right,black_calc(100%-16px),transparent)]",
+  "data-overflow-start:data-overflow-end:[mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-16px),transparent)]",
+);
+
+const edgeAttributes = (edges: TabOverflow) => ({
+  ...(edges.start ? { "data-overflow-start": "" } : {}),
+  ...(edges.end ? { "data-overflow-end": "" } : {}),
+});
 
 /** A tab that moved, by any path (drag, its menu, a key); counted so moving it to the same place again is news. */
 export interface TabMoved {
@@ -122,7 +139,10 @@ export function TabBar({
 
   const overflowKey = `${key}\0${activeId}\0${tabs.map((tab) => tab.title).join("\n")}`;
   const edges = useTabOverflow(scroller, overflow, overflowKey);
-  const overflowing = edges.start || edges.end;
+  // Pinned tabs shrink and scroll in their own group too, so a strip of mostly or only pinned tabs still says what it
+  // hides: either group overflowing offers All tabs (review of #2865).
+  const pinEdges = useTabOverflow(pinnedList, overflow && pins > 0, overflowKey);
+  const overflowing = edges.start || edges.end || pinEdges.start || pinEdges.end;
 
   // Said once per move, as the strip stood then: a later title change or a tab opening or closing does not say it again.
   // The count's parity changes the text each time, so a second move to the same place is still read out.
@@ -208,8 +228,9 @@ export function TabBar({
           <div
             ref={pinnedList}
             data-tab-pins
+            {...edgeAttributes(pinEdges)}
             onClickCapture={pinnedDrag.onClickCapture}
-            className="relative flex shrink-0 items-center gap-[3px] px-1 py-1"
+            className={cn(STRIP_GROUP, "max-w-1/2 shrink-0")}
           >
             {pinnedDrag.drag === null ? null : <DropIndicator drag={pinnedDrag.drag} />}
             {pinnedDrag.drag === null ? null : <DropCaret drag={pinnedDrag.drag} />}
@@ -224,15 +245,9 @@ export function TabBar({
         <div
           ref={scroller}
           data-tab-scroll
-          {...(edges.start ? { "data-overflow-start": "" } : {})}
-          {...(edges.end ? { "data-overflow-end": "" } : {})}
+          {...edgeAttributes(edges)}
           onClickCapture={restDrag.onClickCapture}
-          className={cn(
-            "relative flex min-w-0 flex-initial items-center gap-[3px] overflow-x-auto overflow-y-hidden px-1 py-1 coarse:pr-2",
-            "data-overflow-start:[mask-image:linear-gradient(to_right,transparent,black_16px)]",
-            "data-overflow-end:[mask-image:linear-gradient(to_right,black_calc(100%-16px),transparent)]",
-            "data-overflow-start:data-overflow-end:[mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-16px),transparent)]",
-          )}
+          className={cn(STRIP_GROUP, "flex-initial")}
         >
           {restDrag.drag === null ? null : <DropIndicator drag={restDrag.drag} />}
           {restDrag.drag === null ? null : <DropCaret drag={restDrag.drag} />}
