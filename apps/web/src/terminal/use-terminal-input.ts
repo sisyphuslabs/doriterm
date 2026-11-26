@@ -4,7 +4,7 @@ import type { TerminalHandle, WTerm } from "@wterm/react";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { unprovenLinks } from "../connection/wake.ts";
 import { machineOf } from "../workspace/model.ts";
-import { type Dropped, HeldInput, HOLD_MS } from "./held-input.ts";
+import { type Dropped, type HeldEntry, HeldInput, HOLD_MS } from "./held-input.ts";
 import { inputOrder } from "./input-order.ts";
 import { machineLines } from "./machine-lines.ts";
 import { pasteInto } from "./terminal-port.ts";
@@ -17,9 +17,7 @@ export interface TerminalInputPath {
    * Input not written yet: typed while no stream was open (attaching, or the connection dropped), sent to the next stream
    * in order, or while a wake proved the link, sent to the same stream once it answers (#1370).
    */
-  readonly pending: RefObject<TerminalInput[]>;
-  /** Whether the person typed any of `pending` (not only the terminal's answers): the stream it goes to lets its replay go. */
-  readonly pendingTyped: RefObject<boolean>;
+  readonly pending: RefObject<HeldEntry[]>;
   /** Input typed into the renderer, rewritten as the host asks (latched phone modifiers). */
   readonly typedInto: (data: string) => void;
   /** Input from outside the renderer (the phone's keys, a bound key, a confirmed paste). */
@@ -51,7 +49,7 @@ interface InputSources {
   readonly inputStarts?: () => void;
   /** True while the renderer writes output: input it gives then is its answer to a program's query (#2794). */
   readonly answering?: () => boolean;
-  /** Told as the person's own input is sent, before it goes: a held replay lets go, so its echo is drawn (#2794). */
+  /** Told as the person's own input is written to the stream, before it goes: a held replay lets go (#2794). */
   readonly personSends?: () => void;
 }
 
@@ -79,13 +77,25 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   latestAddress.current = address;
   const latestToasts = useRef(toasts);
   latestToasts.current = toasts;
+  const latestPersonSends = useRef(sources.personSends);
+  latestPersonSends.current = sources.personSends;
   // Every human-input write goes through send, so keys pressed during a reconnect or a wake replay in the order pressed.
   const [held] = useState(
     () =>
       new HeldInput(
         unprovenLinks,
         () => latestConnection.current,
-        () => stream.current,
+        () => {
+          const open = stream.current;
+          if (open === null) return null;
+          // The release goes with the write itself, so a write the stream refused releases again when it is retried.
+          return {
+            write: (data, person) => {
+              if (person) latestPersonSends.current?.();
+              return open.write(data);
+            },
+          };
+        },
         {
           lines: machineLines,
           machine: () => machineOf(latestAddress.current),
@@ -101,19 +111,12 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   latestInputStarts.current = sources.inputStarts;
   const latestAnswering = useRef(sources.answering);
   latestAnswering.current = sources.answering;
-  const latestPersonSends = useRef(sources.personSends);
-  latestPersonSends.current = sources.personSends;
-  const pendingTyped = useRef(false);
   const [order] = useState(() =>
     inputOrder(
       (data, person) => {
         latestInputStarts.current?.();
         latestPredict.current?.current?.(data);
-        // Sent at once, nothing waits before it: what the person typed while the link was down has gone out.
-        if (held.ready()) pendingTyped.current = false;
-        if (person && held.ready()) latestPersonSends.current?.();
-        else if (person) pendingTyped.current = true;
-        held.send(data);
+        held.send(data, person);
       },
       () => latestAnswering.current?.() ?? false,
     ),
@@ -181,5 +184,5 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
     wt.element.addEventListener("input", onInput);
     return () => wt.element.removeEventListener("input", onInput);
   }, [wt, typesComposition]);
-  return { pending, pendingTyped, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
+  return { pending, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
 }

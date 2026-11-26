@@ -77,11 +77,11 @@ test("a link that never proves itself gets none of what waited: it all goes to t
   held.send("b");
   links.settle(link, false);
   expect(old.took).toEqual([]);
-  expect(held.pending).toEqual(["a", "b"]);
+  expect(held.pending.map(({ data }) => data)).toEqual(["a", "b"]);
 
   // The reattach takes what waited (use-terminal-attach.ts), and later input follows it on the new stream.
   sink = stream();
-  for (const data of held.pending.splice(0)) sink.write(data);
+  for (const { data, person } of held.pending.splice(0)) sink.write(data, person);
   held.send("c");
   expect(sink.took).toEqual(["a", "b", "c"]);
   expect(old.took).toEqual([]);
@@ -101,10 +101,10 @@ test("a stream that refuses a write while what waited is flushed keeps the rest,
   for (const data of ["a", "b", "c"]) held.send(data);
   links.settle(link, true);
   expect(first.took).toEqual(["a"]);
-  expect(held.pending).toEqual(["b", "c"]);
+  expect(held.pending.map(({ data }) => data)).toEqual(["b", "c"]);
   // Input typed after the refusal queues behind what still waits, so nothing overtakes it.
   held.send("d");
-  expect(held.pending).toEqual(["b", "c", "d"]);
+  expect(held.pending.map(({ data }) => data)).toEqual(["b", "c", "d"]);
 
   sink = stream();
   held.flush();

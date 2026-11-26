@@ -59,21 +59,23 @@ describe("an attach's replay hold (D5)", () => {
     expect(holds).toEqual([true, false]);
   });
 
-  test("keys the person typed while the link was down let the new replay go before they are written, so their echo is drawn (#2794)", () => {
+  test("queued input lets the new replay go just before the first key the person typed, so its echo is drawn (#2794)", () => {
     const { pacer, holds } = attaching();
     const events: string[] = [];
-    const pending = ["l", "s"];
-    const typed = { current: true };
-    writeQueued(pacer, pending, typed, (data) => events.push(`${String(holds.at(-1))} ${String(data)}`));
-    expect(holds).toEqual([true, false]);
-    expect(events).toEqual(["false l", "false s"]);
-    expect([pending, typed.current]).toEqual([[], false]);
+    const pending = [
+      { data: "\u001b[?62c", person: false },
+      { data: "l", person: true },
+      { data: "s", person: true },
+    ];
+    writeQueued(pacer, pending, (data) => events.push(`${String(holds.at(-1))} ${String(data)}`));
+    expect(events).toEqual(["true \u001b[?62c", "false l", "false s"]);
+    expect([holds, pending]).toEqual([[true, false], []]);
   });
 
   test("queued answers the terminal gave to a program's queries, with nothing the person typed, leave the replay held", () => {
     const { pacer, holds } = attaching();
     const written: unknown[] = [];
-    writeQueued(pacer, ["\u001b[?62c"], { current: false }, (data) => written.push(data));
+    writeQueued(pacer, [{ data: "\u001b[?62c", person: false }], (data) => written.push(data));
     expect(written).toEqual(["\u001b[?62c"]);
     expect(holds).toEqual([true]);
   });
