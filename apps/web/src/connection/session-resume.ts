@@ -9,9 +9,11 @@ export interface ResumableSession {
 }
 
 /**
- * How long a detached session is dialed for before the store gives it up and opens a new one. Under the host's own
- * 120 s window after it noticed the drop, which may itself come up to 90 s after the socket died (the relay's silence
- * reaper), so a resume that can succeed does within this; past it the session is most likely gone on the host too.
+ * How long a detached session is dialed for, from the drop or from the page's latest wake, before the store gives it up
+ * and opens a new one. A phone that drops in the background dials while it can and is frozen meanwhile; that time is not
+ * the resume's to spend, so a wake gives the budget back whole (#2853). Whether the session is still there is the host's
+ * to say (its own window after it noticed the drop, docs/transport.md); a page that stays up and keeps failing gives up
+ * after this.
  */
 export const RESUME_BUDGET_MS = 60_000;
 /** The waits between resume dials: short, since each dial is itself bounded, and cut short by a wake. */
@@ -67,6 +69,8 @@ export class SessionResumer {
   #wake: (() => void) | null = null;
   #running = false;
   #stopped = false;
+  /** When the budget started: the drop, or the page's latest wake. */
+  #since = 0;
 
   constructor(session: ResumableSession, hooks: ResumeHooks, budgetMs = RESUME_BUDGET_MS) {
     this.#session = session;
@@ -87,9 +91,13 @@ export class SessionResumer {
     void this.#run(reason);
   }
 
-  /** The page can work again: a wait between dials ends now, and a dial in flight is replaced by a fresh one. */
+  /**
+   * The page can work again: a wait between dials ends now, a dial in flight is replaced by a fresh one, and the budget
+   * starts again, since the time the page could not work was not the resume's to spend.
+   */
   now(): void {
     if (!this.#running) return;
+    this.#since = (this.#hooks.now ?? Date.now)();
     this.#wake?.();
     this.#abort?.abort(WOKE);
   }
@@ -104,7 +112,7 @@ export class SessionResumer {
 
   async #run(reason: Error): Promise<void> {
     const now = this.#hooks.now ?? Date.now;
-    const startedAt = now();
+    this.#since = now();
     let last: unknown = reason;
     for (let attempt = 0; !this.#stopped; attempt += 1) {
       const secure = this.#session.secure;
@@ -127,7 +135,7 @@ export class SessionResumer {
         // A dial the wake replaced is no failure: the next one goes at once.
         if (error === WOKE) continue;
         last = error;
-        if (isFinal(error) || now() - startedAt >= this.#budgetMs) break;
+        if (isFinal(error) || now() - this.#since >= this.#budgetMs) break;
         this.#hooks.log?.(`resume attempt ${attempt + 1} failed: ${message(error)}`);
         this.#hooks.failed?.(error instanceof Error ? error : new Error(String(error)));
         // oxlint-disable-next-line no-await-in-loop -- dials run one after another, each after its backoff

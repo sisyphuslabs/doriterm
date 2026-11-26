@@ -1,10 +1,18 @@
 import type { ByteLink } from "@doriface/client";
 import { CloseCode, type SecureSession } from "@doriface/crypto";
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import { RESUME_BACKOFF_MS, ResumeAbandonedError, type ResumableSession, SessionResumer } from "./session-resume.ts";
 
 const link = (): ByteLink => ({ send() {}, onData: () => () => {}, onClose: () => () => {}, close() {} });
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+/** Lets the resumer's promise chain run under fake timers, where `settle` would never fire. */
+async function turns(count = 10): Promise<void> {
+  if (count === 0) return;
+  await Promise.resolve();
+  await turns(count - 1);
+}
+
+afterEach(() => jest.useRealTimers());
 
 /** The parts of a session the resumer drives, with scripted outcomes for each resume. */
 function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone" | "old-host")[]) {
@@ -85,15 +93,16 @@ describe("SessionResumer", () => {
   });
 
   test("gives the session up with the last failure once the budget is spent, and at once when the host refuses the device", async () => {
+    jest.useFakeTimers();
     const spent = fakeSession(["refused"]);
     let now = 0;
     const resumer = new SessionResumer(spent.session, { resuming: () => undefined, now: () => now }, 1_000);
     resumer.start(new Error("dropped"));
-    await settle();
+    await turns();
     now = 2_000;
-    resumer.now();
-    await settle();
-    await settle();
+    jest.advanceTimersByTime(RESUME_BACKOFF_MS[0]);
+    await turns();
+    jest.useRealTimers();
     expect(spent.calls.abandoned.map((error) => error.message)).toEqual(["could not resume the session: refused"]);
     expect(spent.calls.abandoned[0]).toMatchObject({ code: CloseCode.IdleTimeout });
     expect(resumer.active).toBe(false);
@@ -104,6 +113,24 @@ describe("SessionResumer", () => {
     await settle();
     expect(revoked.calls.resumes).toBe(1);
     expect(revoked.calls.abandoned.length).toBe(1);
+  });
+
+  test("a wake gives the resume its whole budget again: time the page spent hidden or frozen does not use it up (#2853)", async () => {
+    const { session, calls } = fakeSession(["refused", "refused", "ok"]);
+    let now = 0;
+    const resumer = new SessionResumer(session, { resuming: () => undefined, now: () => now }, 1_000);
+    resumer.start(new Error("dropped"));
+    await settle();
+    expect(calls.resumes).toBe(1);
+    // The phone sat in the background for 5 s, five budgets, then came back: the dial it makes then is no last one.
+    now = 5_000;
+    resumer.now();
+    await settle();
+    expect(calls).toMatchObject({ resumes: 2, abandoned: [] });
+    resumer.now();
+    await settle();
+    expect(calls).toMatchObject({ resumes: 3, abandoned: [] });
+    expect(resumer.active).toBe(false);
   });
 
   test("gives the session up at once when the host refuses the resume (4413): another dial meets the same answer", async () => {
