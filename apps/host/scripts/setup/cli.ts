@@ -2,7 +2,7 @@
 /** The setup skill's command line (skills/doriterm-setup/SKILL.md); every step lives in setup.ts. */
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
-import { hostProfile, PROFILE_ENV, profileSetupOptions } from "../../src/state/profile.ts";
+import { hostProfile, PROFILE_ENV, ProfileRefused } from "../../src/state/profile.ts";
 import { SetupError, setupOs, stateRoot } from "./render.ts";
 import {
   checkBun,
@@ -13,6 +13,7 @@ import {
   joinMesh,
   resolvePaths,
   setupContext,
+  setupOptions,
   uninstall,
   updateCheckout,
   verify,
@@ -34,12 +35,13 @@ const USAGE = `usage: bun apps/host/scripts/setup/cli.ts <command> [options]
   --state-dir <dir>  the host's state (default: the installed service's, else ~/.local/state/doriface-host-mesh)
   --label <name>     the LaunchAgent label or systemd unit name (default com.sisyphuslabs.doriface-host / doriface-host)
   --listen <h:p>     the host's loopback listener (default: the installed service's, else 127.0.0.1:7766;
-                     "default" goes back to 127.0.0.1:7766)
+                     "default" goes back to 127.0.0.1:7766, or to the profile's any-free-port under --profile)
   --session <name>   the hc session (a separate core) the host serves (default: the installed service's, else hc's
-                     default core; "default" goes back to hc's default core)
+                     default core; "default" goes back to hc's default core, or to doriterm-<name> under --profile)
   --profile <name>   a separate host in its own mesh, beside the default one (default $DORITERM_PROFILE): label
                      doriface-host-<name>, state ~/.local/state/doriface-host-profiles/<name>, session
-                     doriterm-<name>, any free port; the flags above still win
+                     doriterm-<name>, any free port; the flags above win, then what an installed profile service
+                     already runs with
   --timeout <s>      how long install waits for the relay (default 90)`;
 
 const report: Report = (step, status, detail) => {
@@ -76,18 +78,21 @@ async function main(argv: readonly string[]): Promise<number> {
   if (!Number.isFinite(timeoutS) || timeoutS <= 0) {
     throw new SetupError("timeout", `--timeout wants a positive number of seconds, not "${values.timeout}"`);
   }
+  // An empty $DORITERM_PROFILE means unset; an empty --profile was asked for and names nothing, so it is refused.
+  if (values.profile === "")
+    throw new ProfileRefused("--profile wants a name: 1-32 lowercase letters, digits and inner dashes");
   const profile = hostProfile(values.profile === undefined ? process.env : { [PROFILE_ENV]: values.profile });
-  const derived: Partial<ReturnType<typeof profileSetupOptions>> =
-    profile === undefined
-      ? {}
-      : profileSetupOptions(profile, setupOs(process.platform), stateRoot(homedir(), process.env));
-  const context = setupContext(report, {
+  const flags = {
     src: values.src,
-    stateDir: values["state-dir"] ?? derived.stateDir,
-    label: values.label ?? derived.label,
-    listen: values.listen ?? derived.listen,
-    session: values.session ?? derived.session,
-  });
+    stateDir: values["state-dir"],
+    label: values.label,
+    listen: values.listen,
+    session: values.session,
+  };
+  const context = setupContext(
+    report,
+    setupOptions(flags, profile, setupOs(process.platform), stateRoot(homedir(), process.env)),
+  );
   switch (command) {
     case "install": {
       checkBun(context);
@@ -146,9 +151,11 @@ main(Bun.argv.slice(2)).then(
     process.exit(code);
   },
   (error: unknown) => {
-    const step = error instanceof SetupError ? error.code : "error";
+    // A refused profile is a refused command line, as in the host's own CLI: exit 2, before any state is written.
+    const code = error instanceof ProfileRefused ? 2 : 1;
+    const step = error instanceof SetupError ? error.code : error instanceof ProfileRefused ? "profile" : "error";
     report(step, "fail", error instanceof Error ? error.message : String(error));
-    report("result", "fail", "exit 1");
-    process.exit(1);
+    report("result", "fail", `exit ${code}`);
+    process.exit(code);
   },
 );
