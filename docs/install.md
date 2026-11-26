@@ -100,3 +100,9 @@ Pair each device once with one machine; through the mesh it reaches all of them.
 | `verify` fails right after a join                                                     | A new member's line comes up about 20 seconds after the join, once the mesh settles; run `verify` again.                                                                                                             |
 
 Every command takes `--state-dir`, `--src`, `--label`, `--listen` and `--session` (an hc session, which is a separate core) to override the defaults; `--help` lists them. To run a second host on one machine, for a second hc session, give it its own `--label`, `--state-dir` and `--listen 127.0.0.1:0` as well.
+
+### One machine in several meshes
+
+A host is a member of one mesh. To put one machine in a second mesh, run a second host under a profile: `--profile work` (or `DORITERM_PROFILE=work`) gives it the unit `doriface-host-work` (`com.sisyphuslabs.doriface-host.work` on macOS), the state dir `~/.local/state/doriface-host-profiles/work`, the hc session `doriterm-work` and any free loopback port; any of those flags still wins. The host's own commands take the same variable, so `DORITERM_PROFILE=work doriface-host mesh status` asks that host, and `hc --session doriterm-work` reaches its terminals. Each profile makes its own host keys, so the meshes share no key and no host ID.
+
+A profile is not a security boundary. Every profile runs as the same OS user, so a shell that a member of one mesh opens on this machine can read the other profile's keys and reach its terminals. Use a separate OS user for meshes that must not trust each other.

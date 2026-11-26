@@ -31,6 +31,7 @@ import { selfUpdate } from "./self-update/self-update.ts";
 import { assertListenAllowed, parseListen } from "./listen.ts";
 import { asStartupError, STARTUP_EXIT_CODES, StartupError, startupErrorLine } from "./startup-error.ts";
 import { defaultStateDir } from "./state/files.ts";
+import { hostProfile, serveDefaults } from "./state/profile.ts";
 
 const USAGE = `usage: doriface-host [options]
        doriface-host pair [options]
@@ -43,22 +44,26 @@ const USAGE = `usage: doriface-host [options]
        doriface-host update [--channel stable|beta] | verify-release <SHA256SUMS.txt> <SHA256SUMS.txt.sig>
        doriface-host skill install [--dir <dir>]... | skill status [--json] | skill uninstall
 
-  --listen <host:port>  where to listen (default 127.0.0.1:7766; loopback only)
+  --listen <host:port>  where to listen (default 127.0.0.1:7766, or any free port for a profile; loopback only)
   --hc <path>           the herdr-core binary (default hc)
   --install-hc          install (or update) herdr-core into ~/.local/bin from its checksummed release, then exit
-  --session <name>      the hc session to reach (hc connect --session)
+  --session <name>      the hc session to reach (hc connect --session; a profile's default is doriterm-<profile>)
   --token <token>       the client token (default $DORIFACE_HOST_TOKEN, else 32 random bytes)
   --print-token         print the token on stdout once listening
   --unsafe-listen       allow a non-loopback --listen (plaintext: anyone who can reach it gets a shell)
   --lan-listen <h:p>    for tests: also serve the end-to-end encrypted /v1/e2ee (only) here; no shipped client dials it (#2070)
-  --state-dir <dir>     host keys and paired devices (default $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host)
+  --state-dir <dir>     host keys and paired devices (default $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host,
+                        or $XDG_STATE_HOME/doriface-host-profiles/<profile>)
   --relay <url>         the relay this host keeps an encrypted-only uplink to (default ${DEFAULT_RELAY_URL})
   --no-relay            for tests: keep no relay uplink, so only this computer and a --lan-listen test reach the host
   --auto-update <ch>    stable or beta: update this binary from get.doriterm.com's signed manifest and exit for the
                         service manager to restart it; off (the default) leaves updates to you
   --push-test-origin <origin>  for tests: also post web push notices to this push service origin (port 0: any port)
   --version             print this host's version
-  -h, --help            show this help`;
+  -h, --help            show this help
+
+  $DORITERM_PROFILE     run a separate host, in its own mesh, beside the default one: its own state dir, hc session and
+                        port, for every command (1-32 lowercase letters, digits and inner dashes)`;
 
 const log = (line: string): void => {
   process.stderr.write(`${new Date().toISOString()} ${line}\n`);
@@ -140,7 +145,7 @@ async function serve(args: readonly string[]): Promise<void> {
     strict: true,
     allowPositionals: false,
     options: {
-      listen: { type: "string", default: "127.0.0.1:7766" },
+      listen: { type: "string" },
       hc: { type: "string", default: "hc" },
       session: { type: "string" },
       token: { type: "string" },
@@ -171,14 +176,15 @@ async function serve(args: readonly string[]): Promise<void> {
   const origin = updateOrigin(process.env);
   const given = values.token ?? process.env["DORIFACE_HOST_TOKEN"] ?? "";
   const token = given === "" ? generateToken() : assertValidToken(given);
-  const listen = parseListen(values.listen);
+  const defaults = serveDefaults(hostProfile(process.env), { listen: values.listen, session: values.session });
+  const listen = parseListen(defaults.listen);
   assertListenAllowed(listen, values["unsafe-listen"]);
   // Past this point the command line was accepted: a failure is the host's, never a reason to print the usage.
   const host = await startHost({
     listen,
     token,
     hc: values.hc,
-    session: values.session,
+    session: defaults.session,
     unsafeListen: values["unsafe-listen"],
     lanListen: values["lan-listen"] === undefined ? undefined : parseListen(values["lan-listen"], "--lan-listen"),
     stateDir: values["state-dir"] ?? defaultStateDir(),
@@ -189,7 +195,7 @@ async function serve(args: readonly string[]): Promise<void> {
   }).catch((error: unknown) => {
     throw asStartupError(error);
   });
-  const session = values.session === undefined ? "" : `, session ${values.session}`;
+  const session = defaults.session === undefined ? "" : `, session ${defaults.session}`;
   log(`doriface-host ${HOST_VERSION} listening on ${host.url} (hc ${host.hcVersion}${session})`);
   const e2ee = host.e2ee;
   if (e2ee !== undefined) {

@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 /** The setup skill's command line (skills/doriterm-setup/SKILL.md); every step lives in setup.ts. */
+import { homedir } from "node:os";
 import { parseArgs } from "node:util";
-import { SetupError } from "./render.ts";
+import { hostProfile, PROFILE_ENV, profileSetupOptions } from "../../src/state/profile.ts";
+import { SetupError, setupOs, stateRoot } from "./render.ts";
 import {
   checkBun,
   ensureHc,
@@ -35,6 +37,9 @@ const USAGE = `usage: bun apps/host/scripts/setup/cli.ts <command> [options]
                      "default" goes back to 127.0.0.1:7766)
   --session <name>   the hc session (a separate core) the host serves (default: the installed service's, else hc's
                      default core; "default" goes back to hc's default core)
+  --profile <name>   a separate host in its own mesh, beside the default one (default $DORITERM_PROFILE): label
+                     doriface-host-<name>, state ~/.local/state/doriface-host-profiles/<name>, session
+                     doriterm-<name>, any free port; the flags above still win
   --timeout <s>      how long install waits for the relay (default 90)`;
 
 const report: Report = (step, status, detail) => {
@@ -53,6 +58,7 @@ async function main(argv: readonly string[]): Promise<number> {
       label: { type: "string" },
       listen: { type: "string" },
       session: { type: "string" },
+      profile: { type: "string" },
       timeout: { type: "string", default: "90" },
       out: { type: "string" },
       from: { type: "string" },
@@ -70,12 +76,17 @@ async function main(argv: readonly string[]): Promise<number> {
   if (!Number.isFinite(timeoutS) || timeoutS <= 0) {
     throw new SetupError("timeout", `--timeout wants a positive number of seconds, not "${values.timeout}"`);
   }
+  const profile = hostProfile(values.profile === undefined ? process.env : { [PROFILE_ENV]: values.profile });
+  const derived: Partial<ReturnType<typeof profileSetupOptions>> =
+    profile === undefined
+      ? {}
+      : profileSetupOptions(profile, setupOs(process.platform), stateRoot(homedir(), process.env));
   const context = setupContext(report, {
     src: values.src,
-    stateDir: values["state-dir"],
-    label: values.label,
-    listen: values.listen,
-    session: values.session,
+    stateDir: values["state-dir"] ?? derived.stateDir,
+    label: values.label ?? derived.label,
+    listen: values.listen ?? derived.listen,
+    session: values.session ?? derived.session,
   });
   switch (command) {
     case "install": {
