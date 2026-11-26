@@ -120,7 +120,7 @@ export function AgentsGroup({
   const tree = !rail && narrowed.some((group) => group.agents.some((agent) => (agent.descendants ?? 0) > 0));
   const depthCap = heading ? 3 : 2;
   const list = (
-    <div className="flex flex-col gap-6 pt-3">
+    <div className="flex flex-col gap-4 pt-1">
       {groups.map((group, groupIndex) => {
         const unfoldedAgents = narrowed[groupIndex]?.agents ?? group.agents;
         const unfoldedIndexById = new Map(unfoldedAgents.map((agent, idx) => [agent.id, idx]));
