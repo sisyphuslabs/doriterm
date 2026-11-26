@@ -140,36 +140,6 @@ export function TerminalView(props: TerminalViewProps) {
   // Each stream, first or after a reconnect, starts the predictor over: what it predicted for the last one says nothing
   // about this one (Predictor.reset).
   const streamStarted = useRef<(() => void) | null>(null);
-  // The window's own focus, re-read as it changes: a size below this pane's grid is answered when the pane is in use,
-  // and a window that comes back to the front counts as back in use without a click inside it.
-  const [windowFocused, setWindowFocused] = useState(document.hasFocus());
-  useEffect(() => {
-    const on = (): void => setWindowFocused(true);
-    const off = (): void => setWindowFocused(false);
-    window.addEventListener("focus", on);
-    window.addEventListener("blur", off);
-    return () => {
-      window.removeEventListener("focus", on);
-      window.removeEventListener("blur", off);
-    };
-  }, []);
-  // A smaller viewer taking the pty (a phone opening this terminal, the core following its newest active viewer)
-  // lays the program out for that phone: this pane's grid keeps its columns, but all it draws wraps at the smaller
-  // width until the pane is touched (#2670). The pane in use answers a held size below its own grid by sending its
-  // own again; one at or above its grid is left standing (a wider pty only wraps), so panes converge on the larger
-  // one in use instead of fighting, and a smaller viewer alone keeps the size, as the core's own rule gives it.
-  const heldSize = props.held;
-  useEffect(() => {
-    if (heldSize === undefined || wt === null || !windowFocused || !focused) return;
-    if (heldSize.cols >= wt.cols && heldSize.rows >= wt.rows) return;
-    stream.current?.resize(wt.cols, wt.rows);
-  }, [
-    heldSize === undefined ? undefined : heldSize.cols,
-    heldSize === undefined ? undefined : heldSize.rows,
-    wt,
-    focused,
-    windowFocused,
-  ]);
   const input = useTerminalInput({
     wt,
     handle,

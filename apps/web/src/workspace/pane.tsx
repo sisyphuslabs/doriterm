@@ -192,7 +192,6 @@ export function Pane(props: PaneProps) {
               live={terminal.state === "live"}
               focused={focused}
               claimed={claimed}
-              held={{ cols: terminal.cols, rows: terminal.rows }}
               label={`${title} output`}
               onEnd={onEnd}
               onEnded={() => onEnded(terminal.address, terminal.pid ?? null)}
