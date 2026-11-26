@@ -1,6 +1,5 @@
-// #2670: a phone opening a terminal a desktop already watches does not size the pty down to the phone: the pane in
-// use answers a size below its own grid, so the program keeps laying out for the wider viewer and the desktop never
-// shows a phone-wide column until it alone is used.
+// #2670: a phone opening a terminal a desktop already shows does not size the pty down to the phone. A view that only
+// watches never sizes the host (D1, host-size.ts); the device a person types on does, so the desktop keeps its columns.
 import type { Browser, Page } from "@playwright/test";
 import { endAgent, startShell } from "./agents.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
@@ -11,26 +10,36 @@ import { fakeSoftKeyboard } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block" });
 
-/** A phone on the e2e core: its own context, a phone viewport, and a soft keyboard that only a press raises. */
-async function phoneOnSameCore(browser: Browser): Promise<Page> {
+/**
+ * A phone on the e2e core for the length of `run`: its own context, a phone viewport, and a soft keyboard that only a
+ * press raises. The context is closed however `run` or the phone's setup ends, so no page or session outlives the test.
+ */
+async function withPhone(browser: Browser, run: (phone: Page) => Promise<void>): Promise<void> {
   const context = await browser.newContext({
     serviceWorkers: "block",
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
   });
-  const settings = {
-    mode: "loopback",
-    relayUrl: "wss://relay-doriface.omo.dev",
-    directUrl: "",
-    hostId: "",
-    loopbackUrl: `ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`,
-    token: E2E_TOKEN,
-  };
-  await context.addInitScript((value) => localStorage.setItem("doriface.connection", value), JSON.stringify(settings));
-  const page = await context.newPage();
-  await fakeSoftKeyboard(page);
-  return page;
+  try {
+    const settings = {
+      mode: "loopback",
+      relayUrl: "wss://relay-doriface.omo.dev",
+      directUrl: "",
+      hostId: "",
+      loopbackUrl: `ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`,
+      token: E2E_TOKEN,
+    };
+    await context.addInitScript(
+      (value) => localStorage.setItem("doriface.connection", value),
+      JSON.stringify(settings),
+    );
+    const phone = await context.newPage();
+    await fakeSoftKeyboard(phone);
+    await run(phone);
+  } finally {
+    await context.close();
+  }
 }
 
 test("a phone opening the terminal a desktop watches leaves the desktop's columns their own width (#2670)", async ({
@@ -53,25 +62,21 @@ test("a phone opening the terminal a desktop watches leaves the desktop's column
     await expect.poll(async () => coreSize(address) === (await gridSize(desktop)), { timeout: 15_000 }).toBe(true);
     const own = await gridSize(desktop);
 
-    const phone = await phoneOnSameCore(browser);
-    const phoneTerminal = phone.locator(`[data-terminal="${address}"]`);
-    try {
+    await withPhone(browser, async (phone) => {
+      const phoneTerminal = phone.locator(`[data-terminal="${address}"]`);
       await phone.goto("/");
       await phone
         .getByRole("button", { name: /two-sizes/ })
         .first()
         .click();
       await expect(phoneTerminal).toBeVisible({ timeout: 20_000 });
-      // The phone's view attaches and would size the pty to its own 38-odd columns; the desktop, in use, answers.
+      // The phone only watches, so it attaches without taking the pty's size (D1): the program keeps the desktop's.
       await expect.poll(() => coreSize(address), { timeout: 10_000 }).toBe(own);
-      // The phone's own focus (a person about to type) does not take the columns either: the pane in use keeps them,
-      // and the two converge on the larger one instead of trading the size back and forth.
+      // Its focus alone (a person about to type) does not take the size either; only its first input would.
       await phoneTerminal.getByRole("textbox").focus();
       await expect.poll(() => coreSize(address), { timeout: 10_000 }).toBe(own);
       expect(await gridSize(desktop)).toBe(own);
-    } finally {
-      await phone.close();
-    }
+    });
   } finally {
     endAgent("host", address);
   }
