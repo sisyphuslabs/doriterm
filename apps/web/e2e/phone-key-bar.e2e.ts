@@ -49,10 +49,16 @@ for (const width of [390, 320]) {
     await expect(bar).toBeVisible();
     expect(await names(bar)).toEqual(expect.arrayContaining(BAR_KEYS));
     await expectTouchTargets(bar);
-    const keysPill = bar.getByRole("group", { name: "Keys", exact: true });
     const actionsPill = bar.getByRole("group", { name: "Actions", exact: true });
-    const [keysBox, actionsBox] = await Promise.all([keysPill.boundingBox(), actionsPill.boundingBox()]);
-    if (keysBox === null || actionsBox === null) throw new Error("pill not laid out");
+    // Both pills read at once, once the panel has ridden up to the keyboard (#2875): two reads mid-ride see two places.
+    const [keysBox, actionsBox] = await bar.evaluate(async (toolbar) => {
+      await Promise.all((toolbar.parentElement?.getAnimations() ?? []).map((motion) => motion.finished));
+      return ["Keys", "Actions"].map((name) => {
+        const box = toolbar.querySelector(`[role="group"][aria-label="${name}"]`)?.getBoundingClientRect();
+        return box === undefined ? null : { x: box.x, y: box.y, width: box.width };
+      });
+    });
+    if (keysBox == null || actionsBox == null) throw new Error("pill not laid out");
     expect(Math.abs(keysBox.y - actionsBox.y)).toBeLessThanOrEqual(1);
     expect(keysBox.x + keysBox.width).toBeLessThan(actionsBox.x);
     expect(await names(actionsPill)).toEqual(FIXED_KEYS);
