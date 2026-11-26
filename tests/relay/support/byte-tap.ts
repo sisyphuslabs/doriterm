@@ -92,7 +92,8 @@ const parsed = (payload: Uint8Array): unknown => {
  */
 function tokenedRun(sent: Uint8Array, token: string): Uint8Array | undefined {
   const request = parsed(sent);
-  if (!isObject(request) || request["method"] !== "terminal.run" || request["id"] === undefined) return undefined;
+  if (!isObject(request) || request["method"] !== "terminal.run") return undefined;
+  if (request["id"] === undefined || request["id"] === null) return undefined;
   const params = request["params"] ?? {};
   if (!isObject(params) || (typeof params["on"] === "string" && params["on"] !== "")) return undefined;
   const env = params["env"] ?? {};
@@ -114,12 +115,6 @@ function tokenIn(read: Uint8Array): string | undefined {
   return typeof token === "string" ? token : undefined;
 }
 
-/**
- * Where what hc read first differs from what the client sent, frame by frame (docs/transport.md, "What the host adds"):
- * every frame must arrive byte for byte, except that a `terminal.run` request for this core may arrive as exactly the
- * bytes the host makes of it with an `OSC7577_TOKEN` in its env (program resume, docs/program-resume.md), and nothing
- * else. Undefined when that holds.
- */
 /** Whether hc read `got` for the client's `frame`: the same bytes, or the run the host made of it with a token. */
 function frameMatches(frame: Frame, got: Frame): boolean {
   if (frame.channel !== got.channel || frame.kind !== got.kind) return false;
@@ -143,6 +138,12 @@ function matchingFrames(sent: Uint8Array, read: Uint8Array): number {
   return count;
 }
 
+/**
+ * Where what hc read first differs from what the client sent, frame by frame (docs/transport.md, "What the host adds"):
+ * every frame must arrive byte for byte, except that a `terminal.run` request for this core may arrive as exactly the
+ * bytes the host makes of it with an `OSC7577_TOKEN` in its env (program resume, docs/program-resume.md), and nothing
+ * else. Undefined when that holds.
+ */
 export function requestDifference(sent: Uint8Array, read: Uint8Array): string | undefined {
   const [sentHello, readHello] = [helloEnd(sent), helloEnd(read)];
   const hello = firstDifference(sent.subarray(0, sentHello), read.subarray(0, readHello));
