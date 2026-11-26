@@ -182,19 +182,31 @@ test("every phone screen and sheet gives iOS a solid top edge, so its blur stays
   await expectHeaderEdge(page, "Settings under a notch");
 });
 
-// An iPad in portrait shows the phone shell, whose header is the edge; in landscape the desktop shell, whose titlebar
-// pieces are absolute or fixed. The iOS rules move none of those.
+test("a phone on its side shows Settings' wide nav, whose title row stays in its column (#2867)", async ({ page }) => {
+  // Wider than md and shorter than the dialog: the full-screen sheet with the nav column, whose row is not a phone header.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/settings");
+  const nav = page.getByRole("navigation", { name: "Settings" });
+  await expect(nav.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("[data-phone-top]:visible")).toHaveCount(0);
+  const row = nav.locator("[data-titlebar]");
+  const before = await row.evaluate((element) => getComputedStyle(element).position);
+  await applyIosRules(page);
+  expect(await row.evaluate((element) => getComputedStyle(element).position)).toBe(before);
+});
+
+// An iPad shows the desktop shell (medium in portrait, wide in landscape, width-tier.ts), whose titlebar pieces are
+// absolute or fixed: the iOS rules move none of them, in place, size or stacking, and no phone row is marked there.
 for (const device of ["iPad Pro 11", "iPad Pro 11 landscape"] as const) {
   test.describe(`on an ${device}`, () => {
     const { defaultBrowserType: _ipadBrowser, ...ipad } = devices[device];
-    test.use(ipad);
+    // The iPad descriptors carry no screen, and the file's iPhone screen (390x844) would make the app a phone.
+    test.use({ ...ipad, screen: ipad.viewport });
 
     for (const path of ["/", "/settings"]) {
-      test(`at ${path} the iOS rules leave every titlebar piece but the phone header where it is (#2867)`, async ({
-        page,
-      }) => {
+      test(`at ${path} the iOS rules leave every titlebar piece where it is (#2867)`, async ({ page }) => {
         const positions = () =>
-          page.locator("[data-titlebar]:not([data-phone-top])").evaluateAll((boxes) =>
+          page.locator("[data-titlebar]").evaluateAll((boxes) =>
             boxes.map((box) => {
               const { position, zIndex } = getComputedStyle(box);
               const { top, left, width, height } = box.getBoundingClientRect();
@@ -202,7 +214,20 @@ for (const device of ["iPad Pro 11", "iPad Pro 11 landscape"] as const) {
             }),
           );
         await page.goto(path);
-        await expect(page.locator("[data-titlebar]").first()).toBeVisible({ timeout: 20_000 });
+        // The desktop shell, once it has drawn (behind Settings' dialog too): its sidebar toggle is in the page, and two
+        // readings of the titlebar pieces in a row agree.
+        await expect(page.locator('button[aria-label$="sidebar"]').first()).toBeAttached({ timeout: 20_000 });
+        let last = "";
+        await expect
+          .poll(async () => {
+            const now = JSON.stringify(await positions());
+            const settled = now === last && now !== "[]";
+            last = now;
+            return settled;
+          })
+          .toBe(true);
+        // No row there is a phone header: a marked one would turn sticky over the desktop layout.
+        await expect(page.locator("[data-phone-top]:visible")).toHaveCount(0);
         const before = await positions();
         await applyIosRules(page);
         expect(await positions(), "no titlebar piece moves").toEqual(before);
