@@ -14,8 +14,9 @@ export type { WorkspaceTab } from "./tab-item.tsx";
 
 /**
  * One group of tabs, pinned or not: it scrolls sideways once its tabs no longer fit, fading the edge that hides tabs.
- * The other tabs shrink with the strip; the pinned stay whole up to half of it (#1621) and scroll past that, so neither
- * group takes the whole strip from the other (review of #2865).
+ * While both fit, both keep their natural width. When they do not, the other tabs give way first (their shrink weight is
+ * a thousand times the pinned group's), so pinned tabs stay whole (#1621) until the others are down to their padding;
+ * only then does the pinned group shrink and scroll, and a strip of only pinned tabs may use all of it (review of #2865).
  */
 const STRIP_GROUP = cn(
   "relative flex min-w-0 items-center gap-[3px] overflow-x-auto overflow-y-hidden px-1 py-1 coarse:pr-2",
@@ -230,7 +231,7 @@ export function TabBar({
             data-tab-pins
             {...edgeAttributes(pinEdges)}
             onClickCapture={pinnedDrag.onClickCapture}
-            className={cn(STRIP_GROUP, "max-w-1/2 shrink-0")}
+            className={STRIP_GROUP}
           >
             {pinnedDrag.drag === null ? null : <DropIndicator drag={pinnedDrag.drag} />}
             {pinnedDrag.drag === null ? null : <DropCaret drag={pinnedDrag.drag} />}
@@ -247,7 +248,7 @@ export function TabBar({
           data-tab-scroll
           {...edgeAttributes(edges)}
           onClickCapture={restDrag.onClickCapture}
-          className={cn(STRIP_GROUP, "flex-initial")}
+          className={cn(STRIP_GROUP, "shrink-[1000]")}
         >
           {restDrag.drag === null ? null : <DropIndicator drag={restDrag.drag} />}
           {restDrag.drag === null ? null : <DropCaret drag={restDrag.drag} />}

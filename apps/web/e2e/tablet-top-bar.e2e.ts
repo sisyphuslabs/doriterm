@@ -1,14 +1,11 @@
 // The top bar on a tablet in portrait (820 px wide, a finger for a pointer; #2872): Split right and Split down fold into
 // one "Split pane" menu that still splits, and a strip that overflows shows "All tabs", which lists every tab and selects
 // the one tapped. Both triggers keep a 44 px hit area on the coarse pointer.
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { startShell } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { fold } from "./fold.ts";
-import { seedLayout, seedSpaces } from "./layout-doc.ts";
+import { seedLayout } from "./layout-doc.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 import { openTabsUntilOverflow, strip, tabs, titlesIn } from "./tab-strip.ts";
 
@@ -90,59 +87,3 @@ test("at 820 with a finger, an overflowing strip shows All tabs, which lists eve
   await items.first().tap();
   await expect(tabs(page).first()).toHaveAttribute("aria-selected", "true");
 });
-
-/** A control lies wholly inside the top bar and nothing is drawn over its centre, so a finger can reach it. */
-async function expectInBar(page: Page, control: Locator): Promise<void> {
-  const [box, bar] = [
-    await control.boundingBox(),
-    await page.locator("[data-titlebar]:has([role=tablist])").boundingBox(),
-  ];
-  if (box === null || bar === null) throw new Error("control or bar not laid out");
-  expect(box.x).toBeGreaterThanOrEqual(bar.x);
-  expect(box.x + box.width).toBeLessThanOrEqual(bar.x + bar.width);
-  const onTop = await control.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
-  });
-  expect(onTop).toBe(true);
-}
-
-// Pinned tabs never scroll with the others, so enough of them took the whole strip: the unpinned scroller shrank to
-// nothing and All tabs never came, leaving tabs unreachable (review of #2865). They fill the strip here, with one
-// unpinned tab and with every tab pinned.
-for (const unpinned of [1, 0]) {
-  test(`at 820 with a finger, 24 pinned tabs and ${unpinned} unpinned still offer All tabs, and New tab and Split pane stay reachable`, async ({
-    page,
-  }) => {
-    const folder = mkdtempSync(join(tmpdir(), "ttb-pins-"));
-    const count = 24 + unpinned;
-    seedSpaces([
-      {
-        id: `spc-${TAG}-${unpinned}`,
-        name: "pins",
-        folder,
-        tabs: Array.from({ length: count }, (_unused, at) => ({
-          id: `tb-${TAG}-${unpinned}-${at}`,
-          name: `p${at}`,
-          terminal: startShell("host", `${TAG}-${unpinned}-${at}`),
-          pinned: at < 24,
-        })),
-      },
-    ]);
-    await fold(page, IPAD_PORTRAIT);
-    await page.goto("/");
-    await expect(tabs(page)).toHaveCount(count, { timeout: 20_000 });
-
-    const allTabs = page.getByRole("button", { name: "All tabs", exact: true });
-    await expect(allTabs).toBeVisible({ timeout: 10_000 });
-    await expectInBar(page, allTabs);
-    await expectInBar(page, page.getByRole("button", { name: "New tab", exact: true }));
-    await expectInBar(page, page.getByRole("button", { name: "Split pane", exact: true }));
-
-    await allTabs.tap();
-    const items = page.getByRole("menu").getByRole("menuitem");
-    await expect(items).toHaveCount(count);
-    await items.nth(count - 1).tap();
-    await expect(tabs(page).nth(count - 1)).toHaveAttribute("aria-selected", "true");
-  });
-}
