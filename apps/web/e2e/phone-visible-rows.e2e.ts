@@ -17,7 +17,8 @@ async function homeInset(page: Page, px: number): Promise<void> {
   }, px);
 }
 
-const rows = async (page: Page): Promise<number> => Number((await gridSize(page.locator("[data-terminal]"))).split(" ")[0]);
+const rows = async (page: Page): Promise<number> =>
+  Number((await gridSize(page.locator("[data-terminal]"))).split(" ")[0]);
 
 /**
  * With the keyboard down, a phone terminal's bottom is its keys row on the home inset, as in the Herdr app: no tabs strip

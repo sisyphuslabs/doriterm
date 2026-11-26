@@ -150,6 +150,19 @@ export async function settledGrid(page: Page, terminal: Locator): Promise<void> 
     .toBeNull();
 }
 
+/** The round Read-only button: shown, pressed, only while the terminal is browsed read-only; a tap ends browsing. */
+export const readOnlyButton = (page: Page) => page.locator('button[aria-label="Read-only"]');
+
+/** Turns read-only browsing on as a person does: the header's session sheet, then its Read-only row (#2879). */
+export async function startBrowsing(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /^Session actions for / }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("button", { name: "Read-only", exact: true }).click();
+  await expect(readOnlyButton(page)).toHaveAttribute("aria-pressed", "true");
+  // A gesture is the terminal's once the sheet and its backdrop have left the screen.
+  await expect(sheet).toHaveCount(0);
+}
+
 export const keysBar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });
 export const key = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
 

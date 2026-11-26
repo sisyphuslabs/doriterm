@@ -65,13 +65,8 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await expect(back).toBeVisible();
         await expect(back).toContainText("website");
         await expect(switcher(page)).toHaveAccessibleName("Switch tab, website, deploy, tab 1 of 2");
-        await expect(switcher(page).getByText("deploy", { exact: true })).toBeVisible();
-        await expect(switcher(page).getByText("1/2", { exact: true })).toBeVisible();
-        // Beside the round button the bar is too narrow for the space too: the header names it, so the tab's own name
-        // keeps the room and is never cut.
-        await expect(switcher(page).getByText("website ·", { exact: true })).toBeHidden();
-        const name = switcher(page).getByText("deploy", { exact: true });
-        await expect.poll(() => name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+        // The chip shows the tab's place alone: the heading beside it names the tab (#2879).
+        await expect(switcher(page)).toHaveText("1/2");
 
         // The switch sheet names its rows the same way: no "1 \u00b7" before them.
         await switcher(page).click();

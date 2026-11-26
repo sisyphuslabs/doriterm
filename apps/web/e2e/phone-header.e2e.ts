@@ -53,7 +53,7 @@ test("on a phone the terminal header names the session and where it is, follows 
 
     // Where: the space, and this tab's place among the space's tabs.
     await expect(header(page).getByText(new RegExp(` · ${space}$`))).toBeVisible();
-    // The tab's place is the bottom tabs bar's, not the header's (#466).
+    // The tab's place is the header's tabs chip, as the Herdr app keeps its tab count (#2879).
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toContainText("1/2");
     await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toHaveAccessibleName(
       /tab 1 of 2$/,
@@ -71,11 +71,12 @@ test("on a phone the terminal header names the session and where it is, follows 
         .first(),
     ).toBeAttached({ timeout: 15_000 });
 
-    // The bottom tabs bar's switch opens the spaces and their tabs (the header has none: one strip, #466); picking another
-    // tab opens it and moves the position.
-    // By the switch's name pattern: a switch in the header whose name starts with "Switch" fails here (#2356).
-    await expect(header(page).getByRole("button", { name: /^Switch/ })).toHaveCount(0);
-    const switcher = page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
+    // The header's tabs chip opens the spaces and their tabs, the only switch on the screen (#2879); picking another tab
+    // opens it and moves the position.
+    await expect(header(page).getByRole("button", { name: /^Switch/ })).toHaveCount(1);
+    const switcher = header(page)
+      .locator("[data-phone-tabs]")
+      .getByRole("button", { name: /^Switch tab, / });
     const box = await laidOutBox(switcher);
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
