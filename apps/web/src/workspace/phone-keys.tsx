@@ -35,8 +35,8 @@ const CORNER =
  */
 export const ROUND_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-right) + 0.5rem)) - var(--safe-right) + 3.5rem)";
 
-/** How far up from the terminal's bottom the arrow pad reaches: its 0.75rem gap, two 3rem rows with their gap and padding. */
-export const DIRECTION_PAD_CLEARANCE = "calc(0.75rem + 6rem + 0.375rem + 1rem + 2px)";
+/** How far up from the terminal's bottom the arrow pad reaches: its 0.75rem gap, three 3rem rows with their gaps and padding. */
+export const DIRECTION_PAD_CLEARANCE = "calc(0.75rem + 9rem + 0.5rem + 0.75rem + 2px)";
 
 export interface PhoneKeysProps {
   readonly port: RefObject<TerminalPort | null>;

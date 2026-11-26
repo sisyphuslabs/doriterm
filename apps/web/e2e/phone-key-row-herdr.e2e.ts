@@ -94,7 +94,7 @@ test("Return in the action pill is a terminal key: it reaches the program", asyn
   await expect(terminal).toContainText("row-25");
 });
 
-test("the arrow key opens an inverted-T bubble over itself", async ({ page }, testInfo) => {
+test("the arrow key opens the 3x3 pad in a bubble over itself", async ({ page }, testInfo) => {
   const terminal = await openPhoneTerminal(page, 390);
   const toggle = keysPill(page).getByRole("button", { name: "Arrow keys", exact: true });
   await toggle.scrollIntoViewIfNeeded();
@@ -104,7 +104,7 @@ test("the arrow key opens an inverted-T bubble over itself", async ({ page }, te
   const names = await pad
     .getByRole("button")
     .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
-  expect(names).toEqual(["Up arrow", "Left arrow", "Down arrow", "Right arrow"]);
+  expect(names).toEqual(["Delete", "Up arrow", "Clear screen", "Left arrow", "Enter", "Right arrow", "Down arrow"]);
   const [bubble, anchor] = [await box(pad), await box(toggle)];
   expect(bubble.y + bubble.height).toBeLessThanOrEqual(anchor.y);
   const centre = anchor.x + anchor.width / 2;
