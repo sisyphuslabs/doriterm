@@ -106,6 +106,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // it the keyboard, and the keys stay where they were under it.
   const [heldUp, setHeldUp] = useState(false);
   const [pad, setPad] = useState(false);
+  // The input card (#2778) is held here: while it is open the mic sits in it, beside Enter, not in the header.
+  const [card, setCard] = useState(false);
   // The keys bar as drawn, which grows while its field has a row of its own; the terminal keeps clear of all of it.
   const [barHeight, setBarHeight] = useState(0);
   const [packs, setPacks] = useState(false);
@@ -221,7 +223,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           backTo={full && panes.length > 1 ? "Split" : backTo}
           onBack={back}
           onOpen={onOpen}
-          action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
+          action={untyped || card ? null : <DictateButton voice={voice} target={title} ref={mic} />}
         />
         <ConnectionLine address={terminal.address} {...(offline ? {} : { connection })} />
         {pair === null || panes.length > 2 ? (
@@ -300,6 +302,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               setPacks(true);
             }}
             browsing={browsing}
+            card={card}
+            onCard={setCard}
+            {...(untyped ? {} : { mic: <DictateButton voice={voice} target={title} ref={mic} /> })}
             {...(mouseOnly ? { onKeys: setKeysShown } : { onBrowse: setBrowsing })}
           />
         )}

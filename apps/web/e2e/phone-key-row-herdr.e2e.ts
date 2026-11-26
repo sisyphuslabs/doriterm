@@ -10,6 +10,7 @@ const actionsPill = (page: Page) => keysBar(page).getByRole("group", { name: "Ac
 const card = (page: Page) => page.getByRole("group", { name: "Input card", exact: true });
 const field = (page: Page) => page.getByLabel("Type into the terminal");
 const pages = (page: Page) => keysPill(page).locator('[data-slot="terminal-keys-scroll"]');
+const mic = (scope: Locator) => scope.getByRole("button", { name: /^Dictat/ });
 
 async function box(locator: Locator) {
   const found = await locator.boundingBox();
@@ -85,6 +86,49 @@ test("the card toggle opens the input card above the row, and Send keeps the #27
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect(card(page)).toHaveCount(0);
   await expect(terminal).toContainText("card-");
+});
+
+// iOS raises the soft keyboard only for a focus made while the tap is being handled, so the card's field must take the
+// focus inside the toggle's own click, not in a render after it (Q, 2026-11-26: "the keyboard does not come up").
+test("the card toggle focuses the field inside the tap itself, so a phone raises its keyboard at once", async ({
+  page,
+}) => {
+  await openPhoneTerminal(page, 390);
+  const focusedInTap = await page.evaluate(() => {
+    const toggle = document.querySelector<HTMLButtonElement>('[aria-label="Type in a field"]');
+    if (toggle === null) throw new Error("no card toggle");
+    toggle.click();
+    return document.activeElement?.getAttribute("aria-label") ?? null;
+  });
+  expect(focusedInTap).toBe("Type into the terminal");
+});
+
+// The Herdr app's card (Q's reference shot, 2026-11-26): the mic and Enter sit at the card's end, Enter always pressable.
+test("the open card holds the mic just before Enter, and Enter with an empty field presses Return", async ({
+  page,
+}) => {
+  const terminal = await openPhoneTerminal(page, 390);
+  const header = page.locator("header[data-titlebar]");
+  await expect(mic(header)).toHaveCount(1);
+  await page.keyboard.type("echo empty-$((3*3))");
+
+  await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
+  // One mic on the screen: the card's, in the place the Herdr app draws it.
+  await expect(mic(header)).toHaveCount(0);
+  await expect(mic(card(page))).toHaveCount(1);
+  const enter = card(page).getByRole("button", { name: "Send", exact: true });
+  await expect(enter).toBeEnabled();
+  const [voice, send, input] = [await box(mic(card(page))), await box(enter), await box(field(page))];
+  // Under the full-width field, at its end: the mic, then Enter, on one line.
+  expect(Math.abs(voice.y + voice.height / 2 - (send.y + send.height / 2))).toBeLessThanOrEqual(1);
+  expect(input.y + input.height).toBeLessThanOrEqual(voice.y);
+  expect(voice.x + voice.width).toBeLessThanOrEqual(send.x);
+  expect(Math.abs(send.x + send.width - (input.x + input.width))).toBeLessThanOrEqual(1);
+
+  await enter.click();
+  await expect(terminal).toContainText("empty-9");
+  await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
+  await expect(mic(header)).toHaveCount(1);
 });
 
 test("Return in the action pill is a terminal key: it reaches the program", async ({ page }) => {

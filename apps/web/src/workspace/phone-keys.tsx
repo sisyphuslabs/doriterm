@@ -1,6 +1,7 @@
 import { ExtraKeysBar, KeyboardButton, Menu, MenuItem } from "@doriface/ui";
 import { TextSelect } from "lucide-react";
-import { type CSSProperties, type RefObject, useCallback, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, useCallback, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { activeEntries, specialEntries } from "../keybar/entries.ts";
 import { toExtra } from "../keybar/render.tsx";
 import { useKeyBarSettings } from "../keybar/store.ts";
@@ -71,6 +72,11 @@ export interface PhoneKeysProps {
   readonly browsing?: boolean;
   /** Set on a touch device: a round Read-only button beside the keyboard button turns browsing on and off. */
   readonly onBrowse?: (on: boolean) => void;
+  /** The input card is open (#2778); the screen holds this, since the header gives its mic to the card while it is. */
+  readonly card: boolean;
+  readonly onCard: (open: boolean) => void;
+  /** The mic, drawn in the open card just before Enter, where the Herdr app keeps it. */
+  readonly mic?: ReactNode;
 }
 
 /** Reports an element's border-box height as it changes, and 0 once it is gone. */
@@ -118,6 +124,9 @@ export function PhoneKeys(props: PhoneKeysProps) {
     onBarHeight,
     browsing = false,
     onBrowse,
+    card,
+    onCard,
+    mic,
   } = props;
   const named = useShown(terminals);
   const barRef = useHeightReport(onBarHeight);
@@ -127,7 +136,14 @@ export function PhoneKeys(props: PhoneKeysProps) {
   // finalFocus, never for a function's answer (#2174).
   const [returnFocus, setReturnFocus] = useState(false);
   // The input card (#2778): closed until its toggle opens it, as in the Herdr app; the draft outlives it (input-box.tsx).
-  const [card, setCard] = useState(false);
+  const cardField = useRef<HTMLTextAreaElement | null>(null);
+  const toggleCard = (): void => {
+    if (card) return onCard(false);
+    // iOS raises the keyboard only for a focus made while the tap is handled: the card is drawn now, inside this click,
+    // and its field focused here, rather than by the field as it mounts after the click (Q, 2026-11-26).
+    flushSync(() => onCard(true));
+    cardField.current?.focus();
+  };
   const settings = useKeyBarSettings();
   const own = specialEntries(settings, host);
   const packed = activeEntries(settings);
@@ -161,7 +177,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
       onPaste={sticky.paste}
       onReturn={() => sticky.press("enter")}
       inputBox={card}
-      onInputBox={() => setCard(!card)}
+      onInputBox={toggleCard}
       {...(onKeys === undefined
         ? { onHideKeyboard: hideKeyboard }
         : { hideLabel: "Hide keys", onHideKeyboard: () => onKeys(false) })}
@@ -220,7 +236,8 @@ export function PhoneKeys(props: PhoneKeysProps) {
               className="mx-1.5 mb-1 rounded-[1.625rem] border border-border bg-chrome/95 p-1 shadow-lg backdrop-blur-md"
             >
               <InputBox
-                autoFocus
+                fieldRef={cardField}
+                accessory={mic}
                 className="w-full"
                 draftKey={current}
                 onSend={(text) => port.current?.send(`${text}\r`)}
