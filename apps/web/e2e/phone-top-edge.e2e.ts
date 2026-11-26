@@ -194,11 +194,13 @@ for (const device of ["iPad Pro 11", "iPad Pro 11 landscape"] as const) {
         page,
       }) => {
         const positions = () =>
-          page
-            .locator("[data-titlebar]:not([data-phone-top])")
-            .evaluateAll((boxes) =>
-              boxes.map((box) => `${box.className.slice(0, 40)}: ${getComputedStyle(box).position}`),
-            );
+          page.locator("[data-titlebar]:not([data-phone-top])").evaluateAll((boxes) =>
+            boxes.map((box) => {
+              const { position, zIndex } = getComputedStyle(box);
+              const { top, left, width, height } = box.getBoundingClientRect();
+              return `${box.className.slice(0, 40)}: ${position} z${zIndex} ${top},${left} ${width}x${height}`;
+            }),
+          );
         await page.goto(path);
         await expect(page.locator("[data-titlebar]").first()).toBeVisible({ timeout: 20_000 });
         const before = await positions();
