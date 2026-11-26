@@ -1,5 +1,5 @@
-import { Button, IconButton } from "@doriface/ui";
-import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { Button } from "@doriface/ui";
+import { Copy } from "lucide-react";
 import { liveTabs, type Session, spaceOfAddress } from "./model.ts";
 import { SwitchSheet } from "./phone-switch-sheet.tsx";
 import { useSpaceSelection } from "./space-selection.ts";
@@ -12,20 +12,16 @@ export function useSpaceTabs(terminals: readonly Session[], address: string): re
 }
 
 /**
- * The phone's tab switcher within thumb reach (#466 10B): a bar at the bottom of the terminal screen that steps to the
- * space's previous and next tab and opens the switch sheet, with 44 px targets. herdr-app has no phone screen to follow,
- * so it sits where a phone keeps its toolbars; it leaves the terminal's own scrolling and selection alone. Its right end
- * is left to the round buttons (the keyboard button, and Read-only beside it), which float there level with it.
+ * The phone terminal's tabs control, in its header as the Herdr app keeps its tab count (#2879): the tab's place in its
+ * space (`n/m`), and one tap opens the switch sheet of every space and its tabs. It replaces the bottom tabs bar (#466),
+ * whose row and home inset cost the terminal about five rows. Nothing when the terminal is in no space's tab.
  */
-export function PhoneTabSwitcher(props: {
+export function PhoneTabsChip(props: {
   readonly terminals: readonly Session[];
-  readonly tabs: readonly (readonly string[])[];
   readonly active: string;
   /** The open tab's name, else its terminal's title. */
   readonly title: string;
   readonly onOpen: (address: string) => void;
-  /** How much of its right end the round button takes (ROUND_BUTTON_CLEARANCE); its controls stay clear of it. */
-  readonly clearance: string;
   /** Whether the switch sheet is open, and its opening and closing (the route holds it). */
   readonly sheet: boolean;
   readonly onSheet: (open: boolean) => void;
@@ -33,24 +29,15 @@ export function PhoneTabSwitcher(props: {
   /** Closes the tab that shows `address`, as the desktop strip's close does (its questions included) (#1463). */
   readonly onCloseTab: (address: string) => void;
 }) {
-  const { terminals, tabs, active, title, onOpen, clearance, sheet, onSheet, onNewInSpace, onCloseTab } = props;
+  const { terminals, active, title, onOpen, sheet, onSheet, onNewInSpace, onCloseTab } = props;
   const { spaces } = useSpaceSelection();
   const space = spaceOfAddress(spaces, active)?.name;
+  const tabs = useSpaceTabs(terminals, active);
   const at = tabs.findIndex((panes) => panes.includes(active));
   if (at === -1) return null;
-  const step = (by: 1 | -1): void => {
-    const next = tabs[(at + by + tabs.length) % tabs.length]?.[0];
-    if (next !== undefined) onOpen(next);
-  };
-  const several = tabs.length > 1;
   return (
-    <nav
-      aria-label="Tabs in this space"
-      data-phone-tabs
-      className="flex shrink-0 items-center gap-1 border-t border-border bg-chrome pt-1 pb-[max(1rem,calc(var(--safe-bottom)+0.5rem))] pl-1.5"
-      style={{ paddingRight: clearance }}
-    >
-      {several ? <IconButton label="Previous tab" icon={<ChevronLeft />} size="md" onClick={() => step(-1)} /> : null}
+    // `contents`: the chip is one more header item; the wrapper only names the control for its tests.
+    <span data-phone-tabs className="contents">
       <SwitchSheet
         terminals={terminals}
         active={active}
@@ -63,31 +50,13 @@ export function PhoneTabSwitcher(props: {
           <Button
             variant="ghost"
             aria-label={`Switch tab, ${space === undefined ? "" : `${space}, `}${title}, tab ${at + 1} of ${tabs.length}`}
-            className="@container h-12 min-w-0 flex-1 text-foreground [&>span]:min-w-0"
+            className="shrink-0 gap-1 rounded-full bg-muted px-2.5 text-sm text-foreground tabular-nums"
           >
-            {/*
-              The space goes first when the bar is narrow: the header already names it, and the tab's own name is what the
-              stepper is for. The accessible name keeps it. At 390 px the bar leaves this button 390 - 6 (left padding) -
-              ROUND_BUTTON_CLEARANCE 72 - 2 x 44 (Previous, Next) - 2 x 4 (gaps) = 216 px, and its content box, less its own
-              padding, is under 13rem. A change to the round button or the steppers moves these numbers:
-              phone-session-title.e2e.ts pins the touch end.
-            */}
-            {space === undefined ? null : (
-              <span title={space} className="min-w-0 shrink-[2] truncate font-semibold @max-[13rem]:hidden">
-                {`${space} ·`}
-              </span>
-            )}
-            <span title={title} className="min-w-0 truncate font-normal">
-              {title}
-            </span>
-            <span data-numeric className="shrink-0 text-xs text-muted-foreground">
-              {`${at + 1}/${tabs.length}`}
-            </span>
-            <ChevronUp aria-hidden className="text-muted-foreground" />
+            <Copy aria-hidden className="size-4 text-muted-foreground" />
+            <span data-numeric>{`${at + 1}/${tabs.length}`}</span>
           </Button>
         }
       />
-      {several ? <IconButton label="Next tab" icon={<ChevronRight />} size="md" onClick={() => step(1)} /> : null}
-    </nav>
+    </span>
   );
 }

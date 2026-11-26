@@ -1,9 +1,10 @@
 import { Button, IconButton, Sheet, cn } from "@doriface/ui";
-import { CircleAlert, Ellipsis, Pencil, Power, Search } from "lucide-react";
+import { CircleAlert, Ellipsis, Pencil, Power, Search, TextSelect } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { runAction } from "../keys/dispatcher.ts";
 import { nextNeedingYou, waitingBesides } from "./attention.ts";
 import type { Session } from "./model.ts";
+import { usePhoneBrowse } from "./phone-browse.ts";
 import { useAskSession } from "./session-context.ts";
 
 export interface PhoneSessionSheetProps {
@@ -20,11 +21,13 @@ function Row(props: {
   readonly icon: ReactNode;
   readonly destructive?: boolean;
   readonly onClick: () => void;
+  readonly pressed?: boolean;
   readonly children: ReactNode;
 }) {
   return (
     <Button
       variant="ghost"
+      aria-pressed={props.pressed}
       onClick={props.onClick}
       className={cn(
         // A long label (the next agent, with its count) wraps rather than running past a 320 px sheet.
@@ -50,8 +53,8 @@ export function SessionPlace({ where, dir }: { readonly where: string; readonly 
 
 /**
  * The phone header's "..." for the session in view (#1467): one bottom sheet that says where it lives, then the next
- * agent that needs you and, while its machine is online, Find in terminal, then Rename and End. Each row closes the
- * sheet before it acts.
+ * agent that needs you and, while its machine is online, Find in terminal and Read-only, then Rename and End. Each row
+ * closes the sheet before it acts.
  */
 export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }: PhoneSessionSheetProps) {
   const [open, setOpen] = useState(false);
@@ -63,6 +66,7 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
   // An offline machine draws MachineOffline in place of the terminal (phone-terminal.tsx), so nothing takes
   // terminal.search: Find in terminal would only close this sheet, and the row waits for the machine to come back.
   const offline = terminal.offline === true;
+  const browse = usePhoneBrowse();
   const act = (run: () => void) => () => {
     setOpen(false);
     run();
@@ -86,6 +90,15 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
           {offline ? null : (
             <Row icon={<Search aria-hidden />} onClick={act(() => runAction("terminal.search"))}>
               Find in terminal
+            </Row>
+          )}
+          {offline || browse === null ? null : (
+            <Row
+              icon={<TextSelect aria-hidden />}
+              pressed={browse.browsing}
+              onClick={act(() => browse.setBrowsing(!browse.browsing))}
+            >
+              Read-only
             </Row>
           )}
         </div>

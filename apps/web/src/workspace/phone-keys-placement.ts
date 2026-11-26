@@ -10,42 +10,31 @@ export interface KeysState {
   readonly dictating: boolean;
   readonly browsing: boolean;
   readonly offline: boolean;
-  /** The terminal is in a tab of its space, so a tabs bar can show under it. */
-  readonly inTab: boolean;
   /** The arrow pad is open over the keys. */
   readonly pad: boolean;
 }
 
 export interface KeysPlacement {
-  /** The keys ride on the keyboard: the terminal keeps clear of them and the tabs bar gives way. */
+  /** The keys ride on the keyboard: the terminal keeps clear of them. */
   readonly keysOpen: boolean;
-  readonly tabsBar: boolean;
   /** The room the keys keep below themselves while docked under the terminal; null while they are not (see PhoneKeys). */
   readonly docked: string | null;
   /** What the terminal's jump button keeps clear of over its bottom right; null for nothing. */
   readonly jumpClearance: string | null;
 }
 
-/** Where a phone terminal's keys, tabs bar and round button go in a given state. */
+/** Where a phone terminal's keys and round button go in a given state. */
 export function keysPlacement(state: KeysState): KeysPlacement {
-  const { riding, held, mouseOnly, ended, dictating, browsing, offline, inTab, pad } = state;
+  const { riding, held, mouseOnly, ended, dictating, browsing, offline, pad } = state;
   // The packs panel takes the screen for a moment, so the bar stays under it as it does under the session menu: closing
   // the panel puts the person back on the terminal's keyboard.
   const keysOpen = !ended && !dictating && !browsing && (riding || held);
-  // The tabs bar takes the bottom while nothing rides there: the keys bar, with the soft keyboard, and dictation do.
-  const tabsBar = !keysOpen && !dictating && inTab;
   // A touch phone's keys while its keyboard is down (#1526): the same panel as on the keyboard, under the terminal
-  // (#2499). Over the tabs bar it needs no room below; without one, Read-only takes a row of its own under it. A
-  // mouse-only window opens its keys bar by hand instead.
-  const docked =
-    keysOpen || mouseOnly || dictating || browsing || offline || ended
-      ? null
-      : tabsBar
-        ? "0px"
-        : KEYBOARD_BUTTON_CLEARANCE;
-  // The terminal's jump button stays clear of what floats over its bottom right: the round button, or the arrow pad.
-  // Over the tabs bar the round button floats beside the bar, and under the docked keys it has a row of its own: either
-  // way under the terminal, not over it (#1555).
+  // (#2499), on the home inset and nothing else, as in the Herdr app: no tabs strip under it and no row of its own for a
+  // round button (#2879). A mouse-only window opens its keys bar by hand instead.
+  const docked = keysOpen || mouseOnly || dictating || browsing || offline || ended ? null : "var(--safe-bottom)";
+  // The terminal's jump button stays clear of what floats over its bottom right: the round button (Read-only while
+  // browsing, Show keys on a mouse-only window), or the arrow pad (#1555).
   const jumpClearance =
     offline || ended || dictating
       ? null
@@ -53,8 +42,6 @@ export function keysPlacement(state: KeysState): KeysPlacement {
         ? pad
           ? DIRECTION_PAD_CLEARANCE
           : null
-        : tabsBar
-          ? null
-          : KEYBOARD_BUTTON_CLEARANCE;
-  return { keysOpen, tabsBar, docked, jumpClearance };
+        : KEYBOARD_BUTTON_CLEARANCE;
+  return { keysOpen, docked, jumpClearance };
 }
