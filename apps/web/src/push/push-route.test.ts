@@ -9,6 +9,10 @@ import { installShellForwarder } from "../connection/direct-forward.test-support
 import { type ConnectionSettings, DEFAULT_SETTINGS } from "../connection/settings.ts";
 import { type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
 import { pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
+import { loadDeviceKey } from "../connection/device-key.ts";
+import { beginRetire } from "../mesh/enrollment.ts";
+import { SlotNotEnrolled, slotKeys } from "../mesh/identity-slots.ts";
+import { joinedStore, meshFixture } from "../mesh/mesh-fixture.test-support.ts";
 import type { KeyValueStore } from "../storage/idb.ts";
 import { loadPushRoute, openPushLink, type PushRoute, routeOf, savePushRoute } from "./push-route.ts";
 
@@ -19,7 +23,8 @@ import { loadPushRoute, openPushLink, type PushRoute, routeOf, savePushRoute } f
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
 const DIRECT = "ws://192.0.2.10:7767/v1/e2ee";
 const stateDir = mkdtempSync(join(tmpdir(), "dw-push-route-"));
-const device = rawStaticKey(generateX25519());
+const devicePair = generateX25519();
+const device = rawStaticKey(devicePair);
 const deps = { loadDeviceKey: () => Promise.resolve(device) };
 let relay: FakeRelay;
 let bridge: RelayClientBridge;
@@ -204,6 +209,20 @@ describe("a browser's push stream is the relay's (#1381 §8)", () => {
     });
     expect(asked).toEqual(["second"]);
     link.close();
+  });
+
+  test("a push key held from before its mesh was left is refused over the relay, not just in the page that left (review of #2890)", async () => {
+    const storage = memoryStore();
+    const mesh = meshFixture();
+    await joinedStore(storage, { ...mesh, secrets: { ...mesh.secrets, device: devicePair.secretKey } }, "second");
+    const held = await loadDeviceKey(slotKeys(storage, "second"), null);
+    const route = { ...relayRoute(DIRECT), keySlot: "second" };
+    const open = await openPushLink(route, { deps: { loadDeviceKey: async () => held } });
+    open.close();
+    await beginRetire(storage, "second");
+    const refused = openPushLink(route, { deps: { loadDeviceKey: async () => held } });
+    // The handshake reports why it stopped as its cause: here, the retired identity's key refused its DH.
+    await expect(refused).rejects.toMatchObject({ cause: expect.any(SlotNotEnrolled) });
   });
 });
 

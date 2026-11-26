@@ -54,6 +54,7 @@ describe("a browser's join, approved", () => {
   test("stores the inviter's records as its membership and is a client member there, reached by its device key", async () => {
     const a = side("alpha");
     const joiner = browser();
+    await joiner.membership.enroll();
     const { invited, joined, inviterEnd, joinerEnd } = run(a, readyInviter(a, autoJoins()), joiner);
     const result = await joined;
     await invited;
@@ -76,6 +77,7 @@ describe("a browser's join, approved", () => {
   test("the member list it derives names itself by its signing key, and the targets are the machines alone", async () => {
     const a = side("alpha");
     const joiner = browser();
+    await joiner.membership.enroll();
     const { joined } = run(a, readyInviter(a, autoJoins()), joiner);
     const result = await joined;
     const self = result.members.find((member) => member.signPub === base64urlEncode(joiner.sign.publicKey));
@@ -97,6 +99,7 @@ describe("a browser's join, refused", () => {
     const a = side("alpha");
     const pending = new PendingJoins();
     const joiner = browser();
+    await joiner.membership.enroll();
     const { joined, inviterEnd } = run(a, readyInviter(a, pending), joiner);
     const asked = await pending.next();
     expect([asked.kind, asked.name, asked.hostId]).toEqual([
@@ -115,6 +118,7 @@ describe("a browser's join, refused", () => {
   test("an inviter whose cohort does not read the client format refuses, and the browser stores nothing", async () => {
     const a = side("alpha");
     const joiner = browser();
+    await joiner.membership.enroll();
     const { joined } = run(a, inviteDeps(a, autoJoins()), joiner);
     expect(await failure(joined)).toContain("a client can join once every machine in this mesh reads the new format");
     expect(await joiner.membership.read()).toBeUndefined();
@@ -123,6 +127,7 @@ describe("a browser's join, refused", () => {
   test("a membership of another mesh adopted meanwhile wins, and the join fails after the welcome", async () => {
     const a = side("alpha");
     const membership = new MembershipStore(memoryStore());
+    await membership.enroll();
     const other = {
       meshId: "other-mesh",
       records: [],

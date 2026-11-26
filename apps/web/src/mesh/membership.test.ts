@@ -18,6 +18,7 @@ const membership = (meshId: string): BrowserMembership => ({
 describe("the membership record", () => {
   test("reads back what was adopted", async () => {
     const store = new MembershipStore(memoryStore());
+    await store.enroll();
     expect(await store.read()).toBeUndefined();
     expect(await store.adopt(membership("mesh-1"))).toBe(true);
     expect(await store.read()).toEqual(membership("mesh-1"));
@@ -25,6 +26,7 @@ describe("the membership record", () => {
 
   test("a membership of another mesh wins over a later adopt, and the held one is untouched", async () => {
     const store = new MembershipStore(memoryStore());
+    await store.enroll();
     await store.adopt(membership("mesh-1"));
     expect(await store.adopt(membership("mesh-2"))).toBe(false);
     expect((await store.read())?.meshId).toBe("mesh-1");
@@ -36,6 +38,7 @@ describe("the membership record", () => {
     const held = a.mesh.read();
     if (held === undefined) throw new Error("fixture did not found a mesh");
     const store = new MembershipStore(memoryStore());
+    await store.enroll();
     await store.adopt({ ...membership(held.meshId), records: held.records });
     const again = { ...membership(held.meshId), records: [], joinedAt: "2026-11-09T00:00:00.000Z" };
     expect(await store.adopt(again)).toBe(true);

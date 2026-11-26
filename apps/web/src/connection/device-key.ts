@@ -1,5 +1,6 @@
 import { x25519 } from "@noble/curves/ed25519.js";
 import { deviceStore, refusesToClone, type KeyValueStore } from "../storage/idb.ts";
+import { authorityOf, checkedStatic } from "../storage/key-authority.ts";
 
 /** The device's X25519 static key: its public half plus the DH the Noise handshake needs. */
 export interface DeviceKey {
@@ -147,10 +148,18 @@ export function forgetCachedDeviceKey(storage: KeyValueStore): void {
  * Concurrent first calls share one creation: per store in this page, and across tabs through the Web
  * Locks API where it exists, re-reading the store inside the lock so a second tab gets the first's key.
  */
-export function loadDeviceKey(
+export async function loadDeviceKey(
   storage: KeyValueStore = deviceStore,
   subtle: SubtleCrypto | null = globalThis.crypto?.subtle ?? null,
 ): Promise<DeviceKey> {
+  // A slot's keys (`slotKeys`) are checked against its live authority on every DH, as `loadBrowserIdentity` does.
+  const authority = authorityOf(storage);
+  const check = authority === undefined ? undefined : await authority();
+  const key = await loadCachedDeviceKey(storage, subtle);
+  return check === undefined ? key : checkedStatic(key, check);
+}
+
+function loadCachedDeviceKey(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<DeviceKey> {
   const inFlight = pending.get(storage);
   if (inFlight !== undefined) return inFlight;
   const loading = withIdentityLock(() => readOrCreateDeviceKey(storage, subtle));

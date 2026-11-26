@@ -3,7 +3,6 @@ import { hashOf, meshIdOf, signCard, signRecord, type Signed } from "@doriface/m
 import { cardBodyFor } from "@doriface/mesh/join";
 import type { KeyValueStore } from "../storage/idb.ts";
 import { DEFAULT_SLOT } from "./identity-slots.ts";
-import { changeRecord } from "./membership-list.ts";
 import { type BrowserMembership, MembershipStore } from "./membership.ts";
 
 type Identity = ReturnType<typeof generateHostIdentity>;
@@ -75,13 +74,10 @@ export async function joinedStore(
   fixture: MeshFixture,
   slot: string,
 ): Promise<MembershipStore> {
-  await changeRecord(storage, (record) => ({
-    next: { ...record, slots: [...record.slots, { slot, phase: "enrolling", owner: `fixture-${slot}` }] },
-    answer: undefined,
-  }));
+  const store = new MembershipStore(storage, fixture.keys, slot);
+  await store.enroll(`fixture-${slot}`);
   await storage.put(slotKey(slot, "mesh-sign-key"), { kind: "raw", privateKey: fixture.secrets.sign });
   await storage.put(slotKey(slot, "device-key"), { kind: "raw", privateKey: fixture.secrets.device });
-  const store = new MembershipStore(storage, fixture.keys, slot);
   await store.adopt(fixture.membership);
   return store;
 }

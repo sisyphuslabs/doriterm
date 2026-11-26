@@ -6,6 +6,7 @@ import { deviceStore } from "../storage/idb.ts";
 import { deviceName } from "../pair/device-name.ts";
 import { DEFAULT_SLOT, slotKeys } from "./identity-slots.ts";
 import { openRosterSession } from "./join.ts";
+import { enrollFor } from "./join-claim.ts";
 import { forgetMembership } from "./membership-lifecycle.ts";
 import { inViewSlot, membershipBundle, prepareMembership } from "./membership-state.ts";
 import type { MembershipStore } from "./membership.ts";
@@ -33,6 +34,8 @@ export interface RosterDeps {
   readonly talk: (member: MemberTarget, context: RosterContext) => Promise<void>;
   readonly forget: (slot: string) => Promise<void>;
   readonly bundle: (slot: string) => MembershipStore | undefined;
+  /** Enrolls a store that holds no mesh before a roster may take it in (`enrollFor`); undefined when it may not. */
+  readonly enroll: (bundle: MembershipStore) => Promise<(() => Promise<void>) | undefined>;
 }
 
 async function talkTo(member: MemberTarget, context: RosterContext): Promise<void> {
@@ -57,6 +60,7 @@ const BROWSER: RosterDeps = {
   talk: talkTo,
   forget: (slot) => forgetMembership(slot),
   bundle: membershipBundle,
+  enroll: enrollFor,
 };
 
 /** A machine learned from a mesh is asked as that mesh's member, with the keys that mesh knows; a paired one as before. */
@@ -68,16 +72,23 @@ export async function refreshFrom(
   const slot = entry.target.keySlot ?? DEFAULT_SLOT;
   const bundle = await deps.prepare(slot);
   if (!claimed(bundle)) return;
-  const identity = await deps.identity(slot);
-  await deps.talk(entry.target, {
-    identity,
-    bundle,
-    source: entry.target,
-    relayUrl: connectionStore.settings.relayUrl,
-    name: await nameForBrowser(bundle),
-    action: "refresh",
-  });
-  failures.delete(entry.target.hostId);
+  // A roster that would take this browser in is an enrollment, made before the keys are loaded for it.
+  const finish = bundle.snapshot().phase === "empty" ? await deps.enroll(bundle) : async () => undefined;
+  if (finish === undefined) return;
+  try {
+    const identity = await deps.identity(slot);
+    await deps.talk(entry.target, {
+      identity,
+      bundle,
+      source: entry.target,
+      relayUrl: connectionStore.settings.relayUrl,
+      name: await nameForBrowser(bundle),
+      action: "refresh",
+    });
+    failures.delete(entry.target.hostId);
+  } finally {
+    await finish();
+  }
 }
 
 /**

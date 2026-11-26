@@ -1,6 +1,5 @@
 import type { Signed } from "@doriface/mesh";
 import type { KeyValueStore } from "../storage/idb.ts";
-import { BundleRefused, merge } from "./bundle-merge.ts";
 
 /** The identity this browser always had: its keys sit under their plain names, as pairing a device uses them. */
 export const DEFAULT_SLOT = "";
@@ -25,6 +24,19 @@ export interface BrowserMembership {
 /** One membership as the record holds it: with the key slot (`identity-slots.ts`) whose keys the mesh knows. */
 export interface HeldMembership extends BrowserMembership {
   readonly keySlot: string;
+  /** The enrollment it came from (see `Enrollment`); a key loaded for another generation may not act for it. */
+  readonly generation: number;
+}
+
+/**
+ * One enrollment: the slot it runs on, the one owner allowed to commit it (the Web Lock its join holds), and its lifecycle
+ * generation. A generation is handed out once and never again, so a commit, a resumed join or a delayed cleanup that
+ * names an older generation can be told apart from the identity that holds the slot now (review of #2890).
+ */
+export interface Enrollment {
+  readonly slot: string;
+  readonly owner: string;
+  readonly generation: number;
 }
 
 /**
@@ -34,10 +46,12 @@ export interface HeldMembership extends BrowserMembership {
  * and `last` says whether it was the last mesh, so cleanup cut short is finished on the next start.
  */
 export type SlotClaim =
-  | { readonly slot: string; readonly phase: "enrolling"; readonly owner: string }
+  | (Enrollment & { readonly phase: "enrolling" })
   | {
       readonly slot: string;
       readonly phase: "retiring";
+      /** The generation being retired: cleanup acts only while the slot is still at it. */
+      readonly generation: number;
       /** False for a join dropped before it held a mesh. */
       readonly joined: boolean;
       readonly hosts: readonly string[];
@@ -51,12 +65,14 @@ export type SlotClaim =
 export interface MeshRecord {
   readonly memberships: readonly HeldMembership[];
   readonly slots: readonly SlotClaim[];
+  /** The next generation to hand out. */
+  readonly next: number;
 }
 
 const RECORD_KEY = "mesh-memberships";
 /** Where the single membership of an earlier release lives, and a tab still on it writes. */
-const LEGACY_KEY = "mesh-membership";
-const EMPTY: MeshRecord = { memberships: [], slots: [] };
+export const LEGACY_KEY = "mesh-membership";
+const EMPTY: MeshRecord = { memberships: [], slots: [], next: 1 };
 
 const text = (value: object, key: string): string | undefined => {
   const raw: unknown = Reflect.get(value, key);
@@ -89,81 +105,53 @@ export function membershipOf(value: unknown): BrowserMembership | undefined {
   };
 }
 
+const count = (value: object, key: string): number | undefined => {
+  const raw: unknown = Reflect.get(value, key);
+  return typeof raw === "number" && Number.isSafeInteger(raw) ? raw : undefined;
+};
+
 function heldOf(value: unknown): HeldMembership | undefined {
   const membership = membershipOf(value);
-  const keySlot = typeof value === "object" && value !== null ? text(value, "keySlot") : undefined;
-  return membership === undefined || keySlot === undefined ? undefined : { ...membership, keySlot };
+  if (membership === undefined || typeof value !== "object" || value === null) return undefined;
+  const keySlot = text(value, "keySlot");
+  // A record written before generations existed is generation 0: kept, never dropped for lacking the field.
+  return keySlot === undefined ? undefined : { ...membership, keySlot, generation: count(value, "generation") ?? 0 };
 }
 
 function claimOf(value: unknown): SlotClaim | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const slot = text(value, "slot");
   const phase = text(value, "phase");
-  if (slot === undefined) return undefined;
+  const generation = count(value, "generation");
+  if (slot === undefined || generation === undefined) return undefined;
   const owner = text(value, "owner");
-  if (phase === "enrolling") return owner === undefined ? undefined : { slot, phase, owner };
+  if (phase === "enrolling") return owner === undefined ? undefined : { slot, phase, owner, generation };
   const hosts: unknown = Reflect.get(value, "hosts");
   const last: unknown = Reflect.get(value, "last");
   const joined: unknown = Reflect.get(value, "joined");
   if (phase !== "retiring" || !Array.isArray(hosts) || typeof last !== "boolean" || typeof joined !== "boolean") {
     return undefined;
   }
-  return { slot, phase, joined, hosts: hosts.filter((host) => typeof host === "string"), last };
+  return { slot, phase, generation, joined, hosts: hosts.filter((host) => typeof host === "string"), last };
 }
 
 /** The stored record as it is, without the earlier release's entry: what a reader that must not write may see. */
 export async function storedRecord(storage: KeyValueStore): Promise<MeshRecord> {
   const saved: unknown = await storage.get(RECORD_KEY);
   if (typeof saved !== "object" || saved === null) return EMPTY;
-  const memberships: unknown = Reflect.get(saved, "memberships");
-  const slots: unknown = Reflect.get(saved, "slots");
-  return {
-    memberships: Array.isArray(memberships) ? memberships.flatMap((entry) => heldOf(entry) ?? []) : [],
-    slots: Array.isArray(slots) ? slots.flatMap((entry) => claimOf(entry) ?? []) : [],
-  };
+  const listed: unknown = Reflect.get(saved, "memberships");
+  const claimed: unknown = Reflect.get(saved, "slots");
+  const memberships = Array.isArray(listed) ? listed.flatMap((entry) => heldOf(entry) ?? []) : [];
+  const slots = Array.isArray(claimed) ? claimed.flatMap((entry) => claimOf(entry) ?? []) : [];
+  const used = Math.max(0, ...memberships.map((held) => held.generation), ...slots.map((claim) => claim.generation));
+  return { memberships, slots, next: Math.max(count(saved, "next") ?? 1, used + 1) };
 }
 
 export const legacyMembership = async (storage: KeyValueStore): Promise<BrowserMembership | undefined> =>
   membershipOf(await storage.get(LEGACY_KEY));
 
 export const writeRecord = (storage: KeyValueStore, record: MeshRecord): Promise<void> =>
-  storage.put(RECORD_KEY, { version: 1, memberships: record.memberships, slots: record.slots });
-
-/**
- * The record, with the earlier release's single entry taken in. That entry rests on the keys this browser always had,
- * so it takes the default slot. It is taken in whenever it is there, not only before the record exists: a tab still on
- * the earlier release can write it later. When the record already holds that mesh, the two verified histories are
- * merged (a revoke learned by the old tab is kept). The old entry is cleared only after the record holding it is
- * written, so a write cut short in between is taken in again, idempotently. An entry that does not parse, whose records
- * the door refuses, or whose default slot another mesh holds stays where it is: nothing is deleted that is not kept.
- *
- * Runs inside the mesh lock (`withMeshLock`): a migration racing a join could write the record back without the join.
- */
-export async function readRecord(storage: KeyValueStore): Promise<MeshRecord> {
-  const record = await storedRecord(storage);
-  const legacy = membershipOf(await storage.get(LEGACY_KEY));
-  if (legacy === undefined) return record;
-  const same = record.memberships.find((held) => held.meshId === legacy.meshId);
-  let memberships: readonly HeldMembership[];
-  if (same !== undefined) {
-    let records: readonly Signed[];
-    try {
-      records = merge(same.records, legacy.records);
-    } catch (error) {
-      if (error instanceof BundleRefused) return record;
-      throw error;
-    }
-    memberships = record.memberships.map((held) => (held === same ? { ...held, records } : held));
-  } else if (record.memberships.some((held) => held.keySlot === DEFAULT_SLOT)) {
-    return record;
-  } else {
-    memberships = [{ ...legacy, keySlot: DEFAULT_SLOT }, ...record.memberships];
-  }
-  const taken = { ...record, memberships };
-  await writeRecord(storage, taken);
-  await storage.put(LEGACY_KEY, null);
-  return taken;
-}
+  storage.put(RECORD_KEY, { version: 1, memberships: record.memberships, slots: record.slots, next: record.next });
 
 let chain: Promise<unknown> = Promise.resolve();
 
@@ -180,22 +168,3 @@ export function withMeshLock<T>(action: () => Promise<T>): Promise<T> {
   chain = result;
   return result;
 }
-
-/** Reads and rewrites the record in one locked step; `change` returns the next record and an answer for the caller. */
-export function changeRecord<T>(
-  storage: KeyValueStore,
-  change: (record: MeshRecord) => { readonly next: MeshRecord; readonly answer: T },
-): Promise<T> {
-  return withMeshLock(async () => {
-    const { next, answer } = change(await readRecord(storage));
-    await writeRecord(storage, next);
-    return answer;
-  });
-}
-
-/** The whole record for a reader outside a write, with the old entry taken in. */
-export const currentRecord = (storage: KeyValueStore): Promise<MeshRecord> => withMeshLock(() => readRecord(storage));
-
-/** Every membership, for a reader outside a write: the read itself may take in the old entry, so it takes the lock. */
-export const memberships = async (storage: KeyValueStore): Promise<readonly HeldMembership[]> =>
-  (await withMeshLock(() => readRecord(storage))).memberships;

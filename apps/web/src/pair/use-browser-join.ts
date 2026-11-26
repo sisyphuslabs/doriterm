@@ -4,7 +4,7 @@ import { JOINER_EXPECTS, MeshLines } from "@doriface/mesh/join";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { loadBrowserIdentity } from "../mesh/identity.ts";
 import { connectionStore } from "../connection/store.ts";
-import { abandonJoin, beginJoin } from "../mesh/membership-lifecycle.ts";
+import { abandonJoin, beginJoin } from "../mesh/join-claim.ts";
 import { prepareMembership, selectMembership } from "../mesh/membership-state.ts";
 import { DEFAULT_SLOT, slotKeys } from "../mesh/identity-slots.ts";
 import { deviceStore } from "../storage/idb.ts";
@@ -40,9 +40,12 @@ export function useBrowserJoin() {
       // this join before any key exists, so two joins at once never share one (#2861, review of #2890).
       let join: Awaited<ReturnType<typeof beginJoin>> | undefined;
       try {
-        join = await beginJoin(resume === undefined ? undefined : (resume.keySlot ?? DEFAULT_SLOT));
-        const { slot } = join;
+        join = await beginJoin(
+          resume === undefined ? undefined : { slot: resume.keySlot ?? DEFAULT_SLOT, generation: resume.generation },
+        );
+        const { slot } = join.enrollment;
         const bundle = await prepareMembership(slot);
+        bundle.enrolledBy(join.enrollment);
         if (offer !== undefined) await refuseEarly(offer, bundle);
         const identity = await loadBrowserIdentity(slotKeys(deviceStore, slot));
         const inviterName =
@@ -81,7 +84,7 @@ export function useBrowserJoin() {
             ...(resume === undefined ? {} : { resume }),
           },
         );
-        if (controller.snapshot().phase === "refused") await abandonJoin(slot);
+        if (controller.snapshot().phase === "refused") await abandonJoin(join.enrollment);
         if (controller.snapshot().phase === "joined") {
           await selectMembership(slot);
           guideStore.start();
@@ -91,14 +94,14 @@ export function useBrowserJoin() {
         }
       } catch (error) {
         if (error instanceof DeviceCodeOffer) {
-          if (join !== undefined) await abandonJoin(join.slot);
+          if (join !== undefined) await abandonJoin(join.enrollment);
           if (run === generation.current) setDevice(error.offer);
           return;
         }
         const refused = resume !== undefined && error instanceof Error && closeCodeOf(error) === 4401;
         if (refused) await deviceStore.put(JOIN_ANCHOR_KEY, null);
         // A resume that failed in transit still needs its keys; a fresh join that never started a ceremony does not.
-        if (join !== undefined && (resume === undefined || refused)) await abandonJoin(join.slot);
+        if (join !== undefined && (resume === undefined || refused)) await abandonJoin(join.enrollment);
         if (run === generation.current)
           setFailure(refused ? "Ask for a new invite" : error instanceof Error ? error.message : String(error));
       } finally {

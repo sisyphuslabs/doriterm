@@ -4,13 +4,15 @@ import type { MemberTarget } from "../connection/settings.ts";
 import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
 import { BundleRefused, merge } from "./bundle-merge.ts";
 import { bundleView, memberCards, type BundleView, type ClientKeys } from "./bundle-view.ts";
+import { claimExact } from "./enrollment.ts";
+import { changeRecord, memberships } from "./mesh-record.ts";
 import {
   type BrowserMembership,
-  changeRecord,
   DEFAULT_SLOT,
+  type Enrollment,
+  type HeldMembership,
   type MeshRecord,
   membershipOf,
-  memberships,
 } from "./membership-list.ts";
 
 export type { BrowserMembership } from "./membership-list.ts";
@@ -38,6 +40,10 @@ export class MembershipStore {
   readonly #sessions = new WeakSet<object>();
   readonly #refreshed = new Map<string, number>();
   #state: BundleView;
+  /** The join this store commits for, if one is running: only its owner, at its generation, may write a new membership. */
+  #enrollment: Enrollment | undefined;
+  /** The generation of the membership this store holds; a membership replaced meanwhile is not written over. */
+  #generation: number | undefined;
 
   constructor(storage: KeyValueStore = deviceStore, keys?: ClientKeys, slot: string = DEFAULT_SLOT) {
     this.#storage = storage;
@@ -58,12 +64,59 @@ export class MembershipStore {
     for (const listener of this.#listeners) listener();
   }
 
+  get enrollment(): Enrollment | undefined {
+    return this.#enrollment;
+  }
+
+  /** Hands this store the join it commits for (`claimSlot`/`resumeClaim` made it under the mesh lock). */
+  enrolledBy(enrollment: Enrollment): void {
+    if (enrollment.slot !== this.slot) throw new BundleRefused("The join was claimed for another identity.");
+    this.#enrollment = enrollment;
+  }
+
+  /** Claims this store's own slot for a join run here (a programmatic join, a roster taking a paired browser in). */
+  async enroll(owner: string = crypto.randomUUID()): Promise<Enrollment> {
+    const enrollment = await claimExact(this.#storage, this.slot, owner);
+    if (enrollment === undefined) throw new BundleRefused("Another mesh or join already holds this browser identity.");
+    this.#enrollment = enrollment;
+    return enrollment;
+  }
+
   async read(): Promise<BrowserMembership | undefined> {
-    return this.#mine(await memberships(this.#storage));
+    return membershipOf(this.#held(await memberships(this.#storage)));
+  }
+
+  #held(list: MeshRecord["memberships"]): HeldMembership | undefined {
+    return list.find((held) => held.keySlot === this.slot);
   }
 
   #mine(list: MeshRecord["memberships"]): BrowserMembership | undefined {
-    return membershipOf(list.find((held) => held.keySlot === this.slot));
+    return membershipOf(this.#held(list));
+  }
+
+  /**
+   * The generation a write may commit at, checked inside the locked write (review of #2890). A new membership needs this
+   * store's join to still hold its claim: same owner, same generation, so a join taken over by another tab, retired or
+   * swept cannot commit. A held membership must still be the one this store loaded, not one that replaced it.
+   */
+  #authorized(record: MeshRecord): number {
+    const held = this.#held(record.memberships);
+    if (held !== undefined) {
+      if (held.generation !== this.#generation) throw new BundleRefused("This membership was changed in another tab.");
+      return held.generation;
+    }
+    const join = this.#enrollment;
+    const claimed = record.slots.some(
+      (claim) =>
+        claim.phase === "enrolling" &&
+        claim.slot === this.slot &&
+        claim.owner === join?.owner &&
+        claim.generation === join.generation,
+    );
+    if (join === undefined || !claimed) {
+      throw new BundleRefused("This join no longer holds its claim: it was taken over in another tab or ended.");
+    }
+    return join.generation;
   }
 
   /** Another slot already holds this mesh: joining it again would show that mesh a second identity of this browser. */
@@ -74,33 +127,41 @@ export class MembershipStore {
   }
 
   /** The membership and the end of this slot's join claim, in the one write: never a mesh without its slot. */
-  #saved(record: MeshRecord, next: BrowserMembership): MeshRecord {
+  #saved(record: MeshRecord, next: BrowserMembership, generation: number): MeshRecord {
+    const held = { ...next, keySlot: this.slot, generation };
     return {
-      memberships: [
-        ...record.memberships.filter((held) => held.keySlot !== this.slot),
-        { ...next, keySlot: this.slot },
-      ],
-      slots: record.slots.filter((claim) => claim.slot !== this.slot),
+      ...record,
+      memberships: [...record.memberships.filter((other) => other.keySlot !== this.slot), held],
+      slots: record.slots.filter((claim) => !(claim.slot === this.slot && claim.phase === "enrolling")),
     };
   }
 
-  async #change<T>(change: (record: MeshRecord) => Change<T> & { readonly shown?: BrowserMembership }): Promise<T> {
+  async #change<T>(
+    change: (record: MeshRecord) => Change<T> & { readonly shown?: BrowserMembership; readonly generation?: number },
+  ): Promise<T> {
     let shown: BrowserMembership | undefined;
+    let generation: number | undefined;
     const answer = await changeRecord(this.#storage, (record) => {
       const result = change(record);
       shown = result.shown;
+      generation = result.generation;
       return result;
     });
-    if (shown !== undefined) this.#show(shown);
+    if (shown !== undefined) {
+      this.#generation = generation;
+      this.#enrollment = undefined;
+      this.#show(shown);
+    }
     return answer;
   }
 
   async load(): Promise<void> {
-    const held = await this.read();
+    const held = this.#held(await memberships(this.#storage));
     if (held === undefined) return;
     const records = merge([], held.records);
     this.#checkMesh(records, held.meshId);
-    this.#show({ ...held, records });
+    this.#generation = held.generation;
+    this.#show({ ...(membershipOf(held) ?? held), records });
   }
 
   /** Stores a checked welcome; false when this slot holds another mesh, which wins (the joiner's adopt rule). */
@@ -109,8 +170,9 @@ export class MembershipStore {
       const held = this.#mine(record.memberships);
       if (held !== undefined && held.meshId !== next.meshId) return { next: record, answer: false };
       this.#refuseSecondIdentity(record, next.meshId);
+      const generation = this.#authorized(record);
       const saved = { ...next, records: held === undefined ? next.records : merge(held.records, next.records) };
-      return { next: this.#saved(record, saved), answer: true, shown: saved };
+      return { next: this.#saved(record, saved, generation), answer: true, shown: saved, generation };
     });
   }
 
@@ -147,6 +209,7 @@ export class MembershipStore {
         throw new BundleRefused("This browser already belongs to another mesh.");
       }
       this.#refuseSecondIdentity(record, anchor.mesh);
+      const generation = this.#authorized(record);
       const next: BrowserMembership = {
         meshId: anchor.mesh,
         records: held === undefined ? checked : merge(held.records, checked),
@@ -155,7 +218,7 @@ export class MembershipStore {
         relayUrl: held?.relayUrl || relayUrl,
         joinedAt: held?.joinedAt ?? new Date().toISOString(),
       };
-      return { next: this.#saved(record, next), answer: undefined, shown: next };
+      return { next: this.#saved(record, next, generation), answer: undefined, shown: next, generation };
     });
   }
 
@@ -165,8 +228,9 @@ export class MembershipStore {
     await this.#change((record) => {
       const held = this.#mine(record.memberships);
       if (held === undefined) throw new BundleRefused("The browser's membership was cleared.");
+      const generation = this.#authorized(record);
       const next = { ...held, records: merge(merge(known, held.records), records) };
-      return { next: this.#saved(record, next), answer: undefined, shown: next };
+      return { next: this.#saved(record, next, generation), answer: undefined, shown: next, generation };
     });
   }
 

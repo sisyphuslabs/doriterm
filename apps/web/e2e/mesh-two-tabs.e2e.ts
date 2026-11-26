@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { browserMeshFixture } from "./browser-mesh-fixture.ts";
 import { routeOnlyRelay } from "./browser-mesh-page.ts";
 import { startFakeRelayHost } from "./relay-route.ts";
-import { seedTwoMeshes, stored, storedMeshes } from "./two-meshes-page.ts";
+import { seedMeshes, seedTwoMeshes, stored, storedMeshes } from "./two-meshes-page.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -84,5 +84,51 @@ test("two tabs joining two meshes at once get two identities, one each", async (
   } finally {
     await context.close();
     await Promise.all(hosts.map((host) => host.stop()));
+  }
+});
+
+test("leaving the last mesh in one tab keeps a join running on the default slot in another (LOW-5)", async ({
+  browser,
+  baseURL,
+}) => {
+  const host = await startFakeRelayHost({ terminal: true, machine: true });
+  const context = await browser.newContext({ ...(baseURL === undefined ? {} : { baseURL }), serviceWorkers: "block" });
+  try {
+    const leaving = await context.newPage();
+    await offline(leaving);
+    await leaving.goto("/");
+    // The default slot was freed by an earlier leave: the one mesh left is on slot "second".
+    await seedMeshes(leaving, [{ fixture: browserMeshFixture(), slot: "second" }]);
+
+    const joining = await context.newPage();
+    await routeOnlyRelay(joining, host);
+    await joining.goto((await host.meshOffer()).link);
+    await joining.getByLabel("This browser's name").fill("joining");
+    await joining.getByRole("button", { name: "Join", exact: true }).click();
+    const pending = await host.pendingJoin();
+    await expect(joining.getByLabel("Join code")).toHaveText(pending.code);
+
+    await leaving.goto("/settings");
+    await leaving.getByRole("button", { name: "Leave this mesh", exact: true }).click();
+    await leaving.getByRole("dialog").getByRole("button", { name: "Leave this mesh", exact: true }).click();
+    await leaving.getByRole("button", { name: "Forget this mesh here", exact: true }).click();
+    // The last mesh gone, the page goes to the join screen; storage is read once it is there.
+    await expect(leaving).toHaveURL(/\/join$/);
+    await expect.poll(() => storedMeshes(leaving)).toEqual([]);
+    expect(await stored(leaving, "mesh-sign-key")).not.toBeNull();
+    expect(await stored(leaving, "mesh.join-anchor")).not.toBeNull();
+
+    await joining.getByRole("button", { name: "The codes match", exact: true }).click();
+    await host.answerJoin(pending.nonce, pending.code, true);
+    await expect(joining).toHaveURL(/\/settings#machines$/);
+    const keys = await Promise.all(["mesh-sign-key", "device-key"].map((key) => stored(joining, key)));
+    expect(keys.every((key) => key !== null)).toBe(true);
+    await joining.reload();
+    await expect(joining.getByRole("list", { name: "Machines", exact: true })).toContainText("studio");
+    const kept: unknown = Reflect.get(Object(await stored(joining, "mesh-memberships")), "memberships");
+    expect(Array.isArray(kept) ? kept.map((held) => Reflect.get(Object(held), "keySlot")) : kept).toEqual([""]);
+  } finally {
+    await context.close();
+    await host.stop();
   }
 });

@@ -43,6 +43,7 @@ async function twoMeshes() {
     },
     forget: async (slot) => void calls.push({ step: "forget", slot }),
     bundle: (slot) => stores.get(slot),
+    enroll: async () => async () => undefined,
   };
   return { first, second, deps, calls };
 }

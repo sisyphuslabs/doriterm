@@ -1,20 +1,14 @@
-import { JoinRefused } from "@doriface/mesh/join";
 import { DEFAULT_SETTINGS } from "../connection/settings.ts";
 import { connectionStore } from "../connection/store.ts";
 import { JOIN_ANCHOR_KEY } from "../pair/join-anchor.ts";
 import { loadPushRoute, savePushRoute } from "../push/push-route.ts";
 import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
 import { hasBrowserIdentity, resetBrowserIdentity } from "./identity.ts";
-import {
-  beginRetire,
-  claimSlot,
-  DEFAULT_SLOT,
-  finishRetire,
-  resumeClaim,
-  type RetiringClaim,
-  slotKeys,
-} from "./identity-slots.ts";
-import { currentRecord } from "./membership-list.ts";
+import { beginRetire, finishRetire, type RetireTarget, type RetiringClaim } from "./enrollment.ts";
+import { DEFAULT_SLOT, slotKeys } from "./identity-slots.ts";
+import { liveJoin } from "./join-locks.ts";
+import { currentRecord, readRecord } from "./mesh-record.ts";
+import { withMeshLock } from "./membership-list.ts";
 import * as view from "./membership-state.ts";
 
 /**
@@ -53,12 +47,23 @@ async function dropRoute(storage: KeyValueStore, claim: RetiringClaim): Promise<
   if (ours) await savePushRoute(null, storage);
 }
 
-/** The last mesh gone: the browser is a stranger again, as before #2861 (no join in progress, no saved machines). */
+/**
+ * The last mesh gone: the browser is a stranger again, as before #2861 (no join in progress, no saved machines). Checked
+ * again under the mesh lock when it runs, which may be a later start finishing a cut leave: a join that claimed a slot
+ * since (another tab) keeps its keys and its saved join, and nothing is reset (review of #2890, LOW-5). `claimSlot` takes
+ * the same lock, so no claim can land between the check and the reset.
+ */
 async function strangerAgain(storage: KeyValueStore, claim: RetiringClaim): Promise<void> {
+  const reset = await withMeshLock(async () => {
+    const record = await readRecord(storage);
+    if (record.memberships.length > 0 || record.slots.some((other) => other.phase === "enrolling")) return false;
+    await storage.put(JOIN_ANCHOR_KEY, null);
+    await storage.put(view.IN_VIEW_KEY, null);
+    if (claim.slot !== DEFAULT_SLOT) await resetBrowserIdentity(slotKeys(storage, DEFAULT_SLOT));
+    return true;
+  });
+  if (!reset) return;
   connectionStore.stop();
-  await storage.put(JOIN_ANCHOR_KEY, null);
-  await storage.put(view.IN_VIEW_KEY, null);
-  if (claim.slot !== DEFAULT_SLOT) await resetBrowserIdentity(slotKeys(storage, DEFAULT_SLOT));
   view.dropAll();
   connectionStore.update({ ...DEFAULT_SETTINGS, relayUrl: connectionStore.settings.relayUrl });
 }
@@ -71,8 +76,13 @@ const afterKeys =
     if (claim.last) await strangerAgain(storage, claim);
   };
 
-async function retire(slot: string, storage: KeyValueStore = deviceStore): Promise<void> {
-  const claim = await beginRetire(storage, slot);
+/** Retires one lifecycle of a slot (`RetireTarget`) and drops it from every tab; see `beginRetire`/`finishRetire`. */
+export async function retireSlot(
+  slot: string,
+  storage: KeyValueStore = deviceStore,
+  target: RetireTarget = {},
+): Promise<void> {
+  const claim = await beginRetire(storage, slot, target);
   view.dropSlot(slot);
   announce();
   if (claim !== undefined) await finishRetire(storage, claim, afterKeys(storage));
@@ -83,54 +93,15 @@ async function retire(slot: string, storage: KeyValueStore = deviceStore): Promi
 export const forgetMembership = (
   slot: string = view.inViewSlot(),
   storage: KeyValueStore = deviceStore,
-): Promise<void> => retire(slot, storage);
+): Promise<void> => retireSlot(slot, storage);
 
-/** A join that ended without a membership leaves no keys in its own slot: they were shown to that inviter only. */
-export async function abandonJoin(slot: string, storage: KeyValueStore = deviceStore): Promise<void> {
-  const record = await currentRecord(storage);
-  if (record.memberships.some((held) => held.keySlot === slot)) return;
-  await retire(slot, storage);
-}
-
-/** Holds a Web Lock until the returned function is called; without Web Locks there is no other tab to tell apart. */
-function holdLock(name: string): Promise<() => void> {
-  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  if (locks === undefined) return Promise.resolve(() => undefined);
-  return new Promise((acquired) => {
-    void locks.request(name, () => new Promise<void>((release) => acquired(release)));
-  });
-}
-
-const enrollLock = (owner: string): string => `doriface-enroll/${owner}`;
-
-/**
- * The slot one join runs on, claimed before any key exists and held for the join's life: the owner's lock is taken
- * first, so there is no moment when the claim exists and a sweep in another tab could take it for an abandoned one.
- */
-export async function beginJoin(resumeSlot?: string): Promise<{ readonly slot: string; readonly end: () => void }> {
-  const owner = crypto.randomUUID();
-  const end = await holdLock(enrollLock(owner));
-  try {
-    if (resumeSlot === undefined) return { slot: await claimSlot(deviceStore, owner), end };
-    if (await resumeClaim(deviceStore, resumeSlot, owner)) return { slot: resumeSlot, end };
-    throw new JoinRefused("Ask for a new invite");
-  } catch (error) {
-    end();
-    throw error;
-  }
-}
-
-async function liveJoin(owner: string): Promise<boolean> {
-  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  if (locks === undefined) return true;
-  const { held = [] } = await locks.query();
-  return held.some((lock) => lock.name === enrollLock(owner));
-}
-
-function anchoredSlot(anchor: unknown): string | undefined {
+/** The join the saved anchor names, slot and generation, or undefined when there is none or it names no generation. */
+function anchoredJoin(anchor: unknown): { readonly slot: string; readonly generation: number } | undefined {
   if (typeof anchor !== "object" || anchor === null) return undefined;
   const slot: unknown = Reflect.get(anchor, "keySlot");
-  return typeof slot === "string" ? slot : DEFAULT_SLOT;
+  const generation: unknown = Reflect.get(anchor, "generation");
+  if (typeof generation !== "number") return undefined;
+  return { slot: typeof slot === "string" ? slot : DEFAULT_SLOT, generation };
 }
 
 /**
@@ -139,12 +110,13 @@ function anchoredSlot(anchor: unknown): string | undefined {
  */
 export async function sweep(storage: KeyValueStore = deviceStore, live = liveJoin): Promise<void> {
   const record = await currentRecord(storage);
-  const anchored = anchoredSlot(await storage.get(JOIN_ANCHOR_KEY));
+  const anchored = anchoredJoin(await storage.get(JOIN_ANCHOR_KEY));
   await Promise.all(
     record.slots.map(async (claim) => {
       if (claim.phase === "retiring") return finishRetire(storage, claim, afterKeys(storage));
-      if (claim.slot !== anchored && !(await live(claim.owner))) return retire(claim.slot, storage);
-      return undefined;
+      const saved = anchored?.slot === claim.slot && anchored.generation === claim.generation;
+      if (saved || (await live(claim.owner))) return undefined;
+      return retireSlot(claim.slot, storage, { generation: claim.generation, claimOnly: true });
     }),
   );
 }
@@ -164,7 +136,11 @@ export async function restoreMembership(): Promise<void> {
 async function restoreHeld(): Promise<void> {
   const { memberships } = await currentRecord(deviceStore);
   const present = await Promise.all(memberships.map((held) => hasBrowserIdentity(slotKeys(deviceStore, held.keySlot))));
-  await Promise.all(memberships.filter((_, index) => present[index] !== true).map((held) => retire(held.keySlot)));
+  await Promise.all(
+    memberships
+      .filter((_, index) => present[index] !== true)
+      .map((held) => retireSlot(held.keySlot, deviceStore, { generation: held.generation })),
+  );
   const kept = memberships.filter((_, index) => present[index] === true);
   const saved = await deviceStore.get(view.IN_VIEW_KEY);
   const shown = kept.find((held) => held.keySlot === saved) ?? kept[0];

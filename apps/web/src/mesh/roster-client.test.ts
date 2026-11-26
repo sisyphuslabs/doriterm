@@ -15,6 +15,7 @@ async function roster() {
     signPub: base64urlEncode(identity.card.publicKey),
     devicePub: base64urlEncode(identity.device.publicKey),
   });
+  await bundle.enroll();
   const machine = generateHostIdentity();
   const signPub = base64urlEncode(machine.sign.publicKey);
   const own = signCard(

@@ -84,6 +84,7 @@ describe("what a browser may join (#1386, the shared guard)", () => {
 
   test("a browser that is a member already is refused before anything is dialed", async () => {
     const membership = new MembershipStore(memoryStore());
+    await membership.enroll();
     await membership.adopt({
       meshId: "mesh-1",
       records: [],

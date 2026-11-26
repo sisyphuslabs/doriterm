@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { MemberSigner } from "@doriface/vault";
+import type { HcConnection } from "@doriface/client";
+import { base64urlEncode } from "@doriface/crypto";
+import { type MemberSigner, VAULT_DOC } from "@doriface/vault";
 import { DEFAULT_SETTINGS, type ConnectionSettings } from "../connection/settings.ts";
 import type { ConnectionState } from "../connection/store.ts";
 import type { BundleView } from "../mesh/bundle-view.ts";
+import { beginRetire } from "../mesh/enrollment.ts";
+import { loadSignKey } from "../mesh/identity.ts";
+import { SlotNotEnrolled, slotKeys } from "../mesh/identity-slots.ts";
 import { joinedStore, meshFixture } from "../mesh/mesh-fixture.test-support.ts";
 import { contextOf } from "../mesh/mesh-context.ts";
 import { memoryStore } from "../storage/idb.ts";
@@ -17,7 +22,21 @@ async function twoMeshes() {
     ["", (await joinedStore(storage, a, "")).snapshot()],
     ["b", (await joinedStore(storage, b, "b")).snapshot()],
   ]);
-  return { a, b, views };
+  return { a, b, views, storage };
+}
+
+/** An authenticated session to the selected machine, recording every call the vault makes on it. */
+function session(peers: readonly string[]) {
+  const calls: { readonly method: string; readonly params: unknown }[] = [];
+  const connection = {
+    call: async (method: string, params?: unknown) => {
+      calls.push({ method, params });
+      if (method === "machine.list") return { machines: peers.map((name) => ({ name, state: "connected" })) };
+      return { value: null, version: 0 };
+    },
+  } as unknown as HcConnection;
+  const state: ConnectionState = { phase: "open", connection, path: "relay" };
+  return { calls, state };
 }
 
 const learned = (hostId: string, keySlot: string | undefined, meshId: string): ConnectionSettings => ({
@@ -35,6 +54,32 @@ const keyless = async (): Promise<MemberSigner> => {
 };
 
 describe("the vault's membership comes from the selected machine (review of #2890)", () => {
+  test("its replicas are the selected machine's authenticated session and its peers, and its key is refused once that mesh is left", async () => {
+    const { b, views, storage } = await twoMeshes();
+    const selected = learned(b.hostIds[0] ?? "", "b", b.membership.meshId);
+    const live = session(["beta-peer"]);
+    const later = session(["elsewhere"]);
+    let current = live.state;
+    const signer = async (slot: string): Promise<MemberSigner> => {
+      const card = await loadSignKey(slotKeys(storage, slot), null);
+      return { signPub: base64urlEncode(card.publicKey), sign: (message) => card.sign(message) };
+    };
+    const scope = await vaultScope({ context: () => contextOf(selected, views), connection: () => current, signer });
+    if (scope === undefined) throw new Error("the selected machine's mesh gave no vault scope");
+    current = later.state;
+    const replicas = await scope.replicas();
+    expect(replicas.map((replica) => replica.on)).toEqual([null, "beta-peer"]);
+    await replicas[1]?.get();
+    expect(live.calls).toEqual([
+      { method: "machine.list", params: undefined },
+      { method: "doc.get", params: { name: VAULT_DOC, on: "beta-peer" } },
+    ]);
+    expect(later.calls).toEqual([]);
+    await scope.member.self.sign(new Uint8Array([1]));
+    await beginRetire(storage, "b");
+    await expect(scope.member.self.sign(new Uint8Array([1]))).rejects.toBeInstanceOf(SlotNotEnrolled);
+  });
+
   test("a machine of the second mesh selected: the vault signs as the second mesh, never with the first's key", async () => {
     const { a, b, views } = await twoMeshes();
     const signed: string[] = [];

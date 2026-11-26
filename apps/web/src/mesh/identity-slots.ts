@@ -1,16 +1,11 @@
-import { memberCards } from "./bundle-view.ts";
-import { resetBrowserIdentity } from "./identity.ts";
-import {
-  changeRecord,
-  DEFAULT_SLOT,
-  legacyMembership,
-  type MeshRecord,
-  type SlotClaim,
-  storedRecord,
-} from "./membership-list.ts";
 import type { KeyValueStore } from "../storage/idb.ts";
+import { governKeys } from "../storage/key-authority.ts";
+import { legacyMembership } from "./mesh-record.ts";
+import { DEFAULT_SLOT, storedRecord } from "./membership-list.ts";
+import { SlotNotEnrolled, slotAuthority } from "./slot-authority.ts";
 
 export { DEFAULT_SLOT } from "./membership-list.ts";
+export { SlotNotEnrolled } from "./slot-authority.ts";
 
 /**
  * Where one browser identity keeps its keys (#2861). The default slot is the identity this browser always had: its keys
@@ -20,10 +15,6 @@ export { DEFAULT_SLOT } from "./membership-list.ts";
 const PREFIX = "mesh-identity/";
 const KEY_MATERIAL = new Set(["device-key", "mesh-sign-key"]);
 const SCRATCH = new Set(["device-key.probe", "mesh-sign-key.probe"]);
-
-export class SlotNotEnrolled extends Error {
-  override readonly name = "SlotNotEnrolled";
-}
 
 type Standing = "member" | "enrolling" | "retiring" | "none";
 
@@ -61,8 +52,9 @@ function rawSlot(storage: KeyValueStore, slot: string): KeyValueStore {
 
 /**
  * The one way to a slot's keys: every loader (dial, push, roster, join, the service worker) reads and writes through
- * it, so the rule in `mayWrite` holds everywhere. One view per slot and store, because the key loaders remember a
- * pending creation per store object and a fresh view per call would let two first loads each create a key.
+ * it, so the write rule in `mayWrite` holds everywhere, and every key it loads is checked on each use by the slot's live
+ * authority (`slot-authority.ts`). One view per slot and store, because the key loaders remember a pending creation per
+ * store object and a fresh view per call would let two first loads each create a key.
  */
 export function slotKeys(storage: KeyValueStore, slot: string): KeyValueStore {
   const held = views.get(storage) ?? new Map<string, KeyValueStore>();
@@ -80,77 +72,7 @@ export function slotKeys(storage: KeyValueStore, slot: string): KeyValueStore {
       await keys.put(key, value);
     },
   };
+  governKeys(guarded, () => slotAuthority(storage, keys, slot));
   held.set(slot, guarded);
   return guarded;
-}
-
-const taken = (record: MeshRecord, slot: string): boolean =>
-  record.memberships.some((held) => held.keySlot === slot) || record.slots.some((claim) => claim.slot === slot);
-
-/**
- * Claims a slot for one join before any key exists, under the mesh lock, so two joins at once (two tabs, an app and
- * its tab) never get the same identity. The first mesh takes the default identity, as a join always did; every other
- * join gets fresh keys. A slot name is random, so it says nothing about the mesh it will hold.
- */
-export const claimSlot = (storage: KeyValueStore, owner: string): Promise<string> =>
-  changeRecord(storage, (record) => {
-    const slot = taken(record, DEFAULT_SLOT) ? crypto.randomUUID() : DEFAULT_SLOT;
-    return { next: { ...record, slots: [...record.slots, { slot, phase: "enrolling", owner }] }, answer: slot };
-  });
-
-/** A resumed join keeps its claim; an anchor from an earlier release names the default slot, claimed again if free. */
-export const resumeClaim = (storage: KeyValueStore, slot: string, owner: string): Promise<boolean> =>
-  changeRecord(storage, (record) => {
-    const others = record.slots.filter((claim) => claim.slot !== slot);
-    const claim = { slot, phase: "enrolling", owner } as const;
-    if (record.slots.some((held) => held.slot === slot && held.phase === "enrolling")) {
-      return { next: { ...record, slots: [...others, claim] }, answer: true };
-    }
-    if (slot !== DEFAULT_SLOT || taken(record, slot)) return { next: record, answer: false };
-    return { next: { ...record, slots: [...others, claim] }, answer: true };
-  });
-
-export type RetiringClaim = Extract<SlotClaim, { readonly phase: "retiring" }>;
-
-/**
- * The first half of leaving a mesh or dropping a join, as one write under the lock: the membership goes and the slot is
- * marked retiring, with whether it was the last mesh decided in that same step. Undefined when there is nothing to
- * retire (another tab already did).
- */
-export const beginRetire = (storage: KeyValueStore, slot: string): Promise<RetiringClaim | undefined> =>
-  changeRecord(storage, (record) => {
-    const held = record.memberships.find((membership) => membership.keySlot === slot);
-    const claimed = record.slots.some((claim) => claim.slot === slot && claim.phase === "enrolling");
-    if (held === undefined && !claimed) return { next: record, answer: undefined };
-    const memberships = record.memberships.filter((membership) => membership !== held);
-    const claim: RetiringClaim = {
-      slot,
-      phase: "retiring",
-      joined: held !== undefined,
-      hosts:
-        held === undefined
-          ? []
-          : memberCards(held.records).flatMap((card) => (card.kind === "client" ? [] : [card.hostId])),
-      last: held !== undefined && memberships.length === 0,
-    };
-    const slots = [...record.slots.filter((other) => other.slot !== slot), claim];
-    return { next: { memberships, slots }, answer: claim };
-  });
-
-/**
- * The second half, safe to run again after a cut: both keys of the slot and their probes go, then the claim. A join
- * dropped on the default slot keeps its keys, which are also the pairing identity. `drop` clears what else names the
- * slot (a saved push route); it runs before the claim goes, so a cut there is finished on the next start too.
- */
-export async function finishRetire(
-  storage: KeyValueStore,
-  claim: RetiringClaim,
-  drop: (claim: RetiringClaim) => Promise<void>,
-): Promise<void> {
-  if (claim.joined || claim.slot !== DEFAULT_SLOT) await resetBrowserIdentity(slotKeys(storage, claim.slot));
-  await drop(claim);
-  await changeRecord(storage, (record) => ({
-    next: { ...record, slots: record.slots.filter((other) => other.slot !== claim.slot) },
-    answer: undefined,
-  }));
 }

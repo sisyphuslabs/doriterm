@@ -10,6 +10,7 @@ import {
   withIdentityLock,
 } from "../connection/device-key.ts";
 import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
+import { authorityOf, checkedSigner, checkedStatic } from "../storage/key-authority.ts";
 
 export interface BrowserIdentity {
   readonly device: StaticKey;
@@ -30,11 +31,23 @@ export function hasBrowserIdentity(storage: KeyValueStore = deviceStore): Promis
   });
 }
 
-/** Both keys share the existing device lock; migration keeps the paired Noise key and the original signing key. */
-export function loadBrowserIdentity(
+/**
+ * Both keys share the existing device lock; migration keeps the paired Noise key and the original signing key. A store
+ * governed by a slot's authority (`slotKeys`) is asked first, so a slot that may not act gets no keys at all, and the
+ * keys handed out re-check that authority on every use, cached or not (review of #2890).
+ */
+export async function loadBrowserIdentity(
   storage: KeyValueStore = deviceStore,
   subtle: SubtleCrypto | null = globalThis.crypto?.subtle ?? null,
 ): Promise<BrowserIdentity> {
+  const authority = authorityOf(storage);
+  const check = authority === undefined ? undefined : await authority();
+  const identity = await loadCachedIdentity(storage, subtle);
+  if (check === undefined) return identity;
+  return { device: checkedStatic(identity.device, check), card: checkedSigner(identity.card, check) };
+}
+
+function loadCachedIdentity(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<BrowserIdentity> {
   const held = pending.get(storage);
   if (held !== undefined) return held;
   const loading = withIdentityLock(async () => ({
