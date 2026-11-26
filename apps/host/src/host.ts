@@ -1,7 +1,7 @@
 import { DEFAULT_RELAY_URL, fingerprintOf } from "@doriface/crypto";
 import { controlIsLive } from "./control.ts";
 import { lanUrlsFor } from "./lan-urls.ts";
-import { endSweeper } from "./end-sweeper.ts";
+import { coreWatches } from "./core-watches.ts";
 import { createGateway } from "./gateway.ts";
 import { homedir } from "node:os";
 import { HC_VERSION_FLOOR, hcInstallDir, meetsHcFloor } from "./hc-install.ts";
@@ -132,12 +132,7 @@ async function serve(
     env: options.env,
     handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
   };
-  const ends = endSweeper(core, options.log);
-  started(
-    "end sweeper",
-    () => ends.stop(),
-    () => ends.kill().map((pid) => `hc connect pid ${pid}`),
-  );
+  const watches = coreWatches(core, options, started);
   // One expression for the status: the publisher and the control channel must answer from the same function (review #761).
   const meshStatus = options.meshStatus ?? e2ee?.meshStatus;
   // Both read herdr's machine list again first, bounded, so a line herdr connected since the last reconcile reads so (#754).
@@ -229,8 +224,9 @@ async function serve(
     log: options.log,
     directIdleMs: options.directIdleMs,
     resumeGraceMs: options.resumeGraceMs,
+    runTokens: watches.runTokens,
     openPipe: () => {
-      void ends.ensure();
+      watches.ensure();
       writers.start();
       return new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log });
     },
@@ -310,7 +306,7 @@ async function serve(
         .then(() => e2ee?.sync.stop())
         .then(() => uplink?.stop())
         .then(() => gateway.closeAll())
-        .then(() => ends.stop())
+        .then(() => watches.stop())
         .then(() => writers.stopOthers())
         .then(() => pushStopped)
         .then(() => Promise.all([server.stop(true), lanServer?.stop(true)]))

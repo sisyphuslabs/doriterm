@@ -65,6 +65,11 @@ export interface HostOptions {
    * an older host wrote are updated at start. Unset (tests), the host leaves agent skills alone.
    */
   readonly skill?: AgentSkill | undefined;
+  /**
+   * Program resume (OSC 7577, docs/program-resume.md): terminals clients start get a token, and programs that report
+   * come back after a core restart or a reboot. Needs `stateDir`; never on Windows or as root. On unless false.
+   */
+  readonly resume?: boolean | undefined;
 }
 
 export interface E2eeEndpoint {

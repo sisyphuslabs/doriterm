@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
 import { PRIVATE_STATE_REFUSED_EXIT_CODE } from "./state/private-state-refused.ts";
 import { PrivateStateRefused } from "./state/private-state-refused.ts";
-import { homedir } from "node:os";
-import { delimiter, dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { DEFAULT_RELAY_URL } from "@doriface/crypto";
 import { assertValidToken, generateToken } from "./auth.ts";
@@ -14,7 +12,7 @@ import { MESH_JOIN_USAGE, meshJoinCommand } from "./commands/mesh-join.ts";
 import { MESH_USAGE, meshCommand } from "./commands/mesh.ts";
 import { PAIR_USAGE, pairCommand } from "./commands/pair.ts";
 import { hostAgentSkill, SKILL_USAGE, skillCommand } from "./commands/skill.ts";
-import { HcInstallError, installHc } from "./hc-install.ts";
+import { installHerdrCore } from "./commands/install-hc.ts";
 import { HOST_VERSION, startHost } from "./host.ts";
 import {
   notUpdatable,
@@ -31,6 +29,8 @@ import { selfUpdate } from "./self-update/self-update.ts";
 import { assertListenAllowed, parseListen } from "./listen.ts";
 import { asStartupError, STARTUP_EXIT_CODES, StartupError, startupErrorLine } from "./startup-error.ts";
 import { defaultStateDir } from "./state/files.ts";
+import { RESUME_EXEC, resumeExecCommand } from "./resume/resume-exec.ts";
+import { TOKEN_VAR } from "./resume/run-tokens.ts";
 
 const USAGE = `usage: doriface-host [options]
        doriface-host pair [options]
@@ -42,6 +42,7 @@ const USAGE = `usage: doriface-host [options]
        doriface-host mesh status [--json] | mesh revoke [--compromised] <member> | mesh rename <member> <name> | mesh leave
        doriface-host update [--channel stable|beta] | verify-release <SHA256SUMS.txt> <SHA256SUMS.txt.sig>
        doriface-host skill install [--dir <dir>]... | skill status [--json] | skill uninstall
+       doriface-host resume-exec <launch file>   (typed into a terminal by the host to resume a program)
 
   --listen <host:port>  where to listen (default 127.0.0.1:7766; loopback only)
   --hc <path>           the herdr-core binary (default hc)
@@ -57,6 +58,7 @@ const USAGE = `usage: doriface-host [options]
   --auto-update <ch>    stable or beta: update this binary from get.doriterm.com's signed manifest and exit for the
                         service manager to restart it; off (the default) leaves updates to you
   --push-test-origin <origin>  for tests: also post web push notices to this push service origin (port 0: any port)
+  --no-resume           bring no program back after a restart, and give terminals no OSC 7577 token
   --version             print this host's version
   -h, --help            show this help`;
 
@@ -86,6 +88,7 @@ async function main(args: readonly string[]): Promise<void> {
     update: (given) => updateCommand(given, out),
     skill: (given) => skillCommand(given, out, {}),
     "verify-release": (given) => verifyReleaseCommand(given, out),
+    [RESUME_EXEC]: resumeExecCommand,
   };
   const run = command === undefined ? undefined : coded[command];
   if (run !== undefined) {
@@ -114,26 +117,6 @@ function pushOrigin(value: string): string {
   return new URL(value).origin;
 }
 
-async function installHerdrCore(): Promise<void> {
-  const env = process.env;
-  const installing = installHc({ home: homedir(), env, onPhase: (phase) => log(`installing herdr-core: ${phase}`) });
-  // A failed install is no refused command line: its cause, never the usage.
-  const installed = await installing.catch((error: unknown) => {
-    if (!(error instanceof HcInstallError)) throw error;
-    process.stderr.write(`doriface-host --install-hc: ${error.message}\n`);
-    return undefined;
-  });
-  if (installed === undefined) {
-    process.exitCode = 1;
-    return;
-  }
-  out(`herdr-core ${installed.version} ${installed.action} at ${installed.path}\n`);
-  const dir = dirname(installed.path);
-  if (!(env["PATH"] ?? "").split(delimiter).includes(dir)) {
-    out(`Add ${dir} to your PATH, or pass --hc ${installed.path}.\n`);
-  }
-}
-
 async function serve(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
     args: [...args],
@@ -153,6 +136,7 @@ async function serve(args: readonly string[]): Promise<void> {
       "push-test-origin": { type: "string", multiple: true },
       "install-hc": { type: "boolean", default: false },
       "auto-update": { type: "string", default: "off" },
+      "no-resume": { type: "boolean", default: false },
       version: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -165,7 +149,7 @@ async function serve(args: readonly string[]): Promise<void> {
     out(`doriface-host ${HOST_VERSION}\n`);
     return;
   }
-  if (values["install-hc"]) return installHerdrCore();
+  if (values["install-hc"]) return installHerdrCore(out, log);
   if (!URL.canParse(values.relay)) throw new Error(`--relay wants a URL, got ${JSON.stringify(values.relay)}`);
   const autoUpdate = values["auto-update"] === "off" ? undefined : parseChannel(values["auto-update"], "--auto-update");
   const origin = updateOrigin(process.env);
@@ -173,6 +157,8 @@ async function serve(args: readonly string[]): Promise<void> {
   const token = given === "" ? generateToken() : assertValidToken(given);
   const listen = parseListen(values.listen);
   assertListenAllowed(listen, values["unsafe-listen"]);
+  // A terminal's token is its own (OSC 7577): one this host inherited never reaches the core or what it starts.
+  delete process.env[TOKEN_VAR];
   // Past this point the command line was accepted: a failure is the host's, never a reason to print the usage.
   const host = await startHost({
     listen,
@@ -185,6 +171,7 @@ async function serve(args: readonly string[]): Promise<void> {
     relay: values["no-relay"] ? undefined : { url: values.relay },
     pushTestOrigins: values["push-test-origin"]?.map(pushOrigin),
     skill: hostAgentSkill(),
+    resume: !values["no-resume"],
     log,
   }).catch((error: unknown) => {
     throw asStartupError(error);
