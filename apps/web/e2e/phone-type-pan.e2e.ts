@@ -16,6 +16,25 @@ async function typeFieldUp(page: Page): Promise<void> {
   await expect(field(page)).toBeFocused();
 }
 
+// An installed iOS app scrolls the document itself to show a focused field, and it may do so after the keyboard's last
+// resize. WebKit fires no visualViewport event for a scroll of the document alone (its offsetTop and size do not
+// change), so a keyboard measured only on those events kept that scroll's height between the keys and the keyboard.
+test("a document scroll after the keyboard is up keeps the bar on the keyboard", async ({ page }) => {
+  await typeFieldUp(page);
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = "400px";
+    window.scrollTo(0, 49);
+  });
+  expect(await page.evaluate(() => window.scrollY)).toBe(49);
+  const vv = await page.evaluate(() => (window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? 0));
+  await expect
+    .poll(async () => {
+      const box = await bar(page).boundingBox();
+      return box === null ? null : Math.round(box.y + box.height);
+    })
+    .toBe(vv);
+});
+
 for (const px of [120, 336]) {
   test(`a ${px}px pan with the keyboard up keeps the Type field focused and inside the visual viewport`, async ({
     page,

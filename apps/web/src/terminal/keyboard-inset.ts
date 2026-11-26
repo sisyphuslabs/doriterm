@@ -3,21 +3,20 @@ import { useEffect, useState } from "react";
 export interface ViewportBox {
   readonly height: number;
   readonly offsetTop: number;
-  /** The visual viewport's top in the document: its offset in the layout viewport plus the document's own scroll. */
-  readonly pageTop: number;
   readonly scale: number;
 }
 
 /**
- * How far the soft keyboard reaches up from the bottom of the page's first screen, in CSS px: iOS Safari and Chrome on
- * Android shrink the visual viewport over the keyboard and leave the layout viewport alone. The keys are placed in the
- * page, so the visual viewport is measured from the page's top (pageTop): an installed iOS app scrolls the document
- * itself to show a focused field, and measured from the layout viewport the keys then stood that scroll's height over
- * the keyboard. A pinch zoom shrinks the visual viewport too, so a zoomed viewport reads as no keyboard.
+ * How far the soft keyboard reaches up over the box the keys are placed in, in CSS px: iOS Safari and Chrome on Android
+ * shrink the visual viewport over the keyboard and leave the layout viewport alone. `boxBottom` is that box's bottom in
+ * the layout viewport (its client rect), where the visual viewport's offsetTop is measured too, so a scroll of the
+ * document (an installed iOS app scrolls it to show a focused field, #2820, #2849) moves the box and leaves the keyboard: the
+ * inset follows the box, never the page's first screen. A pinch zoom shrinks the visual viewport too, so a zoomed
+ * viewport reads as no keyboard.
  */
-export function keyboardInset(layoutHeight: number, viewport: ViewportBox): number {
+export function keyboardInset(boxBottom: number, viewport: ViewportBox): number {
   if (Math.abs(viewport.scale - 1) > 0.01) return 0;
-  return Math.max(0, Math.round(layoutHeight - viewport.height - viewport.pageTop));
+  return Math.max(0, Math.round(boxBottom - viewport.height - viewport.offsetTop));
 }
 
 /**
@@ -135,16 +134,21 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
       // The layout viewport, which the keys are placed in: WebKit on iOS shrinks window.innerHeight with the visual
       // viewport over the keyboard, so measured from it the keyboard would take no room and hide the keys (#1409).
       const layoutHeight = document.documentElement.clientHeight;
-      const inset = viewport === null ? 0 : keyboardInset(layoutHeight, viewport);
+      const inset =
+        viewport === null || scope === null ? 0 : keyboardInset(scope.getBoundingClientRect().bottom, viewport);
       const overlaid = viewport === null ? 0 : keyboardHeight(layoutHeight, viewport);
       const open = layoutKeyboard.measure(window.innerWidth, layoutHeight, performance.now()) || overlaid > 0;
       if (wasOpen && !open && typingIn(scope) && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
       wasOpen = open;
-      setKeyboard({ open, inset });
+      setKeyboard((was) => (was.open === open && was.inset === inset ? was : { open, inset }));
     };
     window.addEventListener("resize", measure, { signal: abort.signal });
+    // WebKit fires no visualViewport event for a scroll of the document alone (neither its offsetTop nor its size
+    // changes), and the installed iOS app may scroll it to a focused field after the keyboard's last resize: measured
+    // only on those events, the keys kept that scroll's height between them and the keyboard (#2849).
+    window.addEventListener("scroll", measure, { signal: abort.signal });
     viewport?.addEventListener("resize", measure, { signal: abort.signal });
     viewport?.addEventListener("scroll", measure, { signal: abort.signal });
     measure();
