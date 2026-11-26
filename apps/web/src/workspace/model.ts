@@ -102,6 +102,16 @@ export function tabTitle(name: string, position: number, agent?: Terminal, pane?
   return String(position + 1);
 }
 
+/**
+ * What a pane gives its tab's title on the desktop strip ({@link tabTitle}): its kind, and its own title wherever the tab
+ * reads it (an agent's, or a pane that names itself). The strip watches this, so a program's title change or a
+ * foreground change that turns a shell into a program redraws its tab (#2672 review).
+ */
+export function tabTitleKey(terminal: Session): string {
+  const kind = programKind(terminal);
+  return kind === "agent" || namesItself(terminal) ? `${kind}:${terminalTitle(terminal)}` : kind;
+}
+
 /** Whether a pane's own title names it: a name it was given, or, for a program that is not a plain shell, its window
  * title. A shell at a prompt flaps its title with every command, so only a given name counts there. */
 function namesItself(terminal: Terminal): boolean {

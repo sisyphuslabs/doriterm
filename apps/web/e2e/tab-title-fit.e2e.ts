@@ -57,12 +57,37 @@ test("an agent's title that fits its tab has no tooltip (#478)", async ({ page }
   }
 });
 
-const startLane = (name: string): string => {
-  const out = hcOn("host", ["run", "--bg", "--name", name, "--cwd", "/", "--", "bash", "-c", "exec sleep 600"]);
+const startOnHost = (args: readonly string[]): string => {
+  const out = hcOn("host", ["run", "--bg", ...args]);
   const parsed: unknown = JSON.parse(out);
   if (typeof parsed !== "object" || parsed === null || !("address" in parsed)) throw new Error(out);
   return String((parsed as { readonly address: unknown }).address);
 };
+
+const startLane = (name: string): string =>
+  startOnHost(["--name", name, "--cwd", "/", "--", "bash", "-c", "exec sleep 600"]);
+
+// A program, not a shell, that titles its window, then titles it again once it reads a line.
+const RETITLES = '$|=1; print "\\e]2;title-before\\a"; <STDIN>; print "\\e]2;title-after\\a"; sleep 600';
+
+test("a program's tab follows its title as it changes after the tab is drawn (#2672 review)", async ({ page }) => {
+  const address = startOnHost(["--cwd", "/", "--", "perl", "-e", RETITLES]);
+  try {
+    seedSpaces([
+      { id: "spc-titles", name: "titles", folder: "", tabs: [{ id: "tb-titles", name: "", terminal: address }] },
+    ]);
+    await page.goto("/");
+    const spacesRegion = page.getByRole("complementary", { name: "Workspace" }).getByRole("region", { name: "Spaces" });
+    await rows(spacesRegion).filter({ hasText: "titles" }).first().click();
+    const tab = await tabOf(page, address);
+    await expect(tab).toHaveText("title-before", { timeout: 15_000 });
+    await page.locator(`[data-terminal="${address}"]`).click();
+    await page.keyboard.press("Enter");
+    await expect(tab).toHaveText("title-after", { timeout: 15_000 });
+  } finally {
+    endAgent("host", address);
+  }
+});
 
 test("a lane's tab reads the lane's name, from the first lane on, never its place as a bare number (#2670)", async ({
   page,

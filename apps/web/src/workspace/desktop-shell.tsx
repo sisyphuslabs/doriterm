@@ -1,5 +1,4 @@
 import type { HcConnection } from "@doriface/client";
-import type { Terminal as TerminalEntry } from "@doriface/protocol";
 import { type AgentStatus, cn, IconButton, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
 import { Columns2, PanelLeft, Rows2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -10,7 +9,7 @@ import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
 import { agentStatus } from "./attention.ts";
-import { machineOf, programKind, type Session, tabTitle, terminalTitle } from "./model.ts";
+import { machineOf, programKind, type Session, tabTitle, tabTitleKey } from "./model.ts";
 import { NewTabMenu } from "./new-tab-menu.tsx";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
@@ -102,9 +101,6 @@ export interface DesktopShellProps {
   readonly onSession: SessionVerb;
 }
 
-const agentTitle = (terminal: TerminalEntry): string =>
-  programKind(terminal) === "agent" ? terminalTitle(terminal) : "";
-
 const viewKey = (address: string, pid: number | null): string => `${address}#${pid ?? ""}`;
 
 export function DesktopShell(props: DesktopShellProps) {
@@ -185,9 +181,9 @@ export function DesktopShell(props: DesktopShellProps) {
   }, []);
   const showsEnded = (terminal: { readonly address: string; readonly pid?: number | null }): boolean =>
     endedViews.has(viewKey(terminal.address, terminal.pid ?? null));
-  // An agent's tab is named after it, so its title as it stands; every other terminal's title stays out of the shell
-  // (#2607).
-  const named = useShown(terminals, agentTitle);
+  // A tab is named after its agent or a pane that names itself, so their titles as they stand; a shell's flapping prompt
+  // title stays out of the shell (#2607).
+  const named = useShown(terminals, tabTitleKey);
   const byAddress = new Map(named.map((terminal) => [terminal.address, terminal]));
   const tabList: WorkspaceTab[] = layout.shown.map((tab, position) => tabEntry(tab, position, byAddress));
   const tabRename = useTabRename(layout, tabList);
