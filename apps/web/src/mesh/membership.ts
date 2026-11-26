@@ -9,6 +9,7 @@ import { changeRecord, memberships } from "./mesh-record.ts";
 import {
   type BrowserMembership,
   DEFAULT_SLOT,
+  type EnrollingClaim,
   type Enrollment,
   type HeldMembership,
   type MeshRecord,
@@ -128,7 +129,15 @@ export class MembershipStore {
 
   /** The membership and the end of this slot's join claim, in the one write: never a mesh without its slot. */
   #saved(record: MeshRecord, next: BrowserMembership, generation: number): MeshRecord {
-    const held = { ...next, keySlot: this.slot, generation };
+    // The Noise key recorded for this generation (the join's first load, or the membership before) stays bound to it.
+    const prior =
+      record.memberships.find((other) => other.keySlot === this.slot && other.generation === generation) ??
+      record.slots.find(
+        (claim): claim is EnrollingClaim =>
+          claim.slot === this.slot && claim.phase === "enrolling" && claim.generation === generation,
+      );
+    const devicePub = prior?.devicePub ?? this.#keys?.devicePub;
+    const held = { ...next, keySlot: this.slot, generation, ...(devicePub === undefined ? {} : { devicePub }) };
     return {
       ...record,
       memberships: [...record.memberships.filter((other) => other.keySlot !== this.slot), held],

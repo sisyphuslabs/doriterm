@@ -154,9 +154,16 @@ export async function loadDeviceKey(
 ): Promise<DeviceKey> {
   // A slot's keys (`slotKeys`) are checked against its live authority on every DH, as `loadBrowserIdentity` does.
   const authority = authorityOf(storage);
-  const check = authority === undefined ? undefined : await authority();
-  const key = await loadCachedDeviceKey(storage, subtle);
-  return check === undefined ? key : checkedStatic(key, check);
+  if (authority === undefined) return loadCachedDeviceKey(storage, subtle);
+  const grant = await authority();
+  let key = await loadCachedDeviceKey(storage, subtle);
+  // A cached key is used only while it is still the slot's stored key (another context may have replaced it).
+  if (!(await grant.current({ "device-key": key.publicKey }))) {
+    pending.delete(storage);
+    key = await loadCachedDeviceKey(storage, subtle);
+  }
+  await grant.bind({ "device-key": key.publicKey });
+  return checkedStatic(key, grant);
 }
 
 function loadCachedDeviceKey(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<DeviceKey> {

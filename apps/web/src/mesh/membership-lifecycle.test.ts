@@ -42,7 +42,7 @@ async function joinIntact(storage: KeyValueStore, started: { readonly join: Enro
   expect(await storage.get("mesh-sign-key")).not.toBeNull();
   expect(await storage.get("device-key")).not.toBeNull();
   expect(await storage.get(JOIN_ANCHOR_KEY)).toEqual(started.anchor);
-  expect((await currentRecord(storage)).slots).toEqual([{ ...started.join, phase: "enrolling" }]);
+  expect((await currentRecord(storage)).slots).toMatchObject([{ ...started.join, phase: "enrolling" }]);
 }
 
 describe("a join that ends without a mesh", () => {

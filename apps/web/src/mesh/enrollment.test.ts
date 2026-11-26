@@ -111,7 +111,7 @@ describe("leaving one mesh", () => {
       throw new Error("a stale cleanup must not run its follow-up");
     });
     expect(await publicKeys(storage, DEFAULT_SLOT)).toEqual(keys);
-    expect((await currentRecord(storage)).slots).toEqual([{ ...next, phase: "enrolling" }]);
+    expect((await currentRecord(storage)).slots).toMatchObject([{ ...next, phase: "enrolling" }]);
   });
 
   test("a delete that fails leaves the slot retiring, and running the cleanup again finishes it", async () => {

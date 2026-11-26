@@ -41,10 +41,20 @@ export async function loadBrowserIdentity(
   subtle: SubtleCrypto | null = globalThis.crypto?.subtle ?? null,
 ): Promise<BrowserIdentity> {
   const authority = authorityOf(storage);
-  const check = authority === undefined ? undefined : await authority();
-  const identity = await loadCachedIdentity(storage, subtle);
-  if (check === undefined) return identity;
-  return { device: checkedStatic(identity.device, check), card: checkedSigner(identity.card, check) };
+  if (authority === undefined) return loadCachedIdentity(storage, subtle);
+  const grant = await authority();
+  const halves = (held: BrowserIdentity) => ({
+    "device-key": held.device.publicKey,
+    "mesh-sign-key": held.card.publicKey,
+  });
+  let identity = await loadCachedIdentity(storage, subtle);
+  // A cached load is used only when its keys are still the slot's stored keys; otherwise it is dropped and read again.
+  if (!(await grant.current(halves(identity)))) {
+    forgetCachedIdentity(storage);
+    identity = await loadCachedIdentity(storage, subtle);
+  }
+  await grant.bind(halves(identity));
+  return { device: checkedStatic(identity.device, grant), card: checkedSigner(identity.card, grant) };
 }
 
 function loadCachedIdentity(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<BrowserIdentity> {

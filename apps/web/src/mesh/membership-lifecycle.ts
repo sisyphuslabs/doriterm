@@ -13,8 +13,9 @@ import * as view from "./membership-state.ts";
 
 /**
  * Every tab of this browser hears when the record changes, so a mesh left in one tab drops its machines, sessions and
- * cached keys in all of them (review of #2890). The service worker holds nothing between pushes: it reads the saved
- * route, which a leave clears, and loads keys through `slotKeys`, which refuses a retired slot.
+ * cached keys in all of them (review of #2890). This is clean-up only, never what authorizes a key: a context it does not
+ * reach (the service worker keeps its own key cache for its life) is held by `slot-authority.ts`, which refuses every
+ * use of a key that is not the slot's stored and recorded key now, and by the leave clearing the saved push route.
  */
 const meshBus = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("doriface-mesh");
 /** A BroadcastChannel is a message port with no target origin, typed by the one method used, as `vault-channel.ts` does. */

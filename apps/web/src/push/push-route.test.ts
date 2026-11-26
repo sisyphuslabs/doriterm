@@ -10,9 +10,10 @@ import { type ConnectionSettings, DEFAULT_SETTINGS } from "../connection/setting
 import { type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
 import { pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
 import { loadDeviceKey } from "../connection/device-key.ts";
-import { beginRetire } from "../mesh/enrollment.ts";
+import { relayDepsFor } from "../connection/relay-deps.ts";
+import { beginRetire, finishRetire } from "../mesh/enrollment.ts";
 import { SlotNotEnrolled, slotKeys } from "../mesh/identity-slots.ts";
-import { joinedStore, meshFixture } from "../mesh/mesh-fixture.test-support.ts";
+import { joinedStore, meshFixture, withDevice } from "../mesh/mesh-fixture.test-support.ts";
 import type { KeyValueStore } from "../storage/idb.ts";
 import { loadPushRoute, openPushLink, type PushRoute, routeOf, savePushRoute } from "./push-route.ts";
 
@@ -213,8 +214,7 @@ describe("a browser's push stream is the relay's (#1381 §8)", () => {
 
   test("a push key held from before its mesh was left is refused over the relay, not just in the page that left (review of #2890)", async () => {
     const storage = memoryStore();
-    const mesh = meshFixture();
-    await joinedStore(storage, { ...mesh, secrets: { ...mesh.secrets, device: devicePair.secretKey } }, "second");
+    await joinedStore(storage, withDevice(meshFixture(), devicePair), "second");
     const held = await loadDeviceKey(slotKeys(storage, "second"), null);
     const route = { ...relayRoute(DIRECT), keySlot: "second" };
     const open = await openPushLink(route, { deps: { loadDeviceKey: async () => held } });
@@ -223,6 +223,25 @@ describe("a browser's push stream is the relay's (#1381 §8)", () => {
     const refused = openPushLink(route, { deps: { loadDeviceKey: async () => held } });
     // The handshake reports why it stopped as its cause: here, the retired identity's key refused its DH.
     await expect(refused).rejects.toMatchObject({ cause: expect.any(SlotNotEnrolled) });
+  });
+
+  test("the service worker's own key cache cannot dial as an identity left in a page: it reloads the key the slot holds now (review of #2890)", async () => {
+    const backing = memoryStore();
+    const viewOf = (): KeyValueStore => ({
+      get: (key) => backing.get(key),
+      put: (key, value) => backing.put(key, value),
+    });
+    const page = viewOf();
+    const worker = relayDepsFor(viewOf());
+    await joinedStore(page, meshFixture(), "");
+    const stale = await worker.loadDeviceKey();
+    const left = await beginRetire(page, "");
+    if (left === undefined) throw new Error("nothing was retired");
+    await finishRetire(page, left, async () => undefined);
+    await joinedStore(page, withDevice(meshFixture(), devicePair), "");
+    const link = await openPushLink(relayRoute(DIRECT), { deps: worker });
+    link.close();
+    await expect(stale.dh(new Uint8Array(32).fill(9))).rejects.toBeInstanceOf(SlotNotEnrolled);
   });
 });
 

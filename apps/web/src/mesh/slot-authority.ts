@@ -1,6 +1,9 @@
+import { base64urlEncode } from "@doriface/crypto";
+import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import type { KeyValueStore } from "../storage/idb.ts";
-import type { KeyCheck } from "../storage/key-authority.ts";
-import { DEFAULT_SLOT, type MeshRecord, storedRecord } from "./membership-list.ts";
+import type { KeyGrant, KeyName, PublicHalves } from "../storage/key-authority.ts";
+import { changeRecord } from "./mesh-record.ts";
+import { DEFAULT_SLOT, type EnrollingClaim, type MeshRecord, storedRecord } from "./membership-list.ts";
 
 export class SlotNotEnrolled extends Error {
   override readonly name = "SlotNotEnrolled";
@@ -13,31 +16,90 @@ const refuse = (why: string): never => {
 const retiring = (record: MeshRecord, slot: string): boolean =>
   record.slots.some((claim) => claim.slot === slot && claim.phase === "retiring");
 
-/** Whether the slot is still at `generation`: its membership, or the enrollment that will become it. */
-const atGeneration = (record: MeshRecord, slot: string, generation: number): boolean =>
-  record.memberships.some((held) => held.keySlot === slot && held.generation === generation) ||
-  record.slots.some((claim) => claim.slot === slot && claim.phase === "enrolling" && claim.generation === generation);
+const RECORDED: Readonly<Record<KeyName, "signPub" | "devicePub">> = {
+  "mesh-sign-key": "signPub",
+  "device-key": "devicePub",
+};
+const KEY_NAMES: readonly KeyName[] = ["device-key", "mesh-sign-key"];
+
+/** The membership or running join that holds the slot at `generation`, with the key public halves recorded for it. */
+function entryAt(record: MeshRecord, slot: string, generation: number) {
+  const held = record.memberships.find((entry) => entry.keySlot === slot && entry.generation === generation);
+  if (held !== undefined) return held;
+  return record.slots.find(
+    (claim): claim is EnrollingClaim =>
+      claim.slot === slot && claim.phase === "enrolling" && claim.generation === generation,
+  );
+}
+
+/** The public half of a stored key, in every form a release has stored one, or undefined when none is stored. */
+function publicOf(name: KeyName, stored: unknown): string | undefined {
+  if (typeof stored !== "object" || stored === null) return undefined;
+  const publicKey: unknown = Reflect.get(stored, "publicKey");
+  if (publicKey instanceof Uint8Array) return base64urlEncode(publicKey);
+  const secret: unknown = Reflect.get(stored, Reflect.get(stored, "kind") === "ed25519" ? "secretKey" : "privateKey");
+  if (!(secret instanceof Uint8Array) || secret.length !== 32) return undefined;
+  return base64urlEncode(name === "device-key" ? x25519.getPublicKey(secret) : ed25519.getPublicKey(secret));
+}
 
 /**
- * The live authority over one slot's keys, read from storage itself and not from what a tab was told (review of #2890).
- * At load it fixes the generation the keys are loaded for: a membership's, a running join's, or none for the default
- * slot's pairing identity. Every later use (a signature, a Noise DH: dial, push, roster, vault, the service worker)
- * checks again that the slot is still at that generation, is not being retired and still has that key; a key held from
- * before, or an operation already running, is refused the moment its mesh is left or its join is retired or taken over.
+ * The live authority over one slot's keys, read from storage itself and not from what a context was told (review of
+ * #2890). At load it fixes the generation the keys are loaded for: a membership's, a running join's, or none for the
+ * default slot's pairing identity. Every use then checks that the slot is still at that generation and not being
+ * retired, and that the key in hand is the very key stored there and recorded for that generation: a key held from
+ * before, in any cache of any context, is refused once its mesh is left, its join retired, or its slot given new keys.
  */
-export async function slotAuthority(storage: KeyValueStore, keys: KeyValueStore, slot: string): Promise<KeyCheck> {
+export async function slotAuthority(storage: KeyValueStore, keys: KeyValueStore, slot: string): Promise<KeyGrant> {
   const record = await storedRecord(storage);
   const generation =
     record.memberships.find((held) => held.keySlot === slot)?.generation ??
     record.slots.flatMap((claim) => (claim.slot === slot && claim.phase === "enrolling" ? [claim.generation] : []))[0];
   if (retiring(record, slot)) refuse("This mesh identity is being removed from this browser.");
   if (generation === undefined && slot !== DEFAULT_SLOT) refuse("This mesh identity is not enrolled on this browser.");
-  return async (key) => {
-    const now = await storedRecord(storage);
-    if (retiring(now, slot)) refuse("This mesh identity is being removed from this browser.");
-    if (generation !== undefined && !atGeneration(now, slot, generation)) {
-      refuse("This mesh identity was left or replaced on this browser.");
-    }
-    if ((await keys.get(key)) == null) refuse("This identity's key was deleted on this browser.");
+  const stored = async (name: KeyName) => publicOf(name, await keys.get(name));
+  const current = async (loaded: PublicHalves): Promise<boolean> => {
+    const names = KEY_NAMES.filter((name) => loaded[name] !== undefined);
+    const now = await Promise.all(names.map(stored));
+    return names.every((name, index) => now[index] === base64urlEncode(loaded[name] ?? new Uint8Array()));
+  };
+  return {
+    current,
+    check: async (name, publicKey) => {
+      const now = await storedRecord(storage);
+      if (retiring(now, slot)) refuse("This mesh identity is being removed from this browser.");
+      const entry = generation === undefined ? undefined : entryAt(now, slot, generation);
+      if (generation !== undefined && entry === undefined)
+        refuse("This mesh identity was left or replaced on this browser.");
+      const recorded = entry?.[RECORDED[name]];
+      const mine = base64urlEncode(publicKey);
+      if ((await stored(name)) !== mine || (recorded !== undefined && recorded !== mine)) {
+        refuse("This key is not this browser's key for that mesh any more.");
+      }
+    },
+    bind: async (loaded) => {
+      if (generation === undefined) return;
+      const pubs = KEY_NAMES.flatMap((name) => {
+        const key = loaded[name];
+        return key === undefined ? [] : [[RECORDED[name], base64urlEncode(key)] as const];
+      });
+      // Already recorded, and the same keys: nothing to write. Any other key at this generation is refused.
+      const settled = (entry: { readonly signPub?: string | undefined; readonly devicePub?: string | undefined }) =>
+        pubs.every(([field, pub]) => {
+          if (entry[field] !== undefined && entry[field] !== pub)
+            refuse("This key is not this browser's key for that mesh.");
+          return entry[field] === pub;
+        });
+      const seen = entryAt(await storedRecord(storage), slot, generation);
+      if (seen !== undefined && settled(seen)) return;
+      await changeRecord(storage, (now) => {
+        const entry =
+          entryAt(now, slot, generation) ?? refuse("This mesh identity was left or replaced on this browser.");
+        settled(entry);
+        const next = Object.fromEntries(pubs);
+        const memberships = now.memberships.map((held) => (held === entry ? { ...held, ...next } : held));
+        const slots = now.slots.map((claim) => (claim === entry ? { ...claim, ...next } : claim));
+        return { next: { ...now, memberships, slots }, answer: undefined };
+      });
+    },
   };
 }

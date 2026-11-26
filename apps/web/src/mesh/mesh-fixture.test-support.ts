@@ -66,6 +66,16 @@ export function meshFixture(machines: readonly string[] = ["studio", "workshop"]
 
 export type MeshFixture = ReturnType<typeof meshFixture>;
 
+/** The fixture with its browser holding `pair` as its device key, public half included (a key a test host paired). */
+export const withDevice = (
+  mesh: MeshFixture,
+  pair: { readonly publicKey: Uint8Array; readonly secretKey: Uint8Array },
+): MeshFixture => ({
+  ...mesh,
+  keys: { ...mesh.keys, devicePub: base64urlEncode(pair.publicKey) },
+  secrets: { ...mesh.secrets, device: pair.secretKey },
+});
+
 const slotKey = (slot: string, key: string): string => (slot === DEFAULT_SLOT ? key : `mesh-identity/${slot}/${key}`);
 
 /** Puts a fixture's browser in `storage` on `slot` as a join would leave it: keys stored, membership written. */

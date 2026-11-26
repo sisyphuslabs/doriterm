@@ -26,6 +26,8 @@ export interface HeldMembership extends BrowserMembership {
   readonly keySlot: string;
   /** The enrollment it came from (see `Enrollment`); a key loaded for another generation may not act for it. */
   readonly generation: number;
+  /** The public half of the Noise key recorded for this generation (`slot-authority.ts`); `signPub` is the signing one. */
+  readonly devicePub?: string;
 }
 
 /**
@@ -46,7 +48,12 @@ export interface Enrollment {
  * and `last` says whether it was the last mesh, so cleanup cut short is finished on the next start.
  */
 export type SlotClaim =
-  | (Enrollment & { readonly phase: "enrolling" })
+  | (Enrollment & {
+      readonly phase: "enrolling";
+      /** The public halves of the keys this join loaded, recorded on its first load so no other key can follow. */
+      readonly signPub?: string;
+      readonly devicePub?: string;
+    })
   | {
       readonly slot: string;
       readonly phase: "retiring";
@@ -62,6 +69,8 @@ export type SlotClaim =
  * Every mesh this browser is in and every claimed slot, in ONE stored value (#2861): each change is a single put, so a
  * write cut short leaves the value before or after it, never a membership without its slot or the other way round.
  */
+export type EnrollingClaim = Extract<SlotClaim, { readonly phase: "enrolling" }>;
+
 export interface MeshRecord {
   readonly memberships: readonly HeldMembership[];
   readonly slots: readonly SlotClaim[];
@@ -115,7 +124,10 @@ function heldOf(value: unknown): HeldMembership | undefined {
   if (membership === undefined || typeof value !== "object" || value === null) return undefined;
   const keySlot = text(value, "keySlot");
   // A record written before generations existed is generation 0: kept, never dropped for lacking the field.
-  return keySlot === undefined ? undefined : { ...membership, keySlot, generation: count(value, "generation") ?? 0 };
+  if (keySlot === undefined) return undefined;
+  const devicePub = text(value, "devicePub");
+  const generation = count(value, "generation") ?? 0;
+  return { ...membership, keySlot, generation, ...(devicePub === undefined ? {} : { devicePub }) };
 }
 
 function claimOf(value: unknown): SlotClaim | undefined {
@@ -125,7 +137,18 @@ function claimOf(value: unknown): SlotClaim | undefined {
   const generation = count(value, "generation");
   if (slot === undefined || generation === undefined) return undefined;
   const owner = text(value, "owner");
-  if (phase === "enrolling") return owner === undefined ? undefined : { slot, phase, owner, generation };
+  if (phase === "enrolling") {
+    if (owner === undefined) return undefined;
+    const [signPub, devicePub] = [text(value, "signPub"), text(value, "devicePub")];
+    return {
+      slot,
+      phase,
+      owner,
+      generation,
+      ...(signPub === undefined ? {} : { signPub }),
+      ...(devicePub === undefined ? {} : { devicePub }),
+    };
+  }
   const hosts: unknown = Reflect.get(value, "hosts");
   const last: unknown = Reflect.get(value, "last");
   const joined: unknown = Reflect.get(value, "joined");
