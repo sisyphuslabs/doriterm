@@ -52,7 +52,14 @@ for (const { name, width, height, inset } of [
       expect(Math.abs(screen.y + screen.height - bar.y)).toBeLessThanOrEqual(1);
       const row = await laidOutBox(terminal.locator(".term-row:not(.term-scrollback-row)").first());
       expect(screen.height - (await rows(page)) * row.height).toBeLessThan(row.height + 8);
-      await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toHaveText("1/1");
+      // The header keeps one 48 px line; the tabs chip is in it only on a phone on its side (#2879).
+      expect(header.height).toBe(48);
+      const chip = page
+        .getByRole("banner")
+        .locator("[data-phone-tabs]")
+        .getByRole("button", { name: /^Switch tab, / });
+      if (width < 430) await expect(chip).toHaveCount(0);
+      else await expect(chip).toHaveText("1/1");
       await expectTouchTargets(page.getByRole("banner"));
     });
   });

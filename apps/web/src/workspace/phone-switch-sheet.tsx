@@ -1,4 +1,4 @@
-import { AgentRow, Button, IconButton, SegmentedControl, Sheet, SidebarSection } from "@doriface/ui";
+import { AgentRow, Button, IconButton, SegmentedControl, Sheet, type SheetProps, SidebarSection } from "@doriface/ui";
 import { Plus, X } from "lucide-react";
 import { type ReactElement, type ReactNode, useState } from "react";
 import { type ListedSpace, type Session, spaceOfAddress, toAgent } from "./model.ts";
@@ -147,10 +147,19 @@ export function SwitchSheet(props: {
   /** Closes the tab that shows `address`; the sheet stays open on what is left. */
   readonly onCloseTab: (address: string) => void;
   readonly trigger: ReactElement;
+  /** Where the focus goes as the sheet closes, when its trigger is not on screen (SheetProps). */
+  readonly finalFocus?: SheetProps["finalFocus"];
 }) {
-  const { terminals, active, open, onOpenChange, onOpen, onNewInSpace, onCloseTab, trigger } = props;
+  const { terminals, active, open, onOpenChange, onOpen, onNewInSpace, onCloseTab, trigger, finalFocus } = props;
   return (
-    <Sheet title="Switch" side="bottom" open={open} onOpenChange={onOpenChange} trigger={trigger}>
+    <Sheet
+      title="Switch"
+      side="bottom"
+      open={open}
+      onOpenChange={onOpenChange}
+      trigger={trigger}
+      {...(finalFocus === undefined ? {} : { finalFocus })}
+    >
       <SwitchList
         terminals={terminals}
         active={active}

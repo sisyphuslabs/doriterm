@@ -163,6 +163,32 @@ export async function startBrowsing(page: Page): Promise<void> {
   await expect(sheet).toHaveCount(0);
 }
 
+const portrait = (page: Page): boolean => (page.viewportSize()?.width ?? 0) < 430;
+
+/**
+ * The tabs switch (#2879): the header's chip from 430 px, else the "..." session sheet's Tabs row, which this opens. Its
+ * accessible name is "Switch tab, <space>, <title>, tab n of m"; its text ends in "n/m".
+ */
+export async function tabSwitch(page: Page): Promise<Locator> {
+  const header = page.getByRole("banner");
+  if (!portrait(page)) return header.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
+  await header.getByRole("button", { name: /^Session actions for / }).click();
+  return page.getByRole("dialog").getByRole("button", { name: /^Switch tab, / });
+}
+
+/** Checks the tabs switch without using it; on a portrait phone the session sheet opens for the check and closes after. */
+export async function expectTabSwitch(page: Page, check: (tabs: Locator) => Promise<void>): Promise<void> {
+  await check(await tabSwitch(page));
+  if (!portrait(page)) return;
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
+/** Opens the switch sheet as a person does: the chip, or the session sheet's Tabs row. */
+export async function openTabSwitch(page: Page): Promise<void> {
+  await (await tabSwitch(page)).click();
+}
+
 export const keysBar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });
 export const key = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
 

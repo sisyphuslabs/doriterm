@@ -19,8 +19,8 @@ import { PhoneHeader } from "./phone-header.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
 import { focusPair } from "./split-focus.ts";
 import { SplitFocusView } from "./split-focus-view.tsx";
-import { PhoneBrowseContext } from "./phone-browse.ts";
-import { PhoneTabsChip } from "./phone-tab-switcher.tsx";
+import { PhoneSessionExtrasContext } from "./phone-session-extras.ts";
+import { PhoneTabsChip, useTabsPlace } from "./phone-tab-switcher.tsx";
 import { KEYS_BAR_HEIGHT, keysBottom, PhoneKeys } from "./phone-keys.tsx";
 import { keysPlacement } from "./phone-keys-placement.ts";
 import { ConnectionLine } from "./reconnect-status.tsx";
@@ -149,8 +149,14 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const held = (menu || packs) && heldUp;
   const placed = keysPlacement({ riding, held, mouseOnly, ended, dictating, browsing, offline, pad });
   const { keysOpen, docked, jumpClearance: keysControls } = placed;
-  // The session sheet's Read-only row: a touch terminal that takes typing can be browsed instead (browse-mode.ts).
-  const browse = mouseOnly || offline || ended ? null : { browsing, setBrowsing };
+  // The session sheet's rows from this screen: Read-only for a touch terminal that takes typing (browse-mode.ts), and
+  // the tabs switch for a terminal in a tab, which the sheet offers on a portrait phone, where the header keeps no room
+  // for its chip.
+  const place = useTabsPlace(terminals, terminal.address, tabTitle ?? title);
+  const extras = {
+    browse: mouseOnly || offline || ended ? null : { browsing, setBrowsing },
+    tabs: place === null ? null : { ...place, openSwitch: () => onSheet(true) },
+  };
   // The card is on screen only with its keys bar (not while dictation holds that place, nor with the bar put away): only
   // then does the header give it the mic, so one mic is always within reach.
   const cardShown = card && !dictating && !offline && !ended && (keysOpen || docked !== null);
@@ -219,8 +225,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
         {...(arrive ? {} : { "data-arrived": "" })}
         className="motion-arrive relative isolate flex h-dvh min-h-0 flex-col bg-card pr-(--safe-right) pl-(--safe-left) [--arrive-from:translateX(100%)] [--arrive-duration:var(--duration-push)] [--arrive-ease:var(--ease-standard)]"
       >
-        {/* The header's session sheet carries the Read-only row (phone-browse.ts). */}
-        <PhoneBrowseContext value={browse}>
+        {/* The header's session sheet carries the Read-only and Tabs rows (phone-session-extras.ts). */}
+        <PhoneSessionExtrasContext value={extras}>
           <PhoneHeader
             terminal={terminal}
             terminals={terminals}
@@ -231,21 +237,23 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             onOpen={onOpen}
             action={
               <>
-                <PhoneTabsChip
-                  terminals={terminals}
-                  active={terminal.address}
-                  title={tabTitle ?? title}
-                  onOpen={onOpen}
-                  sheet={sheet}
-                  onSheet={onSheet}
-                  onNewInSpace={onNewInSpace}
-                  onCloseTab={onCloseTab}
-                />
+                {place === null ? null : (
+                  <PhoneTabsChip
+                    terminals={terminals}
+                    place={place}
+                    active={terminal.address}
+                    onOpen={onOpen}
+                    sheet={sheet}
+                    onSheet={onSheet}
+                    onNewInSpace={onNewInSpace}
+                    onCloseTab={onCloseTab}
+                  />
+                )}
                 {untyped || cardShown ? null : <DictateButton voice={voice} target={title} ref={mic} />}
               </>
             }
           />
-        </PhoneBrowseContext>
+        </PhoneSessionExtrasContext>
         <ConnectionLine address={terminal.address} {...(offline ? {} : { connection })} />
         {pair === null || panes.length > 2 ? (
           <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />

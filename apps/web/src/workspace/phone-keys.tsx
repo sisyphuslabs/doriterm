@@ -64,7 +64,7 @@ export interface PhoneKeysProps {
   /** The terminal is browsed read-only (browse-mode.ts); the keys are closed and the browse button reads pressed. */
   readonly browsing?: boolean;
   /**
-   * Set on a touch device, where the session sheet turns browsing on (phone-browse.ts): while it is on, a round Read-only
+   * Set on a touch device, where the session sheet turns browsing on (phone-session-extras.ts): while it is on, a round Read-only
    * button, pressed, at the corner turns it off.
    */
   readonly onBrowse?: (on: boolean) => void;
