@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { stubSpeech } from "./speech-stub.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
@@ -129,6 +130,28 @@ test("the open card holds the mic just before Enter, and Enter with an empty fie
   await expect(terminal).toContainText("empty-9");
   await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
   await expect(mic(header)).toHaveCount(1);
+});
+
+// Review of #2855: dictation takes the card's place, so the header has the mic again; Cancel gives the focus back to the
+// mic that is on screen after it, the card's once the card returns, never to the page.
+test("dictation from the card's mic keeps one mic in reach, and Cancel returns the focus to the card's mic", async ({
+  page,
+}) => {
+  await stubSpeech(page);
+  await openPhoneTerminal(page, 390);
+  const header = page.locator("header[data-titlebar]");
+  await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
+  await mic(card(page)).click();
+  await page.getByRole("button", { name: "Allow" }).click();
+  const cancel = page.getByRole("button", { name: "Cancel dictation" });
+  await expect(cancel).toBeVisible();
+  await expect(card(page)).toHaveCount(0);
+  await expect(mic(header)).toHaveCount(1);
+
+  await cancel.click();
+  await expect(card(page)).toBeVisible();
+  await expect(mic(header)).toHaveCount(0);
+  await expect(mic(card(page))).toBeFocused();
 });
 
 test("Return in the action pill is a terminal key: it reaches the program", async ({ page }) => {
