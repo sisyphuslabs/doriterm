@@ -13,6 +13,7 @@ import {
   spaceOfAddress,
   type SpacesSource,
 } from "./model.ts";
+import { adoptLoose } from "./layout-model.ts";
 
 const terminal = (fields: Partial<Terminal>): Terminal => ({
   address: "t1",
@@ -114,6 +115,17 @@ describe("spaces from the layout documents (#404)", () => {
       [],
     );
     expect(spaces.map((space) => space.name)).toEqual(["yeongyu · Users", "yeongyu · data", "api"]);
+  });
+
+  test("spaces made for loose terminals in two folders ending the same way are told apart by their parent (#2670)", () => {
+    let next = 0;
+    const adopted = adoptLoose(
+      null,
+      [terminal({ address: "t1", cwd: "/a/work" }), terminal({ address: "t2", cwd: "/b/work" })],
+      (prefix) => `${prefix}${(next += 1)}`,
+    );
+    if (adopted === null) throw new Error("nothing adopted");
+    expect(layoutSpaces([here(adopted)], []).map((space) => space.name)).toEqual(["work · a", "work · b"]);
   });
 
   test("a space counts its tabs, is named after its first live terminal when it saves no name or folder, and lists its terminals in tab order", () => {

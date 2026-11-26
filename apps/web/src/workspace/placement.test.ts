@@ -22,16 +22,15 @@ const doc = (spaces: readonly { id: string; name: string; folder: string }[]): J
 });
 
 describe("placeOf (#2670)", () => {
-  test("a terminal with no space of its own makes a space named after its directory, and the space keeps the folder", () => {
+  test("a terminal with no space of its own makes a space for its directory: it keeps the folder and saves no name, so it is named after it", () => {
     expect(placeOf(null, terminal({ cwd: "/home/lo/doriterm-2670" }), () => "spc1")).toEqual({
       id: "spc1",
       folder: "/home/lo/doriterm-2670",
-      name: "doriterm-2670",
     });
   });
 
   test("a second terminal under that directory joins the space the first made, by its folder", () => {
-    const made = doc([{ id: "spc1", name: "doriterm-2670", folder: "/home/lo/doriterm-2670" }]);
+    const made = doc([{ id: "spc1", name: "", folder: "/home/lo/doriterm-2670" }]);
     expect(placeOf(made, terminal({ address: "t2", cwd: "/home/lo/doriterm-2670/src" }), () => "spc9").id).toBe("spc1");
   });
 

@@ -299,7 +299,8 @@ describe("adoptLoose (#404)", () => {
       ["spc7", ["t4"]],
       ["spc10", ["t5"]],
     ]);
-    // #2670: a space made for a loose terminal is named after its work, never a generic Home.
+    // #2670: a space made for a loose terminal keeps its folder and saves no name, so it is named after its work, never a
+    // generic Home.
     expect(
       adopted === null
         ? null
@@ -307,8 +308,8 @@ describe("adoptLoose (#404)", () => {
             .slice(-2)
             .map((space) => [space.id, space.name, space.folder]),
     ).toEqual([
-      ["spc7", "tmp", "/tmp"],
-      ["spc10", "srv", "/srv"],
+      ["spc7", "", "/tmp"],
+      ["spc10", "", "/srv"],
     ]);
   });
 
@@ -347,7 +348,7 @@ describe("adoptLoose (#404)", () => {
       ["", 1],
       ["", 0],
       ["api-x", 2],
-      ["tmp", 1],
+      ["", 1],
     ]);
   });
 
@@ -396,8 +397,8 @@ describe("adoptLoose (#404)", () => {
     expect(
       twice === null ? null : docSpaces(twice).map((space) => [space.name, space.folder, space.tabs.length]),
     ).toEqual([
-      ["a", "/a", 2],
-      ["b", "/b", 1],
+      ["", "/a", 2],
+      ["", "/b", 1],
     ]);
   });
 });

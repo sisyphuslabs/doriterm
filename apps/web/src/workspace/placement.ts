@@ -16,7 +16,8 @@ const holds = (folder: string, dir: string): boolean =>
  * when the document has it, as herdr-app adopts; else the space its `space` label names (made when there is none);
  * else the space whose folder holds its working directory (the deepest such folder); else a space named after the work
  * the terminal does (#2670) — its directory when that names a task, the space keeping that folder, so the terminal's
- * later siblings join it; else, from a system directory, a folderless space named after the program it started — never
+ * later siblings join it, and saving no name, so the sidebar names it after the folder and tells two folders ending the
+ * same way apart by their parent (#397); else, from a system directory, a folderless space named after the program it started — never
  * a generic Home, which only an existing Home space (herdr-app's own fallback) still adopts. `makeId` is called only
  * when a new space is made, so callers that number ids keep their order.
  */
@@ -38,7 +39,7 @@ export function placeOf(doc: JsonObject | null, terminal: Terminal, makeId: (pre
   const home = spaces.find((space) => space.name === HOME_SPACE && space.folder === "");
   if (home !== undefined) return { id: home.id, folder: "" };
   const task = folderSpaceName(dir);
-  if (task !== undefined) return { id: makeId("spc"), folder: dir, name: task };
+  if (task !== undefined) return { id: makeId("spc"), folder: dir };
   const program = programSpaceName(terminal.argv[0]);
   const named = spaces.find((space) => space.folder === "" && space.name === program);
   return { id: named?.id ?? makeId("spc"), folder: "", name: program };

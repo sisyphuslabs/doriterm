@@ -154,7 +154,7 @@ test("a live terminal in no tab is adopted into the space whose folder holds it,
   expect(adopted.map(([name, tabs]) => [name, tabs.length])).toEqual([
     ["alpha", 2],
     ["beta", 3],
-    [workName, 1],
+    ["", 1],
   ]);
   await page.reload();
   await expect(spaceRow(page, workName)).toBeVisible({ timeout: 20_000 });
