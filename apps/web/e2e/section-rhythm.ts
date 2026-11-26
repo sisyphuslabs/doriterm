@@ -69,7 +69,21 @@ export function sectionRhythm(): Rhythm {
           Math.min(t.box.right, own.right) - Math.max(t.box.left, own.left) > Math.min(t.box.width, own.width) * 0.25,
       );
       const before = column.filter((t) => t.box.bottom <= own.top).toSorted((a, b) => b.box.bottom - a.box.bottom)[0];
-      const after = column.filter((t) => t.box.top >= own.bottom).toSorted((a, b) => a.box.top - b.box.top)[0];
+      // A heading that is the first text of its own <section> heads that section's lines, wherever they start: a title on
+      // its rows' left edge (#2864) can overlap a row's label by only a few px, and the column rule would pair it with the
+      // next section's title instead. Any other heading keeps the column rule. The thresholds do not change.
+      const section = el.closest("section");
+      const sectionTexts =
+        section === null
+          ? []
+          : texts
+              .filter((t) => section.contains(t.el))
+              .toSorted((a, b) => a.box.top - b.box.top || a.box.left - b.box.left);
+      const headsSection =
+        sectionTexts.length > 0 && (sectionTexts[0]?.el === el || el.contains(sectionTexts[0]?.el ?? null));
+      const after = headsSection
+        ? sectionTexts.find((t) => !el.contains(t.el) && !t.el.contains(el) && t.box.top >= own.bottom)
+        : column.filter((t) => t.box.top >= own.bottom).toSorted((a, b) => a.box.top - b.box.top)[0];
       if (before === undefined || after === undefined) return [];
       return [{ name: nameOf(el), above: own.top - before.box.bottom, below: after.box.top - own.bottom }];
     });

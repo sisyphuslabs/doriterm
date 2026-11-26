@@ -18,8 +18,9 @@ export function SidebarSection({ title, count, tone, action, children, className
   const heading = useId();
   return (
     <section ref={ref} aria-labelledby={heading} className={cn("flex flex-col gap-px", className)}>
-      {/* The header aligns to its rows' left edge (px-2), with the count 6 px after the title and action at the end. */}
-      <header className="flex min-h-7 items-center justify-between gap-2 pl-2 pr-2 text-xs font-medium">
+      {/* The header aligns to its rows' left edge (px-2), with the count 6 px after the title and action at the end. Its
+          text sits at the header's foot, nearer its own rows than the section above (#1496, #2864). */}
+      <header className="flex min-h-7 items-end justify-between gap-2 pl-2 pr-2 text-xs font-medium">
         <div className="flex min-w-0 items-center gap-1.5">
           <h2 id={heading} className={cn("min-w-0 truncate text-muted-foreground", tone)}>
             {title}
