@@ -83,7 +83,9 @@ for (const phone of [false, true]) {
             try {
               return await new Promise<unknown>((resolve, reject) => {
                 const request = db.transaction("device").objectStore("device").get("mesh-memberships");
-                request.addEventListener("success", () => resolve(request.result ?? null));
+                request.addEventListener("success", () =>
+                  resolve(Reflect.get(Object(request.result), "memberships") ?? null),
+                );
                 request.addEventListener("error", () => reject(request.error));
               });
             } finally {

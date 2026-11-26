@@ -29,10 +29,18 @@ export interface MeshMember {
   readonly self: MemberSigner;
 }
 
-export interface MeshVaultDeps {
+/**
+ * One membership's vault, taken from one selection: the key that signs for it and the machines that hold its copies
+ * (review of #2890). Read separately, the two could name different meshes, and one mesh's signature would reach the other.
+ */
+export interface VaultScope {
+  readonly member: MeshMember;
   readonly replicas: () => Promise<readonly VaultReplica[]>;
-  /** This device's place in the mesh, or undefined when it has not joined one. */
-  readonly member: () => Promise<MeshMember | undefined>;
+}
+
+export interface MeshVaultDeps {
+  /** This device's place in the selected machine's mesh, or undefined when it has none there. */
+  readonly scope: () => Promise<VaultScope | undefined>;
   readonly key: () => Promise<Keyholder>;
   readonly storage: KeyValueStore;
   readonly now: () => string;
@@ -118,6 +126,7 @@ export class MeshVault {
   readonly #listeners = new Set<() => void>();
   #snapshot: MeshVaultSnapshot = INITIAL;
   #doc: VaultDoc | undefined;
+  #docMesh: string | undefined;
   #ledger: RevisionLedger | undefined;
   #memory: ReturnType<typeof holderMemory> | undefined;
   #strangers: ReturnType<typeof strangerMemory> | undefined;
@@ -141,8 +150,8 @@ export class MeshVault {
 
   /** With no connection: says whether this device is a member that only needs a machine, or not one at all. */
   async offline(): Promise<void> {
-    const ctx = await this.#context().catch(() => undefined);
-    this.#set({ ...INITIAL, phase: ctx === undefined ? "not-member" : "offline" });
+    const scoped = await this.#context().catch(() => undefined);
+    this.#set({ ...INITIAL, phase: scoped === undefined ? "not-member" : "offline" });
   }
 
   /** Encrypts the Soniox entry on this device and writes it to every reachable machine; the key never leaves in clear. */
@@ -157,8 +166,9 @@ export class MeshVault {
 
   /** The Soniox key in memory, for one dictation; undefined when there is none this device can open. */
   async sonioxKey(): Promise<SonioxKey | undefined> {
-    const ctx = await this.#context();
-    if (this.#doc === undefined || ctx === undefined) return undefined;
+    const ctx = (await this.#context())?.ctx;
+    // The document read last belongs to the mesh it was synced for; another mesh's selection does not open it.
+    if (this.#doc === undefined || ctx === undefined || this.#docMesh !== ctx.mesh) return undefined;
     const read = await readEntry(this.#doc, ctx, SONIOX_ENTRY);
     if (read.kind !== "open") return undefined;
     return {
@@ -168,13 +178,14 @@ export class MeshVault {
     };
   }
 
-  async #context(): Promise<VaultContext | undefined> {
-    const member = await this.#deps.member();
-    if (member === undefined || !member.members.has(member.self.signPub)) return undefined;
+  async #context(): Promise<{ readonly ctx: VaultContext; readonly scope: VaultScope } | undefined> {
+    const scope = await this.#deps.scope();
+    const member = scope?.member;
+    if (scope === undefined || member === undefined || !member.members.has(member.self.signPub)) return undefined;
     this.#ledger ??= new RevisionLedger(ledgerOf(await this.#deps.storage.get(LEDGER)));
     this.#memory ??= holderMemory(holdersOf(await this.#deps.storage.get(HOLDERS)));
     this.#strangers ??= strangerMemory(stringsOf(await this.#deps.storage.get(STRANGERS)));
-    return {
+    const ctx = {
       ...member,
       key: await this.#deps.key(),
       ledger: this.#ledger,
@@ -182,14 +193,17 @@ export class MeshVault {
       strangers: this.#strangers,
       now: this.#deps.now,
     };
+    return { ctx, scope };
   }
 
   async #round(step: (doc: VaultDoc, ctx: VaultContext) => Promise<VaultDoc>, rethrow = false): Promise<void> {
     try {
-      const ctx = await this.#context();
-      if (ctx === undefined) return this.#set({ ...INITIAL, phase: "not-member" });
-      const { doc } = await syncVault(await this.#deps.replicas(), (merged) => step(merged, ctx), ctx.mesh);
+      const scoped = await this.#context();
+      if (scoped === undefined) return this.#set({ ...INITIAL, phase: "not-member" });
+      const { ctx, scope } = scoped;
+      const { doc } = await syncVault(await scope.replicas(), (merged) => step(merged, ctx), ctx.mesh);
       this.#doc = doc;
+      this.#docMesh = ctx.mesh;
       if (this.#ledger?.dirty === true) {
         await this.#deps.storage.put(LEDGER, this.#ledger.snapshot());
         this.#ledger.saved();

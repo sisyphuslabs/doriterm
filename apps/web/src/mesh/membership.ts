@@ -1,21 +1,20 @@
 import { base64urlDecode, hostIdOf } from "@doriface/crypto";
-import { door, meshIdOf, type MemberKind, parseRecord, type Signed } from "@doriface/mesh";
+import { meshIdOf, type MemberKind, parseRecord, type Signed } from "@doriface/mesh";
 import type { MemberTarget } from "../connection/settings.ts";
 import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
-import { DEFAULT_SLOT } from "../storage/key-slot.ts";
+import { BundleRefused, merge } from "./bundle-merge.ts";
 import { bundleView, memberCards, type BundleView, type ClientKeys } from "./bundle-view.ts";
 import {
   type BrowserMembership,
-  type HeldMembership,
+  changeRecord,
+  DEFAULT_SLOT,
+  type MeshRecord,
   membershipOf,
   memberships,
-  readHeld,
-  removeHeld,
-  withMeshLock,
-  writeHeld,
 } from "./membership-list.ts";
 
 export type { BrowserMembership } from "./membership-list.ts";
+export { BundleRefused } from "./bundle-merge.ts";
 
 export interface BundleAnchor {
   readonly mesh: string;
@@ -24,22 +23,7 @@ export interface BundleAnchor {
   readonly hostKey: string;
 }
 
-export class BundleRefused extends Error {
-  override readonly name = "BundleRefused";
-}
-
-function merge(held: readonly Signed[], incoming: readonly Signed[]): readonly Signed[] {
-  const records = [...held];
-  for (const record of incoming) {
-    const verdict = door(record, records);
-    if (!verdict.ok) {
-      if (verdict.reason === "already stored") continue;
-      throw new BundleRefused(`The mesh record was refused: ${verdict.reason}.`);
-    }
-    records.push(record);
-  }
-  return records;
-}
+type Change<T> = { readonly next: MeshRecord; readonly answer: T };
 
 /**
  * One key slot's membership in per-device storage: the mesh that slot's keys joined, if any. A browser in several meshes
@@ -78,20 +62,37 @@ export class MembershipStore {
     return this.#mine(await memberships(this.#storage));
   }
 
-  #mine(list: readonly HeldMembership[]): BrowserMembership | undefined {
+  #mine(list: MeshRecord["memberships"]): BrowserMembership | undefined {
     return membershipOf(list.find((held) => held.keySlot === this.slot));
   }
 
   /** Another slot already holds this mesh: joining it again would show that mesh a second identity of this browser. */
-  #refuseSecondIdentity(list: readonly HeldMembership[], mesh: string): void {
-    if (list.some((held) => held.keySlot !== this.slot && held.meshId === mesh)) {
+  #refuseSecondIdentity(record: MeshRecord, mesh: string): void {
+    if (record.memberships.some((held) => held.keySlot !== this.slot && held.meshId === mesh)) {
       throw new BundleRefused(`This browser is in mesh ${mesh} already.`);
     }
   }
 
-  async #save(next: BrowserMembership): Promise<void> {
-    await writeHeld(this.#storage, { ...next, keySlot: this.slot });
-    this.#show(next);
+  /** The membership and the end of this slot's join claim, in the one write: never a mesh without its slot. */
+  #saved(record: MeshRecord, next: BrowserMembership): MeshRecord {
+    return {
+      memberships: [
+        ...record.memberships.filter((held) => held.keySlot !== this.slot),
+        { ...next, keySlot: this.slot },
+      ],
+      slots: record.slots.filter((claim) => claim.slot !== this.slot),
+    };
+  }
+
+  async #change<T>(change: (record: MeshRecord) => Change<T> & { readonly shown?: BrowserMembership }): Promise<T> {
+    let shown: BrowserMembership | undefined;
+    const answer = await changeRecord(this.#storage, (record) => {
+      const result = change(record);
+      shown = result.shown;
+      return result;
+    });
+    if (shown !== undefined) this.#show(shown);
+    return answer;
   }
 
   async load(): Promise<void> {
@@ -104,14 +105,12 @@ export class MembershipStore {
 
   /** Stores a checked welcome; false when this slot holds another mesh, which wins (the joiner's adopt rule). */
   adopt(next: BrowserMembership): Promise<boolean> {
-    return this.#write(async () => {
-      const list = await readHeld(this.#storage);
-      const held = this.#mine(list);
-      if (held !== undefined && held.meshId !== next.meshId) return false;
-      this.#refuseSecondIdentity(list, next.meshId);
-      const records = held === undefined ? next.records : merge(held.records, next.records);
-      await this.#save({ ...next, records });
-      return true;
+    return this.#change((record) => {
+      const held = this.#mine(record.memberships);
+      if (held !== undefined && held.meshId !== next.meshId) return { next: record, answer: false };
+      this.#refuseSecondIdentity(record, next.meshId);
+      const saved = { ...next, records: held === undefined ? next.records : merge(held.records, next.records) };
+      return { next: this.#saved(record, saved), answer: true, shown: saved };
     });
   }
 
@@ -134,38 +133,40 @@ export class MembershipStore {
     }
   }
 
-  accept(records: readonly Signed[], anchor: BundleAnchor, relayUrl = ""): Promise<void> {
-    return this.#write(async () => {
-      if (this.#keys === undefined) throw new BundleRefused("The browser's keys are required to accept a roster.");
-      const checked = merge([], records);
-      this.#checkMesh(checked, anchor.mesh);
-      const view = bundleView(checked, anchor.mesh, this.#keys);
-      if (view.self === undefined) throw new BundleRefused("The welcome does not admit this browser's own keys.");
-      this.#checkSource(view, anchor);
-      const list = await readHeld(this.#storage);
-      const held = this.#mine(list);
+  async accept(records: readonly Signed[], anchor: BundleAnchor, relayUrl = ""): Promise<void> {
+    const keys = this.#keys;
+    if (keys === undefined) throw new BundleRefused("The browser's keys are required to accept a roster.");
+    const checked = merge([], records);
+    this.#checkMesh(checked, anchor.mesh);
+    const view = bundleView(checked, anchor.mesh, keys);
+    if (view.self === undefined) throw new BundleRefused("The welcome does not admit this browser's own keys.");
+    this.#checkSource(view, anchor);
+    await this.#change((record) => {
+      const held = this.#mine(record.memberships);
       if (held !== undefined && held.meshId !== anchor.mesh) {
         throw new BundleRefused("This browser already belongs to another mesh.");
       }
-      this.#refuseSecondIdentity(list, anchor.mesh);
+      this.#refuseSecondIdentity(record, anchor.mesh);
       const next: BrowserMembership = {
         meshId: anchor.mesh,
         records: held === undefined ? checked : merge(held.records, checked),
-        signPub: this.#keys.signPub,
+        signPub: keys.signPub,
         inviter: held?.inviter ?? { hostId: anchor.hostId, hostKey: anchor.hostKey },
         relayUrl: held?.relayUrl || relayUrl,
         joinedAt: held?.joinedAt ?? new Date().toISOString(),
       };
-      await this.#save(next);
+      return { next: this.#saved(record, next), answer: undefined, shown: next };
     });
   }
 
-  refresh(records: readonly Signed[], source: BundleAnchor): Promise<void> {
-    return this.#write(async () => {
-      this.#checkSource(this.#state, source);
-      const held = this.#mine(await readHeld(this.#storage));
+  async refresh(records: readonly Signed[], source: BundleAnchor): Promise<void> {
+    this.#checkSource(this.#state, source);
+    const known = this.#state.records;
+    await this.#change((record) => {
+      const held = this.#mine(record.memberships);
       if (held === undefined) throw new BundleRefused("The browser's membership was cleared.");
-      await this.#save({ ...held, records: merge(merge(this.#state.records, held.records), records) });
+      const next = { ...held, records: merge(merge(known, held.records), records) };
+      return { next: this.#saved(record, next), answer: undefined, shown: next };
     });
   }
 
@@ -176,17 +177,6 @@ export class MembershipStore {
     if (prior !== undefined && now - prior < 600_000) return false;
     this.#refreshed.set(hostId, now);
     return true;
-  }
-
-  forget(): Promise<void> {
-    return this.#write(async () => {
-      await removeHeld(this.#storage, this.slot);
-      this.#show(undefined);
-    });
-  }
-
-  #write<T>(action: () => Promise<T>): Promise<T> {
-    return withMeshLock(action);
   }
 }
 

@@ -2,7 +2,13 @@ import { concatBytes, hostIdOf, type StaticKey } from "@doriface/crypto";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { type CardKey, readOrCreateCardKey, storedKey } from "../connection/card-key.ts";
-import { forgetDeviceKey, isStored, readOrCreateDeviceKey, withIdentityLock } from "../connection/device-key.ts";
+import {
+  forgetCachedDeviceKey,
+  forgetDeviceKey,
+  isStored,
+  readOrCreateDeviceKey,
+  withIdentityLock,
+} from "../connection/device-key.ts";
 import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
 
 export interface BrowserIdentity {
@@ -48,13 +54,20 @@ export async function loadSignKey(
   return (await loadBrowserIdentity(storage, subtle)).card;
 }
 
+/** Deletes both keys and both probes, which hold generated private keys too (review of #2890), and the cached loads. */
 export async function resetBrowserIdentity(storage: KeyValueStore = deviceStore): Promise<void> {
-  await pending.get(storage);
+  await pending.get(storage)?.catch(() => undefined);
   await withIdentityLock(async () => {
-    await storage.put("mesh-sign-key", null);
-    await forgetDeviceKey(storage);
+    await Promise.all([storage.put("mesh-sign-key", null), storage.put("mesh-sign-key.probe", null)]);
+    await Promise.all([forgetDeviceKey(storage), storage.put("device-key.probe", null)]);
     pending.delete(storage);
   });
+}
+
+/** Another tab retired this identity: drop what this page holds of it, without touching storage. */
+export function forgetCachedIdentity(storage: KeyValueStore): void {
+  pending.delete(storage);
+  forgetCachedDeviceKey(storage);
 }
 
 const encoder = new TextEncoder();

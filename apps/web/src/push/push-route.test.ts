@@ -186,6 +186,25 @@ describe("a browser's push stream is the relay's (#1381 §8)", () => {
       shell.restore();
     }
   });
+
+  test("a machine of another mesh keeps that mesh's key slot through save and load, and its push session uses that key (#2861)", async () => {
+    const route = routeOf({ ...settingsWith(DIRECT), keySlot: "second" });
+    expect(route).toMatchObject({ keySlot: "second" });
+    const store = memoryStore();
+    await savePushRoute({ ...relayRoute(DIRECT), keySlot: "second" }, store);
+    expect(await loadPushRoute(store)).toEqual(route);
+    const asked: (string | undefined)[] = [];
+    const link = await openPushLink(route, {
+      deps: {
+        loadDeviceKey: (keySlot) => {
+          asked.push(keySlot);
+          return deps.loadDeviceKey();
+        },
+      },
+    });
+    expect(asked).toEqual(["second"]);
+    link.close();
+  });
 });
 
 describe("the desktop shell's direct push race stays behind the switch (#446, #2070)", () => {

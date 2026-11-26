@@ -12,7 +12,8 @@ import { useOnline } from "../pwa/use-online.ts";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
 import { ConnectingState } from "./connecting-state.tsx";
 import { lazy, Suspense, useState } from "react";
-import { restoreMembership, useBrowserMembership, useMembershipFailure } from "../mesh/membership-state.ts";
+import { restoreMembership } from "../mesh/membership-lifecycle.ts";
+import { useBrowserMembership, useMembershipFailure } from "../mesh/membership-state.ts";
 import { RemovedMembership } from "../settings/membership-device.tsx";
 
 const Workspace = lazy(() => import("../workspace/workspace.tsx").then((module) => ({ default: module.Workspace })));

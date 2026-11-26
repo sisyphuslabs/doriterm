@@ -96,6 +96,8 @@ export async function keepsStoredKeys(storage: KeyValueStore, subtle: SubtleCryp
       throw cause;
     }
     const back = await storage.get(PROBE);
+    // The probe is a real private key: it must not stay behind once the answer is known (review of #2890).
+    await storage.put(PROBE, null);
     return isStored(back) && back.kind === "webcrypto";
   })();
   keepsKeys.set(storage, probe);
@@ -132,6 +134,10 @@ export async function withIdentityLock<T>(action: () => Promise<T>): Promise<T> 
 
 export async function forgetDeviceKey(storage: KeyValueStore): Promise<void> {
   await storage.put(KEY, null);
+  pending.delete(storage);
+}
+
+export function forgetCachedDeviceKey(storage: KeyValueStore): void {
   pending.delete(storage);
 }
 

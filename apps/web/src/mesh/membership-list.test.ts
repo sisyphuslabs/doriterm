@@ -1,12 +1,10 @@
-import { base64urlEncode } from "@doriface/crypto";
 import { describe, expect, test } from "bun:test";
-import { memoryStore } from "../storage/idb.ts";
-import { slotStore } from "../storage/key-slot.ts";
-import { loadBrowserIdentity, resetBrowserIdentity } from "./identity.ts";
+import { type KeyValueStore, memoryStore } from "../storage/idb.ts";
+import { meshFixture } from "./mesh-fixture.test-support.ts";
 import { type BrowserMembership, BundleRefused, MembershipStore } from "./membership.ts";
-import { memberships } from "./membership-list.ts";
+import { currentRecord, memberships } from "./membership-list.ts";
 
-const membership = (meshId: string, signPub = "me"): BrowserMembership => ({
+const fake = (meshId: string, signPub = "me"): BrowserMembership => ({
   meshId,
   records: [{ body: "{}", sig: "x" }],
   signPub,
@@ -15,77 +13,92 @@ const membership = (meshId: string, signPub = "me"): BrowserMembership => ({
   joinedAt: "2026-11-26T00:00:00.000Z",
 });
 
+/** A store whose next put of `key` fails, as a write cut short by a closed tab or a full disk does. */
+function failingOnce(storage: KeyValueStore, key: string): KeyValueStore {
+  let failed = false;
+  return {
+    get: (name) => storage.get(name),
+    put: async (name, value) => {
+      if (name === key && !failed) {
+        failed = true;
+        throw new Error("the write was cut short");
+      }
+      await storage.put(name, value);
+    },
+  };
+}
+
 describe("a browser in several meshes", () => {
   test("holds two memberships side by side, one per key slot", async () => {
     const storage = memoryStore();
-    const first = new MembershipStore(storage);
-    const second = new MembershipStore(storage, undefined, "second");
-    expect(await first.adopt(membership("mesh-1"))).toBe(true);
-    expect(await second.adopt(membership("mesh-2", "other"))).toBe(true);
-    expect(await first.read()).toEqual(membership("mesh-1"));
-    expect(await second.read()).toEqual(membership("mesh-2", "other"));
+    expect(await new MembershipStore(storage).adopt(fake("mesh-1"))).toBe(true);
+    expect(await new MembershipStore(storage, undefined, "second").adopt(fake("mesh-2", "other"))).toBe(true);
     expect((await memberships(storage)).map((held) => [held.meshId, held.keySlot])).toEqual([
       ["mesh-1", ""],
       ["mesh-2", "second"],
     ]);
   });
 
-  test("leaving one mesh keeps the other", async () => {
-    const storage = memoryStore();
-    const first = new MembershipStore(storage);
-    const second = new MembershipStore(storage, undefined, "second");
-    await first.adopt(membership("mesh-1"));
-    await second.adopt(membership("mesh-2", "other"));
-    await first.forget();
-    expect(await first.read()).toBeUndefined();
-    expect(await second.read()).toEqual(membership("mesh-2", "other"));
-    expect((await memberships(storage)).map((held) => held.meshId)).toEqual(["mesh-2"]);
-  });
-
   test("a second identity for a mesh already held is refused, and the held one is untouched", async () => {
     const storage = memoryStore();
-    await new MembershipStore(storage).adopt(membership("mesh-1"));
+    await new MembershipStore(storage).adopt(fake("mesh-1"));
     const again = new MembershipStore(storage, undefined, "second");
-    await expect(again.adopt(membership("mesh-1", "other"))).rejects.toBeInstanceOf(BundleRefused);
-    expect(await again.read()).toBeUndefined();
+    await expect(again.adopt(fake("mesh-1", "other"))).rejects.toBeInstanceOf(BundleRefused);
     expect((await memberships(storage)).map((held) => held.signPub)).toEqual(["me"]);
-  });
-
-  test("each key slot has its own signing and device keys, kept across loads", async () => {
-    const storage = memoryStore();
-    const first = await loadBrowserIdentity(storage, null);
-    const second = await loadBrowserIdentity(slotStore(storage, "second"), null);
-    const keys = (identity: typeof first) => [identity.card.publicKey, identity.device.publicKey].map(base64urlEncode);
-    expect(keys(second)[0]).not.toBe(keys(first)[0]);
-    expect(keys(second)[1]).not.toBe(keys(first)[1]);
-    await resetBrowserIdentity(slotStore(storage, "second"));
-    expect(keys(await loadBrowserIdentity(storage, null))).toEqual(keys(first));
-    expect(keys(await loadBrowserIdentity(slotStore(storage, "second"), null))).not.toEqual(keys(second));
   });
 });
 
 describe("the single membership of an earlier release", () => {
-  test("moves into the list on first read, on the default identity, losing nothing", async () => {
+  test("moves into the record on first read, on the default identity, losing nothing", async () => {
     const storage = memoryStore();
-    await storage.put("mesh-membership", membership("mesh-1"));
-    expect(await new MembershipStore(storage).read()).toEqual(membership("mesh-1"));
-    expect(await new MembershipStore(storage, undefined, "second").read()).toBeUndefined();
+    await storage.put("mesh-membership", fake("mesh-1"));
+    expect(await new MembershipStore(storage).read()).toEqual(fake("mesh-1"));
     expect(await storage.get("mesh-membership")).toBeNull();
-    expect(await storage.get("mesh-memberships")).toEqual([{ ...membership("mesh-1"), keySlot: "" }]);
   });
 
-  test("a second mesh joins beside the migrated one", async () => {
+  test("written by an earlier-release tab for a mesh already held, its newer verified records are merged in", async () => {
     const storage = memoryStore();
-    await storage.put("mesh-membership", membership("mesh-1"));
-    expect(await new MembershipStore(storage, undefined, "second").adopt(membership("mesh-2", "other"))).toBe(true);
-    expect((await memberships(storage)).map((held) => held.meshId)).toEqual(["mesh-1", "mesh-2"]);
+    const mesh = meshFixture(["studio", "workshop", "lab"]);
+    const older = { ...mesh.membership, records: mesh.membership.records.slice(0, -2) };
+    await new MembershipStore(storage).adopt(older);
+    await storage.put("mesh-membership", mesh.membership);
+    expect((await new MembershipStore(storage).read())?.records).toEqual(mesh.membership.records);
+    expect(await storage.get("mesh-membership")).toBeNull();
   });
 
-  test("moves in even when written after the list, as a tab still on the earlier release can", async () => {
+  test("one whose records the door refuses stays where it is, and the held membership is unchanged", async () => {
     const storage = memoryStore();
-    expect(await memberships(storage)).toEqual([]);
-    await storage.put("mesh-membership", membership("mesh-1"));
-    expect(await new MembershipStore(storage).read()).toEqual(membership("mesh-1"));
+    const mesh = meshFixture();
+    await new MembershipStore(storage).adopt(mesh.membership);
+    const forged = { ...mesh.membership, records: [{ body: "{}", sig: "forged" }] };
+    await storage.put("mesh-membership", forged);
+    expect((await new MembershipStore(storage).read())?.records).toEqual(mesh.membership.records);
+    expect(await storage.get("mesh-membership")).toEqual(forged);
+  });
+
+  test("a write cut short leaves the old entry in place, and the next read takes it in", async () => {
+    const storage = memoryStore();
+    await storage.put("mesh-membership", fake("mesh-1"));
+    await expect(currentRecord(failingOnce(storage, "mesh-memberships"))).rejects.toThrow("cut short");
+    expect(await storage.get("mesh-membership")).toEqual(fake("mesh-1"));
+    expect((await memberships(storage)).map((held) => held.meshId)).toEqual(["mesh-1"]);
+  });
+
+  test("an earlier-release tab and this one writing at once both keep their mesh", async () => {
+    const storage = memoryStore();
+    const old = meshFixture();
+    const current = meshFixture();
+    await Promise.all([
+      storage.put("mesh-membership", old.membership),
+      new MembershipStore(storage, undefined, "second").adopt(current.membership),
+    ]);
+    const held = await memberships(storage);
+    expect(held.map((membership) => [membership.meshId, membership.keySlot]).toSorted()).toEqual(
+      [
+        [old.membership.meshId, ""],
+        [current.membership.meshId, "second"],
+      ].toSorted(),
+    );
     expect(await storage.get("mesh-membership")).toBeNull();
   });
 

@@ -1,6 +1,6 @@
 import type { StaticKey } from "@doriface/crypto";
 import { deviceStore } from "../storage/idb.ts";
-import { slotStore } from "../storage/key-slot.ts";
+import { DEFAULT_SLOT, slotKeys } from "../mesh/identity-slots.ts";
 import { loadDeviceKey } from "./device-key.ts";
 
 /**
@@ -12,7 +12,7 @@ export interface RelayDeps {
 }
 
 export const BROWSER_DEPS: RelayDeps = {
-  loadDeviceKey: (keySlot) => loadDeviceKey(keySlot === undefined ? deviceStore : slotStore(deviceStore, keySlot)),
+  loadDeviceKey: (keySlot) => loadDeviceKey(slotKeys(deviceStore, keySlot ?? DEFAULT_SLOT)),
 };
 
 /** Loads the device key for a relay socket that is already open, closing the socket if the key cannot load. */
