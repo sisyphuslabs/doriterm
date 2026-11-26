@@ -117,8 +117,10 @@ export async function typeHangul(
   keyboard: Keyboard,
   steps: readonly (readonly [jamo: string, after: string])[],
   keyUp?: KeyUp,
+  /** The syllable already in the field that the first step goes on from (a jamo another helper typed). */
+  from = "",
 ): Promise<void> {
-  let shown = "";
+  let shown = from;
   for (const [jamo, after] of steps) {
     // oxlint-disable-next-line no-await-in-loop -- each key edits the field the previous one left
     await hangulKey(field, keyboard, jamo, editsBetween(shown, after), keyUp);

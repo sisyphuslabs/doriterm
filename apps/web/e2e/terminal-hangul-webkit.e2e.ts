@@ -100,7 +100,7 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
     ]);
     // A keyboard that never saw its space would join ㄱ to 가 and put 각 in its place: 가, a deleted space, then 각.
     expect(await spaceThenJamo(field, keyboard, { jamo: "ㄱ", alone: "ㄱ", withPrevious: "각" })).toBe(true);
-    await typeHangul(field, keyboard, [["ㅏ", "가"]]);
+    await typeHangul(field, keyboard, [["ㅏ", "가"]], undefined, "ㄱ");
     await expectRead(page, terminal, "ea b0 80 20 ea b0 80");
   });
 
