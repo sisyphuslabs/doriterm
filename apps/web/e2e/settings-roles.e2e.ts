@@ -101,28 +101,44 @@ for (const width of [390, 1440] as const) {
       await expectRoles(hits, "[data-list-row]", "[data-row-value]");
     });
 
-    // The fixture's mesh documents hold an open join and an expired one, so both answer states are drawn.
+    // The fixture's mesh documents hold an open join and an expired one; approving the open one draws the answered
+    // state, which replaces the buttons and must keep their height. The approval is written to the core's document, so
+    // the fixture is put back afterwards for every later spec.
     test("Settings > Machines join answers reserve the control height and use the value role", async ({ page }) => {
-      test.setTimeout(REDIAL_BOUND_MS + 50_000);
+      test.setTimeout(REDIAL_BOUND_MS + 60_000);
       resetMeshDocs();
-      await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
-      const settings = await openSection(page, width, "Machines");
-      const open = settings.locator('[data-mesh-answer="open"]');
-      await expect(open).toBeVisible({ timeout: 20_000 });
-      const sizes = await open.evaluate((answer) => {
-        const probe = document.createElement("div");
-        probe.style.height = "var(--control)";
-        document.body.append(probe);
-        const control = probe.getBoundingClientRect().height;
-        probe.remove();
-        return {
-          control,
-          buttons: [...answer.querySelectorAll("button")].map((b) => b.getBoundingClientRect().height),
-        };
-      });
-      expect(sizes.buttons.length, "the open join's answers").toBeGreaterThan(0);
-      for (const height of sizes.buttons) expect(height).toBe(sizes.control);
-      await expectRoles(settings, "[data-mesh-group] [data-setting-row]", "[data-mesh-answer][data-row-value]");
+      try {
+        await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
+        const settings = await openSection(page, width, "Machines");
+        const open = settings.locator('[data-mesh-answer="open"]');
+        await expect(open).toBeVisible({ timeout: 20_000 });
+        const control = await open.evaluate(() => {
+          const probe = document.createElement("div");
+          probe.style.height = "var(--control)";
+          document.body.append(probe);
+          const height = probe.getBoundingClientRect().height;
+          probe.remove();
+          return height;
+        });
+        const buttons = await open
+          .locator("button")
+          .evaluateAll((all) => all.map((b) => b.getBoundingClientRect().height));
+        expect(buttons.length, "the open join's answers").toBeGreaterThan(0);
+        for (const height of buttons) expect(height).toBe(control);
+        await expectRoles(settings, "[data-mesh-group] [data-setting-row]", "[data-mesh-answer][data-row-value]");
+
+        await open.locator('[data-mesh-verdict="approve"]').click();
+        const answered = settings.locator('[data-mesh-answer="approve"]');
+        await expect(answered).toBeVisible({ timeout: 15_000 });
+        const box = await answered.boundingBox();
+        expect(
+          box?.height ?? 0,
+          "the answered state keeps the height of the buttons it replaced",
+        ).toBeGreaterThanOrEqual(control);
+        await expectRoles(settings, '[data-mesh-group="pending"] [data-setting-row]', '[data-mesh-answer="approve"]');
+      } finally {
+        resetMeshDocs();
+      }
     });
   });
 }
