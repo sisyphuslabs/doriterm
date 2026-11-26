@@ -130,8 +130,6 @@ export function AgentsGroup({
             key={group.key}
             title={group.title}
             count={group.count}
-            indent={tree}
-            marked
             {...(group.tone === undefined ? {} : { tone: group.tone })}
             {...(rail ? { className: "[&>header]:sr-only" } : {})}
           >
@@ -177,10 +175,7 @@ export function AgentsGroup({
       </section>
     );
   return (
-    <SidebarSection
-      title="Agents"
-      {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu, indent: tree, marked: true })}
-    >
+    <SidebarSection title="Agents" {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu })}>
       {list}
     </SidebarSection>
   );

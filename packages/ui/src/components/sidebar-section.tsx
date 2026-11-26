@@ -7,10 +7,6 @@ export interface SidebarSectionProps {
   /** Text colour class for the title, e.g. a status colour for "Needs you". */
   readonly tone?: string;
   readonly action?: ReactNode;
-  /** @deprecated Headers align to the rows' left edge; this prop is ignored. */
-  readonly indent?: boolean;
-  /** @deprecated Headers align to the rows' left edge; this prop is ignored. */
-  readonly marked?: boolean;
   readonly children: ReactNode;
   readonly className?: string;
   /** The section element, e.g. for a list that measures its rows to drag them. */

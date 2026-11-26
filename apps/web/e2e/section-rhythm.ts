@@ -99,8 +99,8 @@ export function sectionRhythm(): Rhythm {
 }
 
 /**
- * The sidebar's section titles and the label column of the first row each heads (#1496), from the text edges a reader
- * sees. Runs in the page through `page.evaluate`, so its helpers live inside it.
+ * The sidebar's section titles and the left edge of the first row each heads (#2864): the title's text edge against the
+ * row's content edge, its button box inside its padding. Runs in the page through `page.evaluate`, so its helpers live inside it.
  */
 export function sectionTitleAlignments(): readonly SectionTitleAlignment[] {
   // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function as source, so its helpers live inside it
@@ -122,7 +122,11 @@ export function sectionTitleAlignments(): readonly SectionTitleAlignment[] {
     return {
       name: (title.textContent ?? "").trim(),
       title: textLeft(title),
-      row: row === undefined ? null : textLeft(row),
+      row: (() => {
+        const button = row?.closest("button");
+        if (button === null || button === undefined) return null;
+        return button.getBoundingClientRect().left + Number.parseFloat(getComputedStyle(button).paddingLeft);
+      })(),
     };
   });
 }

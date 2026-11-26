@@ -2,7 +2,7 @@ import { Pin } from "lucide-react";
 import { useRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { AgentMark } from "./agent-mark.tsx";
-import { hasAgentMark, isBrandMark } from "./agent-marks.ts";
+import { isBrandMark } from "./agent-marks.ts";
 import { useRowFloors } from "./row-floors.ts";
 import { STATUS_LABEL, StatusChip, StatusIndicator, type AgentStatus } from "./status.tsx";
 
@@ -117,8 +117,7 @@ export function AgentRow({
   const cells = guideCells(agent.guides, drawn);
   // The age and tree indent are in the key too: wider ages or deeper indents leave less room for the parts.
   const shownAge = agent.age === "<1m" ? undefined : agent.age;
-  const brandKind =
-    agent.kind !== undefined && hasAgentMark(agent.kind) && isBrandMark(agent.kind) ? agent.kind : undefined;
+  const brandKind = agent.kind !== undefined && isBrandMark(agent.kind) ? agent.kind : undefined;
   const todo = agent.todo === undefined ? undefined : `${agent.todo.done}/${agent.todo.total}`;
   useRowFloors(
     row,
