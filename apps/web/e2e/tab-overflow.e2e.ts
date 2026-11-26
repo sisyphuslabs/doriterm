@@ -2,10 +2,10 @@
 // - at 1440x900 with two tabs, "All tabs" is absent and New tab sits directly after the last tab;
 // - at 700x900 once tabs overflow the scroller, "All tabs" appears, lists every tab title, and selects on click.
 import type { Page } from "@playwright/test";
-import { expect, laidOutBox, pressNewTab, test } from "./fixtures.ts";
+import { expect, laidOutBox, test } from "./fixtures.ts";
 import { agentRow, endAgent, startShell } from "./agents.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
-import { strip, tabs } from "./tab-strip.ts";
+import { openTabsUntilOverflow, strip, tabs, titlesIn } from "./tab-strip.ts";
 
 endOwnTerminals();
 
@@ -52,22 +52,11 @@ test("New tab sits next to the last tab at 1440, and All tabs appears and select
   expect(plusBox.x).toBeGreaterThanOrEqual(lastBox.x + lastBox.width);
 
   await page.setViewportSize({ width: 700, height: 900 });
-  const scroller = strip(page).locator("[data-tab-scroll]");
-  const overflows = () => scroller.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
-  const openUntilOverflow = async (remaining: number): Promise<void> => {
-    if (remaining <= 0 || (await overflows())) return;
-    const before = await tabs(page).count();
-    await pressNewTab(newTab);
-    await expect(tabs(page)).toHaveCount(before + 1, { timeout: 15_000 });
-    await openUntilOverflow(remaining - 1);
-  };
-  await openUntilOverflow(12);
+  await openTabsUntilOverflow(page, 12);
 
   await expect(allTabs).toBeVisible({ timeout: 10_000 });
 
-  const expectedTitles = await tabs(page).evaluateAll((els) =>
-    els.map((el) => el.querySelector("span.truncate")?.textContent?.trim() ?? el.textContent?.trim() ?? ""),
-  );
+  const expectedTitles = await titlesIn(tabs(page));
   await expect(tabs(page).first()).toHaveAttribute("aria-selected", "false");
 
   await allTabs.click();
@@ -75,10 +64,7 @@ test("New tab sits next to the last tab at 1440, and All tabs appears and select
   await expect(menu).toBeVisible();
   const items = menu.getByRole("menuitem");
   await expect(items).toHaveCount(expectedTitles.length);
-  const menuTitles = await items.evaluateAll((els) =>
-    els.map((el) => el.querySelector("span.truncate")?.textContent?.trim() ?? ""),
-  );
-  expect(menuTitles).toEqual(expectedTitles);
+  expect(await titlesIn(items)).toEqual(expectedTitles);
 
   await items.first().click();
   await expect(tabs(page).first()).toHaveAttribute("aria-selected", "true");
