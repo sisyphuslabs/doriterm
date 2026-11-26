@@ -106,7 +106,11 @@ export function InputBox({ onSend, draftKey, fieldRef, accessory, className, sty
         />
       </div>
       <div data-slot="input-actions" className="flex items-center justify-end gap-2">
-        {accessory}
+        {/* As Send: a press here keeps the field's focus, so the keyboard stays up and the card does not move under the
+            finger before the press ends (the mic's tap was lost to that move). */}
+        <span className="contents" onMouseDown={(event) => event.preventDefault()}>
+          {accessory}
+        </span>
         <Button
           type="button"
           variant="primary"
