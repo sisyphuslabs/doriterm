@@ -9,11 +9,10 @@ export interface ResumableSession {
 }
 
 /**
- * How long a detached session is dialed for, from the drop or from the page's latest wake, before the store gives it up
- * and opens a new one. A phone that drops in the background dials while it can and is frozen meanwhile; that time is not
- * the resume's to spend, so a wake gives the budget back whole (#2853). Whether the session is still there is the host's
- * to say (its own window after it noticed the drop, docs/transport.md); a page that stays up and keeps failing gives up
- * after this.
+ * How long a visible page dials a detached session, from the drop or from its latest wake, before the store gives it up
+ * and opens a new one. A phone that drops in the background dials while it can, and no one is waiting on it there: a
+ * hidden page never gives the session up, and a wake gives the budget back whole (#2853). Whether the session is still
+ * there is the host's to say (its own window after it noticed the drop, docs/transport.md).
  */
 export const RESUME_BUDGET_MS = 60_000;
 /** The waits between resume dials: short, since each dial is itself bounded, and cut short by a wake. */
@@ -26,7 +25,12 @@ export interface ResumeHooks {
   readonly failed?: ((error: Error) => void) | undefined;
   readonly log?: ((line: string) => void) | undefined;
   readonly now?: (() => number) | undefined;
+  /** Whether the page is in the background now; the document's own visibility unless a test passes another. */
+  readonly hidden?: (() => boolean) | undefined;
 }
+
+/** The running page's visibility: no document under a test runner or a worker, so never hidden there. */
+const pageHidden = (): boolean => typeof document !== "undefined" && document.visibilityState === "hidden";
 
 /**
  * Why a connection dropped after its session could not be carried on: the store reconnects as before, and the
@@ -135,7 +139,9 @@ export class SessionResumer {
         // A dial the wake replaced is no failure: the next one goes at once.
         if (error === WOKE) continue;
         last = error;
-        if (isFinal(error) || now() - this.#since >= this.#budgetMs) break;
+        if (isFinal(error)) break;
+        // Only a page someone is looking at spends the budget; a hidden one keeps dialing until it wakes.
+        if (!(this.#hooks.hidden ?? pageHidden)() && now() - this.#since >= this.#budgetMs) break;
         this.#hooks.log?.(`resume attempt ${attempt + 1} failed: ${message(error)}`);
         this.#hooks.failed?.(error instanceof Error ? error : new Error(String(error)));
         // oxlint-disable-next-line no-await-in-loop -- dials run one after another, each after its backoff

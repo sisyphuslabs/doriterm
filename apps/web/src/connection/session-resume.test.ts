@@ -19,6 +19,8 @@ function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone" |
   const calls = { redials: 0, resumes: 0, abandoned: [] as Error[] };
   let detached = true;
   let closed = false;
+  /** Once set, every later resume ends this way, whatever the script said. */
+  let from: "ok" | undefined;
   const secure = {
     get detached() {
       return detached;
@@ -28,7 +30,7 @@ function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone" |
     },
     resume: async (socket: ByteLink) => {
       calls.resumes += 1;
-      const outcome = outcomes[Math.min(calls.resumes - 1, outcomes.length - 1)];
+      const outcome = from ?? outcomes[Math.min(calls.resumes - 1, outcomes.length - 1)];
       if (outcome === "ok") {
         detached = false;
         return;
@@ -52,7 +54,12 @@ function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone" |
       return link();
     },
   };
-  return { session, calls, drop: () => void (detached = true) };
+  return {
+    session,
+    calls,
+    drop: () => void (detached = true),
+    hostBack: () => void (from = "ok"),
+  };
 }
 
 describe("SessionResumer", () => {
@@ -96,7 +103,11 @@ describe("SessionResumer", () => {
     jest.useFakeTimers();
     const spent = fakeSession(["refused"]);
     let now = 0;
-    const resumer = new SessionResumer(spent.session, { resuming: () => undefined, now: () => now }, 1_000);
+    const resumer = new SessionResumer(
+      spent.session,
+      { resuming: () => undefined, now: () => now, hidden: () => false },
+      1_000,
+    );
     resumer.start(new Error("dropped"));
     await turns();
     now = 2_000;
@@ -130,6 +141,59 @@ describe("SessionResumer", () => {
     resumer.now();
     await settle();
     expect(calls).toMatchObject({ resumes: 3, abandoned: [] });
+    expect(resumer.active).toBe(false);
+  });
+
+  test("a hidden page keeps dialing past the budget and never gives the session up; the wake then carries it on (#2853 review)", async () => {
+    jest.useFakeTimers();
+    const away = fakeSession(["refused"]);
+    let now = 0;
+    let hidden = true;
+    const resumer = new SessionResumer(
+      away.session,
+      { resuming: () => undefined, now: () => now, hidden: () => hidden },
+      60_000,
+    );
+    resumer.start(new Error("dropped"));
+    await turns();
+    // A background page that keeps running: every backoff fires and every dial fails, for 100 s, past the 60 s budget.
+    for (let step = 0; step < 20; step += 1) {
+      now += 5_000;
+      jest.advanceTimersByTime(5_000);
+      // oxlint-disable-next-line no-await-in-loop -- each backoff's dial runs before the next one is due
+      await turns();
+    }
+    expect(away.calls.resumes).toBeGreaterThan(10);
+    expect(away.calls.abandoned).toEqual([]);
+    expect(resumer.active).toBe(true);
+    // The person comes back and the host still holds the session.
+    away.hostBack();
+    hidden = false;
+    resumer.now();
+    await turns();
+    expect(away.calls.abandoned).toEqual([]);
+    expect(resumer.active).toBe(false);
+  });
+
+  test("a visible page still gives the session up once its budget runs out with every backoff waited (#2853 review)", async () => {
+    jest.useFakeTimers();
+    const down = fakeSession(["refused"]);
+    let now = 0;
+    const resumer = new SessionResumer(
+      down.session,
+      { resuming: () => undefined, now: () => now, hidden: () => false },
+      60_000,
+    );
+    resumer.start(new Error("dropped"));
+    await turns();
+    for (let step = 0; step < 13 && down.calls.abandoned.length === 0; step += 1) {
+      now += 5_000;
+      jest.advanceTimersByTime(5_000);
+      // oxlint-disable-next-line no-await-in-loop -- each backoff's dial runs before the next one is due
+      await turns();
+    }
+    expect(down.calls.abandoned.map((error) => error.message)).toEqual(["could not resume the session: refused"]);
+    expect(now).toBe(60_000);
     expect(resumer.active).toBe(false);
   });
 
