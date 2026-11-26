@@ -42,7 +42,10 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
   const [now = terminal] = useShown([terminal]);
   const title = tabTitle ?? terminalTitle(now);
   const heading = useRef<HTMLHeadingElement>(null);
-  const titleLines = useFittedLines(heading, title);
+  // While the needs-you pill takes its share of the row, the title keeps one line and ends in an ellipsis: the pill must
+  // never make the header taller, or the terminal loses a row on a phone (#2865). Without it, two lines as before.
+  const waiting = waitingBesides(terminals, terminal.address);
+  const titleLines = useFittedLines(heading, title, waiting > 0 ? 1 : 2);
   const machine = machineOf(terminal.address);
   // Where it is: the layout space whose tab shows it (#404), else where it runs.
   const { spaces } = useSpaceSelection();
@@ -92,7 +95,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
         </p>
       </div>
       <NeedsYouPill
-        count={waitingBesides(terminals, terminal.address)}
+        count={waiting}
         compact
         onOpen={() => {
           const next = nextNeedingYou(terminals, terminal.address);
