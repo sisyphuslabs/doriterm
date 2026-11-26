@@ -12,8 +12,8 @@ const OUT = join(import.meta.dirname, "../../../docs/design/app");
 const field = (page: Page) => page.getByLabel("Type into the terminal");
 
 /**
- * The space between the focused field's focus outline, at its outer edge, and Send's left edge, in CSS px (#1516). An
- * outline drawn outside the field's box takes that much of the gap; one drawn inside it takes none.
+ * The space between the focused field's focus outline, at its outer bottom edge, and the top of Send under it, in CSS px
+ * (#1516). An outline drawn outside the field's box takes that much of the gap; one drawn inside it takes none.
  */
 async function ringGap(page: Page): Promise<number> {
   const [outer, send] = await Promise.all([
@@ -21,20 +21,33 @@ async function ringGap(page: Page): Promise<number> {
       const style = getComputedStyle(element);
       const outside =
         style.outlineStyle === "none" ? 0 : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
-      return element.getBoundingClientRect().right + Math.max(0, outside);
+      return element.getBoundingClientRect().bottom + Math.max(0, outside);
     }),
     key(page, "Send").boundingBox(),
   ]);
   if (send === null) throw new Error("Send is not laid out");
-  return send.x - outer;
+  return send.y - outer;
 }
 
-/** The space between the field's right edge and Send's left edge, and both controls' sizes, in CSS px. */
-async function measure(page: Page): Promise<{ gap: number; send: { width: number; height: number }; field: number }> {
-  const [box, send] = await Promise.all([field(page).boundingBox(), key(page, "Send").boundingBox()]);
-  if (box === null || send === null) throw new Error("the field or Send is not laid out");
+/**
+ * As the Herdr app's card, Send sits under the field at its end with the mic before it: the space between the field's
+ * bottom and Send's top, the space between the mic and Send, and Send's size, in CSS px.
+ */
+async function measure(
+  page: Page,
+): Promise<{ gap: number; micGap: number; send: { width: number; height: number }; field: number }> {
+  const [box, send, mic] = await Promise.all([
+    field(page).boundingBox(),
+    key(page, "Send").boundingBox(),
+    page
+      .getByRole("group", { name: "Input card", exact: true })
+      .getByRole("button", { name: /^Dictat/ })
+      .boundingBox(),
+  ]);
+  if (box === null || send === null || mic === null) throw new Error("the field, the mic or Send is not laid out");
   return {
-    gap: send.x - (box.x + box.width),
+    gap: send.y - (box.y + box.height),
+    micGap: send.x - (mic.x + mic.width),
     send: { width: send.width, height: send.height },
     field: box.height,
   };
@@ -57,6 +70,7 @@ for (const theme of ["day", "night"] as const) {
     // 0.5rem: what the phone chrome leaves between two pressable controls (the round buttons' 3.5rem slot is a 3rem
     // button and this gap). Asserted as that exact number, so a tighter or a looser row, or a shrunk button, fails here.
     expect(idle.gap).toBe(8);
+    expect(idle.micGap).toBe(8);
     expect(idle.send).toEqual({ width: 44, height: 44 });
     const shot = async (state: string): Promise<void> => {
       if (process.env["CAPTURE"] !== "1") return;
@@ -75,6 +89,7 @@ for (const theme of ["day", "night"] as const) {
     await expect.poll(async () => (await field(page).boundingBox())?.height ?? 0).toBeGreaterThan(44);
     const grown = await measure(page);
     expect(grown.gap).toBe(8);
+    expect(grown.micGap).toBe(8);
     expect(grown.send).toEqual({ width: 44, height: 44 });
     expect(await ringGap(page)).toBe(8);
     await shot("grown");

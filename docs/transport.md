@@ -1,4 +1,4 @@
-# Doriterm transport contract v1.12.4
+# Doriterm transport contract v1.12.5
 
 This is the binding wire contract for every Doriterm package. Each rule below is the current one; the change log at the end records what each revision changed.
 
@@ -7,7 +7,7 @@ Layering, outermost first:
 1. WebSocket, binary messages only, permessage-deflate off. The only text messages are the ones listed under "Relay text messages".
 2. Relay routing header (relay path only, between relay and host; clients never see it).
 3. Noise record layer (E2EE, `@doriface/crypto`): one WebSocket message = one Noise message.
-4. Plaintext = a chunk of herdr-core's raw `hc connect` byte stream (JSON-RPC lines, then frames). The host never parses it; it pipes it to `hc connect`.
+4. Plaintext = a chunk of herdr-core's raw `hc connect` byte stream (JSON-RPC lines, then frames). The host pipes it to `hc connect` unchanged, with one exception, listed under "What the host adds".
 
 ## Identities
 
@@ -356,6 +356,11 @@ One more stream for a device (v1.12): the Model Context Protocol in place of her
 - The phone key bar shows Command only on a `darwin` host's terminal, and its paste chord is cmd+v there and ctrl+shift+v elsewhere.
 - The document is advisory and never used for security. hc's `doc.set` takes `on`, so a core that added machine X, or any client of X's core, can overwrite X's `doriface-host` document until X's host restarts and writes it again. The effect is limited to X's key bar: whether it shows Command and which paste chord it sends.
 
+## What the host adds
+
+- One change to a client's stream, and only with program resume on (docs/program-resume.md): a `terminal.run` request frame for the host's own core (no `on`) reaches hc with `OSC7577_TOKEN` set in its `params.env`, a fresh random token for that terminal; a value the client put there is replaced. The frame is re-encoded from the parsed request (`JSON.parse` then `JSON.stringify`), so its bytes differ: members keep the client's order and values as JSON reads them, which means a number beyond 2^53 loses precision, invalid UTF-8 becomes U+FFFD and of duplicate keys the last one stays. Clients send none of those in a run. A run whose frame header arrives split across records, and every other frame and byte in either direction, passes unchanged.
+- The relay suite checks exactly this: every frame hc read equals the frame the client sent, or is byte for byte the frame the host makes of that run with the token found in its `params.env` (never for a run with `on`).
+
 ## Close codes
 
 - 4400: crypto failure, including an unknown session kind, a malformed first message, an invalid CPace share, or a key confirmation that does not decrypt; an unknown or misplaced `stream`, early bytes on a mesh session, a malformed or oversize mesh stream line, a sync peer that sends no `records` or `done` line for 30 s after a `hello`, a mesh name that breaks the mesh-name rule, or an hc line before the framed `hello` that breaks the rule under Session kinds, or an MCP line that is oversize, not UTF-8 or not a JSON object
@@ -374,6 +379,7 @@ One more stream for a device (v1.12): the Model Context Protocol in place of her
 
 ## Change log
 
+- v1.12.5 (host behaviour, no relay or wire change; #2857): program resume. The host adds a per-terminal `OSC7577_TOKEN` to the env of a client's `terminal.run` on its own core, the one exception to an unchanged stream ("What the host adds"); `doriface-host --no-resume` turns it off.
 - v1.12.4 (host behaviour, no relay change; #2735): MCP is on by default. A missing `mcp.json` now means on instead of off; a written `{"enabled":false}` still turns it off and survives an update.
 - v1.12.3 (host behaviour, no relay change; #2735): hc's event stream over MCP. Terminals are resources (`doriterm://terminal/<address>`, `resources/list`, `resources/read` returns the screen). `subscriptions/listen` acknowledges, then sends `notifications/resources/updated` for subscribed terminals and `notifications/resources/list_changed` when one is created or removed. The Events extension (`io.modelcontextprotocol/events`) offers one event type, `terminal.changed`, by push (`events/stream`): `active`, then one `event` per hc event with its payload, a heartbeat, and a fresh `active` with `truncated` after the core dropped events; cursors are null (no replay). Each subscription is one `events.subscribe` on the session's own core connection and ends on cancel or when the session closes. `terminal.attach` stays excluded.
 - v1.12.2 (host behaviour, no relay change; #2735): `tools/list` shows two tools, `doriterm_tools` and `doriterm_call`, unless the session's first line was the notification `notifications/doriterm/tools` with `{"tools":"all"}` or a list of groups; what is shown never changes what can be called. The catalog gains the host's own mesh tools (`mesh_status`, `mesh_invite`, `mesh_join_answer`, `mesh_revoke`, `mesh_rename`, `mesh_leave`, `mesh_device_revoke`). The plaintext listener gains `/v1/mcp` behind the per-launch token, never on the LAN listener.

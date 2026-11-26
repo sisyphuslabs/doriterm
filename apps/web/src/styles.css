@@ -8,6 +8,46 @@
   --term-font-family: var(--font-term);
 }
 
+/* iOS 26+ draws its scroll-edge blur over the top of the page, a Home Screen app's headers included, unless WebKit finds
+   a fixed edge there: a fixed box over 10 px tall and at least 90% of the width, under the point 4 px inside the top
+   centre, whose computed background colour it then extends into the status bar instead (#2867). This one names the
+   bars' colour (every phone header and the desktop tab bar is --chrome, as is --sidebar in every theme) and paints none
+   of it: the colour is clipped to text it does not have. It takes no tap, and sits over everything so no other fixed
+   box (a sheet's scrim, Back's sliding picture) becomes the edge and leaves with it. */
+@supports (-webkit-touch-callout: none) {
+  [data-top-edge] {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: 2147483647;
+    height: 11px;
+    pointer-events: none;
+    background-color: var(--chrome);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  /* Every phone screen's header is an edge WebKit can take too (#2867 came back): sticky at the top, so WebKit counts it
+     as a fixed edge without anything moving (a fixed one would leave its screen's flow, and inside a sliding screen its
+     transform would pin it to the slide instead). WebKit samples the top only until the first touch or scroll and then
+     keeps that edge, so the header must be one even if the strip is ever missed; and when iOS scrolls the document to
+     show the terminal's field under the keyboard, the header stays at the top instead of sliding under the blur. Only
+     the phone headers carry the marker: an iPad shows the desktop shell, whose titlebar pieces are absolute or fixed. */
+  [data-phone-top] {
+    position: sticky;
+    top: 0;
+    /* Over the screen's content, which comes later and is positioned: scrolled under it, the terminal would be hit first. */
+    z-index: 1;
+  }
+
+  /* No rubber band at the top: iOS brings its blur back whenever the page is pulled down past its top, whatever edge
+     it found (#2867). The lists and the terminal scroll in their own boxes, which contain their own overscroll. Only
+     on iOS: elsewhere (Android's pull-to-refresh) the page keeps its own overscroll. */
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
 /* The terminal draws its own scrollbar as an overlay (terminal-scroll.tsx): a native one would take its width from the
    grid when scrollback appears, and wterm would refit the grid to fewer columns. */
 .wterm.wterm {

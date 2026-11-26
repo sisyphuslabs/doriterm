@@ -106,6 +106,8 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   // it the keyboard, and the keys stay where they were under it.
   const [heldUp, setHeldUp] = useState(false);
   const [pad, setPad] = useState(false);
+  // The input card (#2778) is held here: while it is open the mic sits in it, beside Enter, not in the header.
+  const [card, setCard] = useState(false);
   // The keys bar as drawn, which grows while its field has a row of its own; the terminal keeps clear of all of it.
   const [barHeight, setBarHeight] = useState(0);
   const [packs, setPacks] = useState(false);
@@ -148,6 +150,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const held = (menu || packs) && heldUp;
   const placed = keysPlacement({ riding, held, mouseOnly, ended, dictating, browsing, offline, inTab, pad });
   const { keysOpen, tabsBar, docked, jumpClearance: keysControls } = placed;
+  // The card is on screen only with its keys bar (not while dictation holds that place, nor with the bar put away): only
+  // then does the header give it the mic, so one mic is always within reach.
+  const cardShown = card && !dictating && !offline && !ended && (keysOpen || docked !== null);
 
   // One terminal of the screen: the open one, or in a split the half out of focus, which takes no keys of its own.
   const view = (session: Session, focused: boolean) => {
@@ -221,7 +226,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           backTo={full && panes.length > 1 ? "Split" : backTo}
           onBack={back}
           onOpen={onOpen}
-          action={untyped ? null : <DictateButton voice={voice} target={title} ref={mic} />}
+          action={untyped || cardShown ? null : <DictateButton voice={voice} target={title} ref={mic} />}
         />
         <ConnectionLine address={terminal.address} {...(offline ? {} : { connection })} />
         {pair === null || panes.length > 2 ? (
@@ -272,7 +277,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               port.current?.send(text);
               port.current?.focus();
             }}
-            onClose={() => mic.current?.focus()}
+            // The mic is the card's again once the dock goes (the card comes back), else the header's: focused after
+            // that render, so the focus never falls to the page with the one it would have reached.
+            onClose={() => requestAnimationFrame(() => mic.current?.focus())}
             className="pb-[max(0.5rem,var(--safe-bottom))]"
             {...(keyboard.inset > 0 ? { style: { marginBottom: `${keyboard.inset}px` } } : {})}
           />
@@ -300,6 +307,9 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
               setPacks(true);
             }}
             browsing={browsing}
+            card={card}
+            onCard={setCard}
+            {...(untyped ? {} : { mic: <DictateButton voice={voice} target={title} ref={mic} /> })}
             {...(mouseOnly ? { onKeys: setKeysShown } : { onBrowse: setBrowsing })}
           />
         )}

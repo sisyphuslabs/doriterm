@@ -1,7 +1,7 @@
 import { ClipboardPaste, CornerDownLeft, Keyboard, KeyboardOff, List, Move, SquarePen } from "lucide-react";
 import { type CSSProperties, type ReactElement, type ReactNode, type Ref, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
-import { DirectionPad } from "./direction-pad.tsx";
+import { DIRECTION_PAD_WIDTH_PX as PAD_WIDTH_PX, DirectionPad } from "./direction-pad.tsx";
 import { DEFAULT_EXTRA_KEYS } from "./extra-keys-defaults.tsx";
 import { idleKey, keepFocus, KeyButton, keyTarget as key, latchedKey } from "./extra-key-button.tsx";
 import { KeyPages } from "./key-pages.tsx";
@@ -62,7 +62,6 @@ export interface ExtraKeysBarProps {
 }
 
 const pill = "relative h-[3.25rem] rounded-full border border-border bg-chrome/95 shadow-lg backdrop-blur-md";
-const PAD_WIDTH_PX = 202;
 
 /** Where the open pad sits over the key pill, and where its tail points: centred over its key, kept inside the pill. */
 function padPlace(anchor: HTMLElement | null, scrolled: number, pillWidth: number): { left: number; tail: number } {

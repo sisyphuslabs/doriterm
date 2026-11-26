@@ -1,6 +1,15 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { HANGEUL, type Keyboard, safariReplace, spaceThenJamo, typeHangul } from "./hangul-edits.ts";
+import {
+  HANGEUL,
+  type Keyboard,
+  type KeyUp,
+  safariReplace,
+  spaceThenJamo,
+  typeHangul,
+  typeKoreanLine,
+} from "./hangul-edits.ts";
+import { KOREAN_LINES } from "./korean-keyboard-lines.ts";
 import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -91,7 +100,7 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
     ]);
     // A keyboard that never saw its space would join ㄱ to 가 and put 각 in its place: 가, a deleted space, then 각.
     expect(await spaceThenJamo(field, keyboard, { jamo: "ㄱ", alone: "ㄱ", withPrevious: "각" })).toBe(true);
-    await typeHangul(field, keyboard, [["ㅏ", "가"]]);
+    await typeHangul(field, keyboard, [["ㅏ", "가"]], undefined, "ㄱ");
     await expectRead(page, terminal, "ea b0 80 20 ea b0 80");
   });
 
@@ -101,6 +110,26 @@ for (const keyboard of ["iphone", "ipad"] satisfies Keyboard[]) {
     await key(page, "Tab").click();
     await expectRead(page, terminal, "ed 95 9c 09");
   });
+}
+
+// The keyup of an iPhone key can come before its edits, or between a syllable's deletion and its replacement: the edits
+// are still that key's, so no syllable is sent early, no space is cancelled, and nothing is sent twice (#2854).
+for (const fixture of KOREAN_LINES) {
+  for (const keyUp of ["after-edits", "before-edits", "between-edits"] satisfies KeyUp[]) {
+    test(`iphone ${fixture.keyboard}, keyup ${keyUp}: ${fixture.name} (${fixture.text}) reaches the program as typed (#2854)`, async ({
+      page,
+    }) => {
+      const { terminal, field } = await openReader(page);
+      expect(await typeKoreanLine(field, "iphone", fixture.line, keyUp), "spaces the page cancelled").toBe(0);
+      await expectRead(
+        page,
+        terminal,
+        Buffer.from(fixture.text)
+          .toString("hex")
+          .replaceAll(/(..)(?!$)/g, "$1 "),
+      );
+    });
+  }
 }
 
 test("a paste the browser delivers only as input, while a syllable is still being typed, sends each part once", async ({

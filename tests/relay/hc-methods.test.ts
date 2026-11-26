@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ByteReader } from "../../apps/host/src/testing/byte-reader.ts";
 import { HELLO } from "../../apps/host/src/testing/hc-session.ts";
-import { firstDifference, type RecordingLink, replyDifference, type Tap, tapFor } from "./support/byte-tap.ts";
+import { type RecordingLink, replyDifference, requestDifference, type Tap, tapFor } from "./support/byte-tap.ts";
 import { type RelayedHost, startRelayedHost } from "./support/relayed-host.ts";
 import { type EventWatch, watchEvents, watchScreen, within } from "./support/watch.ts";
 import { setUpOnce } from "./support/set-up-once.ts";
@@ -219,7 +219,7 @@ describe("every hc method family, client SDK -> Noise IK -> relay -> doriface-ho
     );
   }, 30_000);
 
-  test("every byte of this suite's session reached hc unchanged, and every byte hc wrote reached the client unchanged", async () => {
+  test("every byte of this suite's session reached hc unchanged but a run's OSC 7577 token, and every byte hc wrote reached the client unchanged", async () => {
     const { hc } = started();
     if (relayed === undefined || recorded === undefined || feed === undefined) throw new Error("setup failed");
     feed.close();
@@ -249,7 +249,7 @@ describe("every hc method family, client SDK -> Noise IK -> relay -> doriface-ho
       }),
       "every byte hc wrote reaching the client",
     );
-    expect(firstDifference(link.sent, caughtUp.tap.read)).toBeUndefined();
+    expect(requestDifference(link.sent, caughtUp.tap.read)).toBeUndefined();
     expect(replyDifference(caughtUp.tap, caughtUp.received)).toBeUndefined();
     expect(caughtUp.received.byteLength).toBeGreaterThan(10_000);
   }, 30_000);

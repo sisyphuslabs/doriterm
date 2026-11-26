@@ -28,7 +28,7 @@ const BAR_KEYS = [
   "Hide keyboard",
   "Type in a field",
 ];
-const PAD_KEYS = ["Up arrow", "Left arrow", "Down arrow", "Right arrow"];
+const PAD_KEYS = ["Delete", "Up arrow", "Clear screen", "Left arrow", "Enter", "Right arrow", "Down arrow"];
 /** Return, the keyboard toggle and the input-card toggle live in the fixed Actions pill. */
 const FIXED_KEYS = ["Return", "Hide keyboard", "Type in a field"];
 const SCROLL_KEYS = BAR_KEYS.length - FIXED_KEYS.length;
@@ -152,7 +152,8 @@ test("a browser that shrinks the layout viewport for the keyboard shows the bar 
   await expect(bar).toBeVisible();
 });
 
-test("the D-pad toggle opens an inverted-T arrow bubble over its key", async ({ page }) => {
+// Our own 3x3 pad, not the Herdr app's inverted T (Q, 2026-11-26), in the bubble over its key that #2778 brought.
+test("the D-pad toggle opens the 3x3 pad in a bubble over its key", async ({ page }) => {
   await openPhoneTerminal(page);
   const toggle = key(page, "Arrow keys");
   await toggle.scrollIntoViewIfNeeded();
@@ -161,6 +162,20 @@ test("the D-pad toggle opens an inverted-T arrow bubble over its key", async ({ 
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   const pad = page.getByRole("group", { name: "Arrow keys", exact: true });
   await expect(pad).toBeVisible();
+  const order = await pad
+    .locator(":scope > :not([data-slot=pad-tail])")
+    .evaluateAll((cells) => cells.map((cell) => cell.getAttribute("aria-label") ?? ""));
+  expect(order).toEqual([
+    "Delete",
+    "Up arrow",
+    "Clear screen",
+    "Left arrow",
+    "Enter",
+    "Right arrow",
+    "",
+    "Down arrow",
+    "",
+  ]);
   expect(await names(pad)).toEqual(PAD_KEYS);
   await expect(pad.locator('[data-slot="pad-tail"]')).toHaveCount(1);
   const [padBox, toggleBox, up, left, down, right] = await Promise.all([
@@ -174,13 +189,14 @@ test("the D-pad toggle opens an inverted-T arrow bubble over its key", async ({ 
   if (padBox === null || toggleBox === null || up === null || left === null || down === null || right === null) {
     throw new Error("arrow pad not laid out");
   }
+  // Up over Enter over Down in the middle column; Left, Enter and Right on the middle row.
   expect(padBox.y + padBox.height).toBeLessThanOrEqual(toggleBox.y);
-  expect(up.y + up.height).toBeLessThanOrEqual(down.y);
+  expect(up.y + up.height).toBeLessThanOrEqual(left.y);
+  expect(left.y + left.height).toBeLessThanOrEqual(down.y);
   expect(Math.abs(up.x - down.x)).toBeLessThanOrEqual(1);
   expect(left.x + left.width).toBeLessThanOrEqual(down.x);
   expect(down.x + down.width).toBeLessThanOrEqual(right.x);
-  expect(Math.abs(left.y - down.y)).toBeLessThanOrEqual(1);
-  expect(Math.abs(right.y - down.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(left.y - right.y)).toBeLessThanOrEqual(1);
   await expectTouchTargets(pad);
   // Pressing pad keys keeps the keyboard up: the terminal keeps focus.
   await key(page, "Up arrow").click();

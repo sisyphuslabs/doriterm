@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { encodeFrame, type Frame, FrameDecoder, FrameKind, RPC_CHANNEL } from "@doriface/protocol";
 import { attachAfterRun } from "./attach-after-run.ts";
 import type { DataHandler, Link } from "./link.ts";
+import { type RunStarted, runTokens, TOKEN_VAR } from "./resume/run-tokens.ts";
 import { HELLO } from "./testing/hc-session.ts";
 
 const encoder = new TextEncoder();
@@ -97,6 +98,68 @@ describe("an attach held for its run goes to the core between frames, never insi
     expect(core.frames().map(methodOf)).toEqual(["terminal.run"]);
     await core.reply(RUN_REPLY);
     expect(core.frames().map(methodOf)).toEqual(["terminal.run", "terminal.attach"]);
+  });
+});
+
+/** A link past the framed hello whose runs get one fixed token, and the runs it saw start. */
+async function tokenedLink() {
+  const core = new FakeCore();
+  const started: RunStarted[] = [];
+  const link = attachAfterRun(
+    core,
+    runTokens(
+      (run) => started.push(run),
+      () => "token-of-twenty-two-ch",
+    ),
+  );
+  link.onData(() => undefined);
+  await link.send(HELLO);
+  await core.reply(HELLO_REPLY);
+  return { core, link, started };
+}
+const envOf = (frame: Frame | undefined): unknown =>
+  frame === undefined ? undefined : JSON.parse(decoder.decode(frame.payload)).params.env;
+
+describe("with OSC 7577 tokens", () => {
+  test("a run whose header arrives split passes on at once, unchanged and without a token", async () => {
+    const { core, link, started } = await tokenedLink();
+    await link.send(RUN.subarray(0, 4));
+    expect(core.sentBytes).toBe(HELLO.byteLength + 4);
+    await link.send(RUN.subarray(4));
+    expect(envOf(core.frames()[0])).toBeUndefined();
+    await core.reply(RUN_REPLY);
+    expect(started).toEqual([]);
+  });
+
+  for (const cut of [undefined, 30]) {
+    test(`a run reaches the core with its token, ${cut === undefined ? "in one record" : `cut ${cut} bytes in`}, and its attach still waits for it`, async () => {
+      const { core, link, started } = await tokenedLink();
+      const both = new Uint8Array([...RUN, ...ATTACH]);
+      if (cut === undefined) await link.send(both);
+      else {
+        await link.send(both.subarray(0, cut));
+        await link.send(both.subarray(cut));
+      }
+      expect(core.frames().map(methodOf)).toEqual(["terminal.run"]);
+      expect(envOf(core.frames()[0])).toEqual({ [TOKEN_VAR]: "token-of-twenty-two-ch" });
+      await core.reply(RUN_REPLY);
+      expect(core.frames().map(methodOf)).toEqual(["terminal.run", "terminal.attach"]);
+      expect(started).toEqual([{ address: "t1", token: "token-of-twenty-two-ch", name: NAME, env: {} }]);
+    });
+  }
+
+  test("other requests and stream frames pass unchanged", async () => {
+    const { core, link } = await tokenedLink();
+    const keys = rpc(3, "terminal.keys", { terminal: "t9", keys: ["enter"] });
+    const stream = encodeFrame(7, FrameKind.Data, new Uint8Array([1, 2, 3]));
+    await link.send(new Uint8Array([...keys, ...stream]));
+    const all = new Uint8Array(core.sentBytes);
+    let at = 0;
+    for (const chunk of core.sent) {
+      all.set(chunk, at);
+      at += chunk.byteLength;
+    }
+    expect(all.subarray(HELLO.byteLength)).toEqual(new Uint8Array([...keys, ...stream]));
   });
 });
 

@@ -44,6 +44,21 @@ test("with a mouse, Show keys opens the keys bar itself, its keys reach the term
   await expect(key(page, "Show keys")).toBeVisible();
 });
 
+// Review of #2855: an input card left open goes with the bar it sits on, and the header keeps the mic it gave the card.
+test("with the keys put away, an input card left open no longer takes the header's mic", async ({ page }) => {
+  await openTerminal(page);
+  const header = page.locator("header[data-titlebar]");
+  const mic = header.getByRole("button", { name: /^Dictat/ });
+  await key(page, "Show keys").click();
+  await key(page, "Type in a field").click();
+  await expect(page.getByRole("group", { name: "Input card", exact: true })).toBeVisible();
+  await expect(mic).toHaveCount(0);
+
+  await key(page, "Hide keys").click();
+  await expect(page.getByRole("group", { name: "Input card", exact: true })).toHaveCount(0);
+  await expect(mic).toHaveCount(1);
+});
+
 test.describe("on a touch phone", () => {
   test.use({ ...PHONE, serviceWorkers: "block" });
 

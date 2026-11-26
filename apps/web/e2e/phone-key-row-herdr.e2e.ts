@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { stubSpeech } from "./speech-stub.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
@@ -10,6 +11,7 @@ const actionsPill = (page: Page) => keysBar(page).getByRole("group", { name: "Ac
 const card = (page: Page) => page.getByRole("group", { name: "Input card", exact: true });
 const field = (page: Page) => page.getByLabel("Type into the terminal");
 const pages = (page: Page) => keysPill(page).locator('[data-slot="terminal-keys-scroll"]');
+const mic = (scope: Locator) => scope.getByRole("button", { name: /^Dictat/ });
 
 async function box(locator: Locator) {
   const found = await locator.boundingBox();
@@ -87,6 +89,82 @@ test("the card toggle opens the input card above the row, and Send keeps the #27
   await expect(terminal).toContainText("card-");
 });
 
+// iOS raises the soft keyboard only for a focus made while the tap is being handled, so the card's field must take the
+// focus inside the toggle's own click, not in a render after it (Q, 2026-11-26: "the keyboard does not come up").
+test("the card toggle focuses the field inside the tap itself, so a phone raises its keyboard at once", async ({
+  page,
+}) => {
+  await openPhoneTerminal(page, 390);
+  const focusedInTap = await page.evaluate(() => {
+    const toggle = document.querySelector<HTMLButtonElement>('[aria-label="Type in a field"]');
+    if (toggle === null) throw new Error("no card toggle");
+    toggle.click();
+    return document.activeElement?.getAttribute("aria-label") ?? null;
+  });
+  expect(focusedInTap).toBe("Type into the terminal");
+});
+
+// The Herdr app's card (Q's reference shot, 2026-11-26): the mic and Enter sit at the card's end, Enter always pressable.
+test("the open card holds the mic just before Enter, and Enter with an empty field presses Return", async ({
+  page,
+}) => {
+  const terminal = await openPhoneTerminal(page, 390);
+  const header = page.locator("header[data-titlebar]");
+  await expect(mic(header)).toHaveCount(1);
+  await page.keyboard.type("echo empty-$((3*3))");
+
+  await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
+  // One mic on the screen: the card's, in the place the Herdr app draws it.
+  await expect(mic(header)).toHaveCount(0);
+  await expect(mic(card(page))).toHaveCount(1);
+  const enter = card(page).getByRole("button", { name: "Send", exact: true });
+  await expect(enter).toBeEnabled();
+  const [voice, send, input] = [await box(mic(card(page))), await box(enter), await box(field(page))];
+  // Under the full-width field, at its end: the mic, then Enter, on one line.
+  expect(Math.abs(voice.y + voice.height / 2 - (send.y + send.height / 2))).toBeLessThanOrEqual(1);
+  expect(input.y + input.height).toBeLessThanOrEqual(voice.y);
+  expect(voice.x + voice.width).toBeLessThanOrEqual(send.x);
+  expect(Math.abs(send.x + send.width - (input.x + input.width))).toBeLessThanOrEqual(1);
+
+  await enter.click();
+  await expect(terminal).toContainText("empty-9");
+  await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
+  await expect(mic(header)).toHaveCount(1);
+});
+
+// Review of #2855: a line of spaces is a line (a pager pages on a space); only an empty field presses Return alone.
+test("a line of only spaces reaches the program as written", async ({ page }) => {
+  const terminal = await openPhoneTerminal(page, 390);
+  await page.keyboard.type('IFS= read -r v; echo "len-${#v}"');
+  await page.keyboard.press("Enter");
+  await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
+  await field(page).fill("   ");
+  await card(page).getByRole("button", { name: "Send", exact: true }).click();
+  await expect(terminal).toContainText("len-3");
+});
+
+// Review of #2855: dictation takes the card's place, so the header has the mic again; Cancel gives the focus back to the
+// mic that is on screen after it, the card's once the card returns, never to the page.
+test("dictation from the card's mic keeps one mic in reach, and Cancel returns the focus to the card's mic", async ({
+  page,
+}) => {
+  await stubSpeech(page);
+  await openPhoneTerminal(page, 390);
+  const header = page.locator("header[data-titlebar]");
+  await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
+  await mic(card(page)).click();
+  await page.getByRole("button", { name: "Allow" }).click();
+  const cancel = page.getByRole("button", { name: "Cancel dictation" });
+  await expect(cancel).toBeVisible();
+  await expect(card(page)).toHaveCount(0);
+  await expect(mic(header)).toHaveCount(1);
+
+  await cancel.click();
+  await expect(card(page)).toBeVisible();
+  await expect(mic(header)).toHaveCount(0);
+  await expect(mic(card(page))).toBeFocused();
+});
+
 test("Return in the action pill is a terminal key: it reaches the program", async ({ page }) => {
   const terminal = await openPhoneTerminal(page, 390);
   await page.keyboard.type("echo row-$((5*5))");
@@ -94,7 +172,7 @@ test("Return in the action pill is a terminal key: it reaches the program", asyn
   await expect(terminal).toContainText("row-25");
 });
 
-test("the arrow key opens an inverted-T bubble over itself", async ({ page }, testInfo) => {
+test("the arrow key opens the 3x3 pad in a bubble over itself", async ({ page }, testInfo) => {
   const terminal = await openPhoneTerminal(page, 390);
   const toggle = keysPill(page).getByRole("button", { name: "Arrow keys", exact: true });
   await toggle.scrollIntoViewIfNeeded();
@@ -104,7 +182,7 @@ test("the arrow key opens an inverted-T bubble over itself", async ({ page }, te
   const names = await pad
     .getByRole("button")
     .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
-  expect(names).toEqual(["Up arrow", "Left arrow", "Down arrow", "Right arrow"]);
+  expect(names).toEqual(["Delete", "Up arrow", "Clear screen", "Left arrow", "Enter", "Right arrow", "Down arrow"]);
   const [bubble, anchor] = [await box(pad), await box(toggle)];
   expect(bubble.y + bubble.height).toBeLessThanOrEqual(anchor.y);
   const centre = anchor.x + anchor.width / 2;

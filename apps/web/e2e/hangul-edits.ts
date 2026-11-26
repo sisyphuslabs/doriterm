@@ -16,6 +16,12 @@ export type Edit = readonly ["delete"] | readonly ["insert", string];
 
 export type Keyboard = "iphone" | "ipad";
 
+/**
+ * Where a key's keyup lands among the editor's edits it makes. WebKit sends the key's events and the input method's edits
+ * separately, so on a phone the keyup can come before them, or between a syllable's deletion and its replacement (#2854).
+ */
+export type KeyUp = "after-edits" | "before-edits" | "between-edits";
+
 const KEY_CODES: Readonly<Record<string, number>> = {
   ㅎ: 71,
   ㅏ: 75,
@@ -35,11 +41,15 @@ export async function hangulKey(
   keyboard: Keyboard,
   jamo: string,
   edits: readonly Edit[],
+  keyUp: KeyUp = "after-edits",
 ): Promise<void> {
   const keyCode = keyboard === "iphone" ? 0 : (KEY_CODES[jamo] ?? 65);
   await field.evaluate(
     async (element, key) => {
       const { edits: steps } = key;
+      const last = steps.length - 1;
+      const upBefore = (index: number): boolean =>
+        (key.keyUp === "before-edits" && index === 0) || (key.keyUp === "between-edits" && index === last && last > 0);
       if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
       const box = element;
       const down = box.dispatchEvent(
@@ -62,8 +72,14 @@ export async function hangulKey(
             charCode: code,
           }),
         );
+      let up = false;
+      const keyUpEvent = (): void => {
+        up = true;
+        box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: key.jamo, keyCode: key.keyCode }));
+      };
       if (down && press) {
-        for (const edit of steps) {
+        for (const [index, edit] of steps.entries()) {
+          if (upBefore(index)) keyUpEvent();
           if (edit[0] === "delete") {
             const end = box.selectionEnd;
             const start = box.selectionStart === end ? Math.max(0, end - 1) : box.selectionStart;
@@ -78,11 +94,21 @@ export async function hangulKey(
           }
         }
       }
-      box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: key.jamo, keyCode: key.keyCode }));
+      if (!up) keyUpEvent();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     },
-    { jamo, keyCode, edits },
+    { jamo, keyCode, edits, keyUp },
   );
+}
+
+/** The editor's edits from one shown text to the next: what changed is taken back from where it starts, then put anew. */
+function editsBetween(shown: string, after: string): Edit[] {
+  const was = Array.from(shown);
+  const now = Array.from(after);
+  let kept = 0;
+  while (kept < was.length && kept < now.length && was[kept] === now[kept]) kept += 1;
+  const deletes = was.slice(kept).map((): Edit => ["delete"]);
+  return [...deletes, ["insert", now.slice(kept).join("")]];
 }
 
 /** Types `steps` as a WebKit Korean keyboard does: each step is a jamo and the syllables before the caret after it. */
@@ -90,18 +116,56 @@ export async function typeHangul(
   field: Locator,
   keyboard: Keyboard,
   steps: readonly (readonly [jamo: string, after: string])[],
+  keyUp?: KeyUp,
+  /** The syllable already in the field that the first step goes on from (a jamo another helper typed). */
+  from = "",
 ): Promise<void> {
-  let shown = "";
+  let shown = from;
   for (const [jamo, after] of steps) {
-    // A key that only adds a syllable inserts its jamo; one that changes the last syllable takes it back and puts the
-    // new text in its place.
-    const kept = shown.slice(0, -1);
-    const edits: Edit[] =
-      after === shown + jamo ? [["insert", jamo]] : [["delete"], ["insert", after.slice(kept.length)]];
     // oxlint-disable-next-line no-await-in-loop -- each key edits the field the previous one left
-    await hangulKey(field, keyboard, jamo, edits);
+    await hangulKey(field, keyboard, jamo, editsBetween(shown, after), keyUp);
     shown = after;
   }
+}
+
+/** A line of words typed on a phone's Korean keyboard: each word's steps as `typeHangul` takes them, a space between. */
+export type KoreanLine = readonly (readonly (readonly [key: string, after: string])[])[];
+
+/**
+ * Types `line` with the keyboard's own space between its words, and returns how many of those spaces the page cancelled.
+ * A cancelled space never reaches the keyboard's field, so the keyboard would go on composing across it (#1508).
+ */
+export async function typeKoreanLine(
+  field: Locator,
+  keyboard: Keyboard,
+  line: KoreanLine,
+  keyUp?: KeyUp,
+): Promise<number> {
+  let cancelled = 0;
+  for (const [index, word] of line.entries()) {
+    // oxlint-disable-next-line no-await-in-loop -- each word follows the space before it
+    if (index > 0 && !(await spaceKey(field))) cancelled += 1;
+    // oxlint-disable-next-line no-await-in-loop -- each key edits the field the previous one left
+    await typeHangul(field, keyboard, word, keyUp);
+  }
+  return cancelled;
+}
+
+/** The keyboard's space: its keydown, and the space it puts in the field unless the page cancelled the keydown. */
+async function spaceKey(field: Locator): Promise<boolean> {
+  return field.evaluate((element) => {
+    if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
+    const down = element.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " ", keyCode: 32 }),
+    );
+    if (down) {
+      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: " " }));
+      element.setRangeText(" ", element.selectionStart, element.selectionEnd, "end");
+      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: " " }));
+    }
+    element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: " ", keyCode: 32 }));
+    return down;
+  });
 }
 
 /**
@@ -156,19 +220,7 @@ export async function spaceThenJamo(
   keyboard: Keyboard,
   joined: { readonly jamo: string; readonly alone: string; readonly withPrevious: string },
 ): Promise<boolean> {
-  const spaceDown = await field.evaluate((element) => {
-    if (!(element instanceof HTMLTextAreaElement)) throw new Error("not a text field");
-    const down = element.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " ", keyCode: 32 }),
-    );
-    if (down) {
-      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: " " }));
-      element.setRangeText(" ", element.selectionStart, element.selectionEnd, "end");
-      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: " " }));
-    }
-    element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: " ", keyCode: 32 }));
-    return down;
-  });
+  const spaceDown = await spaceKey(field);
   await hangulKey(
     field,
     keyboard,

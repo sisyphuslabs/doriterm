@@ -1,5 +1,6 @@
-import { FrameDecoder, FrameKind, HEADER_BYTES, MAX_PAYLOAD_BYTES, RPC_CHANNEL } from "@doriface/protocol";
+import { encodeFrame, FrameDecoder, FrameKind, HEADER_BYTES, MAX_PAYLOAD_BYTES, RPC_CHANNEL } from "@doriface/protocol";
 import type { DataHandler, Link } from "./link.ts";
+import type { RunTokens } from "./resume/run-tokens.ts";
 import { field, isFramedHello, isFramedReply, joined, type Mode, rpcOf, scanLines } from "./rpc-lines.ts";
 
 /** The address a run's terminal answers to once started: its name, behind the machine it runs `on`. */
@@ -27,10 +28,11 @@ function joinedAll(parts: readonly Uint8Array[], total: number): Uint8Array {
  * terminal, by the `name` that run gives it, and have the new terminal's first screen one round trip after asking for
  * it instead of two (#1351). hc runs one connection's calls side by side, so an attach that reached it with the run
  * would look the name up before the terminal exists. Here such an attach waits, unchanged, until the core has answered
- * that run, and then goes to the core; nothing else waits, and no byte is changed, added or dropped. A connection whose
- * plain lines are not the framed hello this expects is passed straight through.
+ * that run, and then goes to the core; nothing else waits, and no byte is dropped. The one change: with `tokens`, a
+ * `terminal.run` request carries its terminal's OSC 7577 token (`RunTokens.rewrite`), and the run's answer is handed to
+ * `tokens`. A connection whose plain lines are not the framed hello this expects is passed straight through.
  */
-export function attachAfterRun(core: Link): Link {
+export function attachAfterRun(core: Link, tokens?: RunTokens): Link {
   let up: Mode = "lines";
   let down: Mode = "lines";
   let upLines: Uint8Array = new Uint8Array(0);
@@ -94,14 +96,22 @@ export function attachAfterRun(core: Link): Link {
     return true;
   };
 
-  /** A whole request frame: passed on, unless it is an attach that waits for its run. */
+  /** The frame as it goes to the core: a run's frame with its token, when `tokens` adds one; else the frame itself. */
+  const tokened = (frame: Uint8Array): Uint8Array => {
+    const payload = down === "off" ? undefined : tokens?.rewrite(frame.subarray(HEADER_BYTES));
+    return payload === undefined ? frame : encodeFrame(RPC_CHANNEL, FrameKind.Data, payload);
+  };
+
+  /** A whole request frame: passed on (with its token), unless it is an attach that waits for its run. */
   const requestFrame = (frame: Uint8Array, out: Uint8Array[]): void => {
-    if (!holds(frame.subarray(HEADER_BYTES), frame)) out.push(frame);
+    const sent = tokened(frame);
+    if (!holds(sent.subarray(HEADER_BYTES), sent)) out.push(sent);
   };
 
   /**
    * Passes every byte on as it comes, in order, except a request frame (channel 0, data), which is read whole first so
-   * an attach that waits for its run can be kept back. A frame whose header arrives split is passed on without a look.
+   * an attach that waits for its run can be kept back (and a run can carry its token). A frame whose header arrives
+   * split is passed on without a look, so no byte ever waits for a header to complete; such a run carries no token.
    */
   const sendFrames = (bytes: Uint8Array, framedFrom = 0): Promise<void> => {
     const out: Uint8Array[] = [];
@@ -159,11 +169,15 @@ export function attachAfterRun(core: Link): Link {
           collecting = [];
           collectingBytes = HEADER_BYTES + length;
           need = collectingBytes;
-        } else if (holds(bytes.subarray(at + HEADER_BYTES, end), bytes.slice(at, end))) {
-          passUpTo(at);
-          at = end;
-          runStart = end;
         } else {
+          const frame = bytes.subarray(at, end);
+          const sent = tokened(frame);
+          const waits = holds(sent.subarray(HEADER_BYTES), sent === frame ? frame.slice() : sent);
+          if (waits || sent !== frame) {
+            passUpTo(at);
+            if (!waits) out.push(sent);
+            runStart = end;
+          }
           at = end;
         }
       } else {
@@ -219,8 +233,9 @@ export function attachAfterRun(core: Link): Link {
       return;
     }
     for (const frame of frames) {
-      if (runs.size === 0) continue;
+      if (runs.size === 0 && tokens?.waiting !== true) continue;
       if (frame.channel !== RPC_CHANNEL || frame.kind !== FrameKind.Data) continue;
+      tokens?.answered(frame.payload);
       const reply = rpcOf(frame.payload);
       if (reply === undefined || reply.method !== undefined || reply.id === undefined) continue;
       const key = JSON.stringify(reply.id);

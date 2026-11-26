@@ -5,6 +5,7 @@ import { type Context, Hono, type Next } from "hono";
 import { type BunWebSocketData, upgradeWebSocket } from "hono/bun";
 import type { WSEvents } from "hono/ws";
 import { attachAfterRun } from "./attach-after-run.ts";
+import type { RunTokens } from "./resume/run-tokens.ts";
 import { checkBearer, checkHandshake } from "./auth.ts";
 import { bridge } from "./bridge.ts";
 import { AmbiguousDeviceError, type DeviceSurface, UnknownDeviceError } from "./device-surface.ts";
@@ -33,6 +34,8 @@ export interface GatewayOptions {
   readonly hostVersion: string;
   readonly hcVersion: string;
   readonly openPipe: () => ChildLink;
+  /** The OSC 7577 token hook each client connection's runs go through; unset while program resume is off. */
+  readonly runTokens?: (() => RunTokens) | undefined;
   readonly log: (line: string) => void;
   /** Enables `/v1/e2ee`: the Noise record layer in front of the same `hc connect` pipe. */
   readonly e2ee?:
@@ -204,7 +207,9 @@ export function createGateway(options: GatewayOptions): Gateway {
     }
     const exited = pipe.exited.finally(() => children.delete(exited));
     children.add(exited);
-    void bridge(link, attachAfterRun(pipe), (error) => log(`connection closed: ${String(error)}`));
+    void bridge(link, attachAfterRun(pipe, options.runTokens?.()), (error) =>
+      log(`connection closed: ${String(error)}`),
+    );
   };
 
   const serveE2ee = async (raw: E2eeWire, transport: E2eeTransport): Promise<void> => {

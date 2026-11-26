@@ -1,5 +1,5 @@
-import { SendHorizontal } from "lucide-react";
-import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
+import { CornerDownLeft } from "lucide-react";
+import { type CSSProperties, type ReactNode, type Ref, useLayoutEffect, useRef, useState } from "react";
 import { Button, cn } from "@doriface/ui";
 
 export interface InputBoxProps {
@@ -7,8 +7,13 @@ export interface InputBoxProps {
   readonly onSend: (text: string) => void;
   /** Whose draft the field shows: an unsent line is kept per terminal while the keyboard is down. */
   readonly draftKey: string;
-  /** Takes the focus as it mounts: the input card opens on a tap, and the keyboard rises for that tap's focus (#2778). */
-  readonly autoFocus?: boolean;
+  /**
+   * The field itself, for the card's toggle to focus inside its own tap: iOS raises the keyboard only for a focus made
+   * while the tap is handled, never for one made as the card mounts after it.
+   */
+  readonly fieldRef?: Ref<HTMLTextAreaElement>;
+  /** Drawn just before Enter, as the Herdr app's card holds its mic there. */
+  readonly accessory?: ReactNode;
   readonly className?: string;
   readonly style?: CSSProperties;
 }
@@ -26,7 +31,7 @@ const MAX_HEIGHT_PX = 112;
  * the whole line is in view while it is written (#949). On the phone it lives in the input card over the keys row, which
  * its toggle opens (#2778).
  */
-export function InputBox({ onSend, draftKey, autoFocus = false, className, style }: InputBoxProps) {
+export function InputBox({ onSend, draftKey, fieldRef, accessory, className, style }: InputBoxProps) {
   const [text, setTextState] = useState(() => drafts.get(draftKey) ?? "");
   const [focused, setFocused] = useState(false);
   const field = useRef<HTMLTextAreaElement | null>(null);
@@ -57,54 +62,68 @@ export function InputBox({ onSend, draftKey, autoFocus = false, className, style
       element.focus();
     }
     const line = element?.value ?? text;
-    if (line.trim() === "") return;
+    // With nothing written Enter is still Enter: it presses Return alone, as the Herdr app's card does. A line of spaces is
+    // sent as written; a pager or a prompt reads them.
     onSend(line);
     setText("");
   };
-  // The field and Send keep the 0.5rem the phone chrome leaves between two pressable controls (the round buttons'
-  // slot), so a thumb at the field's end does not land on Send (#1506).
+  // As the Herdr app's card: the field takes the whole width, and under it the mic and Enter sit at the end. The rows and
+  // the two buttons keep the 0.5rem the phone chrome leaves between two pressable controls (#1506).
   return (
-    <div className={cn("flex items-end gap-2 px-1.5 py-1", className)} style={style}>
-      <textarea
-        ref={field}
-        rows={1}
-        autoFocus={autoFocus}
-        // Enter starts a new line, on the phone's keyboard and a hardware one; only Send sends (#2766).
-        enterKeyHint="enter"
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        value={text}
-        aria-label="Type into the terminal"
-        onChange={(event) => setText(event.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onCompositionStart={() => {
-          composing.current = true;
-        }}
-        onCompositionEnd={() => {
-          composing.current = false;
-        }}
-        className={cn(
-          "min-h-11 min-w-0 flex-1 resize-none border border-input bg-chrome/95 px-3.5 py-2.5 font-mono text-base leading-6 wrap-break-word whitespace-pre-wrap text-foreground",
-          "shadow-lg outline-none backdrop-blur-md placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring",
-          active ? "rounded-[1.375rem]" : "h-11 rounded-full",
-        )}
-        placeholder="Type"
-      />
-      <Button
-        type="button"
-        variant="primary"
-        aria-label="Send"
-        disabled={text.trim() === ""}
-        // A press that moved focus to this button would put the phone's keyboard down mid-sentence.
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={send}
-        className="size-11 shrink-0 rounded-full p-0"
-      >
-        <SendHorizontal aria-hidden className="size-5" />
-      </Button>
+    <div className={cn("flex flex-col gap-2 px-1.5 py-1", className)} style={style}>
+      {/* A row of its own, so the field's height is its cross size: the pill's h-11, or what the wrap sets. */}
+      <div className="flex items-end">
+        <textarea
+          ref={(node) => {
+            field.current = node;
+            if (typeof fieldRef === "function") return fieldRef(node);
+            if (fieldRef !== null && fieldRef !== undefined) fieldRef.current = node;
+            return undefined;
+          }}
+          rows={1}
+          // Enter starts a new line, on the phone's keyboard and a hardware one; only Send sends (#2766).
+          enterKeyHint="enter"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          value={text}
+          aria-label="Type into the terminal"
+          onChange={(event) => setText(event.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onCompositionStart={() => {
+            composing.current = true;
+          }}
+          onCompositionEnd={() => {
+            composing.current = false;
+          }}
+          className={cn(
+            "min-h-11 min-w-0 flex-1 resize-none border border-input bg-chrome/95 px-3.5 py-2.5 font-mono text-base leading-6 wrap-break-word whitespace-pre-wrap text-foreground",
+            "shadow-lg outline-none backdrop-blur-md placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring",
+            active ? "rounded-[1.375rem]" : "h-11 rounded-full",
+          )}
+          placeholder="Type"
+        />
+      </div>
+      <div data-slot="input-actions" className="flex items-center justify-end gap-2">
+        {/* As Send: a press here keeps the field's focus, so the keyboard stays up and the card does not move under the
+            finger before the press ends (the mic's tap was lost to that move). */}
+        <span className="contents" onMouseDown={(event) => event.preventDefault()}>
+          {accessory}
+        </span>
+        <Button
+          type="button"
+          variant="primary"
+          aria-label="Send"
+          // A press that moved focus to this button would put the phone's keyboard down mid-sentence.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={send}
+          className="size-11 shrink-0 rounded-full p-0"
+        >
+          <CornerDownLeft aria-hidden className="size-5" />
+        </Button>
+      </div>
     </div>
   );
 }
