@@ -1,6 +1,14 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import {
+  expectTouchTargets,
+  key,
+  keysBar,
+  openPhoneTerminal,
+  PHONE,
+  scrollDocument,
+  showKeyboard,
+} from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
@@ -104,6 +112,25 @@ test("the bar rides on the soft keyboard; with the keyboard down it stays under 
   await key(page, "Hide keyboard").click();
   await expect(bar).toBeVisible();
   await expect(show).toBeVisible();
+});
+
+test("the bar stays on the keyboard when the document scrolls after the keyboard came up (#2847)", async ({ page }) => {
+  await openPhoneTerminal(page);
+  const bar = keysBar(page);
+  await expect(bar).toBeVisible();
+  // The bar's bottom and the keyboard's top, both in the page: the document's scroll moves the keys with the page.
+  const gap = (): Promise<number> =>
+    bar.evaluate((element) => {
+      const viewport = window.visualViewport;
+      const keyboardTop = (viewport?.pageTop ?? 0) + (viewport?.height ?? 0);
+      return Math.round(element.getBoundingClientRect().bottom + window.scrollY - keyboardTop);
+    });
+  await expect.poll(gap).toBe(0);
+  // iOS's order: the keyboard's resize came first; the document scrolls afterwards, with no visualViewport event.
+  await scrollDocument(page, 49);
+  await expect.poll(gap).toBe(0);
+  await scrollDocument(page, 0);
+  await expect.poll(gap).toBe(0);
 });
 
 test("a browser that shrinks the layout viewport for the keyboard shows the bar too", async ({ page }) => {

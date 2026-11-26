@@ -26,6 +26,7 @@ export async function fakeSoftKeyboard(
     ({ raise, follows, panned }) => {
       let keyboard = 0;
       let pan = 0;
+      let scrolled = 0;
       const layout = (): number => (follows ? document.documentElement.clientHeight : window.innerHeight);
       if (follows) {
         Object.defineProperty(window, "innerHeight", { configurable: true, get: () => layout() - keyboard });
@@ -35,7 +36,7 @@ export async function fakeSoftKeyboard(
         width: { get: (): number => window.innerWidth },
         offsetTop: { get: (): number => pan + (keyboard > 0 ? panned : 0) },
         offsetLeft: { get: (): number => 0 },
-        pageTop: { get: (): number => window.scrollY + pan + (keyboard > 0 ? panned : 0) },
+        pageTop: { get: (): number => window.scrollY + scrolled + pan + (keyboard > 0 ? panned : 0) },
         pageLeft: { get: (): number => window.scrollX },
         scale: { get: (): number => 1 },
       });
@@ -64,7 +65,14 @@ export async function fakeSoftKeyboard(
         pan = px;
         viewport.dispatchEvent(new Event("scroll"));
       };
-      Object.assign(window, { softKeyboard, panViewport: panTo });
+      // The installed iOS app scrolls the document itself to show a focused field, often after the keyboard's resize:
+      // the layout and visual viewports move down the page together, so pageTop changes and offsetTop does not. WebKit
+      // fires the document's scroll then, and no visualViewport event (#2847).
+      const scrollTo = (px: number): void => {
+        scrolled = px;
+        document.dispatchEvent(new Event("scroll", { bubbles: true }));
+      };
+      Object.assign(window, { softKeyboard, panViewport: panTo, scrollDocument: scrollTo });
     },
     { raise: raiseOnFocus, follows: innerHeightFollows, panned: keyboardPan },
   );
@@ -72,6 +80,11 @@ export async function fakeSoftKeyboard(
 
 export async function panViewport(page: Page, px: number): Promise<void> {
   await page.evaluate((offset) => (Reflect.get(window, "panViewport") as (px: number) => void)(offset), px);
+}
+
+/** Scrolls the document by `px` as the installed iOS app does under the keyboard: only the document's scroll fires. */
+export async function scrollDocument(page: Page, px: number): Promise<void> {
+  await page.evaluate((offset) => (Reflect.get(window, "scrollDocument") as (px: number) => void)(offset), px);
 }
 
 export async function showKeyboard(page: Page, px: number): Promise<void> {

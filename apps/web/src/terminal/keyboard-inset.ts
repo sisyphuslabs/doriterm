@@ -142,9 +142,13 @@ export function useSoftKeyboard(scope: HTMLElement | null): { readonly up: boole
         document.activeElement.blur();
       }
       wasOpen = open;
-      setKeyboard({ open, inset });
+      setKeyboard((was) => (was.open === open && was.inset === inset ? was : { open, inset }));
     };
     window.addEventListener("resize", measure, { signal: abort.signal });
+    // The inset reads pageTop, which a document scroll moves with no visualViewport event: WebKit fires that scroll only
+    // when offsetTop changes, and the installed iOS app scrolls the document, often after the keyboard's resize, to show
+    // a focused field. Only the document's own scroll says so (#2847).
+    window.addEventListener("scroll", measure, { signal: abort.signal, passive: true });
     viewport?.addEventListener("resize", measure, { signal: abort.signal });
     viewport?.addEventListener("scroll", measure, { signal: abort.signal });
     measure();
