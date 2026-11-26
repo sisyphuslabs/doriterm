@@ -87,6 +87,15 @@ describe("takeReport", () => {
     expect(store.entry("t1")?.record).toBeUndefined();
   });
 
+  test("after an accepted clear, a replay of the program's earlier report inside the window is ignored", async () => {
+    const { store, take } = setup();
+    const earlier = report(101);
+    expect(await take(earlier)).toBe("accepted");
+    expect(await take(signed(`pid=101:time=${NOW + 1}:clear=1`))).toBe("cleared");
+    expect(await take(earlier)).toBe("ignored");
+    expect(store.entry("t1")?.record).toBeUndefined();
+  });
+
   test("clear removes the owner's record", async () => {
     const { store, take } = setup();
     await take(report(101));

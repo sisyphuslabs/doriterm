@@ -1,5 +1,5 @@
 import type { ByteLink, Unsubscribe } from "@doriface/client";
-import { FrameDecoder, FrameKind, RPC_CHANNEL } from "@doriface/protocol";
+import { type Frame, FrameDecoder, FrameKind, RPC_CHANNEL } from "@doriface/protocol";
 import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -41,14 +41,23 @@ export function taps(dir: string): Tap[] {
 export const replyDifference = (tap: Tap, received: Uint8Array): string | undefined =>
   firstDifference(tap.wrote, received);
 
-/** The tap of the connection that sent `sent`: the one whose input shares the longest prefix with it. */
+/**
+ * The tap of the connection that sent `sent`: the one whose input starts with the most frames that match it (byte for
+ * byte, or a run the host added its token to), then the longest shared prefix. A host connection of its own starts with
+ * the same hello, so the frames, not the bytes, tell them apart once the client's run carries a token.
+ */
 export function tapFor(all: readonly Tap[], sent: Uint8Array): Tap | undefined {
   const shared = (read: Uint8Array): number => {
     let length = 0;
     while (length < read.byteLength && length < sent.byteLength && read[length] === sent[length]) length += 1;
     return length;
   };
-  return all.toSorted((a, b) => shared(b.read) - shared(a.read))[0];
+  const score = (read: Uint8Array): readonly [number, number] => [matchingFrames(sent, read), shared(read)];
+  return all.toSorted((a, b) => {
+    const [aFrames, aBytes] = score(a.read);
+    const [bFrames, bBytes] = score(b.read);
+    return bFrames - aFrames || bBytes - aBytes;
+  })[0];
 }
 
 /** Where two byte strings first differ, with a little context from each; undefined when equal. */
@@ -65,63 +74,86 @@ export function firstDifference(expected: Uint8Array, actual: Uint8Array): strin
 const TOKEN_VAR = "OSC7577_TOKEN";
 const LF = 0x0a;
 
-const hasToken = (payload: Uint8Array): boolean => new TextDecoder().decode(payload).includes(`"${TOKEN_VAR}"`);
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** JSON with object keys sorted, so two requests compare by content, not by key order. */
-const stable = (value: unknown): string =>
-  JSON.stringify(value, (_key, item: unknown) =>
-    typeof item === "object" && item !== null && !Array.isArray(item)
-      ? Object.fromEntries(Object.entries(item).toSorted(([a], [b]) => a.localeCompare(b)))
-      : item,
-  );
-
-/**
- * A request payload as content, with `terminal.run`'s env read without its OSC 7577 token and an empty env dropped,
- * so a run the host added a token to equals the run the client sent; undefined for anything but a `terminal.run`.
- */
-function requestContent(payload: Uint8Array): string | undefined {
-  let request: unknown;
+const parsed = (payload: Uint8Array): unknown => {
   try {
-    request = JSON.parse(new TextDecoder().decode(payload));
+    return JSON.parse(new TextDecoder().decode(payload));
   } catch {
     return undefined;
   }
-  if (typeof request !== "object" || request === null || Reflect.get(request, "method") !== "terminal.run") {
-    return undefined;
-  }
-  const params: unknown = Reflect.get(request, "params") ?? {};
-  if (typeof params !== "object" || params === null) return undefined;
-  const env: unknown = Reflect.get(params, "env");
-  const kept =
-    typeof env === "object" && env !== null ? Object.entries(env).filter(([key]) => key !== TOKEN_VAR) : undefined;
-  const rest = Object.entries(params).filter(([key]) => key !== "env");
-  const normal = kept === undefined || kept.length === 0 ? rest : [...rest, ["env", Object.fromEntries(kept)]];
-  return stable({ ...request, params: Object.fromEntries(normal) });
+};
+
+/**
+ * The exact bytes the host sends for the client's `sent` run once it adds `token` (the transform run-tokens.ts makes:
+ * the client's members in their order, `env` with the token set); undefined when `sent` is no run the host may token,
+ * a run on another machine (`on`) included.
+ */
+function tokenedRun(sent: Uint8Array, token: string): Uint8Array | undefined {
+  const request = parsed(sent);
+  if (!isObject(request) || request["method"] !== "terminal.run" || request["id"] === undefined) return undefined;
+  const params = request["params"] ?? {};
+  if (!isObject(params) || (typeof params["on"] === "string" && params["on"] !== "")) return undefined;
+  const env = params["env"] ?? {};
+  if (!isObject(env)) return undefined;
+  return new TextEncoder().encode(
+    JSON.stringify({ ...request, params: { ...params, env: { ...env, [TOKEN_VAR]: token } } }),
+  );
+}
+
+/** Where the plain hello line ends and frames begin. */
+const helloEnd = (bytes: Uint8Array): number => bytes.indexOf(LF) + 1;
+
+/** The token hc read in a run's `params.env`, or undefined. */
+function tokenIn(read: Uint8Array): string | undefined {
+  const request = parsed(read);
+  const params = isObject(request) ? request["params"] : undefined;
+  const env = isObject(params) ? params["env"] : undefined;
+  const token = isObject(env) ? env[TOKEN_VAR] : undefined;
+  return typeof token === "string" ? token : undefined;
 }
 
 /**
  * Where what hc read first differs from what the client sent, frame by frame (docs/transport.md, "What the host adds"):
- * every frame must arrive byte for byte, except that a `terminal.run` request may carry an added `OSC7577_TOKEN` in its
- * env (program resume, docs/program-resume.md) and nothing else changed in it. Undefined when that holds.
+ * every frame must arrive byte for byte, except that a `terminal.run` request for this core may arrive as exactly the
+ * bytes the host makes of it with an `OSC7577_TOKEN` in its env (program resume, docs/program-resume.md), and nothing
+ * else. Undefined when that holds.
  */
-/** Where the plain hello line ends and frames begin. */
-const helloEnd = (bytes: Uint8Array): number => bytes.indexOf(LF) + 1;
+/** Whether hc read `got` for the client's `frame`: the same bytes, or the run the host made of it with a token. */
+function frameMatches(frame: Frame, got: Frame): boolean {
+  if (frame.channel !== got.channel || frame.kind !== got.kind) return false;
+  if (firstDifference(frame.payload, got.payload) === undefined) return true;
+  const token = frame.channel === RPC_CHANNEL && frame.kind === FrameKind.Data ? tokenIn(got.payload) : undefined;
+  const expected = token === undefined ? undefined : tokenedRun(frame.payload, token);
+  return expected !== undefined && firstDifference(expected, got.payload) === undefined;
+}
+
+const framesOf = (bytes: Uint8Array): Frame[] => new FrameDecoder().push(bytes.subarray(helloEnd(bytes)));
+
+/** How many of the client's frames, from the first, hc read as `frameMatches` allows. */
+function matchingFrames(sent: Uint8Array, read: Uint8Array): number {
+  const [sentFrames, readFrames] = [framesOf(sent), framesOf(read)];
+  let count = 0;
+  while (count < sentFrames.length && count < readFrames.length) {
+    const [frame, got] = [sentFrames[count], readFrames[count]];
+    if (frame === undefined || got === undefined || !frameMatches(frame, got)) break;
+    count += 1;
+  }
+  return count;
+}
 
 export function requestDifference(sent: Uint8Array, read: Uint8Array): string | undefined {
   const [sentHello, readHello] = [helloEnd(sent), helloEnd(read)];
   const hello = firstDifference(sent.subarray(0, sentHello), read.subarray(0, readHello));
   if (hello !== undefined) return `the hello line: ${hello}`;
-  const sentFrames = new FrameDecoder().push(sent.subarray(sentHello));
-  const readFrames = new FrameDecoder().push(read.subarray(readHello));
+  const [sentFrames, readFrames] = [framesOf(sent), framesOf(read)];
   if (sentFrames.length !== readFrames.length) return `${sentFrames.length} frames sent, ${readFrames.length} read`;
   for (const [index, frame] of sentFrames.entries()) {
     const got = readFrames[index];
     if (got === undefined) return `frame ${index} was not read`;
+    if (frameMatches(frame, got)) continue;
     if (frame.channel !== got.channel || frame.kind !== got.kind) return `frame ${index} changed its channel or kind`;
-    if (firstDifference(frame.payload, got.payload) === undefined) continue;
-    const request = frame.channel === RPC_CHANNEL && frame.kind === FrameKind.Data;
-    const content = request ? requestContent(frame.payload) : undefined;
-    if (content !== undefined && content === requestContent(got.payload) && hasToken(got.payload)) continue;
     return `frame ${index}: ${firstDifference(frame.payload, got.payload) ?? ""}`;
   }
   return undefined;

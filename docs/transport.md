@@ -358,8 +358,8 @@ One more stream for a device (v1.12): the Model Context Protocol in place of her
 
 ## What the host adds
 
-- One change to a client's stream, and only with program resume on (docs/program-resume.md): a `terminal.run` request frame for the host's own core (no `on`) reaches hc with `OSC7577_TOKEN` set in its `params.env`, a fresh random token for that terminal; a value the client put there is replaced. The frame is re-encoded from the parsed request, so its bytes differ, but every other member is the client's. A run whose frame header arrives split across records, and every other frame and byte in either direction, passes unchanged.
-- The relay suite checks exactly this: every frame hc read equals the frame the client sent, or is that run with that one env entry added.
+- One change to a client's stream, and only with program resume on (docs/program-resume.md): a `terminal.run` request frame for the host's own core (no `on`) reaches hc with `OSC7577_TOKEN` set in its `params.env`, a fresh random token for that terminal; a value the client put there is replaced. The frame is re-encoded from the parsed request (`JSON.parse` then `JSON.stringify`), so its bytes differ: members keep the client's order and values as JSON reads them, which means a number beyond 2^53 loses precision, invalid UTF-8 becomes U+FFFD and of duplicate keys the last one stays. Clients send none of those in a run. A run whose frame header arrives split across records, and every other frame and byte in either direction, passes unchanged.
+- The relay suite checks exactly this: every frame hc read equals the frame the client sent, or is byte for byte the frame the host makes of that run with the token found in its `params.env` (never for a run with `on`).
 
 ## Close codes
 

@@ -128,8 +128,15 @@ export class ResumeStore {
     return "accepted";
   }
 
-  /** `clear=1` from `pid`: removes the record when it is that owner's. */
-  clear(address: string, pid: number): void {
+  /**
+   * Removes the record when it is `pid`'s: on `clear=1` (an accepted report, so its `time` becomes the pid's last and an
+   * earlier report replayed inside the window is ignored), or when the owner has exited (no time).
+   */
+  clear(address: string, pid: number, time?: number): void {
+    const entry = this.#entries.get(address);
+    if (entry !== undefined && time !== undefined) {
+      this.#set(address, { ...entry, lastTimes: { ...entry.lastTimes, [String(pid)]: time } });
+    }
     this.#dropOwned(address, pid);
   }
 

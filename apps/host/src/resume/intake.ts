@@ -37,7 +37,7 @@ export async function takeReport(
       log(`resume: ${address}: refused a report: ${verdict.why}`);
       return "rejected";
     case "clear":
-      store.clear(address, verdict.pid);
+      store.clear(address, verdict.pid, verdict.time);
       return "cleared";
     case "report": {
       const { pid } = verdict;
