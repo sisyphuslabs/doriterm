@@ -121,7 +121,17 @@ const envOf = (frame: Frame | undefined): unknown =>
   frame === undefined ? undefined : JSON.parse(decoder.decode(frame.payload)).params.env;
 
 describe("with OSC 7577 tokens", () => {
-  for (const cut of [undefined, 4, 30]) {
+  test("a run whose header arrives split passes on at once, unchanged and without a token", async () => {
+    const { core, link, started } = await tokenedLink();
+    await link.send(RUN.subarray(0, 4));
+    expect(core.sentBytes).toBe(HELLO.byteLength + 4);
+    await link.send(RUN.subarray(4));
+    expect(envOf(core.frames()[0])).toBeUndefined();
+    await core.reply(RUN_REPLY);
+    expect(started).toEqual([]);
+  });
+
+  for (const cut of [undefined, 30]) {
     test(`a run reaches the core with its token, ${cut === undefined ? "in one record" : `cut ${cut} bytes in`}, and its attach still waits for it`, async () => {
       const { core, link, started } = await tokenedLink();
       const both = new Uint8Array([...RUN, ...ATTACH]);

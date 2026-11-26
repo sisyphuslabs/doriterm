@@ -110,8 +110,8 @@ export function attachAfterRun(core: Link, tokens?: RunTokens): Link {
 
   /**
    * Passes every byte on as it comes, in order, except a request frame (channel 0, data), which is read whole first so
-   * an attach that waits for its run can be kept back (and a run can carry its token). A header split across records is
-   * held back until it is whole, so a request frame that starts with one is still read whole.
+   * an attach that waits for its run can be kept back (and a run can carry its token). A frame whose header arrives
+   * split is passed on without a look, so no byte ever waits for a header to complete; such a run carries no token.
    */
   const sendFrames = (bytes: Uint8Array, framedFrom = 0): Promise<void> => {
     const out: Uint8Array[] = [];
@@ -181,25 +181,12 @@ export function attachAfterRun(core: Link, tokens?: RunTokens): Link {
           at = end;
         }
       } else {
-        passUpTo(at);
         const take = Math.min(HEADER_BYTES - head.byteLength, bytes.byteLength - at);
         head = joined(head, bytes.slice(at, at + take));
         at += take;
-        runStart = at;
         if (head.byteLength === HEADER_BYTES) {
-          const whole = head;
-          const view = new DataView(whole.buffer, whole.byteOffset, HEADER_BYTES);
-          const length = view.getUint32(5, true);
+          skip = new DataView(head.buffer, head.byteOffset, HEADER_BYTES).getUint32(5, true);
           head = new Uint8Array(0);
-          const request = view.getUint32(0, true) === RPC_CHANNEL && view.getUint8(4) === FrameKind.Data;
-          if (request && length <= MAX_PAYLOAD_BYTES && length > 0) {
-            collecting = [whole];
-            collectingBytes = HEADER_BYTES + length;
-            need = length;
-          } else {
-            out.push(whole);
-            skip = length;
-          }
         }
       }
     }

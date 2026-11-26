@@ -60,6 +60,7 @@ export const PRIVATE_STATE_FILES = [
   "mesh.json",
   "roster-admits.json",
   "mcp.json",
+  "resume.json",
 ] as const;
 
 /** The temporary files this host's writers leave only when a crash interrupts them. */
