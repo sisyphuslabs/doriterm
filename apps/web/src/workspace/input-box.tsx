@@ -62,8 +62,9 @@ export function InputBox({ onSend, draftKey, fieldRef, accessory, className, sty
       element.focus();
     }
     const line = element?.value ?? text;
-    // With nothing written Enter is still Enter: it presses Return alone, as the Herdr app's card does.
-    onSend(line.trim() === "" ? "" : line);
+    // With nothing written Enter is still Enter: it presses Return alone, as the Herdr app's card does. A line of spaces is
+    // sent as written; a pager or a prompt reads them.
+    onSend(line);
     setText("");
   };
   // As the Herdr app's card: the field takes the whole width, and under it the mic and Enter sit at the end. The rows and
