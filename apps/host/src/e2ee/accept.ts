@@ -43,7 +43,8 @@ export interface E2eeDeps {
   /** The plan this host runs under: it narrows pairing, paired devices and open sessions. */
   readonly policy: PlanPolicy;
   /** How many sessions this host serves now, for a plan's concurrent-session limit. */
-  readonly live: { readonly count: () => number };
+  /** Sessions served now for a plan's limit; `replacing` is the key asking, whose own waiting sessions it replaces. */
+  readonly live: { readonly count: (replacing?: string) => number };
   /** Answers an early hello before key confirmation, within its own budget (#1271); absent, every hello waits. */
   readonly speculative?: Pick<SpeculativeHello, "answer"> | undefined;
 }
@@ -134,7 +135,7 @@ export async function acceptE2ee(
     if (hello.kind === SessionKind.Session) {
       if (pairSession) return refuse(CloseCode.UnknownDevice, "a ?pair session carries only pairing");
       if (hello.stream !== "mesh" && hello.stream !== "push") {
-        const room = requireWithin(deps.policy, "sessions", deps.live.count());
+        const room = requireWithin(deps.policy, "sessions", deps.live.count(base64urlEncode(hello.remoteStatic)));
         if (!room.allowed) return planRefusal(deps, CloseCode.RateLimited, "a session", room.message);
       }
       const index = meshIndex(deps);

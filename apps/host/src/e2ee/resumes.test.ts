@@ -1,134 +1,18 @@
-import {
-  CloseCode,
-  encodeResumeRequest,
-  generateHostIdentity,
-  generateX25519,
-  rawStaticKey,
-  resumeKeys,
-  secureLink,
-  type SecureSession,
-} from "@doriface/crypto";
-import { CodedCloseError, type MemoryEnd, memoryLinkPair } from "@doriface/crypto/testing";
-import { OPEN_POLICY } from "@doriface/policy";
-import { afterEach, describe, expect, jest, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { type ChildLink, createGateway } from "../gateway.ts";
-import type { DataHandler } from "../link.ts";
-import { DeviceStore } from "../state/devices.ts";
-import { PairingStore } from "../state/pairing.ts";
-import { CLIENT } from "../testing/gateway-harness.ts";
+import { CloseCode, encodeResumeRequest, resumeKeys } from "@doriface/crypto";
+import { memoryLinkPair } from "@doriface/crypto/testing";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { E2eeTransport } from "./accept.ts";
-import type { E2eeWire } from "./links.ts";
-import { MAX_DETACHED_SESSIONS, ResumableSessions } from "./resumes.ts";
-import { LiveSessions } from "./sessions.ts";
+import {
+  bytes,
+  cleanupResumeHosts,
+  dropped,
+  flush,
+  resumeHost as host,
+  texts,
+  wireOf,
+} from "../testing/resume-harness.ts";
 
-const encoder = new TextEncoder();
-const bytes = (text: string): Uint8Array => encoder.encode(text);
-const texts = (chunks: readonly Uint8Array[]): string[] => chunks.map((chunk) => new TextDecoder().decode(chunk));
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 5));
-
-/** An `hc connect` that echoes every byte it is sent, and says when it was closed. */
-function echoChild() {
-  let handler: DataHandler | undefined;
-  const closeHandlers: (() => void)[] = [];
-  const exited = Promise.withResolvers<void>();
-  const state = { closed: false, received: 0 };
-  const child: ChildLink = {
-    exited: exited.promise,
-    send: async (sent) => {
-      state.received += sent.byteLength;
-      await handler?.(sent);
-    },
-    onData: (next) => {
-      handler = next;
-    },
-    onClose: (next) => closeHandlers.push(next),
-    close: () => {
-      if (state.closed) return;
-      state.closed = true;
-      exited.resolve();
-      for (const next of closeHandlers.splice(0)) next();
-    },
-  };
-  return { child, state };
-}
-
-const wireOf = (end: MemoryEnd): E2eeWire => ({
-  send: (sent) => end.send(sent),
-  onData: (listener) => end.onData(listener),
-  onClose: (listener) => end.onClose(listener),
-  close: (code, reason) => end.close(code, reason),
-  flushed: () => Promise.resolve(),
-  readWhen() {},
-});
-
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-/** A gateway with one paired device and echoing pipes, so what a session sends comes back to it. */
-function host(resumeGraceMs?: number) {
-  const dir = mkdtempSync(join(tmpdir(), "dh-resume-"));
-  dirs.push(dir);
-  const logs: string[] = [];
-  const log = (line: string): void => void logs.push(line);
-  const identity = generateHostIdentity();
-  const device = generateX25519();
-  const devices = new DeviceStore(dir);
-  devices.add(device.publicKey, "phone");
-  const sessions = new LiveSessions(devices, log);
-  const children: ReturnType<typeof echoChild>[] = [];
-  const gateway = createGateway({
-    token: "t".repeat(32),
-    hostVersion: "0",
-    hcVersion: "0",
-    openPipe: () => {
-      const child = echoChild();
-      children.push(child);
-      return child.child;
-    },
-    log,
-    resumeGraceMs,
-    e2ee: {
-      identity,
-      devices,
-      pairing: new PairingStore(dir, log),
-      log,
-      lanUrls: [],
-      policy: OPEN_POLICY,
-      sessions,
-      live: { count: () => sessions.count() },
-    },
-  });
-  const connect = async (transport: E2eeTransport = { kind: "relay" }) => {
-    const [clientEnd, hostEnd] = memoryLinkPair();
-    const served = gateway.serveE2ee(wireOf(hostEnd), transport);
-    const client: SecureSession = await secureLink(clientEnd, {
-      role: "initiator",
-      hostId: identity.hostId,
-      staticKey: rawStaticKey(device),
-      remoteStatic: identity.noise.publicKey,
-      early: bytes(CLIENT),
-    });
-    await served;
-    client.allowResume();
-    const received: Uint8Array[] = [];
-    client.onData((chunk) => received.push(chunk));
-    return { client, clientEnd, hostEnd, received };
-  };
-  /** A client's fresh socket to the host, served as the relay would hand it over. */
-  const redial = (transport: E2eeTransport = { kind: "relay" }) => {
-    const [clientEnd, hostEnd] = memoryLinkPair();
-    const served = gateway.serveE2ee(wireOf(hostEnd), transport);
-    return { clientEnd, hostEnd, served };
-  };
-  return { gateway, logs, children, connect, redial };
-}
-
-const dropped = (): CodedCloseError => new CodedCloseError(1006, "dropped");
+afterEach(cleanupResumeHosts);
 
 /** The transports a session can run on; a resume is the same exchange on each (the loopback socket carries no session). */
 const TRANSPORTS: readonly E2eeTransport[] = [{ kind: "relay" }, { kind: "lan" }];
@@ -202,83 +86,6 @@ describe("an hc session whose link drops", () => {
     expect(texts(received)).toEqual(["after\n"]);
     expect(h.children.length).toBe(2);
     expect(h.children[1]?.state.closed).toBe(false);
-  });
-});
-
-/** A session the window only watches: it detaches when told, and records the close the window gives it. */
-function detachable(seed = 3) {
-  const detach: ((reason: Error) => void)[] = [];
-  const links: (() => void)[] = [];
-  const closes: (() => void)[] = [];
-  let detached = false;
-  let closedWith: number | undefined;
-  const session = {
-    resumeKeys: { id: new Uint8Array(16).fill(seed) },
-    get detached() {
-      return detached && closedWith === undefined;
-    },
-    allowResume() {},
-    onDetached: (listener: (reason: Error) => void) => (detach.push(listener), () => undefined),
-    onLink: (listener: () => void) => (links.push(listener), () => undefined),
-    onClose: (listener: () => void) => (closes.push(listener), () => undefined),
-    close: (code: number) => {
-      if (closedWith !== undefined) return;
-      closedWith = code;
-      for (const listener of closes) listener();
-    },
-  } as unknown as SecureSession;
-  return {
-    session,
-    detach: () => {
-      detached = true;
-      for (const listener of detach) listener(dropped());
-    },
-    resume: () => {
-      detached = false;
-      for (const listener of links) listener();
-    },
-    closedWith: () => closedWith,
-  };
-}
-
-describe("the resume window", () => {
-  afterEach(() => jest.useRealTimers());
-
-  test("keeps a detached session for a phone away five minutes in another app, and ends it at ten (#2853)", () => {
-    jest.useFakeTimers();
-    const phone = detachable();
-    new ResumableSessions(() => undefined).register(phone.session);
-    phone.detach();
-    jest.advanceTimersByTime(5 * 60_000);
-    expect(phone.closedWith()).toBeUndefined();
-    jest.advanceTimersByTime(5 * 60_000);
-    expect(phone.closedWith()).toBe(4408);
-  });
-
-  test(`holds at most ${MAX_DETACHED_SESSIONS} sessions waiting: one more ends the one that has waited longest, and a resumed one no longer counts (#2853)`, () => {
-    jest.useFakeTimers();
-    const sessions = new ResumableSessions(() => undefined);
-    const phones = Array.from({ length: MAX_DETACHED_SESSIONS + 2 }, (_, at) => detachable(at + 1));
-    for (const phone of phones) sessions.register(phone.session);
-    for (const phone of phones.slice(0, MAX_DETACHED_SESSIONS)) {
-      phone.detach();
-      jest.advanceTimersByTime(1_000);
-    }
-    expect(sessions.detached).toBe(MAX_DETACHED_SESSIONS);
-    // The second phone came back: it waits no more, so the next drop fits without ending anyone.
-    phones[1]?.resume();
-    phones[MAX_DETACHED_SESSIONS]?.detach();
-    expect(phones.map((phone) => phone.closedWith()).filter((code) => code !== undefined)).toEqual([]);
-    // Full again: the next drop ends the one that has waited longest, the first phone.
-    phones[MAX_DETACHED_SESSIONS + 1]?.detach();
-    expect(phones[0]?.closedWith()).toBe(4408);
-    expect(
-      phones
-        .slice(1)
-        .map((phone) => phone.closedWith())
-        .filter((code) => code !== undefined),
-    ).toEqual([]);
-    expect(sessions.detached).toBe(MAX_DETACHED_SESSIONS);
   });
 });
 

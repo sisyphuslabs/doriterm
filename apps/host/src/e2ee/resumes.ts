@@ -10,9 +10,11 @@ import type { E2eeWire } from "./links.ts";
  */
 export const RESUME_GRACE_MS = 600_000;
 /**
- * How many detached sessions a host holds at once. Each keeps its `hc connect` (about 6 MB resident, measured on macOS
- * arm64 with hc 0.1.22) and a ring of at most 1 MiB, so the bound is about 120 MB. One more drop past it ends the session
- * that has waited longest, whose client is the least likely to come back.
+ * How many sessions wait for their client at once. This caps sessions, not processes: each waiting one keeps its
+ * `hc connect` (5.4-7.8 MB resident each, measured on macOS arm64 with hc 0.1.22; an estimate elsewhere) and a ring of at
+ * most 1 MiB, about 140 MB at 16. One more drop past the cap ends the session that has waited longest, whose client is
+ * the least likely to come back; its `hc connect` gets its stdin closed and is killed if it has not exited within
+ * DRAIN_GRACE_MS (2 s), so a child ended here can outlive its session by up to that long.
  */
 export const MAX_DETACHED_SESSIONS = 16;
 const IDLE_CLOSE = 4408;

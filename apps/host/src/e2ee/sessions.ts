@@ -29,10 +29,16 @@ export class LiveSessions {
     return this.#byKey.has(key);
   }
 
-  /** How many sessions this host serves now, for a plan's concurrent-session limit. */
-  count(): number {
+  /**
+   * How many sessions this host serves now, for a plan's concurrent-session limit. `replacing` names the key asking for
+   * one more: its own sessions that wait for a resume (detached) are not counted, since its new session replaces them
+   * at admission (#2853). A device that dropped in the background and comes back to a new session is not refused for
+   * the one it left behind; any other key still counts every session, waiting or not.
+   */
+  count(replacing?: string): number {
     let total = 0;
-    for (const sessions of this.#byKey.values()) total += sessions.size;
+    for (const [key, sessions] of this.#byKey)
+      for (const session of sessions) if (key !== replacing || !isWaiting(session)) total += 1;
     return total;
   }
 
@@ -52,14 +58,27 @@ export class LiveSessions {
   /** A second plan check after the handshake: another session may have opened in the meantime. */
   admitLimited(session: SecureLink, policy: PlanPolicy): boolean {
     if (session.kind === SessionKind.Session) {
-      const room = requireWithin(policy, "sessions", this.count());
+      const key = base64urlEncode(session.remoteStatic);
+      const room = requireWithin(policy, "sessions", this.count(key));
       if (!room.allowed) {
         this.#log(`plan: refused a session at admission: ${room.message}`);
         session.close(CloseCode.RateLimited, room.message);
         return false;
       }
+      // Room only once this key's own waiting sessions are gone: end them, so the limit holds once this one is added.
+      if (!requireWithin(policy, "sessions", this.count()).allowed) this.#replaceWaiting(key);
     }
     return this.add(session);
+  }
+
+  /** Ends `key`'s sessions that wait for a resume: the same device opened a new one instead of coming back to them. */
+  #replaceWaiting(key: string): void {
+    // Closing one deletes it from this set as it is walked, which a Set's iteration allows.
+    for (const session of this.#byKey.get(key) ?? []) {
+      if (!isWaiting(session)) continue;
+      this.#log("plan: a session waiting for its client was replaced by a new session from the same device");
+      session.close(CloseCode.IdleTimeout, "replaced by a new session from the same device");
+    }
   }
 
   /**
@@ -201,6 +220,9 @@ export class LiveSessions {
     return closed;
   }
 }
+
+/** A session whose link dropped and that waits for its client's resume (contract v1.11). */
+const isWaiting = (session: SecureLink): boolean => "detached" in session && session.detached === true;
 
 /**
  * A machine or client member's key, or a paired device's that the mesh does not refuse. A client is a member of the

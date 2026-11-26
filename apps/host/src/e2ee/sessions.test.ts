@@ -1,4 +1,5 @@
-import { base64urlEncode, generateX25519, type SecureLink, SessionKind } from "@doriface/crypto";
+import { base64urlEncode, CloseCode, generateX25519, type SecureLink, SessionKind } from "@doriface/crypto";
+import { parsePolicy } from "@doriface/policy";
 import { memoryLinkPair, type MemoryEnd } from "@doriface/crypto/testing";
 import { afterEach, describe, expect, test } from "bun:test";
 import { settle } from "../mesh/testing/fake-clock.ts";
@@ -36,6 +37,57 @@ const session = (end: MemoryEnd, remoteStatic: Uint8Array): SecureLink =>
     lanUrls: [],
     stream: undefined,
   });
+
+/** A session whose link dropped and that waits for its client's resume (contract v1.11). */
+const waiting = (end: MemoryEnd, remoteStatic: Uint8Array): SecureLink =>
+  Object.assign(session(end, remoteStatic), { detached: true });
+
+describe("a plan's session limit and sessions that wait for their client (#2853)", () => {
+  const ONE = parsePolicy('{"plan":"free","limits":{"sessions":1}}');
+
+  test("a device that comes back with a new session replaces its own waiting one, and the limit still holds", async () => {
+    const { devices, sessions, logs } = stores();
+    const phone = generateX25519().publicKey;
+    devices.add(phone, "phone");
+    const [old] = memoryLinkPair();
+    expect(sessions.add(waiting(old, phone))).toBe(true);
+    expect(sessions.count()).toBe(1);
+    // The phone's own waiting session is not counted against its new one.
+    expect(sessions.count(base64urlEncode(phone))).toBe(0);
+    const [fresh] = memoryLinkPair();
+    expect(sessions.admitLimited(session(fresh, phone), ONE)).toBe(true);
+    expect(old.closeCode).toBe(CloseCode.IdleTimeout);
+    expect(fresh.closeCode).toBeUndefined();
+    // A memory link reports its close a turn later; a real session reports it as it closes.
+    await settle();
+    expect(sessions.count()).toBe(1);
+    expect(logs.some((line) => line.includes("replaced by a new session from the same device"))).toBe(true);
+  });
+
+  test("another device is still refused while one waits, and a device's live session is never replaced", () => {
+    const { devices, sessions } = stores();
+    const phone = generateX25519().publicKey;
+    const laptop = generateX25519().publicKey;
+    devices.add(phone, "phone");
+    devices.add(laptop, "laptop");
+    const [old] = memoryLinkPair();
+    expect(sessions.add(waiting(old, phone))).toBe(true);
+    const [other] = memoryLinkPair();
+    expect(sessions.count(base64urlEncode(laptop))).toBe(1);
+    expect(sessions.admitLimited(session(other, laptop), ONE)).toBe(false);
+    expect(other.closeCode).toBe(CloseCode.RateLimited);
+    expect(old.closeCode).toBeUndefined();
+
+    const { devices: devices2, sessions: sessions2 } = stores();
+    devices2.add(phone, "phone");
+    const [live] = memoryLinkPair();
+    expect(sessions2.add(session(live, phone))).toBe(true);
+    expect(sessions2.count(base64urlEncode(phone))).toBe(1);
+    const [second] = memoryLinkPair();
+    expect(sessions2.admitLimited(session(second, phone), ONE)).toBe(false);
+    expect(live.closeCode).toBeUndefined();
+  });
+});
 
 describe("registering a live session", () => {
   test("a session no store authorizes is closed at once, and add says so", () => {
