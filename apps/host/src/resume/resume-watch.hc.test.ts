@@ -57,7 +57,7 @@ exec sleep 600
 );
 
 /** Resolves once `check` holds, looking again on every change in `dir`; fails after `ms`. */
-function until(dir: string, check: () => boolean, ms = 30_000): Promise<void> {
+function until(dir: string, check: () => boolean, ms = 4_500): Promise<void> {
   if (check()) return Promise.resolve();
   const done = Promise.withResolvers<void>();
   const watcher = watch(dir, { recursive: true }, () => {
@@ -84,6 +84,7 @@ function startWatch(stateDir = join(scratch, `state-${(states += 1)}`)) {
     shell: "/bin/bash",
     log: (line) => logs.push(line),
     sweepMs: 100,
+    ownerExitGraceMs: 200,
     onWatching: (address) => {
       watched.add(address);
       watching.get(address)?.();
@@ -158,7 +159,7 @@ describe.skipIf(process.platform === "win32")("resumeWatch with a real core", ()
     expect(terminal.name).toBe("opened-resume1");
     expect(second.logs.join("\n")).toContain("resume: resumed");
     connection.close();
-  }, 90_000);
+  });
 
   test("a record of another user, or one whose reported directory is gone, is spent and never runs", async () => {
     const stateDir = join(scratch, "seeded-state");
@@ -187,7 +188,7 @@ describe.skipIf(process.platform === "win32")("resumeWatch with a real core", ()
     expect(watcher.logs.filter((line) => line.includes("not resuming"))).toHaveLength(2);
     expect(existsSync(out)).toBe(false);
     connection.close();
-  }, 60_000);
+  });
 
   test("a record that was its terminal's first process comes back as the first process, after the shell's startup", async () => {
     const stateDir = join(scratch, "first-state");
@@ -213,19 +214,19 @@ describe.skipIf(process.platform === "win32")("resumeWatch with a real core", ()
     const terminal = await connection.call("terminal.get", { terminal: resumed });
     expect(terminal.argv.slice(1, 3)).toEqual(["-i", "-c"]);
     connection.close();
-  }, 60_000);
+  });
 
   test("an owner that exits while its terminal lives on leaves nothing; a terminal that ends for good is forgotten", async () => {
     const watcher = startWatch();
     await watcher.instance.ensure();
     const connection = await HcConnection.open(spawnHcLink(core));
     const shell = await tokenedShell(connection, watcher, "opened-resume3");
-    await typeLine(connection, shell.address, [WRAP, "sleep", "2"]);
+    await typeLine(connection, shell.address, [WRAP, "sleep", "1"]);
     await until(watcher.stateDir, () => watcher.store().entry(shell.address)?.record !== undefined);
     await until(watcher.stateDir, () => watcher.store().entry(shell.address)?.record === undefined);
     expect(watcher.store().entry(shell.address)).toBeDefined();
     await connection.call("terminal.send", { terminal: shell.address, text: "exit 0" });
     await until(watcher.stateDir, () => watcher.store().entry(shell.address) === undefined);
     connection.close();
-  }, 60_000);
+  });
 });

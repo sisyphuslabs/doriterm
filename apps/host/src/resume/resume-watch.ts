@@ -32,6 +32,8 @@ export interface ResumeWatchOptions {
   readonly shell?: string | undefined;
   /** How often owners are looked for. */
   readonly sweepMs?: number;
+  /** For tests: how long an owner may be gone before its record goes (default OWNER_EXIT_GRACE_MS). */
+  readonly ownerExitGraceMs?: number;
   /** For tests: a terminal's output is being watched from now on. */
   readonly onWatching?: (address: string) => void;
 }
@@ -203,7 +205,7 @@ export function resumeWatch(options: ResumeWatchOptions): ResumeWatch {
       const owner = facts[index];
       if (owner !== undefined && owner.started === record.started) gone.delete(address);
       else if (!gone.has(address)) gone.set(address, Date.now());
-      else if (Date.now() - (gone.get(address) ?? 0) >= OWNER_EXIT_GRACE_MS && roots.has(address)) {
+      else if (Date.now() - (gone.get(address) ?? 0) >= (options.ownerExitGraceMs ?? OWNER_EXIT_GRACE_MS)) {
         gone.delete(address);
         store.clear(address, record.pid);
       }
