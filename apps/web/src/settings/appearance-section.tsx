@@ -67,7 +67,6 @@ function TextSizeRow() {
             onClick={() => stepTerminalFont("app.zoom_in")}
           />
           <Button
-            size="sm"
             variant="ghost"
             disabled={isDefault(config, "font-size")}
             onClick={() => stepTerminalFont("app.zoom_reset")}
@@ -164,9 +163,7 @@ export function AppearanceSection() {
                 );
               }}
             />
-            <Button size="sm" onClick={() => picker.current?.click()}>
-              Choose file…
-            </Button>
+            <Button onClick={() => picker.current?.click()}>Choose file…</Button>
           </>
         }
       />

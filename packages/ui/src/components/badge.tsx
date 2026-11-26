@@ -24,5 +24,9 @@ export interface BadgeProps extends VariantProps<typeof badgeVariants> {
 
 /** A value that can change: a count, a state. Never decoration. */
 export function Badge({ tone, children, className }: BadgeProps) {
-  return <span className={cn(badgeVariants({ tone }), className)}>{children}</span>;
+  return (
+    <span data-slot="badge" className={cn(badgeVariants({ tone }), className)}>
+      {children}
+    </span>
+  );
 }

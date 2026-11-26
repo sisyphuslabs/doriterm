@@ -91,7 +91,7 @@ export function ConnectionSection() {
     <SettingRow
       title="Relay"
       description="Works from anywhere and only forwards encrypted traffic."
-      control={<span className="font-mono text-sm text-muted-foreground">{relayHost(draft.relayUrl)}</span>}
+      control={<span className="font-mono text-prose text-muted-foreground">{relayHost(draft.relayUrl)}</span>}
     />
   );
 

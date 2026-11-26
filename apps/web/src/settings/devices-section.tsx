@@ -162,11 +162,7 @@ function PairedDevicesSection() {
                   key={device.id}
                   title={device.name}
                   description={deviceSummary(device)}
-                  control={
-                    <Button size="sm" onClick={() => setRevoking(device)}>
-                      Revoke
-                    </Button>
-                  }
+                  control={<Button onClick={() => setRevoking(device)}>Revoke</Button>}
                 />
               ))
             : null}

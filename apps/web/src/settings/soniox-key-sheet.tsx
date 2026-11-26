@@ -1,5 +1,5 @@
 import type { KeyProtection } from "@doriface/vault";
-import { Button, Field, Input, Notice, Sheet } from "@doriface/ui";
+import { Button, Field, Input, Notice, Sheet, groupHeadingClass } from "@doriface/ui";
 import { Monitor } from "lucide-react";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { SONIOX_DEFAULTS } from "../vault/mesh-vault.ts";
@@ -154,7 +154,7 @@ export function SonioxKeySheet({ open, onOpenChange }: SonioxKeySheetProps) {
           />
         </Field>
         <section aria-labelledby={membersId} className="flex flex-col gap-2">
-          <h3 id={membersId} className="text-sm font-medium text-muted-foreground">
+          <h3 id={membersId} className={groupHeadingClass}>
             Who can open it (mesh members)
           </h3>
           {snapshot.members.length === 0 ? (
@@ -162,19 +162,19 @@ export function SonioxKeySheet({ open, onOpenChange }: SonioxKeySheetProps) {
           ) : (
             <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
               {snapshot.members.map((member) => (
-                <li key={member.signPub} className="flex items-center gap-3 px-3 py-2.5">
+                <li key={member.signPub} className="flex min-h-12 items-center gap-3 px-3 py-2.5">
                   <Monitor aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <p
                       className={
                         member.self
-                          ? "truncate text-sm font-medium text-foreground"
-                          : "truncate font-mono text-sm font-medium text-foreground"
+                          ? "truncate text-base text-foreground"
+                          : "truncate font-mono text-base text-foreground"
                       }
                     >
                       {member.self ? "This device" : member.signPub.slice(0, 8)}
                     </p>
-                    <p className="text-xs text-pretty text-muted-foreground">
+                    <p className="text-prose text-pretty text-muted-foreground">
                       {member.opens ? "Holds the vault key" : "Gets it when it next connects"} ·{" "}
                       {PROTECTION_LABEL[member.protection]}
                     </p>

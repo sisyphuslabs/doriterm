@@ -113,15 +113,11 @@ export function MeshMachineList({
                     <span className="flex flex-wrap justify-end gap-2">
                       {skill.action}
                       {openMember === undefined ? null : (
-                        <Button size="sm" onClick={() => openMember(entry.target.hostId)}>
-                          Open
-                        </Button>
+                        <Button onClick={() => openMember(entry.target.hostId)}>Open</Button>
                       )}
                     </span>
                   ) : entry.state.phase === "failed" ? (
-                    <Button size="sm" onClick={() => retry(entry.target.hostId)}>
-                      Try now
-                    </Button>
+                    <Button onClick={() => retry(entry.target.hostId)}>Try now</Button>
                   ) : null
                 }
               />

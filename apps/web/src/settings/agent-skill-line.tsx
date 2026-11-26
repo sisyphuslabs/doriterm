@@ -35,13 +35,7 @@ export function skillParts(
     ),
     action:
       line.action === null ? null : (
-        <Button
-          size="sm"
-          variant="secondary"
-          loading={busy}
-          aria-label={`${label} agent skill on ${name}`}
-          onClick={onInstall}
-        >
+        <Button variant="secondary" loading={busy} aria-label={`${label} agent skill on ${name}`} onClick={onInstall}>
           {label}
         </Button>
       ),

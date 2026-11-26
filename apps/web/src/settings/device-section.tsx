@@ -64,11 +64,7 @@ export function DeviceSection() {
         inline
         title="Install Doriterm"
         description="Opens in its own window, from the Dock or the home screen."
-        control={
-          <Button size="sm" onClick={() => void install(offer.prompt)}>
-            Install
-          </Button>
-        }
+        control={<Button onClick={() => void install(offer.prompt)}>Install</Button>}
       />
     ) : offer?.kind === "ios" && mesh.phase === "joined" ? (
       <BrowserInvite key="install" install />
@@ -86,7 +82,7 @@ export function DeviceSection() {
       title="Getting started"
       description="The first-run steps: start an agent and find it in the agents list."
       control={
-        <Button size="sm" render={<Link to="/" />} onClick={() => guideStore.start()}>
+        <Button render={<Link to="/" />} onClick={() => guideStore.start()}>
           Show again
         </Button>
       }
