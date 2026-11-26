@@ -1,9 +1,9 @@
 import { terminalSpaceName } from "@doriface/protocol";
-import { Button, StatusChip, StatusIndicator } from "@doriface/ui";
+import { Button, NeedsYouPill, StatusChip, StatusIndicator } from "@doriface/ui";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useFittedLines } from "./fit-lines.ts";
-import { agentStatus } from "./attention.ts";
+import { agentStatus, nextNeedingYou, waitingBesides } from "./attention.ts";
 import { machineOf, type Session, spaceOfAddress, terminalTitle } from "./model.ts";
 import { useShown } from "./use-shown.ts";
 import { useSpaceSelection } from "./space-selection.ts";
@@ -52,7 +52,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
   return (
     <header
       data-titlebar
-      className="flex min-h-12 shrink-0 items-center gap-1 border-b border-border bg-chrome pt-[env(safe-area-inset-top)] pr-1.5 pl-[var(--titlebar-inset-start,0.375rem)]"
+      className="flex min-h-13 shrink-0 items-center gap-1 border-b border-border bg-chrome pt-[env(safe-area-inset-top)] pr-1.5 pl-[var(--titlebar-inset-start,0.375rem)]"
     >
       <Button
         variant="ghost"
@@ -90,6 +90,14 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
           {where}
         </p>
       </div>
+      <NeedsYouPill
+        count={waitingBesides(terminals, terminal.address)}
+        compact
+        onOpen={() => {
+          const next = nextNeedingYou(terminals, terminal.address);
+          if (next !== null && next !== terminal.address) onOpen(next);
+        }}
+      />
       {/* `contents`: an empty slot draws no box and takes no gap; a control in it is one more header item. */}
       <span data-header-action className="contents">
         {action}

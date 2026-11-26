@@ -1,12 +1,14 @@
-import { Plus } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
-import { Menu } from "./menu.tsx";
+import { Menu, MenuItem } from "./menu.tsx";
+import { StatusIndicator } from "./status.tsx";
 import { useTabActions } from "./tab-actions.ts";
 import { useTabDrag } from "./tab-drag.ts";
 import { DropCaret, DropIndicator, placement } from "./tab-drop.tsx";
 import { TabItem, type WorkspaceTab } from "./tab-item.tsx";
+import { NO_OVERFLOW, overflowSides, type TabOverflow } from "./tab-overflow.ts";
 
 export type { WorkspaceTab } from "./tab-item.tsx";
 
@@ -43,7 +45,54 @@ export interface TabBarProps {
   /** Before the tabs, e.g. the button that brings a hidden sidebar back where the sidebar was. */
   readonly leading?: ReactNode;
   readonly trailing?: ReactNode;
+  /** Shows edge fades and an "All tabs" menu when the tab scroller overflows horizontally. Defaults to true. */
+  readonly overflow?: boolean;
   readonly className?: string;
+}
+
+/** Overflow menu listing every tab with its status glyph and active mark. */
+export function TabOverflowMenu({
+  tabs,
+  activeId,
+  onSelect,
+}: {
+  readonly tabs: readonly WorkspaceTab[];
+  readonly activeId: string;
+  readonly onSelect: ((id: string) => void) | undefined;
+}) {
+  return (
+    <Menu align="end" trigger={<IconButton label="All tabs" icon={<ChevronDown />} />}>
+      {tabs.map((tab) => {
+        const active = tab.id === activeId;
+        return (
+          <MenuItem
+            key={tab.id}
+            aria-current={active ? "true" : undefined}
+            {...(tab.status === undefined
+              ? {}
+              : {
+                  icon: (
+                    <StatusIndicator
+                      status={tab.status}
+                      {...(tab.status === "working" ? { className: "[&_svg]:text-status-working" } : {})}
+                    />
+                  ),
+                })}
+            onClick={() => onSelect?.(tab.id)}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 flex-1 truncate">{tab.title}</span>
+              {active ? (
+                <span className="shrink-0 [&_svg]:text-foreground">
+                  <Check aria-hidden />
+                </span>
+              ) : null}
+            </span>
+          </MenuItem>
+        );
+      })}
+    </Menu>
+  );
 }
 
 /**
@@ -68,6 +117,7 @@ export function TabBar({
   moved,
   leading,
   trailing,
+  overflow = true,
   className,
 }: TabBarProps) {
   const list = useRef<HTMLDivElement>(null);
@@ -114,6 +164,31 @@ export function TabBar({
     // The whole tab, with its close button, not only its label button.
     buttons.current.get(activeId)?.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeId, key, activeTitle]);
+
+  const [edges, setEdges] = useState<TabOverflow>(NO_OVERFLOW);
+  const titlesKey = tabs.map((tab) => tab.title).join("\n");
+  useEffect(() => {
+    if (!overflow) {
+      setEdges(NO_OVERFLOW);
+      return undefined;
+    }
+    const element = scroller.current;
+    if (element === null) return undefined;
+    const update = (): void => {
+      const next = overflowSides(element.scrollLeft, element.scrollWidth, element.clientWidth);
+      setEdges((current) => (current.start === next.start && current.end === next.end ? current : next));
+    };
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const resize = new ResizeObserver(update);
+    resize.observe(element);
+    for (const child of element.children) resize.observe(child);
+    return () => {
+      element.removeEventListener("scroll", update);
+      resize.disconnect();
+    };
+  }, [overflow, key, titlesKey, activeId]);
+  const overflowing = overflow && (edges.start || edges.end);
 
   // Said once per move, as the strip stood then: a later title change or a tab opening or closing does not say it again.
   // The count's parity changes the text each time, so a second move to the same place is still read out.
@@ -193,7 +268,7 @@ export function TabBar({
           const next = tabs[(at + (event.deltaY > 0 ? 1 : -1) + tabs.length) % tabs.length];
           if (next !== undefined && next.id !== activeId) onSelect?.(next.id);
         }}
-        className="flex min-w-0 flex-1 items-center gap-[3px]"
+        className="flex min-w-0 flex-initial items-center gap-[3px]"
       >
         {pins === 0 ? null : (
           <div
@@ -213,8 +288,15 @@ export function TabBar({
         <div
           ref={scroller}
           data-tab-scroll
+          {...(overflow && edges.start ? { "data-overflow-start": "" } : {})}
+          {...(overflow && edges.end ? { "data-overflow-end": "" } : {})}
           onClickCapture={restDrag.onClickCapture}
-          className="relative flex min-w-0 flex-1 items-center gap-[3px] overflow-x-auto overflow-y-hidden py-1"
+          className={cn(
+            "relative flex min-w-0 flex-initial items-center gap-[3px] overflow-x-auto overflow-y-hidden py-1",
+            "data-overflow-start:[mask-image:linear-gradient(to_right,transparent,black_16px)]",
+            "data-overflow-end:[mask-image:linear-gradient(to_right,black_calc(100%-16px),transparent)]",
+            "data-overflow-start:data-overflow-end:[mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-16px),transparent)]",
+          )}
         >
           {restDrag.drag === null ? null : <DropIndicator drag={restDrag.drag} />}
           {restDrag.drag === null ? null : <DropCaret drag={restDrag.drag} />}
@@ -279,6 +361,8 @@ export function TabBar({
           </div>
         </Menu>
       )}
+      {overflowing ? <TabOverflowMenu tabs={tabs} activeId={activeId} onSelect={onSelect} /> : null}
+      <div aria-hidden className="flex-1 self-stretch" />
       <span role="status" aria-live="polite" className="sr-only">
         {said.text}
       </span>
