@@ -53,7 +53,7 @@ export function PhoneTabsChip(props: {
   return (
     // `contents`: the chip is one more header item. Not drawn on a portrait phone; its sheet (portalled to the body)
     // stays mounted for the session sheet's Tabs row, and hands the focus back to "..." rather than to a hidden chip.
-    <span data-phone-tabs className="contents max-[429px]:hidden">
+    <span data-phone-tabs className="contents max-[430px]:hidden">
       <SwitchSheet
         terminals={terminals}
         active={active}

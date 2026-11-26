@@ -64,3 +64,23 @@ for (const { name, width, height, inset } of [
     });
   });
 }
+
+/**
+ * One tabs switch at every width: the header's chip from 430 px, the session sheet's Tabs row below it, never both and
+ * never neither (Tailwind's max-[430px] is width < 430, the exact complement of min-[430px]).
+ */
+for (const width of [429, 430]) {
+  test(`at ${width} px exactly one tabs switch is drawn`, async ({ page }) => {
+    await openPhoneTerminal(page, width, "resize");
+    const header = page.getByRole("banner");
+    const chip = header.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
+    // The chip is read first: an open sheet is modal, and hides the header from the accessibility tree.
+    if (width < 430) await expect(chip).toHaveCount(0);
+    else await expect(chip).toBeVisible();
+    await header.getByRole("button", { name: /^Session actions for / }).click();
+    const row = page.getByRole("dialog").getByRole("button", { name: /^Switch tab, / });
+    await expect(page.getByRole("dialog")).toBeVisible();
+    if (width < 430) await expect(row).toBeVisible();
+    else await expect(row).toHaveCount(0);
+  });
+}
