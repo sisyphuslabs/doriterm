@@ -52,6 +52,8 @@ test("at 390 px the phone header shows a tappable compact needs-you pill that op
   const pill = bar.getByRole("button", { name: `${totalBlocked} needs you, open the next`, exact: true });
   await expect(pill).toBeVisible();
   await expectHeaderNoTaller(bar);
+  // The 32-character title is wider than its column: it ends in an ellipsis instead of taking a second line.
+  await expect(bar.locator("[data-title-lines]")).toHaveText(/\u2026$/);
 
   const pillBox = await laidOutBox(pill);
   expect(pillBox.height).toBeGreaterThanOrEqual(24);

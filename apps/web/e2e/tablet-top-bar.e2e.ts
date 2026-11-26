@@ -64,9 +64,12 @@ test("at 820 with a finger, an overflowing strip shows All tabs, which lists eve
   await expect(allTabs).toHaveCount(0);
   // One tab fits: no edge fades, and the Close button's 44 px hit area leaves the strip nothing to scroll.
   const scroller = strip(page).locator("[data-tab-scroll]");
-  await expect(scroller).not.toHaveAttribute("data-overflow-end");
-  await expect(scroller).not.toHaveAttribute("data-overflow-start");
-  expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(
+    await scroller.evaluate((el) => ({
+      scrolls: el.scrollWidth > el.clientWidth,
+      fades: el.hasAttribute("data-overflow-start") || el.hasAttribute("data-overflow-end"),
+    })),
+  ).toEqual({ scrolls: false, fades: false });
 
   await openTabsUntilOverflow(page, 16);
   await expect(allTabs).toBeVisible({ timeout: 10_000 });
