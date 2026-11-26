@@ -1,7 +1,7 @@
 import { afterEach, expect, jest, test } from "bun:test";
 import type { HcConnection } from "@doriface/client";
 import { UnprovenLinks } from "../connection/wake.ts";
-import { HeldInput, HOLD_BYTES, HOLD_MS, type InputSink } from "./held-input.ts";
+import { HeldInput, HOLD_BYTES, HOLD_MS, type InputSink, streamSink } from "./held-input.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 
 // Whether the person typed an input goes with it into the queue and out to each write that tries it (#2794): the view's
@@ -29,6 +29,23 @@ function held(sink: () => InputSink | null) {
   const input = new HeldInput(links, () => link, sink);
   return { input, links, unwatch: input.watch() };
 }
+
+test("a stream's sink lets the replay go before each try of the person's input, and sends answers as automatic input", () => {
+  const events: string[] = [];
+  let refusing = true;
+  const sink = streamSink(
+    {
+      write: (data) => (events.push(`typed ${String(data)}`), !refusing),
+      writeAutomatic: (data) => (events.push(`automatic ${String(data)}`), true),
+    },
+    () => void events.push("release"),
+  );
+  expect(sink.write("a", true)).toBe(false);
+  refusing = false;
+  expect(sink.write("a", true)).toBe(true);
+  expect(sink.write("\u001b[O", false)).toBe(true);
+  expect(events).toEqual(["release", "typed a", "release", "typed a", "automatic \u001b[O"]);
+});
 
 test("each write is told whether the person typed what it writes, the terminal's answers apart", () => {
   const { sink, offered } = stream();

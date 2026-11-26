@@ -4,7 +4,7 @@ import type { TerminalHandle, WTerm } from "@wterm/react";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { unprovenLinks } from "../connection/wake.ts";
 import { machineOf } from "../workspace/model.ts";
-import { type Dropped, type HeldEntry, HeldInput, HOLD_MS } from "./held-input.ts";
+import { type Dropped, type HeldEntry, HeldInput, HOLD_MS, streamSink } from "./held-input.ts";
 import { inputOrder } from "./input-order.ts";
 import { machineLines } from "./machine-lines.ts";
 import { pasteInto } from "./terminal-port.ts";
@@ -18,6 +18,11 @@ export interface TerminalInputPath {
    * in order, or while a wake proved the link, sent to the same stream once it answers (#1370).
    */
   readonly pending: RefObject<HeldEntry[]>;
+  /**
+   * The terminal's own answers to a program (query replies, focus reports), as the renderer marks them: sent in order
+   * with what is typed, as is, and never taken for the person typing (#2794).
+   */
+  readonly answered: (data: string) => void;
   /** Input typed into the renderer, rewritten as the host asks (latched phone modifiers). */
   readonly typedInto: (data: string) => void;
   /** Input from outside the renderer (the phone's keys, a bound key, a confirmed paste). */
@@ -47,8 +52,6 @@ interface InputSources {
   readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
   /** Told before each input is sent or queued: the person is using this view, so its grid may size the host (D1). */
   readonly inputStarts?: () => void;
-  /** True while the renderer writes output: input it gives then is its answer to a program's query (#2794). */
-  readonly answering?: () => boolean;
   /** Told as the person's own input is written to the stream, before it goes: a held replay lets go (#2794). */
   readonly personSends?: () => void;
 }
@@ -85,17 +88,7 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
       new HeldInput(
         unprovenLinks,
         () => latestConnection.current,
-        () => {
-          const open = stream.current;
-          if (open === null) return null;
-          // The release goes with the write itself, so a write the stream refused releases again when it is retried.
-          return {
-            write: (data, person) => {
-              if (person) latestPersonSends.current?.();
-              return open.write(data);
-            },
-          };
-        },
+        () => (stream.current === null ? null : streamSink(stream.current, () => latestPersonSends.current?.())),
         {
           lines: machineLines,
           machine: () => machineOf(latestAddress.current),
@@ -109,17 +102,15 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   latestPredict.current = predict;
   const latestInputStarts = useRef(sources.inputStarts);
   latestInputStarts.current = sources.inputStarts;
-  const latestAnswering = useRef(sources.answering);
-  latestAnswering.current = sources.answering;
   const [order] = useState(() =>
-    inputOrder(
-      (data, person) => {
+    inputOrder((data, person) => {
+      // The terminal's own answers neither size the host nor predict an echo: only the person's input does (D1, #1595).
+      if (person) {
         latestInputStarts.current?.();
         latestPredict.current?.current?.(data);
-        held.send(data, person);
-      },
-      () => latestAnswering.current?.() ?? false,
-    ),
+      }
+      held.send(data, person);
+    }),
   );
   const send = order.send;
   const linkReady = useCallback((): boolean => held.ready(), [held]);
@@ -184,5 +175,6 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
     wt.element.addEventListener("input", onInput);
     return () => wt.element.removeEventListener("input", onInput);
   }, [wt, typesComposition]);
-  return { pending, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
+  const answered = useCallback((data: string): void => send(data, false), [send]);
+  return { pending, answered, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
 }

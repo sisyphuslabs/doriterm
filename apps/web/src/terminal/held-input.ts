@@ -1,4 +1,4 @@
-import type { HcConnection } from "@doriface/client";
+import type { HcConnection, TerminalStream } from "@doriface/client";
 import type { UnprovenLinks } from "../connection/wake.ts";
 import type { MachineLines } from "./machine-lines.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
@@ -7,6 +7,24 @@ import type { TerminalInput } from "./terminal-view-props.ts";
 export interface InputSink {
   /** `person`: the person typed it, not the terminal answering a program's query (#2794). */
   write(data: TerminalInput, person: boolean): boolean;
+}
+
+/**
+ * A stream as the sink of a terminal's input. The person's input lets a held replay go (`personWrites`) as it is
+ * written, each time it is tried; the terminal's own answers go as automatic input (AUTOMATIC_INPUT where the core takes
+ * it, else DATA), which the core never counts as the person typing (#2794).
+ */
+export function streamSink(
+  stream: Pick<TerminalStream, "write" | "writeAutomatic">,
+  personWrites: () => void,
+): InputSink {
+  return {
+    write: (data, person) => {
+      if (!person) return stream.writeAutomatic(data);
+      personWrites();
+      return stream.write(data);
+    },
+  };
 }
 
 /** One input waiting to be written, with whether the person typed it: the mark lives and goes with the input. */

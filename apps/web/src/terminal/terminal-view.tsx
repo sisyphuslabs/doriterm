@@ -10,7 +10,6 @@ import { PasteDialog } from "./paste-dialog.tsx";
 import { type Point } from "./long-press.ts";
 import { KittyPngTranscoder } from "./kitty-png.ts";
 import { OutputPacer } from "./output-pacer.ts";
-import { RendererAnswers } from "./renderer-answers.ts";
 import { readThemeColors } from "./theme-colors.ts";
 import { useDarkScheme } from "./use-dark-scheme.ts";
 import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
@@ -95,12 +94,11 @@ export function TerminalView(props: TerminalViewProps) {
    * when it moves (#1207).
    */
   const written = useRef(0);
-  const answers = useMemo(() => new RendererAnswers(), []);
   // The program's output reaches the core through this: Kitty images sent as PNG are decoded to RGBA on the way.
   const output = useMemo(
     () =>
       new KittyPngTranscoder((bytes) => {
-        answers.writing(() => handle.current?.write(bytes));
+        handle.current?.write(bytes);
         written.current += 1;
         // Output held behind a decode is written after its frame: the overlays read the grid again for it.
         outputShown.current();
@@ -152,14 +150,20 @@ export function TerminalView(props: TerminalViewProps) {
     typesComposition,
     predict,
     inputStarts,
-    answering: () => answers.answering,
     personSends: () => pacer.typed(),
   });
-  const { pending, typedInto, typed, pasteFiles, linkReady } = input;
+  const { pending, answered, typedInto, typed, pasteFiles, linkReady } = input;
+  // The renderer's own answers (query replies, focus reports) go to the program as they are, never as the person typing
+  // (#2794). The port's pass at the field's focus is unseen here too, as on onData.
   useEffect(() => {
-    const field = wt?.element.querySelector("textarea");
-    return wt === null || field === null || field === undefined ? undefined : answers.focusReportsOf(wt.element, field);
-  }, [wt, answers]);
+    if (wt === null) return undefined;
+    wt.onAnswer = (data) => {
+      if (!isRegainingReport(handle, data)) answered(data);
+    };
+    return () => {
+      wt.onAnswer = null;
+    };
+  }, [wt, handle, answered]);
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;

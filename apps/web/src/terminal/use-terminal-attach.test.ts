@@ -36,6 +36,16 @@ function attaching(fresh = false) {
   return { pacer, holds, advance };
 }
 
+/** A stream recording each input as the replay's hold stood when it went, and how it went: typed or automatic. */
+function stream(holds: readonly boolean[]) {
+  const sent: string[] = [];
+  const note = (how: string) => (data: string | Uint8Array) => {
+    sent.push(`${how} ${String(data)} held=${String(holds.at(-1))}`);
+    return true;
+  };
+  return { sent, write: note("typed"), writeAutomatic: note("automatic") };
+}
+
 describe("an attach's replay hold (D5)", () => {
   test("a view mounted anew holds its first paint too: its replay covers history, held the same way (#812)", () => {
     const { pacer, holds, advance } = attaching();
@@ -61,22 +71,22 @@ describe("an attach's replay hold (D5)", () => {
 
   test("queued input lets the new replay go just before the first key the person typed, so its echo is drawn (#2794)", () => {
     const { pacer, holds } = attaching();
-    const events: string[] = [];
     const pending = [
       { data: "\u001b[?62c", person: false },
       { data: "l", person: true },
       { data: "s", person: true },
     ];
-    writeQueued(pacer, pending, (data) => events.push(`${String(holds.at(-1))} ${String(data)}`));
-    expect(events).toEqual(["true \u001b[?62c", "false l", "false s"]);
+    const out = stream(holds);
+    writeQueued(pacer, pending, out);
+    expect(out.sent).toEqual(["automatic \u001b[?62c held=true", "typed l held=false", "typed s held=false"]);
     expect([holds, pending]).toEqual([[true, false], []]);
   });
 
-  test("queued answers the terminal gave to a program's queries, with nothing the person typed, leave the replay held", () => {
+  test("queued answers the terminal gave to a program, with nothing the person typed, go as automatic input and leave the replay held", () => {
     const { pacer, holds } = attaching();
-    const written: unknown[] = [];
-    writeQueued(pacer, [{ data: "\u001b[?62c", person: false }], (data) => written.push(data));
-    expect(written).toEqual(["\u001b[?62c"]);
+    const out = stream(holds);
+    writeQueued(pacer, [{ data: "\u001b[?62c", person: false }], out);
+    expect(out.sent).toEqual(["automatic \u001b[?62c held=true"]);
     expect(holds).toEqual([true]);
   });
 

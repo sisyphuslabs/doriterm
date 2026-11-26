@@ -9,7 +9,7 @@ import { readDisplay } from "./display.ts";
 import { reattachClear, useRepaintingCore } from "./reattach-clear.ts";
 import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
-import type { HeldEntry } from "./held-input.ts";
+import { type HeldEntry, streamSink } from "./held-input.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
 import { afterLeaving, leaveUnopened, noteLeaving } from "./leaving-attach.ts";
@@ -24,7 +24,6 @@ import {
   type Unsent,
   unsentReason,
 } from "./terminal-settle.ts";
-import type { TerminalInput } from "./terminal-view-props.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 import type { HostSize } from "./host-size.ts";
 
@@ -78,14 +77,17 @@ export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions, fresh
 }
 
 /**
- * What was typed while no stream was open goes to the new one, in order. Before the first input the person typed (not
- * the terminal's answers to a program's queries), the replay just started lets go, so its echo is drawn (#2794).
+ * What was typed while no stream was open goes to the new one, in order, through the stream's input sink: before the
+ * first input the person typed (not the terminal's answers to a program's queries), the replay just started lets go, so
+ * its echo is drawn (#2794).
  */
-export function writeQueued(pacer: OutputPacer, pending: HeldEntry[], write: (data: TerminalInput) => void): void {
-  for (const { data, person } of pending.splice(0)) {
-    if (person) pacer.typed();
-    write(data);
-  }
+export function writeQueued(
+  pacer: OutputPacer,
+  pending: HeldEntry[],
+  stream: Pick<TerminalStream, "write" | "writeAutomatic">,
+): void {
+  const sink = streamSink(stream, () => pacer.typed());
+  for (const { data, person } of pending.splice(0)) sink.write(data, person);
 }
 
 export interface Attachment {
@@ -324,7 +326,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
         });
-        writeQueued(pacer, pending.current, (data) => attached.write(data));
+        writeQueued(pacer, pending.current, attached);
         focusWhenFree(ready);
         return attached;
       },
