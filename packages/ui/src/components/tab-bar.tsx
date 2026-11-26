@@ -218,7 +218,8 @@ export function TabBar({
         )}
         {/* herdr-app's #tab-scroll: tabs alone scroll, with a scrollbar once they overflow, and gap(3) between them.
             px-1 py-1 holds the buttons' 4 px hit area (after:-inset-1) inside the strip on all sides: past its edge it
-            was scrollable overflow (vertical bars #343, and false horizontal overflow when non-growing). */}
+            was scrollable overflow (vertical bars #343, and false horizontal overflow when non-growing). On a coarse
+            pointer the selected tab's Close grows a 44 px hit area about 6 px past the tab, so the end pads 8 px there. */}
         <div
           ref={scroller}
           data-tab-scroll
@@ -226,7 +227,7 @@ export function TabBar({
           {...(edges.end ? { "data-overflow-end": "" } : {})}
           onClickCapture={restDrag.onClickCapture}
           className={cn(
-            "relative flex min-w-0 flex-initial items-center gap-[3px] overflow-x-auto overflow-y-hidden px-1 py-1",
+            "relative flex min-w-0 flex-initial items-center gap-[3px] overflow-x-auto overflow-y-hidden px-1 py-1 coarse:pr-2",
             "data-overflow-start:[mask-image:linear-gradient(to_right,transparent,black_16px)]",
             "data-overflow-end:[mask-image:linear-gradient(to_right,black_calc(100%-16px),transparent)]",
             "data-overflow-start:data-overflow-end:[mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-16px),transparent)]",

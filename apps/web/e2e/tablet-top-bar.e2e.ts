@@ -7,7 +7,7 @@ import { expect, test } from "./fixtures.ts";
 import { fold } from "./fold.ts";
 import { seedLayout } from "./layout-doc.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
-import { openTabsUntilOverflow, tabs, titlesIn } from "./tab-strip.ts";
+import { openTabsUntilOverflow, strip, tabs, titlesIn } from "./tab-strip.ts";
 
 endOwnTerminals();
 
@@ -62,6 +62,11 @@ test("at 820 with a finger, an overflowing strip shows All tabs, which lists eve
   await openTabletOnShell(page, "tabs");
   const allTabs = page.getByRole("button", { name: "All tabs", exact: true });
   await expect(allTabs).toHaveCount(0);
+  // One tab fits: no edge fades, and the Close button's 44 px hit area leaves the strip nothing to scroll.
+  const scroller = strip(page).locator("[data-tab-scroll]");
+  await expect(scroller).not.toHaveAttribute("data-overflow-end");
+  await expect(scroller).not.toHaveAttribute("data-overflow-start");
+  expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
   await openTabsUntilOverflow(page, 16);
   await expect(allTabs).toBeVisible({ timeout: 10_000 });

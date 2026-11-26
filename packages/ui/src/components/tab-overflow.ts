@@ -20,18 +20,16 @@ export function overflowSides(scrollLeft: number, needed: number, clientWidth: n
 }
 
 /**
- * The width the scroller's tabs need: from its first tab's start to its last tab's end, plus its own padding. Not its
- * scrollWidth, which also counts the hit area a coarse pointer grows past the last tab's close button, so one tab on a
- * tablet read as overflowing (#2872).
+ * The width the scroller's tabs need: its last tab's layout end (offsetLeft counts the scroller's start padding, as the
+ * scroller is positioned) plus its end padding. Not its scrollWidth, which also counts the hit area a coarse pointer
+ * grows past the last tab's Close, so one tab on a tablet read as overflowing (#2872); and layout boxes, not client
+ * rects, so a tab arriving at 0.97 scale or a dragged tab's translate does not move the answer.
  */
 function tabsWidth(scroller: HTMLElement): number {
-  const items = scroller.querySelectorAll("[data-tab-id]");
-  const first = items[0];
+  const items = scroller.querySelectorAll<HTMLElement>("[data-tab-id]");
   const last = items[items.length - 1];
-  if (first === undefined || last === undefined) return 0;
-  const { paddingLeft, paddingRight } = getComputedStyle(scroller);
-  const span = last.getBoundingClientRect().right - first.getBoundingClientRect().left;
-  return span + Number.parseFloat(paddingLeft) + Number.parseFloat(paddingRight);
+  if (last === undefined) return 0;
+  return last.offsetLeft + last.offsetWidth + Number.parseFloat(getComputedStyle(scroller).paddingRight);
 }
 
 /** Tracks which horizontal edges of `scroller` overflow as it scrolls, resizes, or changes children. */

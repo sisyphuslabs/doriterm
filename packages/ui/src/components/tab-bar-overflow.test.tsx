@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { TabBar, type WorkspaceTab } from "./tab-bar.tsx";
+import type { WorkspaceTab } from "./tab-bar.tsx";
 import { TabOverflowMenu } from "./tab-overflow-menu.tsx";
 
 const TABS: readonly WorkspaceTab[] = [
@@ -25,15 +25,6 @@ const itemsOf = (activeId: string, onSelect: (id: string) => void): readonly Ite
   const { children } = menu.props as { readonly children: readonly ReactElement[] };
   return children.map((item) => item.props as ItemProps);
 };
-
-describe("TabBar overflow", () => {
-  test("a strip that does not overflow offers no All tabs menu and marks no edge", () => {
-    const markup = renderToStaticMarkup(<TabBar tabs={TABS} activeId="t1" />);
-    expect(markup).not.toContain('aria-label="All tabs"');
-    expect(markup).not.toContain("data-overflow-start=");
-    expect(markup).not.toContain("data-overflow-end=");
-  });
-});
 
 describe("TabOverflowMenu", () => {
   test("its trigger is named All tabs", () => {
