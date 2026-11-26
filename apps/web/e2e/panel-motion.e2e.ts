@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
-import { openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { key, keysAtRest, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
 
 // The redesign's second motion pass (#2875): panels and screens that came and went in one frame now move on the #2796
 // tokens, and leave as an inert picture that plays its exit (the mechanism Back uses).
@@ -35,7 +35,7 @@ function inserted(page: Page, selector: string): Promise<Seen> {
                 motion instanceof CSSTransition
                   ? motion.transitionProperty
                   : Object.keys((motion.effect as KeyframeEffect).getKeyframes()[0] ?? {})
-                      .filter((key) => !["offset", "easing", "composite", "computedOffset"].includes(key))
+                      .filter((property) => !["offset", "easing", "composite", "computedOffset"].includes(property))
                       .toSorted()
                       .join(","),
               duration: Number(motion.effect?.getComputedTiming().duration ?? 0),
@@ -78,7 +78,7 @@ const rideMotion = (page: Page) =>
               const first = (motion.effect as KeyframeEffect).getKeyframes()[0];
               return {
                 what: Object.keys(first ?? {})
-                  .filter((key) => !["offset", "easing", "composite", "computedOffset"].includes(key))
+                  .filter((property) => !["offset", "easing", "composite", "computedOffset"].includes(property))
                   .join(","),
                 duration: Number(motion.effect?.getComputedTiming().duration ?? 0),
                 from: new DOMMatrixReadOnly(String(first?.["transform"] ?? "none")).m42,
@@ -244,6 +244,36 @@ test.describe("a touch phone", () => {
     const after = await restingBottom(page);
     expect(up?.what).toBe("transform");
     expect(Math.abs((up?.from ?? 0) - (before - after))).toBeLessThanOrEqual(1);
+  });
+
+  test("a key tapped mid-ride, where it is drawn, is sent once and nothing else is hit", async ({ page }) => {
+    const terminal = await openPhoneTerminal(page);
+    // cat -t shows a tab as ^I; with echo off, each line the program prints is its one copy of what it was sent.
+    await page.keyboard.type("stty -echo; cat -vt\r");
+    await keysAtRest(page);
+    // The keyboard closes by its own key: the panel rides down to its dock. The ride is held at 120 ms of its 240.
+    await showKeyboard(page, 0);
+    const tab = key(page, "Tab");
+    const point = await tab.evaluate((button) => {
+      const panel = button.closest('[role="toolbar"]')?.parentElement;
+      const [ride] = panel?.getAnimations() ?? [];
+      if (ride === undefined) throw new Error("no ride under way");
+      ride.pause();
+      ride.currentTime = 120;
+      const { x, y, width, height } = button.getBoundingClientRect();
+      return { x: x + width / 2, y: y + height / 2 };
+    });
+    await page.touchscreen.tap(point.x, point.y);
+    await keysBar(page).evaluate((toolbar) => {
+      for (const ride of toolbar.parentElement?.getAnimations() ?? []) ride.play();
+    });
+    await keysAtRest(page);
+    await page.locator("[data-terminal] textarea").focus();
+    await page.keyboard.type("q\r");
+    await expect(terminal.locator(".term-row").filter({ hasText: /^\^Iq\s*$/ })).toHaveCount(1, { timeout: 15_000 });
+    await expect(terminal.locator(".term-row").filter({ hasText: /\^\[|\^I\^I/ })).toHaveCount(0);
+    await expect(key(page, "Control")).toHaveAttribute("aria-pressed", "false");
+    await expect(key(page, "Shift")).toHaveAttribute("aria-pressed", "false");
   });
 
   test("under reduced motion the keys panel takes its place at once", async ({ page }) => {

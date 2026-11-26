@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { Touch } from "./touch.ts";
 import { commandModifier, pressWithCommand } from "./platform-keys.ts";
-import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, keysAtRest, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "clipboard-write"] });
 
@@ -91,6 +91,7 @@ test("the field lives in the card above the keys bar, and stays when the keyboar
   const terminal = await openPhoneTerminal(page);
   await expect(card(page)).toHaveCount(0);
   await openInputCard(page);
+  await keysAtRest(page);
   const [box, cardBox, bar, term] = await Promise.all([
     field(page).boundingBox(),
     card(page).boundingBox(),

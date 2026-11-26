@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { expectTouchTargets, key, keysAtRest, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
@@ -50,6 +50,7 @@ for (const width of [320, 390]) {
       expect(dimensions.scroll).toBeGreaterThan(dimensions.client);
 
       // The actions pill stays fixed at the right and the input card stays fixed above the row while keys scroll.
+      await keysAtRest(page);
       const before = await Promise.all(fixedSlots(page).map(box));
       await row.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
       await expect.poll(() => row.evaluate((el) => el.scrollLeft)).toBe(dimensions.scroll - dimensions.client);
