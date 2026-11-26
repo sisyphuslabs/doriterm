@@ -1,4 +1,4 @@
-import { SynchronizedUpdate } from "./synchronized-update.ts";
+import { opensUpdate, SynchronizedUpdate } from "./synchronized-update.ts";
 
 /** At most this much output is written to a terminal per paint: a flood costs each frame a bounded slice (#560). */
 export const FRAME_BYTES = 16 * 1024;
@@ -80,6 +80,15 @@ interface Replay {
   cap: () => void;
 }
 
+/** A synchronized update whose paint is held; `paint`: the core's own paint, which the update's close ends (#2794). */
+interface Held {
+  quiet: () => void;
+  cap: () => void;
+  readonly paint: boolean;
+  /** What the core's paint has written while held. */
+  written: number;
+}
+
 /** Coming back to the app or attaching: how much its catch-up frames may write, and have written. */
 interface CatchUp {
   readonly budget: number;
@@ -132,7 +141,7 @@ export class OutputPacer {
   /** Holds the terminal's paint (true) and lets it go (false) for a synchronized update. */
   #holdSynchronized: (held: boolean) => void = () => undefined;
   /** The open update whose paint is held while its bytes still arrive; null when none is. */
-  #held: { quiet: () => void; cap: () => void } | null = null;
+  #held: Held | null = null;
   /** The link's smoothed round trip, from the last attach's replay options; an attach without one leaves it unknown. */
   #srtt: () => number | undefined = () => undefined;
   #replay: Replay | null = null;
@@ -274,16 +283,23 @@ export class OutputPacer {
   }
 
   /** An update opened in the written output: its paint is held until it closes, goes quiet, or hits the cap. */
-  #startHeld(): void {
+  /**
+   * An update opened in the written output: its paint is held. The core's own paint (`paint`: the update opens the
+   * replay's first byte, herdr-core #232) marks its end, so it is held until it closes or has written
+   * {@link REPLAY_MAX_BYTES}, with no quiet window or cap: a starved link or page may take minutes to bring it (#2794).
+   */
+  #startHeld(paint: boolean): void {
     if (this.#held !== null) return;
-    const held: { quiet: () => void; cap: () => void } = { quiet: () => undefined, cap: () => undefined };
+    const held: Held = { quiet: () => undefined, cap: () => undefined, paint, written: 0 };
     this.#held = held;
     this.#holdSynchronized(true);
+    if (paint) return;
     this.#heldQuietFrom(held);
     held.cap = this.#timer(() => this.#endHeld(), SYNCHRONIZED_HOLD_CAP_MS);
   }
 
-  #heldQuietFrom(held: { quiet: () => void }): void {
+  #heldQuietFrom(held: Held): void {
+    if (held.paint) return;
     held.quiet();
     held.quiet = this.#onTime(
       Math.max(SYNCHRONIZED_UNPACED_MS, 1.5 * (this.#srtt() ?? 0) + 50),
@@ -429,7 +445,7 @@ export class OutputPacer {
         synchronized = true;
         if (this.#openedAt === null) {
           this.#openedAt = this.#clock();
-          this.#startHeld();
+          this.#startHeld(this.#replay?.written === 0 && size === 0 && opensUpdate(head.bytes));
         }
       }
       parts.push(take === head.bytes.byteLength ? head.bytes : head.bytes.subarray(0, take));
@@ -444,7 +460,11 @@ export class OutputPacer {
     for (const [credit, bytes] of credits) credit(bytes);
     for (const listener of this.#written) listener();
     // The core sends the next window of an update once this one's credit is back, after the write (#2011).
-    if (this.#held !== null) this.#heldQuietFrom(this.#held);
+    const held = this.#held;
+    if (held?.paint === true) {
+      held.written += size;
+      if (held.written >= REPLAY_MAX_BYTES) this.#endHeld();
+    } else if (held !== null) this.#heldQuietFrom(held);
     const replay = this.#replay;
     if (replay === null) return size;
     replay.written += size;
