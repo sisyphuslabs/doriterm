@@ -2,7 +2,7 @@
 // — its directory when that names a task, else the program it started — never a generic Home.
 import type { JsonObject, Terminal } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { HOME_SPACE, placeOf } from "./placement.ts";
+import { guessedSpace, HOME_SPACE, placeOf } from "./placement.ts";
 
 const terminal = (fields: Partial<Terminal> = {}): Terminal => ({
   address: "t1",
@@ -53,5 +53,25 @@ describe("placeOf (#2670)", () => {
   test("an existing Home space is still the one terminals with no space of their own join (herdr-app's fallback)", () => {
     const home = doc([{ id: "spc-h", name: HOME_SPACE, folder: "" }]);
     expect(placeOf(home, terminal({ cwd: "/home/lo/anything" }), () => "spc9").id).toBe("spc-h");
+  });
+});
+
+describe("guessedSpace: the guess before a placed tab's write (#2481 review)", () => {
+  test("a space the write would make is guessed with the empty id, so it never matches a space the write makes", () => {
+    let asked = 0;
+    const made = guessedSpace((_doc, makeId) => {
+      asked += 1;
+      return { id: makeId("spc"), folder: "", name: "Work" };
+    }, null);
+    expect(made).toEqual({ id: "", folder: "", name: "Work" });
+    expect(asked).toBe(1);
+  });
+
+  test("an existing space is guessed by its own id", () => {
+    expect(guessedSpace(() => ({ id: "spc1", folder: "/w" }), null)).toEqual({ id: "spc1", folder: "/w" });
+  });
+
+  test("a tab nothing places is not guessed", () => {
+    expect(guessedSpace(undefined, null)).toBeUndefined();
   });
 });
