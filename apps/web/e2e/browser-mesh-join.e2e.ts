@@ -125,3 +125,33 @@ test("a home-screen join resumes the same code after its page closes for approva
     await host.stop();
   }
 });
+
+test.describe("a desktop browser whose machine stops", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("the Machines row reads Reconnecting while the status bar does, not Online (#2421)", async ({ page }) => {
+    const host = await startFakeRelayHost({ terminal: true, machine: true });
+    try {
+      await routeOnlyRelay(page, host);
+      await page.goto((await host.meshOffer()).link);
+      await page.getByRole("button", { name: "Join", exact: true }).click();
+      const pending = await host.pendingJoin();
+      await expect(page.getByLabel("Join code")).toHaveText(pending.code);
+      await page.getByRole("button", { name: "The codes match", exact: true }).click();
+      await host.answerJoin(pending.nonce, pending.code, true);
+      await expect(page).toHaveURL(/\/settings#machines$/);
+      const machines = page.getByRole("list", { name: "Machines", exact: true });
+      await expect(machines).toContainText("Online · Relay", { timeout: 20_000 });
+
+      await host.stop();
+      // At this size Settings is a dialog over the workspace: the status bar under it is still drawn, but hidden from
+      // the accessibility tree while the dialog is open, so it is found by the workspace's mark instead of by role.
+      const bar = page.locator('[data-workspace] [role="status"]').filter({ hasText: "Reconnecting…" });
+      await expect(bar).toBeVisible({ timeout: 15_000 });
+      await expect(machines).toContainText("Reconnecting · Relay");
+      await expect(machines).not.toContainText("Online");
+    } finally {
+      await host.stop();
+    }
+  });
+});
