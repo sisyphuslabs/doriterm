@@ -167,7 +167,7 @@ export function SettingsRoute() {
   const update = usePendingUpdate();
   // In the dialog its header is not the window's titlebar: it neither moves the window nor makes room for its controls.
   const dialog = useSettingsInDialog();
-  const titlebar = dialog ? {} : { "data-titlebar": "" };
+  const titlebar = dialog ? {} : { "data-titlebar": "", "data-phone-top": "" };
   // The full-screen sheet takes focus as it opens, as the dialog does, unless something in it already has it (#1495).
   const view = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {

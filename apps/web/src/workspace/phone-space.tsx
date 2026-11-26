@@ -158,6 +158,7 @@ function SpaceFrame(props: {
       >
         <header
           data-titlebar
+          data-phone-top
           className="flex min-h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-2 border-b border-border bg-sidebar pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,0.375rem)]"
         >
           <Button

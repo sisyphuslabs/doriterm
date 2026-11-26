@@ -31,16 +31,13 @@ export function startEdgeProbe(search: string): void {
 
 /** The first fixed or sticky box at a point, as WebKit's first pass finds it: pointer-events: none boxes count. */
 function edgeAt(x: number, y: number): Element | null {
-  const skipped: HTMLElement[] = [];
-  let hit = document.elementFromPoint(x, y);
-  // elementFromPoint honours pointer-events; under the boxes that take no tap may be one WebKit would hit first.
-  for (const box of document.querySelectorAll<HTMLElement>("[data-top-edge]")) {
-    if (getComputedStyle(box).pointerEvents !== "none") continue;
-    box.style.pointerEvents = "auto";
-    skipped.push(box);
-  }
-  if (skipped.length > 0) hit = document.elementFromPoint(x, y);
-  for (const box of skipped) box.style.pointerEvents = "";
+  // elementFromPoint honours pointer-events, WebKit's first pass does not: every box takes the hit while it looks.
+  const everyBox = new CSSStyleSheet();
+  everyBox.replaceSync("* { pointer-events: auto !important; }");
+  const sheets = document.adoptedStyleSheets;
+  document.adoptedStyleSheets = [...sheets, everyBox];
+  const hit = document.elementFromPoint(x, y);
+  document.adoptedStyleSheets = sheets;
   for (let at = hit; at !== null; at = at.parentElement) {
     const { position } = getComputedStyle(at);
     if (position === "fixed" || position === "sticky") return at;

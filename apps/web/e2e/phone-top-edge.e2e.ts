@@ -18,16 +18,21 @@ endOwnTerminals();
 async function applyIosRules(page: Page): Promise<void> {
   await page.evaluate(() => {
     const rules: string[] = [];
-    for (const sheet of document.styleSheets) {
-      for (const rule of sheet.cssRules) {
-        if (!(rule instanceof CSSSupportsRule) || !rule.conditionText.includes("touch-callout")) continue;
-        for (const inner of rule.cssRules) rules.push(inner.cssText);
+    // A rule inside a cascade layer is copied into that layer, so it wins or loses as it does on an iPhone.
+    const collect = (list: CSSRuleList, layer: string | null): void => {
+      for (const rule of list) {
+        if (rule instanceof CSSLayerBlockRule) collect(rule.cssRules, rule.name);
+        else if (rule instanceof CSSSupportsRule && rule.conditionText.includes("touch-callout")) {
+          for (const inner of rule.cssRules)
+            rules.push(layer === null ? inner.cssText : `@layer ${layer} { ${inner.cssText} }`);
+        } else if (rule instanceof CSSGroupingRule) collect(rule.cssRules, layer);
       }
-    }
+    };
+    for (const sheet of document.styleSheets) collect(sheet.cssRules, null);
     if (rules.length === 0) throw new Error("no iOS rules in the page's styles");
     const ios = new CSSStyleSheet();
     ios.replaceSync(rules.join("\n"));
-    document.adoptedStyleSheets = [ios];
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, ios];
   });
 }
 
@@ -40,17 +45,27 @@ interface TopEdge {
 
 /** What WebKit finds at the top edge (LocalFrameView::fixedContainerEdges), with and without the strip. */
 async function topEdge(page: Page): Promise<TopEdge> {
+  // A screen sliding in is measured where it comes to rest: its finite animations (not a status pulse) have ended.
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every((animation) => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity),
+  );
   await applyIosRules(page);
   return page.evaluate(() => {
     const strip = document.querySelector<HTMLElement>("[data-top-edge]");
     if (strip === null) throw new Error("the page has no top-edge strip");
     const x = window.innerWidth / 2;
-    strip.style.pointerEvents = "auto";
+    // WebKit's first pass ignores pointer-events, elementFromPoint does not: every box takes the hit while it looks.
+    const everyBox = new CSSStyleSheet();
+    everyBox.replaceSync("* { pointer-events: auto !important; }");
+    const sheets = document.adoptedStyleSheets;
+    document.adoptedStyleSheets = [...sheets, everyBox];
     const first = document.elementFromPoint(x, 4);
-    strip.style.pointerEvents = "";
     strip.style.display = "none";
     let box = document.elementFromPoint(x, 4);
     strip.style.display = "";
+    document.adoptedStyleSheets = sheets;
     while (box !== null && !["fixed", "sticky"].includes(getComputedStyle(box).position)) box = box.parentElement;
     if (box === null) return { strip: first === strip, under: null };
     const rect = box.getBoundingClientRect();
@@ -58,7 +73,7 @@ async function topEdge(page: Page): Promise<TopEdge> {
     return {
       strip: first === strip,
       under: {
-        titlebar: box.hasAttribute("data-titlebar"),
+        titlebar: box.hasAttribute("data-phone-top"),
         position: style.position,
         width: rect.width / window.innerWidth,
         height: rect.height,
@@ -98,6 +113,7 @@ test("every phone screen and sheet gives iOS a solid top edge, so its blur stays
   await page.goto("/");
 
   // No rubber band at the top: iOS shows its blur while the page is pulled past its top.
+  await applyIosRules(page);
   const overscroll = await page.evaluate(() =>
     [document.documentElement, document.body].map((element) => getComputedStyle(element).overscrollBehaviorY),
   );
@@ -125,11 +141,27 @@ test("every phone screen and sheet gives iOS a solid top edge, so its blur stays
   await expect(actions).toBeVisible({ timeout: 15_000 });
   await expectHeaderEdge(page, "a terminal");
 
-  // With the keyboard up the header is still the edge, and the page has not scrolled under the blur.
+  // With the keyboard up iOS scrolls the document to show the field (#2847): the header stays at the top, still the edge.
   await key(page, "Show keyboard").click();
   await expect(key(page, "Hide keyboard")).toBeVisible();
-  await expectHeaderEdge(page, "a terminal with the keyboard up");
-  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  const scrolled = await page.evaluate(() => {
+    const room = document.createElement("div");
+    room.id = "pte-room";
+    room.style.height = "1200px";
+    document.body.append(room);
+    window.scrollTo(0, 120);
+    return window.scrollY;
+  });
+  expect(scrolled, "the document really scrolled").toBe(120);
+  const headerTop = await page
+    .locator("header[data-phone-top]")
+    .evaluate((header) => header.getBoundingClientRect().top);
+  expect(headerTop, "the header stays at the top of the screen").toBe(0);
+  await expectHeaderEdge(page, "a terminal with the keyboard up and the document scrolled");
+  await page.evaluate(() => {
+    document.getElementById("pte-room")?.remove();
+    window.scrollTo(0, 0);
+  });
 
   // A sheet over the screen: its scrim is under the strip, so the strip stays the edge.
   await actions.click();
@@ -141,4 +173,38 @@ test("every phone screen and sheet gives iOS a solid top edge, so its blur stays
   await page.goto("/settings");
   await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible({ timeout: 20_000 });
   await expectHeaderEdge(page, "Settings");
+  // Under a notch the title row starts at the very top and keeps its title below the inset.
+  await page.evaluate(() => document.documentElement.style.setProperty("--safe-top", "47px"));
+  const row = page.getByRole("heading", { level: 1, name: "Settings" }).locator("xpath=ancestor::*[@data-phone-top]");
+  expect(await row.evaluate((element) => element.getBoundingClientRect().top)).toBe(0);
+  const title = await page.getByRole("heading", { level: 1, name: "Settings" }).boundingBox();
+  expect(title?.y ?? 0, "the title clears the inset").toBeGreaterThanOrEqual(47);
+  await expectHeaderEdge(page, "Settings under a notch");
 });
+
+// An iPad in portrait shows the phone shell, whose header is the edge; in landscape the desktop shell, whose titlebar
+// pieces are absolute or fixed. The iOS rules move none of those.
+for (const device of ["iPad Pro 11", "iPad Pro 11 landscape"] as const) {
+  test.describe(`on an ${device}`, () => {
+    const { defaultBrowserType: _ipadBrowser, ...ipad } = devices[device];
+    test.use(ipad);
+
+    for (const path of ["/", "/settings"]) {
+      test(`at ${path} the iOS rules leave every titlebar piece but the phone header where it is (#2867)`, async ({
+        page,
+      }) => {
+        const positions = () =>
+          page
+            .locator("[data-titlebar]:not([data-phone-top])")
+            .evaluateAll((boxes) =>
+              boxes.map((box) => `${box.className.slice(0, 40)}: ${getComputedStyle(box).position}`),
+            );
+        await page.goto(path);
+        await expect(page.locator("[data-titlebar]").first()).toBeVisible({ timeout: 20_000 });
+        const before = await positions();
+        await applyIosRules(page);
+        expect(await positions(), "no titlebar piece moves").toEqual(before);
+      });
+    }
+  });
+}
