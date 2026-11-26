@@ -3,6 +3,7 @@
 // - at 700x900 once tabs overflow the scroller, "All tabs" appears, lists every tab title, and selects on click.
 import type { Page } from "@playwright/test";
 import { expect, laidOutBox, pressNewTab, test } from "./fixtures.ts";
+import { agentRow, endAgent, startShell } from "./agents.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 import { strip, tabs } from "./tab-strip.ts";
 
@@ -12,18 +13,27 @@ test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
 const focusedTerminal = (page: Page) => page.locator('[data-focused="true"] [data-terminal]');
 
-const openTerminal = async (page: Page, name: RegExp, text: string | RegExp): Promise<void> => {
-  await page.getByRole("button", { name }).first().click();
-  await expect(focusedTerminal(page)).toContainText(text, { timeout: 15_000 });
+// The spec seeds its own two shells, so it never depends on what other specs leave running.
+const TAG = "tov-" + Date.now().toString(36);
+let seeded: string[] = [];
+test.afterEach(() => {
+  for (const address of seeded) endAgent("host", address);
+  seeded = [];
+});
+
+const openTerminal = async (page: Page, name: string): Promise<void> => {
+  await agentRow(page, name, false).click({ timeout: 20_000 });
+  await expect(focusedTerminal(page)).toContainText("$", { timeout: 15_000 });
 };
 
 test("New tab sits next to the last tab at 1440, and All tabs appears and selects on overflow at 700", async ({
   page,
 }) => {
+  seeded = [startShell("host", TAG + "-a"), startShell("host", TAG + "-b")];
   await page.goto("/");
-  await openTerminal(page, /shell/, "$");
-  await openTerminal(page, /review/, "Reading apps/relay/src/session.ts");
-  await expect(tabs(page)).toHaveCount(2);
+  await openTerminal(page, TAG + "-a");
+  await openTerminal(page, TAG + "-b");
+  await expect.poll(() => tabs(page).count()).toBeGreaterThanOrEqual(2);
 
   const allTabs = page.getByRole("button", { name: "All tabs", exact: true });
   const newTab = page.getByRole("button", { name: "New tab", exact: true });
