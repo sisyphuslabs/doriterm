@@ -132,6 +132,17 @@ test("the open card holds the mic just before Enter, and Enter with an empty fie
   await expect(mic(header)).toHaveCount(1);
 });
 
+// Review of #2855: a line of spaces is a line (a pager pages on a space); only an empty field presses Return alone.
+test("a line of only spaces reaches the program as written", async ({ page }) => {
+  const terminal = await openPhoneTerminal(page, 390);
+  await page.keyboard.type('IFS= read -r v; echo "len-${#v}"');
+  await page.keyboard.press("Enter");
+  await actionsPill(page).getByRole("button", { name: "Type in a field", exact: true }).click();
+  await field(page).fill("   ");
+  await card(page).getByRole("button", { name: "Send", exact: true }).click();
+  await expect(terminal).toContainText("len-3");
+});
+
 // Review of #2855: dictation takes the card's place, so the header has the mic again; Cancel gives the focus back to the
 // mic that is on screen after it, the card's once the card returns, never to the page.
 test("dictation from the card's mic keeps one mic in reach, and Cancel returns the focus to the card's mic", async ({
