@@ -252,7 +252,7 @@ const HELLO_LINE = new TextEncoder().encode(HELLO_REQUEST_LINE);
  * hello rides in message 1, so its answer can come back with message 2 instead of a round trip later (#1271).
  */
 async function openSessionOn(link: ByteLink, settings: ConnectionSettings, deps: RelayDeps): Promise<SecureSession> {
-  const staticKey = await deviceKeyFor(link, deps);
+  const staticKey = await deviceKeyFor(link, deps, settings.keySlot);
   try {
     return await secureLink(link, {
       role: "initiator",

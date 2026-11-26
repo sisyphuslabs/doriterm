@@ -4,12 +4,13 @@ import { JOINER_EXPECTS, MeshLines } from "@doriface/mesh/join";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { loadBrowserIdentity } from "../mesh/identity.ts";
 import { connectionStore } from "../connection/store.ts";
-import { prepareMembership } from "../mesh/membership-state.ts";
+import { abandonJoin, joinSlot, prepareMembership, selectMembership } from "../mesh/membership-state.ts";
 import { deviceStore } from "../storage/idb.ts";
+import { slotStore } from "../storage/key-slot.ts";
 import { BrowserJoin } from "../mesh/join-state.ts";
 import type { PairingOffer } from "./fragment.ts";
 import { JOIN_ANCHOR_KEY, loadJoinAnchor, type BrowserJoinAnchor } from "./join-anchor.ts";
-import { DeviceCodeOffer, openBrowserJoin, openBrowserResume, refuseEarly, BROWSER_JOIN_DEPS } from "../mesh/join.ts";
+import { DeviceCodeOffer, openBrowserJoin, openBrowserResume, refuseEarly } from "../mesh/join.ts";
 import { guideStore } from "./first-run-guide.ts";
 
 const subscribeEmpty = () => () => undefined;
@@ -34,10 +35,13 @@ export function useBrowserJoin() {
       setBusy(true);
       setFailure(undefined);
       const run = ++generation.current;
+      // A mesh this browser already holds keeps its keys; a join adds the next mesh on keys of its own (#2861).
+      let slot: string | undefined;
       try {
-        if (offer !== undefined) await refuseEarly(offer, BROWSER_JOIN_DEPS.membership);
-        const bundle = await prepareMembership();
-        const identity = await loadBrowserIdentity();
+        slot = resume?.keySlot ?? (await joinSlot());
+        const bundle = await prepareMembership(slot);
+        if (offer !== undefined) await refuseEarly(offer, bundle);
+        const identity = await loadBrowserIdentity(slotStore(deviceStore, slot));
         const inviterName =
           resume?.inviterName ??
           connectionStore.entries().find((entry) => entry.target.hostId === offer?.hostId)?.target.hostName ??
@@ -74,7 +78,9 @@ export function useBrowserJoin() {
             ...(resume === undefined ? {} : { resume }),
           },
         );
+        if (controller.snapshot().phase === "refused") await abandonJoin(slot);
         if (controller.snapshot().phase === "joined") {
+          await selectMembership(slot);
           guideStore.start();
           connectionStore.edit({ relayUrl: context.relayUrl });
           connectionStore.start();
@@ -82,11 +88,14 @@ export function useBrowserJoin() {
         }
       } catch (error) {
         if (error instanceof DeviceCodeOffer) {
+          if (slot !== undefined) await abandonJoin(slot);
           if (run === generation.current) setDevice(error.offer);
           return;
         }
         const refused = resume !== undefined && error instanceof Error && closeCodeOf(error) === 4401;
         if (refused) await deviceStore.put(JOIN_ANCHOR_KEY, null);
+        // A resume that failed in transit still needs its keys; a fresh join that never started a ceremony does not.
+        if (slot !== undefined && (resume === undefined || refused)) await abandonJoin(slot);
         if (run === generation.current)
           setFailure(refused ? "Ask for a new invite" : error instanceof Error ? error.message : String(error));
       } finally {

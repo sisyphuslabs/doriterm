@@ -73,6 +73,8 @@ export function MeshMachineList({
   readonly retry: (hostId: string) => void;
   readonly openMember?: (hostId: string) => void;
 }) {
+  // A browser in one mesh says so once, on its device row; in several, every machine names the mesh it is in (#2861).
+  const meshes = new Set(entries.flatMap((entry) => entry.target.meshId ?? []));
   return (
     <ul aria-label="Machines" className="flex flex-col divide-y divide-border">
       {sortedMachines(entries).map((entry) => (
@@ -98,6 +100,9 @@ export function MeshMachineList({
                 description={
                   <>
                     {ownComputer === entry.target.hostId ? <span className="block">This machine</span> : null}
+                    {meshes.size > 1 && entry.target.meshId !== undefined ? (
+                      <span className="block [overflow-wrap:anywhere]">{`Mesh ${entry.target.meshId}`}</span>
+                    ) : null}
                     <span>{`${stateOf(entry)} · Relay`}</span>
                     {entry.state.phase !== "open" && entry.lastSeen !== undefined ? (
                       <span className="block">{`Last seen ${formatAge(entry.lastSeen, Date.now())} ago`}</span>

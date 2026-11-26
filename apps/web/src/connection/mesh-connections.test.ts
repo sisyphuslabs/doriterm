@@ -155,6 +155,17 @@ describe("verified view members", () => {
     expect(made[1]?.stopped).toBe(1);
   });
 
+  it("a learned member is dialled with the key slot its mesh knows this browser by (#2861)", () => {
+    const { mesh, made } = running(settingsWith([member("a")]));
+    mesh.setViewMembers([
+      { ...member("b"), meshId: "mesh-2", keySlot: "second" },
+      { ...member("c"), meshId: "mesh-1" },
+    ]);
+    expect(made[1]?.settings).toMatchObject({ hostId: "b", viewMember: true, keySlot: "second" });
+    expect(made[2]?.settings.keySlot).toBeUndefined();
+    expect(made[0]?.settings.keySlot).toBeUndefined();
+  });
+
   it("a paired key wins over another key in the view for the same host", () => {
     const paired = { ...member("a"), directUrl: "https://paired.invalid" };
     const { mesh, made } = running({ ...settingsWith([paired]), directUrl: paired.directUrl });

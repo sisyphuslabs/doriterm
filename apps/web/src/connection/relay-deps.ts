@@ -1,17 +1,24 @@
 import type { StaticKey } from "@doriface/crypto";
+import { deviceStore } from "../storage/idb.ts";
+import { slotStore } from "../storage/key-slot.ts";
 import { loadDeviceKey } from "./device-key.ts";
 
-/** What the relay path needs from the browser; tests replace the device key. */
+/**
+ * What the relay path needs from the browser; tests replace the device key. `keySlot` names the identity the member
+ * knows this browser by: a machine of a second mesh knows only that mesh's key (#2861). Unset is the default identity.
+ */
 export interface RelayDeps {
-  readonly loadDeviceKey: () => Promise<StaticKey>;
+  readonly loadDeviceKey: (keySlot?: string) => Promise<StaticKey>;
 }
 
-export const BROWSER_DEPS: RelayDeps = { loadDeviceKey };
+export const BROWSER_DEPS: RelayDeps = {
+  loadDeviceKey: (keySlot) => loadDeviceKey(keySlot === undefined ? deviceStore : slotStore(deviceStore, keySlot)),
+};
 
 /** Loads the device key for a relay socket that is already open, closing the socket if the key cannot load. */
-export async function deviceKeyFor(link: { close(): void }, deps: RelayDeps): Promise<StaticKey> {
+export async function deviceKeyFor(link: { close(): void }, deps: RelayDeps, keySlot?: string): Promise<StaticKey> {
   try {
-    return await deps.loadDeviceKey();
+    return await deps.loadDeviceKey(keySlot);
   } catch (error) {
     link.close();
     throw error;

@@ -2,7 +2,20 @@ import { base64urlDecode, hostIdOf } from "@doriface/crypto";
 import { door, meshIdOf, type MemberKind, parseRecord, type Signed } from "@doriface/mesh";
 import type { MemberTarget } from "../connection/settings.ts";
 import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
+import { DEFAULT_SLOT } from "../storage/key-slot.ts";
 import { bundleView, memberCards, type BundleView, type ClientKeys } from "./bundle-view.ts";
+import {
+  type BrowserMembership,
+  type HeldMembership,
+  membershipOf,
+  memberships,
+  readHeld,
+  removeHeld,
+  withMeshLock,
+  writeHeld,
+} from "./membership-list.ts";
+
+export type { BrowserMembership } from "./membership-list.ts";
 
 export interface BundleAnchor {
   readonly mesh: string;
@@ -29,67 +42,23 @@ function merge(held: readonly Signed[], incoming: readonly Signed[]): readonly S
 }
 
 /**
- * What this browser keeps once it is a member: the verified bundle its membership rests on, and how it is named in
- * it. The member list is `membersOf(records)`, the same view every member computes, and this browser is the entry
- * whose signing key is `signPub`: nothing in the record says "the one looking" (design of #956 §2, Q on #1386).
+ * One key slot's membership in per-device storage: the mesh that slot's keys joined, if any. A browser in several meshes
+ * holds one store per slot, so every rule here (one mesh per identity, the bundle only grows, a refresh must come from a
+ * machine of that mesh) holds per mesh while the meshes stay apart (#2861).
  */
-export interface BrowserMembership {
-  readonly meshId: string;
-  /** The welcome as checked at the join, and every verified record learned since; never shrunk by a later answer. */
-  readonly records: readonly Signed[];
-  /** This browser's Ed25519 signing key, base64url: its identity on every member, and the subject a revoke names. */
-  readonly signPub: string;
-  /** The member the join ran through, kept for the record; it holds no authority over the bundle. */
-  readonly inviter: { readonly hostId: string; readonly hostKey: string };
-  readonly relayUrl: string;
-  readonly joinedAt: string;
-}
-
-const KEY = "mesh-membership";
-
-const text = (value: object, key: string): string | undefined => {
-  const raw: unknown = Reflect.get(value, key);
-  return typeof raw === "string" ? raw : undefined;
-};
-
-const isSigned = (value: unknown): value is Signed =>
-  typeof value === "object" && value !== null && text(value, "body") !== undefined && text(value, "sig") !== undefined;
-
-function membershipOf(value: unknown): BrowserMembership | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const records: unknown = Reflect.get(value, "records");
-  const inviter: unknown = Reflect.get(value, "inviter");
-  if (!Array.isArray(records) || !records.every(isSigned) || typeof inviter !== "object" || inviter === null) {
-    return undefined;
-  }
-  const [meshId, signPub, relayUrl, joinedAt] = ["meshId", "signPub", "relayUrl", "joinedAt"].map((k) =>
-    text(value, k),
-  );
-  const [hostId, hostKey] = [text(inviter, "hostId"), text(inviter, "hostKey")];
-  if ([meshId, signPub, relayUrl, joinedAt, hostId, hostKey].some((field) => field === undefined)) return undefined;
-  return {
-    meshId: meshId ?? "",
-    records,
-    signPub: signPub ?? "",
-    inviter: { hostId: hostId ?? "", hostKey: hostKey ?? "" },
-    relayUrl: relayUrl ?? "",
-    joinedAt: joinedAt ?? "",
-  };
-}
-
-/** The membership in per-device storage; a malformed value reads as no membership rather than a broken one. */
 export class MembershipStore {
   readonly #storage: KeyValueStore;
   readonly #keys: ClientKeys | undefined;
+  readonly slot: string;
   readonly #listeners = new Set<() => void>();
   readonly #sessions = new WeakSet<object>();
   readonly #refreshed = new Map<string, number>();
   #state: BundleView;
-  #writes: Promise<unknown> = Promise.resolve();
 
-  constructor(storage: KeyValueStore = deviceStore, keys?: ClientKeys) {
+  constructor(storage: KeyValueStore = deviceStore, keys?: ClientKeys, slot: string = DEFAULT_SLOT) {
     this.#storage = storage;
     this.#keys = keys;
+    this.slot = slot;
     this.#state = bundleView([], "", keys ?? { signPub: "", devicePub: "" });
   }
 
@@ -106,7 +75,23 @@ export class MembershipStore {
   }
 
   async read(): Promise<BrowserMembership | undefined> {
-    return membershipOf(await this.#storage.get(KEY));
+    return this.#mine(await memberships(this.#storage));
+  }
+
+  #mine(list: readonly HeldMembership[]): BrowserMembership | undefined {
+    return membershipOf(list.find((held) => held.keySlot === this.slot));
+  }
+
+  /** Another slot already holds this mesh: joining it again would show that mesh a second identity of this browser. */
+  #refuseSecondIdentity(list: readonly HeldMembership[], mesh: string): void {
+    if (list.some((held) => held.keySlot !== this.slot && held.meshId === mesh)) {
+      throw new BundleRefused(`This browser is in mesh ${mesh} already.`);
+    }
+  }
+
+  async #save(next: BrowserMembership): Promise<void> {
+    await writeHeld(this.#storage, { ...next, keySlot: this.slot });
+    this.#show(next);
   }
 
   async load(): Promise<void> {
@@ -117,15 +102,15 @@ export class MembershipStore {
     this.#show({ ...held, records });
   }
 
-  /** Stores a checked welcome; false when a membership of another mesh is held, which wins (the joiner's adopt rule). */
+  /** Stores a checked welcome; false when this slot holds another mesh, which wins (the joiner's adopt rule). */
   adopt(next: BrowserMembership): Promise<boolean> {
     return this.#write(async () => {
-      const held = await this.read();
+      const list = await readHeld(this.#storage);
+      const held = this.#mine(list);
       if (held !== undefined && held.meshId !== next.meshId) return false;
+      this.#refuseSecondIdentity(list, next.meshId);
       const records = held === undefined ? next.records : merge(held.records, next.records);
-      const saved = { ...next, records };
-      await this.#storage.put(KEY, saved);
-      this.#show(saved);
+      await this.#save({ ...next, records });
       return true;
     });
   }
@@ -157,10 +142,12 @@ export class MembershipStore {
       const view = bundleView(checked, anchor.mesh, this.#keys);
       if (view.self === undefined) throw new BundleRefused("The welcome does not admit this browser's own keys.");
       this.#checkSource(view, anchor);
-      const held = await this.read();
+      const list = await readHeld(this.#storage);
+      const held = this.#mine(list);
       if (held !== undefined && held.meshId !== anchor.mesh) {
         throw new BundleRefused("This browser already belongs to another mesh.");
       }
+      this.#refuseSecondIdentity(list, anchor.mesh);
       const next: BrowserMembership = {
         meshId: anchor.mesh,
         records: held === undefined ? checked : merge(held.records, checked),
@@ -169,19 +156,16 @@ export class MembershipStore {
         relayUrl: held?.relayUrl || relayUrl,
         joinedAt: held?.joinedAt ?? new Date().toISOString(),
       };
-      await this.#storage.put(KEY, next);
-      this.#show(next);
+      await this.#save(next);
     });
   }
 
   refresh(records: readonly Signed[], source: BundleAnchor): Promise<void> {
     return this.#write(async () => {
       this.#checkSource(this.#state, source);
-      const held = await this.read();
+      const held = this.#mine(await readHeld(this.#storage));
       if (held === undefined) throw new BundleRefused("The browser's membership was cleared.");
-      const next = { ...held, records: merge(merge(this.#state.records, held.records), records) };
-      await this.#storage.put(KEY, next);
-      this.#show(next);
+      await this.#save({ ...held, records: merge(merge(this.#state.records, held.records), records) });
     });
   }
 
@@ -196,19 +180,13 @@ export class MembershipStore {
 
   forget(): Promise<void> {
     return this.#write(async () => {
-      await this.#storage.put(KEY, null);
+      await removeHeld(this.#storage, this.slot);
       this.#show(undefined);
     });
   }
 
   #write<T>(action: () => Promise<T>): Promise<T> {
-    const locked = async (): Promise<T> => {
-      const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-      return locks === undefined ? action() : locks.request("doriface-mesh-bundle", action);
-    };
-    const result = this.#writes.then(locked, locked);
-    this.#writes = result;
-    return result;
+    return withMeshLock(action);
   }
 }
 

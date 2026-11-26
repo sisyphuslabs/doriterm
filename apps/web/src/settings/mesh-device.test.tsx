@@ -54,3 +54,27 @@ test("one settling member changes only its own row", () => {
   expect(html.match(/Settling/g)).toHaveLength(1);
   expect(html).toContain("Beta");
 });
+
+const inMesh = (entry: MemberEntry, meshId: string): MemberEntry => ({ ...entry, target: { ...entry.target, meshId } });
+
+test("in several meshes every machine names its mesh; in one, the device row says it once", () => {
+  const [alpha, beta] = entries;
+  if (alpha === undefined || beta === undefined) throw new Error("the test requires two machines");
+  const two = renderToStaticMarkup(
+    <MeshMachineList
+      entries={[inMesh(alpha, "mesh-a"), inMesh(beta, "mesh-b")]}
+      ownComputer={undefined}
+      retry={() => {}}
+    />,
+  );
+  expect(two).toContain("Mesh mesh-a");
+  expect(two).toContain("Mesh mesh-b");
+  const one = renderToStaticMarkup(
+    <MeshMachineList
+      entries={[inMesh(alpha, "mesh-a"), inMesh(beta, "mesh-a")]}
+      ownComputer={undefined}
+      retry={() => {}}
+    />,
+  );
+  expect(one).not.toContain("Mesh mesh-a");
+});

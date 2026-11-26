@@ -8,6 +8,7 @@ import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/at
 import { disagreement, meshGroups } from "../mesh/groups.ts";
 import { MemberRow } from "../mesh/mesh-rows.tsx";
 import { useMesh } from "../mesh/use-mesh.ts";
+import { MeshPicker } from "./mesh-picker.tsx";
 import { useNow } from "../workspace/use-now.ts";
 
 interface MeshGroupProps {
@@ -163,6 +164,15 @@ export function MeshBody({
 
 /** Every machine in this host's mesh, with the joins that need the owner, from the host's advisory status document. */
 export function MeshSection({ attentionOnly = false }: { readonly attentionOnly?: boolean }) {
+  return (
+    <>
+      <MeshPicker />
+      <ShownMesh attentionOnly={attentionOnly} />
+    </>
+  );
+}
+
+function ShownMesh({ attentionOnly }: { readonly attentionOnly: boolean }) {
   const state = useConnection();
   if (state.phase !== "open") {
     if (attentionOnly) return null;

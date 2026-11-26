@@ -44,6 +44,7 @@ const sameTarget = (held: ConnectionSettings, want: ConnectionSettings): boolean
   held.hostName === want.hostName &&
   held.hostKey === want.hostKey &&
   held.viewMember === want.viewMember &&
+  held.keySlot === want.keySlot &&
   held.directUrl === want.directUrl &&
   held.loopbackUrl === want.loopbackUrl &&
   held.token === want.token;
@@ -327,6 +328,7 @@ export class MeshConnections {
     return {
       ...this.#settings,
       ...(learned ? { mode: "relay", viewMember: true } : {}),
+      ...(learned && member.keySlot !== undefined ? { keySlot: member.keySlot } : {}),
       hostId: member.hostId,
       hostName: member.hostName,
       hostKey: member.hostKey,

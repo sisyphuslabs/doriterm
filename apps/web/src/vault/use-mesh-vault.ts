@@ -7,7 +7,8 @@ import { connectionStore, useConnection } from "../connection/store.ts";
 import { desktopKeyholderCall } from "../desktop/bridge.ts";
 import { memberCards } from "../mesh/bundle-view.ts";
 import { loadSignKey } from "../mesh/identity.ts";
-import { membershipSnapshot } from "../mesh/membership-state.ts";
+import { inViewSlot, membershipSnapshot } from "../mesh/membership-state.ts";
+import { slotStore } from "../storage/key-slot.ts";
 import { deviceStore } from "../storage/idb.ts";
 import { callOver } from "./vault-channel.ts";
 import { MeshVault, type MeshVaultSnapshot } from "./mesh-vault.ts";
@@ -55,7 +56,7 @@ export const meshVault = new MeshVault({
   member: async () => {
     const view = membershipSnapshot();
     if (view.phase !== "joined") return undefined;
-    const card = await loadSignKey();
+    const card = await loadSignKey(slotStore(deviceStore, inViewSlot()));
     const signPub = base64urlEncode(card.publicKey);
     const members = new Set(memberCards(view.records).map((member) => member.signPub));
     const removed = viewOf(view.records).revoked;

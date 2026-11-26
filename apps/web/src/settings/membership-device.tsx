@@ -4,11 +4,12 @@ import { Button, Dialog, Notice } from "@doriface/ui";
 import { useState } from "react";
 import { connectionStore, useMeshMembers } from "../connection/store.ts";
 import { runsInstalled } from "../device/install.ts";
-import { forgetMembership, useBrowserMembership } from "../mesh/membership-state.ts";
+import { forgetMembership, showMachine, useBrowserMembership, useHeldMeshes } from "../mesh/membership-state.ts";
 import { leaveMembership } from "../mesh/roster-refresh.ts";
 import { useMesh } from "../mesh/use-mesh.ts";
 import { fingerprintOf } from "../pair/fragment.ts";
 import { MeshDevice, MeshMachineList, sortedMachines } from "./mesh-device.tsx";
+import { MeshPicker } from "./mesh-picker.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { BrowserMemberList, RevokeCommand } from "./browser-members.tsx";
 import { useNow } from "../workspace/use-now.ts";
@@ -40,6 +41,7 @@ export function RemovedMembership() {
 
 export function LeaveMeshDialog({ open, close }: { readonly open: boolean; readonly close: () => void }) {
   const mesh = useBrowserMembership();
+  const othersStay = useHeldMeshes().length > 1;
   const [failure, setFailure] = useState<string>();
   const [busy, setBusy] = useState(false);
   const leave = async (local: boolean): Promise<void> => {
@@ -48,7 +50,7 @@ export function LeaveMeshDialog({ open, close }: { readonly open: boolean; reado
     try {
       if (local) await forgetMembership();
       else await leaveMembership();
-      window.location.assign("/join");
+      window.location.assign(othersStay ? "/settings#machines" : "/join");
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));
     } finally {
@@ -98,6 +100,7 @@ export function MembershipDeviceSection() {
   if (mesh.self === undefined) return null;
   return (
     <>
+      <MeshPicker />
       <MeshDevice
         name={mesh.self.name}
         mesh={mesh.mesh}
@@ -123,7 +126,7 @@ export function MembershipMachines() {
         ownComputer={undefined}
         retry={(hostId) => connectionStore.retry(hostId)}
         openMember={(hostId) => {
-          connectionStore.select(hostId);
+          void showMachine(hostId);
           void navigate({ to: "/" });
         }}
       />

@@ -2,9 +2,10 @@ import { JOINER_EXPECTS, MeshLines, byDeadline } from "@doriface/mesh/join";
 import { loadBrowserIdentity } from "../mesh/identity.ts";
 import { connectionStore } from "../connection/store.ts";
 import { deviceStore } from "../storage/idb.ts";
+import { DEFAULT_SLOT, slotStore } from "../storage/key-slot.ts";
 import { deviceName } from "../pair/device-name.ts";
 import { openRosterSession } from "./join.ts";
-import { membershipBundle, prepareMembership, forgetMembership } from "./membership-state.ts";
+import { forgetMembership, inViewSlot, membershipBundle, prepareMembership } from "./membership-state.ts";
 import type { MembershipStore } from "./membership.ts";
 import { exchangeRoster } from "./roster-client.ts";
 import { meshNameOf } from "./member-name.ts";
@@ -16,17 +17,19 @@ const asked = new Map<string, number>();
 const SETTLING_ASK_MS = 60_000;
 export const rosterFailure = (hostId: string) => failures.get(hostId);
 
-async function nameForBrowser(): Promise<string> {
-  const name = membershipBundle()?.snapshot().self?.name ?? (await deviceStore.get("mesh.browser-name"));
+async function nameForBrowser(bundle: MembershipStore): Promise<string> {
+  const name = bundle.snapshot().self?.name ?? (await deviceStore.get("mesh.browser-name"));
   return typeof name === "string" ? name : meshNameOf(deviceName());
 }
 
 type Entry = ReturnType<typeof connectionStore.entries>[number];
 
+/** A machine learned from a mesh is asked as that mesh's member, with the keys that mesh knows; a paired one as before. */
 async function refreshFrom(entry: Entry, claimed: (bundle: MembershipStore) => boolean): Promise<void> {
-  const bundle = await prepareMembership();
+  const slot = entry.target.keySlot ?? DEFAULT_SLOT;
+  const bundle = await prepareMembership(slot);
   if (!claimed(bundle)) return;
-  const identity = await loadBrowserIdentity();
+  const identity = await loadBrowserIdentity(slotStore(deviceStore, slot));
   const secure = await openRosterSession({ ...entry.target, relayUrl: connectionStore.settings.relayUrl }, identity);
   const lines = new MeshLines(secure, JOINER_EXPECTS);
   try {
@@ -36,7 +39,7 @@ async function refreshFrom(entry: Entry, claimed: (bundle: MembershipStore) => b
         bundle,
         source: entry.target,
         relayUrl: connectionStore.settings.relayUrl,
-        name: await nameForBrowser(),
+        name: await nameForBrowser(bundle),
         action: "refresh",
       }),
       Date.now() + 30_000,
@@ -86,9 +89,13 @@ export function followRoster(): () => void {
   };
 }
 
-/** Leave reaches any online machine, and local custody is deleted only after the verified revoke arrives. */
+/**
+ * Leaves the mesh in view through any of its online machines, and deletes that mesh's keys only after the verified
+ * revoke arrives; every other mesh this browser holds stays.
+ */
 export async function leaveMembership(): Promise<void> {
-  const bundle = membershipBundle();
+  const slot = inViewSlot();
+  const bundle = membershipBundle(slot);
   if (bundle === undefined || bundle.snapshot().phase !== "joined") throw new Error("This browser is not in a mesh.");
   const target = connectionStore
     .entries()
@@ -98,17 +105,23 @@ export async function leaveMembership(): Promise<void> {
         bundle.snapshot().machines.some((member) => member.hostId === entry.target.hostId),
     );
   if (target === undefined) throw new Error("No machine is reachable. You can forget this mesh here.");
-  const identity = await loadBrowserIdentity();
+  const identity = await loadBrowserIdentity(slotStore(deviceStore, slot));
   const session = await openRosterSession({ ...target.target, relayUrl: connectionStore.settings.relayUrl }, identity);
   const lines = new MeshLines(session, JOINER_EXPECTS);
   try {
     await byDeadline(
-      exchangeRoster(lines, { identity, bundle, source: target.target, name: await nameForBrowser(), action: "leave" }),
+      exchangeRoster(lines, {
+        identity,
+        bundle,
+        source: target.target,
+        name: await nameForBrowser(bundle),
+        action: "leave",
+      }),
       Date.now() + 30_000,
       "The machine did not confirm leaving in time.",
     );
   } finally {
     lines.close(1000, "leave complete");
   }
-  await forgetMembership();
+  await forgetMembership(slot);
 }
