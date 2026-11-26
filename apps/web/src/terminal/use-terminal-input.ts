@@ -18,6 +18,8 @@ export interface TerminalInputPath {
    * in order, or while a wake proved the link, sent to the same stream once it answers (#1370).
    */
   readonly pending: RefObject<TerminalInput[]>;
+  /** Whether the person typed any of `pending` (not only the terminal's answers): the stream it goes to lets its replay go. */
+  readonly pendingTyped: RefObject<boolean>;
   /** Input typed into the renderer, rewritten as the host asks (latched phone modifiers). */
   readonly typedInto: (data: string) => void;
   /** Input from outside the renderer (the phone's keys, a bound key, a confirmed paste). */
@@ -47,6 +49,10 @@ interface InputSources {
   readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
   /** Told before each input is sent or queued: the person is using this view, so its grid may size the host (D1). */
   readonly inputStarts?: () => void;
+  /** True while the renderer writes output: input it gives then is its answer to a program's query (#2794). */
+  readonly answering?: () => boolean;
+  /** Told as the person's own input is sent, before it goes: a held replay lets go, so its echo is drawn (#2794). */
+  readonly personSends?: () => void;
 }
 
 /**
@@ -93,12 +99,24 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   latestPredict.current = predict;
   const latestInputStarts = useRef(sources.inputStarts);
   latestInputStarts.current = sources.inputStarts;
+  const latestAnswering = useRef(sources.answering);
+  latestAnswering.current = sources.answering;
+  const latestPersonSends = useRef(sources.personSends);
+  latestPersonSends.current = sources.personSends;
+  const pendingTyped = useRef(false);
   const [order] = useState(() =>
-    inputOrder((data) => {
-      latestInputStarts.current?.();
-      latestPredict.current?.current?.(data);
-      held.send(data);
-    }),
+    inputOrder(
+      (data, person) => {
+        latestInputStarts.current?.();
+        latestPredict.current?.current?.(data);
+        // Sent at once, nothing waits before it: what the person typed while the link was down has gone out.
+        if (held.ready()) pendingTyped.current = false;
+        if (person && held.ready()) latestPersonSends.current?.();
+        else if (person) pendingTyped.current = true;
+        held.send(data);
+      },
+      () => latestAnswering.current?.() ?? false,
+    ),
   );
   const send = order.send;
   const linkReady = useCallback((): boolean => held.ready(), [held]);
@@ -163,5 +181,5 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
     wt.element.addEventListener("input", onInput);
     return () => wt.element.removeEventListener("input", onInput);
   }, [wt, typesComposition]);
-  return { pending, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
+  return { pending, pendingTyped, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
 }

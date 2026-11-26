@@ -42,6 +42,7 @@ interface AttachSources {
   readonly setWt: (wt: WTerm | null) => void;
   readonly stream: RefObject<TerminalStream | null>;
   readonly pending: RefObject<TerminalInput[]>;
+  readonly pendingTyped: RefObject<boolean>;
   readonly pacer: OutputPacer;
   readonly output: KittyPngTranscoder;
   readonly isFocused: RefObject<boolean>;
@@ -76,6 +77,21 @@ export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions, fresh
   pacer.replay(options);
 }
 
+/**
+ * What was typed while no stream was open goes to the new one, in order. If the person typed any of it (not only the
+ * terminal's answers to a program's queries), the replay just started lets go first, so its echo is drawn (#2794).
+ */
+export function writeQueued(
+  pacer: OutputPacer,
+  pending: TerminalInput[],
+  typed: RefObject<boolean>,
+  write: (data: TerminalInput) => void,
+): void {
+  if (typed.current && pending.length > 0) pacer.typed();
+  typed.current = false;
+  for (const data of pending.splice(0)) write(data);
+}
+
 export interface Attachment {
   /** The first attach is unanswered: the pane says it is opening, not a ready shell with nothing in it (#483). */
   readonly opening: boolean;
@@ -90,7 +106,7 @@ export interface Attachment {
 
 /** What a pane does when a connection arrives: attach, replay, settle what the core says is left, and report unsent input. */
 export function useTerminalAttach(sources: AttachSources): Attachment {
-  const { connection, address, pid, live, shown, wt, setWt, stream, pending, pacer, output } = sources;
+  const { connection, address, pid, live, shown, wt, setWt, stream, pending, pendingTyped, pacer, output } = sources;
   const { isFocused, focusWhenFree, onEnd, onEnded, onStream, holdPaint, hostSize } = sources;
   const toasts = useToastManager();
   // Read when a reattach is answered: the core's version as it is then, not when the effect last ran.
@@ -147,6 +163,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
   useEffect(() => {
     unsent.current = () => {
       const queued = pending.current.splice(0).length;
+      pendingTyped.current = false;
       const latest = attachedTo.current;
       if (queued === 0 || latest.closed) return;
       // A question the dropped line cannot answer still reports, without a reason.
@@ -312,7 +329,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
         });
-        for (const data of pending.current.splice(0)) attached.write(data);
+        writeQueued(pacer, pending.current, pendingTyped, (data) => attached.write(data));
         focusWhenFree(ready);
         return attached;
       },

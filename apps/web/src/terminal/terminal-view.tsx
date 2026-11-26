@@ -10,7 +10,6 @@ import { PasteDialog } from "./paste-dialog.tsx";
 import { type Point } from "./long-press.ts";
 import { KittyPngTranscoder } from "./kitty-png.ts";
 import { OutputPacer } from "./output-pacer.ts";
-import { useTypingEndsReplay } from "./typing-ends-replay.ts";
 import { readThemeColors } from "./theme-colors.ts";
 import { useDarkScheme } from "./use-dark-scheme.ts";
 import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
@@ -95,11 +94,18 @@ export function TerminalView(props: TerminalViewProps) {
    * when it moves (#1207).
    */
   const written = useRef(0);
+  // Inside a write to the renderer: input it gives meanwhile is its answer to a program's query, not the person's (#2794).
+  const rendering = useRef(0);
   // The program's output reaches the core through this: Kitty images sent as PNG are decoded to RGBA on the way.
   const output = useMemo(
     () =>
       new KittyPngTranscoder((bytes) => {
-        handle.current?.write(bytes);
+        rendering.current += 1;
+        try {
+          handle.current?.write(bytes);
+        } finally {
+          rendering.current -= 1;
+        }
         written.current += 1;
         // Output held behind a decode is written after its frame: the overlays read the grid again for it.
         outputShown.current();
@@ -151,9 +157,10 @@ export function TerminalView(props: TerminalViewProps) {
     typesComposition,
     predict,
     inputStarts,
+    answering: () => rendering.current > 0,
+    personSends: () => pacer.typed(),
   });
-  const { pending, typedInto, pasteFiles, linkReady } = input;
-  const typed = useTypingEndsReplay(wt, pacer, input.typed);
+  const { pending, pendingTyped, typedInto, typed, pasteFiles, linkReady } = input;
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
@@ -212,7 +219,7 @@ export function TerminalView(props: TerminalViewProps) {
     };
   }, [wt]);
   const shown = usePaneVisibility(wt, pacer);
-  useTerminalActions(wt, { ...input, typed }, focused, shown, openFind);
+  useTerminalActions(wt, input, focused, shown, openFind);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
   useTouchWheel(wt);
@@ -233,6 +240,7 @@ export function TerminalView(props: TerminalViewProps) {
     setWt,
     stream,
     pending,
+    pendingTyped,
     pacer,
     output,
     isFocused,
