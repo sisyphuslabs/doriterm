@@ -42,6 +42,9 @@
     <title>Doriterm</title>
   </head>
   <body>
+    <!-- The page's top edge for iOS (styles.css, #2867): it paints nothing and takes no tap, but names the bar colour, so
+         a Home Screen app's status bar takes that colour instead of the system blur over the headers. -->
+    <div data-top-edge aria-hidden="true"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

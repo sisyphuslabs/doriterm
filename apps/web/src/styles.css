@@ -8,6 +8,25 @@
   --term-font-family: var(--font-term);
 }
 
+/* iOS 26+ draws its scroll-edge blur over the top of the page, a Home Screen app's headers included, unless WebKit finds
+   a fixed edge there: a fixed box over 10 px tall and at least 90% of the width, under the point 4 px inside the top
+   centre, whose computed background colour it then extends into the status bar instead (#2867). This one names the
+   bars' colour (every phone header and the desktop tab bar is --chrome, as is --sidebar in every theme) and paints none
+   of it: the colour is clipped to text it does not have. It takes no tap, and sits over everything so no other fixed
+   box (a sheet's scrim, Back's sliding picture) becomes the edge and leaves with it. */
+@supports (-webkit-touch-callout: none) {
+  [data-top-edge] {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: 2147483647;
+    height: 11px;
+    pointer-events: none;
+    background-color: var(--chrome);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+}
+
 /* The terminal draws its own scrollbar as an overlay (terminal-scroll.tsx): a native one would take its width from the
    grid when scrollback appears, and wterm would refit the grid to fewer columns. */
 .wterm.wterm {
