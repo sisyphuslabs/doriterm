@@ -110,19 +110,32 @@ export function KeybindingsSection() {
           {asSentence(storageError.message)}
         </Notice>
       )}
-      <SettingsToolbar name="keybindings" placeholder="Search actions, e.g. tab" query={query} onQuery={setQuery}>
-        <Button onClick={pick} disabled={storageError !== null}>
-          Import keybinds…
-        </Button>
-        <Button onClick={() => download("ghostty-keybinds", serializeKeybinds(overrides))}>Export</Button>
-        <Button
-          variant="ghost"
-          disabled={overrides.size === 0 || storageError !== null}
-          onClick={() => void keymapStore.update(() => NO_OVERRIDES)}
-        >
-          Reset all
-        </Button>
-      </SettingsToolbar>
+      <SettingsToolbar
+        name="keybindings"
+        placeholder="Search actions, e.g. tab"
+        query={query}
+        onQuery={setQuery}
+        actions={
+          <>
+            <Button size="sm" onClick={pick} disabled={storageError !== null}>
+              Import keybinds…
+            </Button>
+            <Button size="sm" onClick={() => download("ghostty-keybinds", serializeKeybinds(overrides))}>
+              Export
+            </Button>
+          </>
+        }
+        reset={
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={overrides.size === 0 || storageError !== null}
+            onClick={() => void keymapStore.update(() => NO_OVERRIDES)}
+          >
+            Reset all
+          </Button>
+        }
+      />
       {(["app", "terminal"] as const).map((scope) => {
         const defs = shown.filter((action) => action.scope === scope);
         if (defs.length === 0) return null;

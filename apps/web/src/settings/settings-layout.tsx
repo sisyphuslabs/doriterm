@@ -7,8 +7,8 @@ import { useId, type ReactNode } from "react";
  * titles `base`, descriptions and values `prose`, sub-group headings `groupHeadingClass`, captions `xs`.
  */
 
-/** The blocks of one section (a notice, a preview, a toolbar, the sub-groups), 24 px apart. */
-export const sectionStackClass = "flex flex-col gap-6";
+/** The blocks of one section (a notice, a preview, a toolbar, the sub-groups), 16 px apart. */
+export const sectionStackClass = "flex flex-col gap-4";
 
 /** A list row that is not a SettingRow (a link into a sheet, a key, a pack): SettingRow's height, padding and divider. */
 export const listRowClass = "flex min-h-12 items-center gap-3 border-b border-border py-2.5 last:border-b-0";
@@ -27,7 +27,7 @@ export function SectionHeader({
   readonly actions?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-(--control) items-center justify-between gap-3 pb-2">
+    <div className="flex items-center justify-between gap-3 pb-1">
       <h2 id={id} className="text-xl font-semibold text-foreground">
         {title}
       </h2>
@@ -69,40 +69,44 @@ export function Subgroup({
 }
 
 /**
- * A section's search with its actions (import, export, reset) on one line, every control the same height. The label
- * sits beside the field, so the row keeps the field's height and the rows below do not move.
+ * A section's search with its actions, every control the compact `--control-sm` height. Wide, it is one line: search,
+ * actions, reset. Narrow, reset ends the search line and the actions take the next, so nothing is left alone on a line
+ * of its own, down to 320 px. The label sits beside the field, so the row keeps the field's height.
  */
 export function SettingsToolbar({
   name,
   placeholder,
   query,
   onQuery,
-  children,
+  actions,
+  reset,
 }: {
   /** What is searched, read after "Search" by assistive tech: "terminal settings", "keybindings". */
   readonly name: string;
   readonly placeholder: string;
   readonly query: string;
   readonly onQuery: (next: string) => void;
-  readonly children: ReactNode;
+  readonly actions: ReactNode;
+  readonly reset: ReactNode;
 }) {
   const id = useId();
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="flex w-full items-center gap-2 sm:w-auto sm:min-w-48 sm:flex-1">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap">
+      <div className="order-1 flex min-w-0 items-center gap-2 sm:min-w-48 sm:flex-1">
         <label htmlFor={id} className={cn("shrink-0", fieldLabelClass)}>
           Search<span className="sr-only"> {name}</span>
         </label>
         <Input
           id={id}
           type="search"
-          className="min-w-0 flex-1"
+          className="h-(--control-sm) min-w-0 flex-1"
           placeholder={placeholder}
           value={query}
           onValueChange={onQuery}
         />
       </div>
-      {children}
+      <div className="order-3 col-span-2 flex flex-wrap items-center gap-2 sm:order-2">{actions}</div>
+      <div className="order-2 sm:order-3">{reset}</div>
     </div>
   );
 }

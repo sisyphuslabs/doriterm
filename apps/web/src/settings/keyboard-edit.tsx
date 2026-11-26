@@ -82,7 +82,7 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
                 style={place.offset === 0 ? undefined : { translate: `0 ${place.offset}px` }}
                 onPointerDown={(event) => onPointerDown(event, entry.id, index)}
                 onClickCapture={onClickCapture}
-                className={cn(listRowClass, place.className)}
+                className={cn(listRowClass, "py-0", place.className)}
               >
                 <IconButton
                   data-drag-ignore

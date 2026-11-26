@@ -129,16 +129,23 @@ export function TerminalSection() {
           className="font-(family-name:--term-font-family) text-(length:--term-font-pixels) leading-(--term-row-height)"
         />
       </div>
-      <SettingsToolbar name="terminal settings" placeholder="Search keys, e.g. cursor" query={query} onQuery={setQuery}>
-        <ImportExport readOnly={storageError !== null} />
-        <Button
-          variant="ghost"
-          disabled={config.size === 0 || storageError !== null}
-          onClick={() => void terminalConfigStore.update(() => EMPTY_CONFIG)}
-        >
-          Reset all
-        </Button>
-      </SettingsToolbar>
+      <SettingsToolbar
+        name="terminal settings"
+        placeholder="Search keys, e.g. cursor"
+        query={query}
+        onQuery={setQuery}
+        actions={<ImportExport readOnly={storageError !== null} />}
+        reset={
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={config.size === 0 || storageError !== null}
+            onClick={() => void terminalConfigStore.update(() => EMPTY_CONFIG)}
+          >
+            Reset all
+          </Button>
+        }
+      />
       {GROUPS.map((group) => {
         const defs = shown.filter((def) => def.group === group);
         if (defs.length === 0) return null;

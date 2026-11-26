@@ -83,11 +83,12 @@ export function ImportExport({ readOnly }: { readonly readOnly: boolean }) {
     input.click();
   };
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button disabled={readOnly} onClick={pick}>
+    <div className="contents">
+      <Button size="sm" disabled={readOnly} onClick={pick}>
         Import Ghostty config…
       </Button>
       <Button
+        size="sm"
         onClick={() =>
           void terminalConfigStore.loaded.then(() =>
             download("ghostty-config", serializeGhosttyConfig(terminalConfigStore.config)),
