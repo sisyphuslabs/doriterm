@@ -1,6 +1,6 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { coreSize, gridSize } from "./core-size.ts";
-import { expect } from "./fixtures.ts";
+import { expect, opened } from "./fixtures.ts";
 
 const { defaultBrowserType: _browser, ...iphone } = devices["iPhone 14"];
 export const PHONE = { ...iphone, viewport: { width: 390, height: 844 } };
@@ -173,6 +173,8 @@ export async function tabSwitch(page: Page): Promise<Locator> {
   const header = page.getByRole("banner");
   if (!portrait(page)) return header.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
   await header.getByRole("button", { name: /^Session actions for / }).click();
+  // Measured at rest: a frame of the sheet's open transition reads a row a hair under 44 (#583).
+  await opened(page.getByRole("dialog"));
   return page.getByRole("dialog").getByRole("button", { name: /^Switch tab, / });
 }
 
