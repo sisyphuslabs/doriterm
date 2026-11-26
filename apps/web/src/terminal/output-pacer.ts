@@ -256,6 +256,11 @@ export class OutputPacer {
     }
   }
 
+  /** The person typed: a replay held is let go now, so what answers the keys is drawn as it arrives (#2794). */
+  typed(): void {
+    this.#endReplay();
+  }
+
   /** Forgets queued output (the stream it came from is gone); its credit is not returned. A replay held ends. */
   drop(): void {
     this.#cancel?.();

@@ -10,6 +10,7 @@ import { PasteDialog } from "./paste-dialog.tsx";
 import { type Point } from "./long-press.ts";
 import { KittyPngTranscoder } from "./kitty-png.ts";
 import { OutputPacer } from "./output-pacer.ts";
+import { useTypingEndsReplay } from "./typing-ends-replay.ts";
 import { readThemeColors } from "./theme-colors.ts";
 import { useDarkScheme } from "./use-dark-scheme.ts";
 import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
@@ -151,7 +152,8 @@ export function TerminalView(props: TerminalViewProps) {
     predict,
     inputStarts,
   });
-  const { pending, typedInto, typed, pasteFiles, linkReady } = input;
+  const { pending, typedInto, pasteFiles, linkReady } = input;
+  const typed = useTypingEndsReplay(wt, pacer, input.typed);
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;
@@ -210,7 +212,7 @@ export function TerminalView(props: TerminalViewProps) {
     };
   }, [wt]);
   const shown = usePaneVisibility(wt, pacer);
-  useTerminalActions(wt, input, focused, shown, openFind);
+  useTerminalActions(wt, { ...input, typed }, focused, shown, openFind);
   useFocusAfterSelect(wt, options.trimCopy);
   useLongPressSelect(wt, setSelectAt);
   useTouchWheel(wt);
