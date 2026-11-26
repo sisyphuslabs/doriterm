@@ -49,6 +49,7 @@ function LinkRow({
   return (
     <button
       type="button"
+      data-list-row
       onClick={onClick}
       className={cn(
         listRowClass,
@@ -56,7 +57,9 @@ function LinkRow({
       )}
     >
       <span className="flex-1 text-base text-foreground">{title}</span>
-      <span className={rowValueClass}>{value}</span>
+      <span data-row-value className={rowValueClass}>
+        {value}
+      </span>
       <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
     </button>
   );

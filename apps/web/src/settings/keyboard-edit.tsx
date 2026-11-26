@@ -79,6 +79,7 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
                 key={entry.id}
                 data-drag-id={entry.id}
                 data-edit-key={entry.id}
+                data-list-row
                 style={place.offset === 0 ? undefined : { translate: `0 ${place.offset}px` }}
                 onPointerDown={(event) => onPointerDown(event, entry.id, index)}
                 onClickCapture={onClickCapture}
@@ -125,7 +126,7 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
       <Subgroup label="More keys" title="More keys">
         <ul className="flex flex-col">
           {removed.map((entry) => (
-            <li key={entry.id} data-restore-key={entry.id} className={listRowClass}>
+            <li key={entry.id} data-restore-key={entry.id} data-list-row className={listRowClass}>
               <IconButton
                 label={`Add ${entry.name}`}
                 icon={<Plus />}

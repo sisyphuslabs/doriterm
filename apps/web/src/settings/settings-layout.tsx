@@ -69,9 +69,9 @@ export function Subgroup({
 }
 
 /**
- * A section's search with its actions, every control the compact `--control-sm` height. Wide, it is one line: search,
- * actions, reset. Narrow, reset ends the search line and the actions take the next, so nothing is left alone on a line
- * of its own, down to 320 px. The label sits beside the field, so the row keeps the field's height.
+ * A section's search with its actions, every control the compact `--control-sm` height, drawn in the order focus
+ * moves through them: search, reset, then the actions. Wide, that is one line. Narrow, reset ends the search line and
+ * the actions take the next, so nothing is left alone on a line of its own, down to 320 px.
  */
 export function SettingsToolbar({
   name,
@@ -92,7 +92,7 @@ export function SettingsToolbar({
   const id = useId();
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap">
-      <div className="order-1 flex min-w-0 items-center gap-2 sm:min-w-48 sm:flex-1">
+      <div className="flex min-w-0 items-center gap-2 sm:min-w-48 sm:flex-1">
         <label htmlFor={id} className={cn("shrink-0", fieldLabelClass)}>
           Search<span className="sr-only"> {name}</span>
         </label>
@@ -105,8 +105,8 @@ export function SettingsToolbar({
           onValueChange={onQuery}
         />
       </div>
-      <div className="order-3 col-span-2 flex flex-wrap items-center gap-2 sm:order-2">{actions}</div>
-      <div className="order-2 sm:order-3">{reset}</div>
+      <div>{reset}</div>
+      <div className="col-span-2 flex flex-wrap items-center gap-2">{actions}</div>
     </div>
   );
 }

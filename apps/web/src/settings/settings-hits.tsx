@@ -35,13 +35,18 @@ export function SettingHits(props: {
               variant="ghost"
               onClick={() => props.onOpen(hit)}
               onKeyDown={(event) => stepHits(event, props.onLeave)}
+              data-list-row
               className="h-auto min-h-12 w-full flex-col items-start justify-center gap-0.5 px-2 py-2.5 text-left"
             >
               <span className="flex w-full items-baseline justify-between gap-3">
                 <span className="text-base text-foreground">{hit.title}</span>
-                <span className={cn("shrink-0", rowValueClass)}>{sectionLabel(hit)}</span>
+                <span data-row-value className={cn("shrink-0", rowValueClass)}>
+                  {sectionLabel(hit)}
+                </span>
               </span>
-              <span className={cn("line-clamp-1 font-normal", rowValueClass)}>{hit.detail}</span>
+              <span data-row-value className={cn("line-clamp-1 font-normal", rowValueClass)}>
+                {hit.detail}
+              </span>
             </Button>
           </li>
         ))}

@@ -27,16 +27,18 @@ export function PacksSheet({ open, onOpenChange, settings, readOnly }: PacksShee
           const on = settings.packs.includes(row.id);
           const count = row.id === FAVORITES_PACK_ID ? settings.favorites.length : packEntries(settings, row.id).length;
           return (
-            <li key={row.id} data-pack-row={row.id} className={listRowClass}>
+            <li key={row.id} data-pack-row={row.id} data-list-row className={listRowClass}>
               <div className="min-w-0 flex-1">
                 <p className="flex items-baseline gap-2 text-base text-foreground">
                   <span className="min-w-0 truncate">{row.name}</span>
                   {/* The count sits on the title line so the description can ellipsize without eating it. */}
-                  <span className={cn("ml-auto shrink-0", rowValueClass)}>
+                  <span data-row-value className={cn("ml-auto shrink-0", rowValueClass)}>
                     {count} {count === 1 ? "key" : "keys"}
                   </span>
                 </p>
-                <p className={cn("truncate", rowValueClass)}>{row.description}</p>
+                <p data-row-value className={cn("truncate", rowValueClass)}>
+                  {row.description}
+                </p>
               </div>
               <Switch
                 aria-label={`${on ? "Remove" : "Add"} ${row.name} pack`}

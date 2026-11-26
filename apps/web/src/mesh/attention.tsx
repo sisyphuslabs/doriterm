@@ -1,6 +1,7 @@
 import type { MeshPendingJoin, MeshRemovedStatus, MeshStatus, MeshStuckReason } from "@doriface/protocol";
-import { Button, Fingerprint, Notice, SettingRow } from "@doriface/ui";
+import { Button, Fingerprint, Notice, SettingRow, cn } from "@doriface/ui";
 import { useState } from "react";
+import { rowValueClass } from "../settings/settings-layout.tsx";
 import { formatAge } from "../workspace/model.ts";
 import { type Disagreement, approvalConsequence, pendingAnswer } from "./groups.ts";
 import { Command, type NameOf } from "./mesh-rows.tsx";
@@ -22,7 +23,7 @@ export function ExpiredJoinRow({ join, self, now }: ExpiredJoinRowProps) {
       title={`${join.name} asked to join`}
       description={`through ${self}; its offer ended ${formatAge(Date.parse(join.expiresAt), now)} ago`}
       control={
-        <span className="text-sm text-muted-foreground" data-mesh-answer="expired">
+        <span data-row-value className={rowValueClass} data-mesh-answer="expired">
           Expired
         </span>
       }
@@ -110,7 +111,8 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
         ) : (
           // As tall as the buttons it replaces, so the rows below stay where they were.
           <span
-            className="inline-flex min-h-(--control-sm) items-center text-sm text-muted-foreground"
+            data-row-value
+            className={cn("inline-flex min-h-(--control) items-center", rowValueClass)}
             data-mesh-answer={state}
           >
             {state === "approve"
