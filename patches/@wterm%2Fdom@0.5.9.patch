@@ -23,10 +23,10 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ff..6fa7805 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a512035000 100644
 --- a/dist/input.js
 +++ b/dist/input.js
-@@ -67,9 +67,48 @@ const FIXED_KEYS = {
+@@ -67,9 +67,54 @@ const FIXED_KEYS = {
      F12: "\x1b[24~",
  };
  const COMPOSITION_INPUT_DEDUP_MS = 250;
@@ -34,6 +34,10 @@ index 78a86ff..6fa7805 100644
 +// edit: with that key (or a further edit) it is the first jamo of a syllable being typed, without one it is committed
 +// text and goes to the program (#1244).
 +const UNKEYED_LETTER_MS = 100;
++// How long a Korean key's edits may follow its keyup: an iPhone keyboard can send the keyup before the edits it makes
++// (WebKit dispatches the key's events and the input method's edits separately), and an edit read as committed text
++// there empties the field under a syllable the keyboard is still composing, so its next jamo erases what was sent.
++const KEY_EDIT_LAG_MS = 100;
  const SCROLLBACK_BOTTOM_TOLERANCE = 5;
  // iOS needs a deletable value to keep emitting input events for held Backspace.
  const TOUCH_INPUT_PLACEHOLDER = "\u200b";
@@ -69,13 +73,15 @@ index 78a86ff..6fa7805 100644
 +const HANGUL = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7a3\ud7b0-\ud7ff]$/u;
 +// A Hangul letter alone: the first jamo of a syllable such a keyboard starts in the field.
 +const HANGUL_LETTER = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]$/u;
++// The vowel strokes a 천지인 (Cheonjiin) keyboard shows on their own until they join a vowel: ㆍ, and ㆍㆍ as ᆢ.
++const VOWEL_STROKE = /^[\u318d\u11a2]$/u;
 +function isHangulKey(e) {
 +    return !e.ctrlKey && !e.metaKey && !e.altKey && Array.from(e.key).length === 1 && HANGUL.test(e.key);
 +}
  function isAltGraphTextInput(event, pressedModifiers) {
      if (event.metaKey ||
          !(event.getModifierState("AltGraph") ||
-@@ -86,6 +125,18 @@ export class InputHandler {
+@@ -86,6 +131,20 @@ export class InputHandler {
          this.composing = false;
          this.compositionWidth = 0;
          this.recentCompositionCommit = null;
@@ -89,12 +95,14 @@ index 78a86ff..6fa7805 100644
 +        // inside a syllable): only then may a finished syllable go on being typed. A syllable an input method commits
 +        // with no composition and no such key is committed text, and is sent as it arrives (#1104).
 +        this.koreanKeyEdit = false;
++        // Pending from a Korean key's keyup until its edits can no longer arrive (KEY_EDIT_LAG_MS).
++        this.koreanKeyEditTimer = 0;
 +        // Pending while a lone jamo inserted with no key waits for the key that would make it a syllable's first (#1244).
 +        this.unkeyedLetterTimer = 0;
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -153,10 +204,13 @@ export class InputHandler {
+@@ -153,10 +212,13 @@ export class InputHandler {
              this.positionTextarea();
              this.element.classList.add("focused");
              if (this.getBridge()?.focusEvents?.())
@@ -105,11 +113,11 @@ index 78a86ff..6fa7805 100644
              this.tabExitArmed = false;
 +            this.commitLocalPreedit();
 +            // A Korean key whose keyup the blur took must not hold the next committed syllable (#1246).
-+            this.koreanKeyEdit = false;
++            this.endKoreanKeyEdit();
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
-@@ -169,7 +223,7 @@ export class InputHandler {
+@@ -169,7 +231,7 @@ export class InputHandler {
              this.pressedModifiers.clear();
              this.deliveredKeys.clear();
              if (this.getBridge()?.focusEvents?.())
@@ -118,7 +126,7 @@ index 78a86ff..6fa7805 100644
          };
          this._onMouseDown = (event) => {
              this.tabExitArmed = false;
-@@ -224,10 +278,12 @@ export class InputHandler {
+@@ -224,10 +286,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
      syncInputPosition() {
@@ -132,7 +140,7 @@ index 78a86ff..6fa7805 100644
          this.accessibility.destroy();
          this.textarea.removeEventListener("keydown", this._onKeyDown);
          this.textarea.removeEventListener("keyup", this._onKeyUp);
-@@ -253,13 +309,44 @@ export class InputHandler {
+@@ -253,13 +317,46 @@ export class InputHandler {
          if (physicalModifier) {
              this.pressedModifiers.add(e.code);
          }
@@ -161,6 +169,8 @@ index 78a86ff..6fa7805 100644
 +        // A space ends the syllable in the keyboard as much as in the field: a keyboard whose space never reached the field
 +        // still holds the syllable, and joins its next jamo to it (가, space, ㄱ becomes 각 in place of 가 and the space, #1508).
 +        // So the space is the field's edit too, and the run it ends is sent whole from the field.
++        clearTimeout(this.koreanKeyEditTimer);
++        this.koreanKeyEditTimer = 0;
 +        this.koreanKeyEdit =
 +            isHangulKey(e) ||
 +                (this.localPreedit !== "" &&
@@ -179,7 +189,7 @@ index 78a86ff..6fa7805 100644
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
          const kittyOwnsModifier = physicalModifier && Boolean(kittyFlags & KITTY_REPORT_ALL);
-@@ -320,8 +407,12 @@ export class InputHandler {
+@@ -320,8 +417,12 @@ export class InputHandler {
              this.selectionActions.clearSelection();
              return;
          }
@@ -193,7 +203,7 @@ index 78a86ff..6fa7805 100644
              !e.altKey &&
              e.key.toLowerCase() === "c") {
              const sel = window.getSelection();
-@@ -345,6 +436,9 @@ export class InputHandler {
+@@ -345,6 +446,9 @@ export class InputHandler {
              this.suppressedKeyUps.add(keyId);
              if (e.key === "Backspace") {
                  e.preventDefault();
@@ -203,7 +213,7 @@ index 78a86ff..6fa7805 100644
                  this.selectionActions?.clearSelection();
                  this.onData("\x15");
              }
-@@ -371,6 +465,8 @@ export class InputHandler {
+@@ -371,6 +475,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -212,7 +222,7 @@ index 78a86ff..6fa7805 100644
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +481,7 @@ export class InputHandler {
+@@ -385,6 +491,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -220,15 +230,17 @@ index 78a86ff..6fa7805 100644
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -395,6 +492,7 @@ export class InputHandler {
+@@ -395,6 +502,9 @@ export class InputHandler {
          }
      }
      handleKeyUp(e) {
-+        this.koreanKeyEdit = false;
++        // The key's edits may still be on their way: the key stays the field's until they can no longer come.
++        if (this.koreanKeyEdit && this.koreanKeyEditTimer === 0)
++            this.koreanKeyEditTimer = setTimeout(() => this.endKoreanKeyEdit(), KEY_EDIT_LAG_MS);
          const keyId = e.code || e.key;
          this.pressedModifiers.delete(e.code);
          const delivered = this.deliveredKeys.delete(keyId);
-@@ -421,6 +519,9 @@ export class InputHandler {
+@@ -421,6 +531,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -238,7 +250,7 @@ index 78a86ff..6fa7805 100644
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +563,8 @@ export class InputHandler {
+@@ -462,6 +575,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -247,7 +259,7 @@ index 78a86ff..6fa7805 100644
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +575,22 @@ export class InputHandler {
+@@ -472,11 +587,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -273,7 +285,7 @@ index 78a86ff..6fa7805 100644
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +599,44 @@ export class InputHandler {
+@@ -485,6 +611,44 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -318,7 +330,7 @@ index 78a86ff..6fa7805 100644
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +654,7 @@ export class InputHandler {
+@@ -502,7 +666,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -327,7 +339,7 @@ index 78a86ff..6fa7805 100644
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +671,7 @@ export class InputHandler {
+@@ -519,7 +683,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -336,7 +348,7 @@ index 78a86ff..6fa7805 100644
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -528,14 +680,86 @@ export class InputHandler {
+@@ -528,13 +692,93 @@ export class InputHandler {
          const charWidth = this.getCellSize()?.charWidth;
          if (!charWidth || charWidth <= 0)
              return;
@@ -347,13 +359,18 @@ index 78a86ff..6fa7805 100644
 -            ? Math.max(charWidth, this.textarea.scrollWidth + charWidth)
 -            : charWidth;
 +        this.compositionWidth = this.compositionCells(charWidth);
-         this.positionTextarea();
-     }
++        this.positionTextarea();
++    }
 +    compositionCells(charWidth) {
 +        const value = this.textarea.value;
 +        if (!value)
 +            return charWidth;
 +        return Math.max(charWidth, textCells(value) * charWidth);
++    }
++    endKoreanKeyEdit() {
++        clearTimeout(this.koreanKeyEditTimer);
++        this.koreanKeyEditTimer = 0;
++        this.koreanKeyEdit = false;
 +    }
 +    clearUnkeyedLetter() {
 +        clearTimeout(this.unkeyedLetterTimer);
@@ -403,8 +420,11 @@ index 78a86ff..6fa7805 100644
 +            this.sendTouchDelete();
 +        const rest = now.slice(kept);
 +        const last = rest.at(-1);
-+        const pending = last !== undefined && HANGUL.test(last) ? last : "";
-+        const commit = (pending === "" ? rest : rest.slice(0, -1)).join("");
++        // 천지인 shows a vowel stroke (ㆍ, ᆢ) that joins nothing yet after the letter it will join (ㄹㆍ, then 려): the
++        // letter is still being typed with it, so both wait, or the letter is sent and erased again.
++        const held = last !== undefined && VOWEL_STROKE.test(last) && rest.length > 1 && HANGUL.test(rest.at(-2) ?? "") ? 2 : 1;
++        const pending = last !== undefined && HANGUL.test(last) ? rest.slice(-held).join("") : "";
++        const commit = (pending === "" ? rest : rest.slice(0, -held)).join("");
 +        if (commit !== "") {
 +            this.selectionActions?.clearSelection();
 +            this.onData(commit);
@@ -422,13 +442,12 @@ index 78a86ff..6fa7805 100644
 +        s.caretColor = "var(--term-preedit-fg, var(--term-fg, currentColor))";
 +        // A syllable takes two cells; one more is left for the caret. Only the end of the field shows.
 +        this.compositionWidth = 3 * (this.getCellSize()?.charWidth ?? 0);
-+        this.positionTextarea();
+         this.positionTextarea();
 +        this.textarea.scrollLeft = this.textarea.scrollWidth;
-+    }
+     }
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
-         if (this.touchPrimary)
-@@ -556,6 +780,18 @@ export class InputHandler {
+@@ -556,6 +800,18 @@ export class InputHandler {
      }
      handleInput(event) {
          this.tabExitArmed = false;
@@ -447,7 +466,7 @@ index 78a86ff..6fa7805 100644
          if (this.composing) {
              this.sizeComposition();
              return;
-@@ -565,6 +801,36 @@ export class InputHandler {
+@@ -565,6 +821,36 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -484,7 +503,7 @@ index 78a86ff..6fa7805 100644
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1087,7 @@ export class InputHandler {
+@@ -821,7 +1107,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -493,7 +512,7 @@ index 78a86ff..6fa7805 100644
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1121,24 @@ export class InputHandler {
+@@ -855,6 +1141,24 @@ export class InputHandler {
          return null;
      }
  }
