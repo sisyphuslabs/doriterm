@@ -7,6 +7,8 @@ import { useTabActions } from "./tab-actions.ts";
 import { useTabDrag } from "./tab-drag.ts";
 import { DropCaret, DropIndicator, placement } from "./tab-drop.tsx";
 import { TabItem, type WorkspaceTab } from "./tab-item.tsx";
+import { TabOverflowMenu } from "./tab-overflow-menu.tsx";
+import { useTabOverflow } from "./tab-overflow.ts";
 
 export type { WorkspaceTab } from "./tab-item.tsx";
 
@@ -43,6 +45,8 @@ export interface TabBarProps {
   /** Before the tabs, e.g. the button that brings a hidden sidebar back where the sidebar was. */
   readonly leading?: ReactNode;
   readonly trailing?: ReactNode;
+  /** Shows edge fades and an "All tabs" menu when the tab scroller overflows horizontally. Defaults to true. */
+  readonly overflow?: boolean;
   readonly className?: string;
 }
 
@@ -68,6 +72,7 @@ export function TabBar({
   moved,
   leading,
   trailing,
+  overflow = true,
   className,
 }: TabBarProps) {
   const list = useRef<HTMLDivElement>(null);
@@ -114,6 +119,10 @@ export function TabBar({
     // The whole tab, with its close button, not only its label button.
     buttons.current.get(activeId)?.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeId, key, activeTitle]);
+
+  const overflowKey = `${key}\0${activeId}\0${tabs.map((tab) => tab.title).join("\n")}`;
+  const edges = useTabOverflow(scroller, overflow, overflowKey);
+  const overflowing = edges.start || edges.end;
 
   // Said once per move, as the strip stood then: a later title change or a tab opening or closing does not say it again.
   // The count's parity changes the text each time, so a second move to the same place is still read out.
@@ -193,14 +202,14 @@ export function TabBar({
           const next = tabs[(at + (event.deltaY > 0 ? 1 : -1) + tabs.length) % tabs.length];
           if (next !== undefined && next.id !== activeId) onSelect?.(next.id);
         }}
-        className="flex min-w-0 flex-1 items-center gap-[3px]"
+        className="flex min-w-0 flex-initial items-center gap-[3px]"
       >
         {pins === 0 ? null : (
           <div
             ref={pinnedList}
             data-tab-pins
             onClickCapture={pinnedDrag.onClickCapture}
-            className="relative flex shrink-0 items-center gap-[3px] py-1"
+            className="relative flex shrink-0 items-center gap-[3px] px-1 py-1"
           >
             {pinnedDrag.drag === null ? null : <DropIndicator drag={pinnedDrag.drag} />}
             {pinnedDrag.drag === null ? null : <DropCaret drag={pinnedDrag.drag} />}
@@ -208,13 +217,20 @@ export function TabBar({
           </div>
         )}
         {/* herdr-app's #tab-scroll: tabs alone scroll, with a scrollbar once they overflow, and gap(3) between them.
-            py-1 holds the buttons' 4 px hit area (after:-inset-1) inside the strip: past its edge it was scrollable
-            overflow, and classic scrollbars drew a vertical bar for it (#343). The strip scrolls only sideways. */}
+            px-1 py-1 holds the buttons' 4 px hit area (after:-inset-1) inside the strip on all sides: past its edge it
+            was scrollable overflow (vertical bars #343, and false horizontal overflow when non-growing). */}
         <div
           ref={scroller}
           data-tab-scroll
+          {...(edges.start ? { "data-overflow-start": "" } : {})}
+          {...(edges.end ? { "data-overflow-end": "" } : {})}
           onClickCapture={restDrag.onClickCapture}
-          className="relative flex min-w-0 flex-1 items-center gap-[3px] overflow-x-auto overflow-y-hidden py-1"
+          className={cn(
+            "relative flex min-w-0 flex-initial items-center gap-[3px] overflow-x-auto overflow-y-hidden px-1 py-1",
+            "data-overflow-start:[mask-image:linear-gradient(to_right,transparent,black_16px)]",
+            "data-overflow-end:[mask-image:linear-gradient(to_right,black_calc(100%-16px),transparent)]",
+            "data-overflow-start:data-overflow-end:[mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-16px),transparent)]",
+          )}
         >
           {restDrag.drag === null ? null : <DropIndicator drag={restDrag.drag} />}
           {restDrag.drag === null ? null : <DropCaret drag={restDrag.drag} />}
@@ -279,6 +295,8 @@ export function TabBar({
           </div>
         </Menu>
       )}
+      {overflowing ? <TabOverflowMenu tabs={tabs} activeId={activeId} onSelect={onSelect} /> : null}
+      <div aria-hidden className="flex-1 self-stretch" />
       <span role="status" aria-live="polite" className="sr-only">
         {said.text}
       </span>
