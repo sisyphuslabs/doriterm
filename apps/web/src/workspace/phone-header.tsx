@@ -52,6 +52,7 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
   return (
     <header
       data-titlebar
+      data-phone-top
       className="flex min-h-12 shrink-0 items-center gap-1 border-b border-border bg-chrome pt-[env(safe-area-inset-top)] pr-1.5 pl-[var(--titlebar-inset-start,0.375rem)]"
     >
       <Button

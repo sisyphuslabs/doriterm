@@ -25,6 +25,7 @@ import { bootConnection, startFailure } from "./desktop/local-host.ts";
 import { captureInstallPrompt } from "./device/install.ts";
 import { TerminalStyle } from "./ghostty/terminal-style.tsx";
 import { PAIR_PATH, pairingLink } from "./pair/link-capture.ts";
+import { startEdgeProbe } from "./pwa/edge-probe.ts";
 import { removeServiceWorkers } from "./pwa/remove-service-workers.ts";
 import { isNativeShell, paintAppBars } from "./native/shell.ts";
 import { captureNotice, listenForAppNotices, listenForDesktopNotices, listenForNotices } from "./push/notice-open.ts";
@@ -44,6 +45,7 @@ import { followRoster } from "./mesh/roster-refresh.ts";
 checkBaseline();
 startAppearance();
 captureInstallPrompt();
+startEdgeProbe(location.search);
 // The desktop shell serves the app from its own app: scheme; an offline cache there only reloads the window,
 // so earlier desktop builds' workers and caches are removed instead. The iOS and Android apps carry the build
 // themselves and push through APNs and FCM (#705), so they run no worker either.
