@@ -34,6 +34,7 @@ function inserted(page: Page, selector: string): Promise<Seen> {
                   ? motion.transitionProperty
                   : Object.keys((motion.effect as KeyframeEffect).getKeyframes()[0] ?? {})
                       .filter((key) => !["offset", "easing", "composite", "computedOffset"].includes(key))
+                      .toSorted()
                       .join(","),
               duration: Number(motion.effect?.getComputedTiming().duration ?? 0),
             }));
@@ -50,7 +51,7 @@ const ready = async (page: Page): Promise<void> => {
   await expect(page.locator(":root[data-ready]")).toHaveCount(1, { timeout: 20_000 });
 };
 
-/** The motion the keys panel plays when the keyboard next comes up, as the panel moves to ride on it. */
+/** The motion the keys panel plays as it next moves (docking or riding), seen as the move's attribute change lands. */
 const rideMotion = (page: Page) =>
   page.evaluate(
     () =>
@@ -68,7 +69,6 @@ const rideMotion = (page: Page) =>
             })),
           );
         }).observe(panel, { attributes: true });
-        (Reflect.get(window, "softKeyboard") as (px: number) => void)(336);
       }),
   );
 
@@ -162,7 +162,9 @@ test.describe("a touch phone", () => {
     await openPhoneTerminal(page);
     await showKeyboard(page, 0);
     await expect(page.getByRole("button", { name: "Show keyboard" })).toBeVisible();
-    expect(await rideMotion(page)).toEqual([{ what: "transform", duration: 240 }]);
+    const ride = rideMotion(page);
+    await page.getByRole("button", { name: "Show keyboard" }).click();
+    expect(await ride).toEqual([{ what: "transform", duration: 240 }]);
   });
 
   test("under reduced motion the keys panel takes its place at once", async ({ page }) => {
@@ -170,6 +172,8 @@ test.describe("a touch phone", () => {
     await openPhoneTerminal(page);
     await showKeyboard(page, 0);
     await expect(page.getByRole("button", { name: "Show keyboard" })).toBeVisible();
-    expect(await rideMotion(page)).toEqual([]);
+    const ride = rideMotion(page);
+    await page.getByRole("button", { name: "Show keyboard" }).click();
+    expect(await ride).toEqual([]);
   });
 });

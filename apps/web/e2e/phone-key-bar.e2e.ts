@@ -143,8 +143,13 @@ test("a browser that shrinks the layout viewport for the keyboard shows the bar 
   await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: 390, height: 844 - 336 });
   await expect(key(page, "Hide keyboard")).toBeVisible();
-  const box = await bar.boundingBox();
-  expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBe(844 - 336);
+  // The bar rides up to its place over the keyboard (#2875): its drawn bottom arrives there.
+  await expect
+    .poll(async () => {
+      const box = await bar.boundingBox();
+      return Math.round((box?.y ?? 0) + (box?.height ?? 0));
+    })
+    .toBe(844 - 336);
 
   // It closes by its own key: the page grows back and the bar stays, under the terminal (#2499).
   await page.setViewportSize({ width: 390, height: 844 });
