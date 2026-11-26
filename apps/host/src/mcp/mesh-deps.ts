@@ -10,12 +10,14 @@ export interface MeshToolParts {
   /** The mesh status the control socket answers `mesh status` with. */
   readonly status: () => Promise<MeshStatus | undefined>;
   readonly relayUrl: string;
+  readonly version: string;
 }
 
 /** The mesh tools' reach into the running host: each entry is the call the control socket makes for the same act. */
-export function meshToolDeps({ e2ee, devices, status, relayUrl }: MeshToolParts): MeshToolDeps {
+export function meshToolDeps({ e2ee, devices, status, relayUrl, version }: MeshToolParts): MeshToolDeps {
   const { hostMesh, meshCommands, identity } = e2ee;
   return {
+    host: { version, hostId: identity.hostId, relay: relayUrl },
     status,
     pending: () => hostMesh.pending.list(),
     devices: () => devices.list(),

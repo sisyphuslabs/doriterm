@@ -1,6 +1,7 @@
 import { CloseCode } from "@doriface/crypto";
 import { type EventsSubscribeParams, HcRpcError, type HcMethod } from "@doriface/protocol";
 import type { PushLink } from "../push/push-stream.ts";
+import { FileToolRefused } from "./file-tools.ts";
 import type { MeshToolDeps } from "./mesh-tools.ts";
 import { ended, type HcFeed, realEvery, serveListen, serveStream, terminalUri, type Every } from "./subscriptions.ts";
 import { type Id, MAX_MCP_LINE, type McpLine, readMcpLine, toolResult, type ToolsShown, rpcError } from "./lines.ts";
@@ -75,19 +76,25 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
     );
     return hc;
   };
-  const run = async (line: Extract<McpLine, { kind: "call" }>): Promise<void> => {
+  const run = async (line: Extract<McpLine, { kind: "call" | "file" }>): Promise<void> => {
     const abort = new AbortController();
     calls.set(line.id, abort);
     try {
       const connection = await openHc();
-      const value = await connection.callByName(line.tool.method, line.args, { signal: abort.signal });
+      const signal = abort.signal;
+      const value =
+        line.kind === "file"
+          ? await line.tool.run(line.args, (params) => connection.callByName("machine.exec", params, { signal }))
+          : await connection.callByName(line.tool.method, line.args, { signal });
       send({ jsonrpc: "2.0", id: line.id, result: toolResult(value, false) });
     } catch (error) {
       if (abort.signal.aborted) return;
       const failure =
         error instanceof HcRpcError
           ? { kind: error.kind, message: error.message }
-          : { kind: "unavailable", message: error instanceof Error ? error.message : String(error) };
+          : error instanceof FileToolRefused
+            ? { kind: "refused", message: error.message }
+            : { kind: "unavailable", message: error instanceof Error ? error.message : String(error) };
       send({ jsonrpc: "2.0", id: line.id, result: toolResult(failure, true) });
     } finally {
       calls.delete(line.id);
@@ -211,7 +218,7 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
       else if (line.kind === "cancel") {
         const key = line.requestId;
         if (typeof key === "string" || typeof key === "number") calls.get(key)?.abort();
-      } else if (line.kind === "call") void run(line);
+      } else if (line.kind === "call" || line.kind === "file") void run(line);
       else if (line.kind === "mesh") void runMesh(line);
       else if (line.kind === "resources" || line.kind === "read") void readResource(line);
       else if (line.kind === "listen" || line.kind === "stream") void subscribe(line);

@@ -1,10 +1,11 @@
 import { HcRpcError, MCP_EXCLUDED_METHODS, MCP_TOOLS } from "@doriface/protocol";
 import { expect, test } from "bun:test";
 import type { PushLink } from "../push/push-stream.ts";
-import { MESH_TOOLS } from "./mesh-tools.ts";
+import { FILE_TOOLS } from "./file-tools.ts";
+import { HOST_TOOLS, MESH_TOOLS } from "./mesh-tools.ts";
 import { type HcCaller, serveMcpLines } from "./serve.ts";
 
-const CATALOG_NAMES = [...MCP_TOOLS, ...MESH_TOOLS].map((tool) => tool.name);
+const CATALOG_NAMES = [...MCP_TOOLS, ...FILE_TOOLS, ...HOST_TOOLS, ...MESH_TOOLS].map((tool) => tool.name);
 
 const META = { "io.modelcontextprotocol/protocolVersion": "2026-07-28" };
 const enc = new TextEncoder();
@@ -182,7 +183,7 @@ test("doriterm_call runs the named tool as a direct call would, and refuses what
   expect(r.calls).toHaveLength(1);
 });
 
-test("the full list is the generated table, 25 of herdr-core's methods and none of the seven left out, then the mesh tools", () => {
+test("the full list is the generated table, 25 of herdr-core's methods and none of the seven left out, then the file tools, host_status and the mesh tools", () => {
   const r = rig();
   r.send({ jsonrpc: "2.0", method: SHOW, params: { tools: "all" } });
   r.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: META } });

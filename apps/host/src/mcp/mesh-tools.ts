@@ -10,6 +10,8 @@ import type { PairingOfferView } from "../pair-offer.ts";
  * `mesh pair`, `mesh revoke`, `mesh rename`, `mesh leave` and `devices revoke` with, and a paired phone's surfaces use.
  */
 export interface MeshToolDeps {
+  /** Who this host is: what host_status answers before its devices. */
+  readonly host: { readonly version: string; readonly hostId: string; readonly relay: string };
   readonly status: () => Promise<MeshStatus | undefined>;
   readonly pending: () => readonly PendingJoin[];
   readonly devices: () => readonly DeviceView[];
@@ -71,6 +73,18 @@ const EXPECT = {
   items: { type: "string" },
   description: "With yes: the hostIds of the preview's subjects (for leave, its clients), in its order.",
 };
+
+/** The host's own status, under the host group; it runs on the same deps as the mesh tools. */
+export const HOST_TOOLS: readonly MeshTool[] = [
+  {
+    name: "host_status",
+    description:
+      "This machine's host: its version, host id and relay, that MCP is on, and the phones, browsers and " +
+      "assistants paired with it.",
+    inputSchema: object({}),
+    run: async (_args, deps) => ({ ...deps.host, mcp: "on", devices: deps.devices() }),
+  },
+];
 
 /** The mesh tools, in the order a person meets them: look, invite, answer a join, then remove or rename. */
 export const MESH_TOOLS: readonly MeshTool[] = [
