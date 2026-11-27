@@ -1,4 +1,4 @@
-import { base64urlEncode, CloseCode, type SecureLink, SessionKind } from "@doriface/crypto";
+import { base64urlEncode, CloseCode, type SecureLink, type SecureSession, SessionKind } from "@doriface/crypto";
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { Link } from "../link.ts";
 import type { PushLink } from "../push/push-stream.ts";
@@ -14,6 +14,9 @@ export class LiveSessions {
   readonly #mesh: MeshStore | undefined;
   readonly #mcp: McpSwitch | undefined;
   readonly #byKey = new Map<string, Set<SecureLink>>();
+  /** When each resumable session last detached, in order, so the one that has waited longest is replaced first. */
+  readonly #detachedAt = new WeakMap<SecureLink, number>();
+  #detaches = 0;
   readonly #log: (line: string) => void;
   #mcpFailure: string | undefined;
 
@@ -81,7 +84,9 @@ export class LiveSessions {
   /** Ends `key`'s waiting sessions, oldest first, only until the plan has room for one more. */
   #makeRoom(key: string, policy: PlanPolicy): void {
     let open = this.count();
-    for (const waiting of [...(this.#byKey.get(key) ?? [])].filter(isWaiting)) {
+    const byWait = (a: SecureLink, b: SecureLink): number =>
+      (this.#detachedAt.get(a) ?? 0) - (this.#detachedAt.get(b) ?? 0);
+    for (const waiting of [...(this.#byKey.get(key) ?? [])].filter(isWaiting).toSorted(byWait)) {
       if (requireWithin(policy, "sessions", open).allowed) return;
       this.#log("plan: a session waiting for its client was replaced by a new session from the same device");
       waiting.close(CloseCode.IdleTimeout, "replaced by a new session from the same device");
@@ -102,6 +107,7 @@ export class LiveSessions {
       sessions.delete(session);
       if (sessions.size === 0 && this.#byKey.get(key) === sessions) this.#byKey.delete(key);
     });
+    if (isResumable(session)) session.onDetached(() => this.#detachedAt.set(session, (this.#detaches += 1)));
     return !this.#closeRevoked().has(session);
   }
 
@@ -228,6 +234,9 @@ export class LiveSessions {
     return closed;
   }
 }
+
+/** A session that can outlive its link (contract v1.11); the others never wait for a resume. */
+const isResumable = (session: SecureLink): session is SecureSession => "onDetached" in session;
 
 /** A session whose link dropped and that waits for its client's resume (contract v1.11). */
 const isWaiting = (session: SecureLink): boolean => "detached" in session && session.detached === true;
