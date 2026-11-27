@@ -47,7 +47,7 @@ const USAGE = `usage: doriface-host [options]
 
   --listen <host:port>  where to listen (default 127.0.0.1:7766, or any free port for a profile; loopback only)
   --hc <path>           the herdr-core binary (default hc)
-  --install-hc          install (or update) herdr-core into ~/.local/bin from its checksummed release, then exit
+  --install-hc          install (or update) herdr-core into ~/.local/bin from a release Doriterm signed (signature-verified), then exit
   --session <name>      the hc session to reach (hc connect --session; a profile's default is doriterm-<profile>)
   --token <token>       the client token (default $DORIFACE_HOST_TOKEN, else 32 random bytes)
   --print-token         print the token on stdout once listening
@@ -230,7 +230,7 @@ main(Bun.argv.slice(2)).catch((error: unknown) => {
   if (error instanceof StartupError) {
     const hint =
       error.code === "hc-binary-missing" || error.code === "hc-version-failed"
-        ? "doriface-host: `doriface-host --install-hc` installs herdr-core from its checksummed release\n"
+        ? "doriface-host: `doriface-host --install-hc` installs herdr-core from a signature-verified release\n"
         : "";
     process.stderr.write(`doriface-host: ${error.message}\n${hint}${startupErrorLine(error)}\n`);
     process.exit(STARTUP_EXIT_CODES[error.code]);
