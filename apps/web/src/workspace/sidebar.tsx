@@ -129,8 +129,8 @@ export function Sidebar({
         <SidebarFooterItem
           rail={rail}
           icon={<Plus aria-hidden />}
-          label="Add machine"
-          onClick={machines.openAddMachine}
+          label="Connect a device"
+          onClick={machines.openConnect}
         />
       </SidebarFooter>
       {drawer || railProp !== undefined ? null : (

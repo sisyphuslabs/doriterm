@@ -164,7 +164,7 @@ export async function serveJoin(lines: MeshLines, peerStatic: Uint8Array, deps: 
     }
     if (commit !== undefined && reply.sas === undefined) {
       throw new JoinRefused(
-        "this machine's doriface-host is too old to join on an invite that asks: update it, or use Add a machine's one-line command",
+        "this machine's doriface-host is too old to join on an invite that asks: update it, or use the one-line command on the Computer tab of Connect a device",
       );
     }
     const index =

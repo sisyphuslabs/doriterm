@@ -190,7 +190,7 @@ test("an installed app refuses an automatic machine invite without sending a cli
     await page.goto(offer.link);
     await page.getByRole("button", { name: "Join", exact: true }).click();
     await expect(page.getByText("Not joined", { exact: true })).toBeVisible();
-    await expect(page.getByText(/This machine needs an update, or this is an Add a machine invite/)).toBeVisible();
+    await expect(page.getByText(/This machine needs an update, or this invite is for a computer/)).toBeVisible();
     await expect(page.getByText(/needs an update/)).toBeVisible();
     expect(await savedMembership(page)).toBeNull();
     // A refused first join leaves the host in no mesh at all, not a mesh of itself (#1635, #1428).

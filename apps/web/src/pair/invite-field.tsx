@@ -13,7 +13,7 @@ import { offerFromScan } from "./scan.ts";
 import { SlotLookups } from "./slot-lookups.ts";
 
 /**
- * Shared invite entry used by both `/pair` and the Add a machine dialog (#2795). When `onOffer` is provided, a mesh
+ * Shared invite entry used by both `/pair` and the Connect a device sheet (#2795, #2939). When `onOffer` is provided, a mesh
  * offer hands off in place; otherwise it stores the fragment and navigates to `/pair` so the route renders the join
  * flow there.
  */

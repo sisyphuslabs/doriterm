@@ -175,7 +175,7 @@ export function RecomposedSidebar({ machines, rail = false, hover, update = fals
       </ScrollArea>
       <SidebarFooter rail={rail}>
         {rail ? <SidebarFooterItem rail icon={<PanelLeftOpen aria-hidden />} label="Expand sidebar" /> : null}
-        <SidebarFooterItem rail={rail} icon={<Plus aria-hidden />} label="Add machine" />
+        <SidebarFooterItem rail={rail} icon={<Plus aria-hidden />} label="Connect a device" />
         <SidebarFooterItem
           rail={rail}
           icon={<Settings aria-hidden />}
