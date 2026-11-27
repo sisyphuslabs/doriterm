@@ -1,7 +1,13 @@
 import type { Locator, Page } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { endAgent, startAgent } from "./agents.ts";
+import { E2E_HOST_ENV } from "./config.ts";
 import { expect, laidOutBox, test } from "./fixtures.ts";
+import { MACHINE_NAME } from "./machine.ts";
 import { hcOn } from "./machine-switch.ts";
+import { readSavedEnv } from "./saved-env.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 import { rows } from "./sidebar-measure.ts";
 
@@ -73,6 +79,53 @@ test("a sub-agent is listed under the agent that started it, which is placed by 
   // The agent that started them ends: its helpers stay listed, the first of them now a row of its own, in the order they started.
   endAgent("host", lead);
   await expect(drawn(page, "Needs you")).toHaveText([/tree-other/, /tree-worker/, /tree-probe/], { timeout: 20_000 });
+});
+
+test("a sub-agent an agent starts on the added machine is listed under it, and its urgency places it (#2779)", async ({
+  page,
+}) => {
+  // The agent itself runs `hc run --on`, as an agent does: hc records its parent from the terminal it runs in.
+  const { hc, env } = readSavedEnv(E2E_HOST_ENV);
+  const dir = mkdtempSync(join(process.env["TMPDIR"] ?? tmpdir(), "tree-cross-"));
+  try {
+    const child = join(dir, "child.sh");
+    const lead = join(dir, "lead.sh");
+    writeFileSync(child, "printf '\\033]7501;state=blocked\\033\\\\'; sleep 600; :\n");
+    const core = Object.entries(env).map(([key, value]) => `${key}='${value}'`);
+    const remote = ["run", "--on", MACHINE_NAME, "--bg", "--outlive-parent", "--name", "tree-cross-child"];
+    writeFileSync(
+      lead,
+      [
+        "printf '\\033]7501;state=working\\033\\\\'",
+        `env ${core.join(" ")} '${hc}' ${remote.join(" ")} --label space=${SPACE} -- sh '${child}' >/dev/null`,
+        "sleep 600; :",
+      ].join("\n"),
+    );
+    hcOn("host", ["run", "--bg", "--name", "tree-cross-lead", "--label", `space=${SPACE}`, "--", "sh", lead]);
+    await page.goto("/");
+
+    const needsYou = section(page, "Needs you");
+    await expect(drawn(page, "Needs you")).toHaveText([/tree-cross-lead/, /tree-cross-child/], { timeout: 20_000 });
+    await expect(drawn(page, "Working")).toHaveCount(0);
+    await expect(rowNamed(needsYou, "tree-cross-child").locator("[data-tree-guides]")).toHaveAttribute(
+      "data-depth",
+      "1",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a sub-agent its parent starts on the added machine's own core is listed under it (#2779)", async ({ page }) => {
+  // Both run on the added machine: its core records the parent bare, and this machine's feed names it as an address.
+  const lead = startAgent("machine", "tree-box-lead", "working", SPACE);
+  startAgent("machine", "tree-box-child", "blocked", SPACE, lead);
+  await page.goto("/");
+
+  const needsYou = section(page, "Needs you");
+  await expect(drawn(page, "Needs you")).toHaveText([/tree-box-lead/, /tree-box-child/], { timeout: 20_000 });
+  await expect(drawn(page, "Working")).toHaveCount(0);
+  await expect(rowNamed(needsYou, "tree-box-child").locator("[data-tree-guides]")).toHaveAttribute("data-depth", "1");
 });
 
 test("a child row is indented under its parent with depth-1 guides and a shifted status glyph", async ({ page }) => {

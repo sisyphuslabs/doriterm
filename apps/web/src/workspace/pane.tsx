@@ -135,7 +135,7 @@ export function Pane(props: PaneProps) {
       }}
       data-split={split}
       data-focused={focused}
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card [&_.wterm]:transition-opacity [&_.wterm]:duration-(--duration-micro)"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card [&_.wterm]:transition-opacity [&_.wterm]:duration-(--duration-color)"
     >
       {split ? (
         <ContextMenu
@@ -151,7 +151,7 @@ export function Pane(props: PaneProps) {
               onContextMenu={skipTouchMenu}
               data-pane-grab={onGrab === undefined ? undefined : ""}
               className={cn(
-                "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-0.5 pl-2.5 text-xs transition-colors duration-(--duration-micro)",
+                "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-0.5 pl-2.5 text-xs transition-colors duration-(--duration-color)",
                 focused ? "bg-raised text-foreground" : "text-muted-foreground",
                 onGrab !== undefined && "cursor-grab select-none",
               )}

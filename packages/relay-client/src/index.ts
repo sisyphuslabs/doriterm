@@ -1,5 +1,5 @@
 export { BACKOFF_MAX_MS, BACKOFF_MIN_MS, backoffDelay } from "./backoff.ts";
-export { connectRelayClient, type ClientConnectOptions } from "./connector.ts";
+export { clientSocketCount, connectRelayClient, type ClientConnectOptions } from "./connector.ts";
 export { MAX_ACTIVE_SESSIONS, MAX_PENDING_SESSIONS, MAX_SESSION_SEND_BYTES, RELAY_MESSAGE_CAP } from "./limits.ts";
 export {
   type ByteLink,

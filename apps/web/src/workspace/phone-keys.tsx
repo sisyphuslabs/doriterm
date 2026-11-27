@@ -9,6 +9,7 @@ import type { HostPlatform } from "../terminal/keys.ts";
 import type { TerminalPort } from "../terminal/terminal-port.ts";
 import { InputBox } from "./input-box.tsx";
 import { machineOf, type Session, terminalTitle } from "./model.ts";
+import { useRideMotion } from "./use-ride-motion.ts";
 import { useShown } from "./use-shown.ts";
 import type { StickyKeys } from "./use-sticky-keys.ts";
 
@@ -59,7 +60,7 @@ export interface PhoneKeysProps {
    * soft keyboard and the bar's key puts it down.
    */
   readonly onKeys?: (shown: boolean) => void;
-  /** The bar's height in px as it is drawn (taller while the field has a row of its own); 0 while it is closed. */
+  /** The panel's height in px as it is drawn, riding or docked (taller while the input card is open); 0 once it is gone. */
   readonly onBarHeight?: (px: number) => void;
   /** The terminal is browsed read-only (browse-mode.ts); the keys are closed and the browse button reads pressed. */
   readonly browsing?: boolean;
@@ -76,7 +77,9 @@ export interface PhoneKeysProps {
 }
 
 /** Reports an element's border-box height as it changes, and 0 once it is gone. */
-function useHeightReport(report: ((px: number) => void) | undefined): (element: HTMLDivElement | null) => void {
+function useHeightReport(
+  report: ((px: number) => void) | undefined,
+): (element: HTMLDivElement | null) => (() => void) | undefined {
   return useCallback(
     (element: HTMLDivElement | null) => {
       if (element === null || report === undefined) return undefined;
@@ -99,7 +102,8 @@ function hideKeyboard(): void {
 /**
  * The phone terminal's keys (after t3code's terminal screen): the active pack's keys, then the person's own from Settings
  * > Keyboard, then the controls that never move (the arrow pad, Switch session, Paste, and the fixed slots). With the soft
- * keyboard up the bar rides on it; with it down, only a round keyboard button stays, at the bottom right.
+ * keyboard up the panel rides on it; with it down on a touch phone the same panel docks under the terminal, on the home
+ * inset (on a mouse-only device a round Show keys button stands in for it).
  */
 export function PhoneKeys(props: PhoneKeysProps) {
   const {
@@ -125,7 +129,20 @@ export function PhoneKeys(props: PhoneKeysProps) {
     mic,
   } = props;
   const named = useShown(terminals);
-  const barRef = useHeightReport(onBarHeight);
+  const reportHeight = useHeightReport(onBarHeight);
+  const riding = useRef<HTMLDivElement | null>(null);
+  useRideMotion(riding, `${open}:${inset}:${docked}`);
+  const barRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      riding.current = element;
+      const stopReporting = reportHeight(element);
+      return () => {
+        riding.current = null;
+        stopReporting?.();
+      };
+    },
+    [reportHeight],
+  );
   // Set as the menu closes: the focus went somewhere on its own (the terminal took it, or a pick opens another session).
   const settled = useRef(false);
   // The same answer as a boolean prop: Base UI keeps a focus that moved elsewhere during the close only for a boolean
@@ -229,7 +246,7 @@ export function PhoneKeys(props: PhoneKeysProps) {
             <div
               role="group"
               aria-label="Input card"
-              className="mx-1.5 mb-1 rounded-[1.625rem] border border-border bg-chrome/95 p-1 shadow-lg backdrop-blur-md"
+              className="motion-arrive mx-1.5 mb-1 rounded-[1.625rem] border border-border bg-chrome/95 p-1 shadow-lg backdrop-blur-md [--arrive-duration:var(--duration-card)] [--arrive-ease:var(--ease-enter)] [--arrive-from:translateY(8px)]"
             >
               <InputBox
                 fieldRef={cardField}

@@ -2,7 +2,7 @@ import { agentRow, endAgent, startShell } from "./agents.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
-import { fakeSoftKeyboard, keysBar, PHONE } from "./phone-key-bar.ts";
+import { fakeSoftKeyboard, key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 // The keys under a touch phone's terminal with its keyboard down (#1546, #2499), as the review of #1546 asked (#1555).
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -61,4 +61,17 @@ test("in no tab, the jump button sits at the terminal's corner: nothing round fl
   } finally {
     endAgent("host", shell);
   }
+});
+
+test("the idle Type field fits its own line, so no scroll strip draws inside it (#2670)", async ({ page }) => {
+  const terminal = await openPhoneTerminal(page);
+  await key(page, "Type in a field").click();
+  const field = page.getByRole("group", { name: "Input card", exact: true }).getByLabel("Type into the terminal");
+  await expect(field).toBeFocused();
+  // Idle: the card stays open while the terminal takes the focus, and the field is back to its 44 pt pill.
+  await terminal.click();
+  await expect.poll(async () => (await field.boundingBox())?.height).toBe(44);
+  // A field that cannot scroll draws nothing inside itself: on Android's WebView a scrollable textarea renders a grey
+  // bar down its right edge, the unlabeled object this item is about.
+  expect(await field.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(0);
 });

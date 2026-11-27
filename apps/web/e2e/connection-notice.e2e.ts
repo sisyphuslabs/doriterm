@@ -109,8 +109,8 @@ test.describe("desktop", () => {
     await socket.drop(true);
     await expect(notice(page, RECONNECTING)).toBeVisible({ timeout: 2_000 });
     await expect(notice(page, OFFLINE)).toHaveCount(0);
-    // Four refused attempts leave the next one 10 s away; the notice keeps saying Reconnecting meanwhile.
-    await expect.poll(socket.refused, { timeout: 30_000 }).toBeGreaterThanOrEqual(4);
+    // Seven refused attempts leave the next one 10 s away; the notice keeps saying Reconnecting meanwhile.
+    await expect.poll(socket.refused, { timeout: 30_000 }).toBeGreaterThanOrEqual(7);
     await expect(notice(page, /Reconnecting in ([6-9]|10) s/)).toBeVisible({ timeout: 5_000 });
     await expect(notice(page, OFFLINE)).toHaveCount(0);
     socket.restore();
@@ -130,8 +130,9 @@ test.describe("desktop", () => {
     await openNewTerminal(page);
     const opened = socket.opened();
     await socket.drop(true);
-    // Four refused attempts (0.5 + 1 + 2 + 5 s) leave the next one 10 s away; only that wait counts down from above 5.
-    await expect.poll(socket.refused, { timeout: 30_000 }).toBeGreaterThanOrEqual(4);
+    // Seven refused attempts (0.25 x 3 + 0.5 + 1 + 2 + 5 s) leave the next one 10 s away; only that wait counts down from
+    // above 5.
+    await expect.poll(socket.refused, { timeout: 30_000 }).toBeGreaterThanOrEqual(7);
     await expect(notice(page, /Reconnecting in ([6-9]|10) s/)).toBeVisible({ timeout: 5_000 });
     socket.restore();
     await context.setOffline(true);
@@ -212,7 +213,7 @@ test.describe("phone", () => {
     });
 
     for (const width of [390, 320]) {
-      test(`at ${width} px the offline line shows its whole sentence, wrapped, not cut off`, async ({
+      test(`at ${width} px the phone terminal says Offline with Try again in its header, and its sheet has the whole sentence (#2853)`, async ({
         page,
         context,
       }) => {
@@ -220,17 +221,17 @@ test.describe("phone", () => {
         await pairAcrossTheNetwork(page, host);
         await openPhoneTerminal(page);
         await context.setOffline(true);
-        const line = notice(page, OFFLINE);
-        await expect(line).toBeVisible({ timeout: 2_000 });
-        await expect(line).toHaveText("Offline. Reconnects when the network is back.");
-        // Every part of the line fits its box: nothing is clipped behind an ellipsis.
-        const clipped = await line.evaluate(
-          (el) => [el, ...el.querySelectorAll("*")].filter((node) => node.scrollWidth > node.clientWidth + 1).length,
-        );
-        expect(clipped).toBe(0);
-        const box = await line.boundingBox();
-        expect(box?.x).toBeGreaterThanOrEqual(0);
+        const line = page.locator("header [data-header-offline]");
+        await expect(line.locator("[data-terminal-line-label]")).toHaveText("Offline", { timeout: 3_000 });
+        const retry = line.getByRole("button", { name: "Try again" });
+        await expect(retry).toBeVisible();
+        const box = await retry.boundingBox();
         expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+        await line.getByRole("button", { name: /details$/ }).click();
+        // The whole sentence is read in the sheet, wrapped, not cut behind an ellipsis.
+        const detail = page.getByRole("dialog").locator("[data-terminal-line-detail]");
+        await expect(detail).toHaveText("Offline. Reconnects when the network is back.");
+        expect(await detail.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
         await context.setOffline(false);
       });
     }

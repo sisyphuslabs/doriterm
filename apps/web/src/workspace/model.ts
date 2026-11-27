@@ -11,7 +11,7 @@ import { docSpaces, panesOf, tabsOf } from "@doriface/protocol/layout";
 import { hasAgentMark, type Agent, type AgentStatus, type Space } from "@doriface/ui";
 import { spaceKey } from "../layout/view.ts";
 import { isOpeningName } from "../terminal/opening-attach.ts";
-import { agentKind } from "./agent-kind.ts";
+import { agentKind, commandWords } from "./agent-kind.ts";
 import { agentStatus } from "./attention.ts";
 import type { Session } from "./attention.ts";
 import { type GitFactsOf, shownGit } from "./git-facts.ts";
@@ -89,13 +89,39 @@ export function terminalTitle(terminal: Terminal): string {
 }
 
 /**
- * A tab's title on the desktop strip: its own name, else the title of the agent it runs (#1541), else its place in its
- * space counted from 1 (#466). A shell or another program keeps the number, so a prompt's or a program's changing
- * window title never renames the tab. It does not follow the pane in focus (the phone reads {@link phoneTabTitle}).
+ * A tab's title on the desktop strip: its own name, else the title of the agent it runs (#1541), else the name its first
+ * pane was given when that pane was started with a command, a lane's above all (#2670), else its place in its space
+ * counted from 1 (#466). A shell opened bare keeps the number even when renamed, as herdr-app's strip does, and no
+ * window title counts: a prompt's flaps with every command. It does not follow the pane in focus (the phone reads
+ * {@link phoneTabTitle}).
  */
-export function tabTitle(name: string, position: number, agent?: Terminal): string {
+export function tabTitle(name: string, position: number, agent?: Terminal, pane?: Terminal): string {
   if (name !== "") return name;
-  return agent === undefined ? String(position + 1) : terminalTitle(agent);
+  if (agent !== undefined) return terminalTitle(agent);
+  const given = pane === undefined ? undefined : laneName(pane);
+  return given ?? String(position + 1);
+}
+
+/**
+ * What a pane gives its tab's title on the desktop strip ({@link tabTitle}): an agent's title, or the name a pane started
+ * with a command was given. The strip watches this, so a rename redraws its tab, and a foreground change alone, which
+ * names nothing here, draws no part of the shell (#2607).
+ */
+export function tabTitleKey(terminal: Session): string {
+  if (programKind(terminal) === "agent") return `agent:${terminalTitle(terminal)}`;
+  return laneName(terminal) ?? "";
+}
+
+/** The name a pane started with a command was given (`hc run --name X -- cmd`, a lane's); none for a bare shell. */
+function laneName(terminal: Terminal): string | undefined {
+  // `env`, `exec` and the variables they set only wrap what runs: `env PS1='$ ' sh` is a bare shell, and so is no command.
+  const [program, ...args] = commandWords(terminal.argv);
+  if (program === undefined || (SHELLS.has(programName(program)) && args.every((arg) => arg.startsWith("-"))))
+    return undefined;
+  const renamed = terminal.labels[TITLE_LABEL];
+  if (renamed !== undefined && renamed !== "") return renamed;
+  const given = isOpeningName(terminal.name) ? undefined : terminal.name;
+  return given === undefined || given === null || given === "" ? undefined : given;
 }
 
 /**

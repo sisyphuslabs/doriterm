@@ -33,7 +33,7 @@ export function tabEntry(
   return {
     id: tab.key,
     arrivalKey: tab.mount ?? tab.key,
-    title: tabTitle(tab.name, position, agent),
+    title: tabTitle(tab.name, position, agent, first),
     controls: panelId(tab.key),
     pinned: tab.pinned,
     ...(icon === undefined ? {} : { icon }),

@@ -4,6 +4,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { basename } from "node:path";
 import type { Page } from "@playwright/test";
 import { getCoreDoc } from "./core-doc.ts";
 import { expect, test, pressNewTab } from "./fixtures.ts";
@@ -129,12 +130,14 @@ test('"+" adds a tab right after the selected one, in the selected space only, a
   ]);
 });
 
-test("a live terminal in no tab is adopted into the space whose folder holds it, else into Home, once", async ({
+test("a live terminal in no tab is adopted into the space whose folder holds it, else into a space named after its work, once (#2670)", async ({
   page,
 }) => {
   const { beta } = twoSpaces();
   const inBeta = shellIn(beta, "loose-in-beta");
-  const elsewhere = shellIn(mkdtempSync(join(tmpdir(), "loose-elsewhere-")), "loose-elsewhere");
+  const workdir = mkdtempSync(join(tmpdir(), "loose-work-"));
+  const elsewhere = shellIn(workdir, "loose-elsewhere");
+  const workName = basename(workdir);
   await page.goto("/");
 
   await spaceRow(page, "beta").click();
@@ -143,7 +146,7 @@ test("a live terminal in no tab is adopted into the space whose folder holds it,
   await tabBar(page).last().click();
   await expect(page.locator(`[data-terminal="${inBeta}"]`)).toBeVisible({ timeout: 15_000 });
 
-  await spaceRow(page, "Home").click();
+  await spaceRow(page, workName).click();
   await expect(tabBar(page)).toHaveCount(1);
   await expect(page.locator(`[data-terminal="${elsewhere}"]`)).toBeVisible({ timeout: 15_000 });
 
@@ -151,9 +154,9 @@ test("a live terminal in no tab is adopted into the space whose folder holds it,
   expect(adopted.map(([name, tabs]) => [name, tabs.length])).toEqual([
     ["alpha", 2],
     ["beta", 3],
-    ["Home", 1],
+    ["", 1],
   ]);
   await page.reload();
-  await expect(spaceRow(page, "Home")).toBeVisible({ timeout: 20_000 });
+  await expect(spaceRow(page, workName)).toBeVisible({ timeout: 20_000 });
   expect(savedSpaces()).toEqual(adopted);
 });

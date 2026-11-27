@@ -3,10 +3,11 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { desktopBackgroundSetting } from "../desktop/bridge.ts";
 import { guideStore } from "../pair/first-run-guide.ts";
-import { install, useInstallOffer } from "../device/install.ts";
+import { install, isIos, useInstallOffer } from "../device/install.ts";
 import { keepAwakeStore, screenWakeLock, useKeepAwake } from "../device/keep-awake.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { BackgroundRow } from "./background-row.tsx";
+import { setEdgeProbe, useEdgeProbe } from "../pwa/edge-probe.ts";
 import { keepStorage, useStorageKeeping } from "../storage/keep-storage.ts";
 import { desktopUpdateSetting } from "../desktop/update-setting.ts";
 import { UpdateChannelRow } from "./update-channel-row.tsx";
@@ -28,6 +29,7 @@ export function DeviceSection() {
   const mesh = useBrowserMembership();
   const [background] = useState(() => desktopBackgroundSetting());
   const [updates] = useState(() => desktopUpdateSetting());
+  const edgeProbe = useEdgeProbe();
   const keeping = useStorageKeeping();
   const [askedAgain, setAskedAgain] = useState(false);
   const rows = [
@@ -114,6 +116,23 @@ export function DeviceSection() {
         control={null}
       />
     ) : null,
+    // The top-edge readout (#2867), reachable from a Home Screen app, which has no address bar for ?edgeprobe=1. It
+    // describes iOS's top-edge blur, so only an iPhone or iPad shows the row.
+    !isIos() ? null : (
+      <SettingRow
+        key="edge-probe"
+        inline
+        title="Show the top-edge readout"
+        description="A line at the bottom of the screen that says what iOS finds at the top edge, for a screenshot when the top of the app looks blurred."
+        control={
+          <Switch
+            aria-label="Show the top-edge readout"
+            checked={edgeProbe}
+            onCheckedChange={(on) => setEdgeProbe(on)}
+          />
+        }
+      />
+    ),
     <SettingRow
       key="guide"
       inline

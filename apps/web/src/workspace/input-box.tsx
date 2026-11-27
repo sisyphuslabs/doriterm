@@ -101,9 +101,11 @@ export function InputBox({ onSend, draftKey, fieldRef, accessory, className, sty
             composing.current = false;
           }}
           className={cn(
-            "min-h-11 min-w-0 flex-1 resize-none border border-input bg-chrome/95 px-3.5 py-2.5 font-mono text-base leading-6 wrap-break-word whitespace-pre-wrap text-foreground",
+            "min-h-11 min-w-0 flex-1 resize-none border border-input bg-chrome/95 px-3.5 font-mono text-base leading-6 wrap-break-word whitespace-pre-wrap text-foreground",
             "shadow-lg outline-none backdrop-blur-md placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring",
-            active ? "rounded-[1.375rem]" : "h-11 rounded-full",
+            // The idle pill fits its one line exactly: py-2.5 leaves the 24 px line 2 px taller than the h-11 pill's
+            // content box, and a scrollable textarea draws a scrollbar bar inside it (#2670).
+            active ? "rounded-[1.375rem] py-2.5" : "h-11 rounded-full py-2",
           )}
           placeholder="Type"
         />

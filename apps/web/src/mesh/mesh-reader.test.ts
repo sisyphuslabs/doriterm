@@ -49,7 +49,8 @@ function shownBy(reader: MeshReader): { readonly reads: MeshRead[]; readonly sto
 }
 
 const answeredOf = (read: MeshRead | undefined) => (read?.phase === "ready" ? read.answered : undefined);
-const APPROVED = { nonce: OPEN, verdict: "approve" } as const;
+// The held core never plays the host, so an answer written through it stays unread: sent.
+const APPROVED = { nonce: OPEN, verdict: "approve", outcome: { kind: "sent" } } as const;
 const CODE = "123 456";
 
 describe("MeshReader", () => {
@@ -94,6 +95,25 @@ describe("MeshReader", () => {
     laterReply([]);
     await later;
     expect([reads.length, answeredOf(reads.at(-1))]).toEqual([2, APPROVED]);
+  });
+
+  test.each([
+    [{ approve: OPEN, code: CODE, decided: true }, { kind: "taken" }],
+    [{ approve: OPEN, code: CODE, decided: false }, { kind: "gone" }],
+    [
+      { approve: OPEN, code: "654 321", error: "the approval code does not match this join" },
+      { kind: "refused", reason: "the approval code does not match this join" },
+    ],
+    [{ deny: OPEN, decided: true }, { kind: "taken" }],
+  ] as const)("reads what the host wrote back beside the answer (#2936): %j", async (written, outcome) => {
+    const { calls, nextRequest } = heldCore();
+    await calls.setDoc(MESH_APPROVAL_DOC, written, 1);
+    const reader = new MeshReader(calls);
+    const { reads } = shownBy(reader);
+    const read = reader.refresh();
+    (await nextRequest())([]);
+    await read;
+    expect(answeredOf(reads.at(-1))?.outcome).toEqual(outcome);
   });
 
   test("a reader whose subscriber stopped shows nothing more", async () => {
