@@ -106,8 +106,7 @@ export function ConnectDeviceDialog({ open, onClose, connection, machines }: Con
           <>
             <p className="max-w-measure text-prose text-muted-foreground">
               One command installs doriface-host and herdr-core if they are missing, runs the host as a service, and
-              joins this mesh through the relay, end to end encrypted, with no ssh or open port. It joins without
-              asking.
+              joins this mesh through the relay, end to end encrypted, with no ssh or open port.
             </p>
             <JoinCommandBlock connection={connection} open={open} machines={machines} />
             <section aria-labelledby="connect-invite" className="flex flex-col gap-3 border-t border-border pt-4">

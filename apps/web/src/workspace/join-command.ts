@@ -112,7 +112,6 @@ export async function askOnce(
  * The request lasts while the dialog is open: a new connection reads it back before asking again, so a join the host
  * took on a connection that dropped still shows (#1780).
  */
-
 export function useJoinOffer(connection: HcConnection, open: boolean, client = false): JoinOffer {
   const [offer, setOffer] = useState<JoinOffer>({ phase: "asking" });
   const asked = useRef<string | undefined>(undefined);

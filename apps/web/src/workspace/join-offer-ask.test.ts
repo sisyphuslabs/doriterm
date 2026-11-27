@@ -63,6 +63,20 @@ describe("asking for an offer while another writer moves the document (#2949 rev
     };
     await askOnce(calls as never, REQUEST, () => closed);
     expect(state.writes).toEqual([1]);
+    // The guard before the read: closed after the lost write, it reads nothing more.
+    expect(state.reads).toBe(1);
+  });
+
+  test("a request whose tab closed while it read the version writes nothing at all", async () => {
+    const { calls, state } = documentWithRival(0);
+    let closed = false;
+    const get = calls.get;
+    calls.get = async () => {
+      closed = true;
+      return get();
+    };
+    await askOnce(calls as never, REQUEST, () => closed);
+    expect(state.writes).toEqual([]);
   });
 });
 

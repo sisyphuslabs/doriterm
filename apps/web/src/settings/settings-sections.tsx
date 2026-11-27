@@ -20,7 +20,7 @@ export const CONNECT_GROUP = "connect-a-machine";
 
 /**
  * Links that name the From a terminal group rather than a section: the join page's `#connect`, and `#pair` from when
- * Connect a machine was its own section (now From a terminal, under Connect a device).
+ * Connect a machine was its own section (now the From a terminal group on Machines).
  */
 const GROUPS: Readonly<Record<string, { readonly section: SectionId; readonly group: string }>> = {
   pair: { section: "machines", group: CONNECT_GROUP },

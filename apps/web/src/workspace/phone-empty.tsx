@@ -13,7 +13,7 @@ export function PhoneEmpty({ host, onNew, onConnect }: PhoneEmptyProps) {
     <EmptyState
       icon={<SquareTerminal aria-hidden />}
       title="No terminals yet"
-      description={`Start a shell on ${host}, or add a machine to reach its terminals here.`}
+      description={`Start a shell on ${host}, or connect a device to reach its terminals here.`}
       actions={
         <>
           <Button variant="primary" onClick={onNew}>
