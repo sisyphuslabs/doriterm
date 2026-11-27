@@ -41,7 +41,8 @@ export interface JoinOptions {
   readonly ask?: boolean | undefined;
   readonly confirm: (question: string) => Promise<boolean>;
   readonly relayUrl: string | undefined;
-  readonly defaultRelayUrl: string;
+  /** Where a typed code is looked up when the request names no relay; undefined for a host with no uplink. */
+  readonly defaultRelayUrl: string | undefined;
   readonly createSocket?: CreateSocket | undefined;
   /** This host's relay passes (contract v1.6): the pairing dial to the inviter carries a proof. */
   readonly proofs?: RelayProofs | undefined;
@@ -101,6 +102,9 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
   }
   if (target.kind !== "code") throw new JoinRefused("mesh join takes a mesh pairing link or code");
   const relayUrl = options.relayUrl ?? options.defaultRelayUrl;
+  // Never the release relay for a host that keeps no uplink (--no-relay): it names the relay to look the code up on.
+  if (relayUrl === undefined)
+    throw new JoinRefused("this host keeps no relay uplink: name the relay to look the code up on with --relay");
   const record = await lookupPairSlot({ relayUrl, code: target.code });
   if (record === undefined) throw new JoinRefused("no host is offering this code on the relay: it may have expired");
   if (options.fingerprint !== undefined) confirmFingerprint(options.fingerprint, record.noiseStaticPub);

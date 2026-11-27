@@ -41,7 +41,7 @@ export function e2eeDeps(
       env: options.env,
       handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
     },
-    relay: { url: options.relay?.url, createSocket: options.relay?.createSocket, proofs },
+    relay: { url: options.relay?.url, createSocket: options.relay?.createSocket, proofs, localOnly: options.localOnly },
     program: options.meshProgram,
     hooks: options.meshHooks,
     log: options.log,

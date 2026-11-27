@@ -142,6 +142,11 @@ export function listenControl(stateDir: string, handle: ControlHandler): Control
   };
 }
 
+/** The running host answered a control request with a refusal: the command line was fine, and the reason is the fix. */
+export class HostRefused extends Error {
+  override readonly name = "HostRefused";
+}
+
 /** Sends one request to the running host; resolves undefined when no host listens on this state dir. */
 export async function requestControl(
   stateDir: string,
@@ -199,6 +204,6 @@ export async function requestControl(
   const answer: unknown = JSON.parse(await promise);
   if (typeof answer !== "object" || answer === null || !("ok" in answer)) throw new Error("bad control reply");
   if (answer.ok !== true)
-    throw new Error(`the running host refused: ${"error" in answer ? String(answer.error) : "?"}`);
+    throw new HostRefused(`the running host refused: ${"error" in answer ? String(answer.error) : "?"}`);
   return "result" in answer ? answer.result : undefined;
 }
