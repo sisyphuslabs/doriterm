@@ -181,8 +181,8 @@ export function DesktopShell(props: DesktopShellProps) {
   }, []);
   const showsEnded = (terminal: { readonly address: string; readonly pid?: number | null }): boolean =>
     endedViews.has(viewKey(terminal.address, terminal.pid ?? null));
-  // A tab is named after its agent or a pane that names itself, so their titles as they stand; a shell's flapping prompt
-  // title stays out of the shell (#2607).
+  // A tab is named after its agent or a lane's given name, so those as they stand; any other title, and a foreground
+  // change alone, stays out of the shell (#2607).
   const named = useShown(terminals, tabTitleKey);
   const byAddress = new Map(named.map((terminal) => [terminal.address, terminal]));
   const tabList: WorkspaceTab[] = layout.shown.map((tab, position) => tabEntry(tab, position, byAddress));

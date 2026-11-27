@@ -255,6 +255,12 @@ describe("tabTitle", () => {
       tabTitle("", 1, undefined, terminal({ argv: ["zsh", "-l"], labels: { "herdr.name": "deploy-check" } })),
     ).toBe("2");
     expect(tabTitle("", 1, undefined, terminal({ title: "build watcher", argv: ["node", "watch.js"] }))).toBe("2");
+    // `env` with its variables only wraps the shell: still a bare shell.
+    expect(tabTitle("", 0, undefined, terminal({ name: "parity-a1", argv: ["env", "PS1=$ ", "sh"] }))).toBe("1");
+    // A lane: a name given to a command that is not a bare shell.
+    expect(tabTitle("", 0, undefined, terminal({ name: "lane-x", argv: ["bash", "-c", "exec sleep 600"] }))).toBe(
+      "lane-x",
+    );
   });
 
   test("an unnamed shell pane at a prompt keeps its place counted from 1 (#466)", () => {

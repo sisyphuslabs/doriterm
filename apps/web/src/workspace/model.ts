@@ -112,9 +112,13 @@ export function tabTitleKey(terminal: Session): string {
   return laneName(terminal) ?? "";
 }
 
+/** `env` and the variables it sets, which only wrap what the pane runs: `env PS1='$ ' sh` is a bare shell. */
+const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/u;
+
 /** The name a pane started with a command was given (`hc run --name X -- cmd`, a lane's); none for a bare shell. */
 function laneName(terminal: Terminal): string | undefined {
-  const [program = "", ...args] = terminal.argv;
+  const argv = programName(terminal.argv[0] ?? "") === "env" ? terminal.argv.slice(1) : terminal.argv;
+  const [program = "", ...args] = argv.slice(argv.findIndex((arg) => !ENV_ASSIGNMENT.test(arg)));
   if (SHELLS.has(programName(program)) && args.every((arg) => arg.startsWith("-"))) return undefined;
   const renamed = terminal.labels[TITLE_LABEL];
   if (renamed !== undefined && renamed !== "") return renamed;

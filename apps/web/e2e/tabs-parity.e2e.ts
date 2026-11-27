@@ -442,15 +442,14 @@ test("8 (E): a tab renamed by a double-click, F2 or its menu shows the name on e
     ["beta", ["b-one", "b-two"]],
   ]);
 
-  // An empty name gives the tab back what its pane names itself: this shell was started as `parity-a1` (#2670); only a
-  // pane that names nothing reads its number.
+  // An empty name gives the tab its number back.
   await tabBar(page).filter({ hasText: "fix login" }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Rename tab…" }).click();
   const again = page.getByRole("dialog", { name: "Rename fix login" });
   await again.getByRole("textbox", { name: "Name" }).fill("");
   await again.getByRole("button", { name: "Rename" }).click();
-  await expect(tabBar(page)).toHaveText(["parity-a1", /review/], { timeout: 15_000 });
-  await expect(tabBar(other)).toHaveText(["parity-a1", /review/], { timeout: 15_000 });
+  await expect(tabBar(page)).toHaveText(["1", /review/], { timeout: 15_000 });
+  await expect(tabBar(other)).toHaveText(["1", /review/], { timeout: 15_000 });
 
   await paneOf(page, shells.a2).getByRole("textbox").focus();
   await page.keyboard.press("Shift+F2");
