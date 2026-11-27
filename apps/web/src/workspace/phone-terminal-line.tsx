@@ -93,7 +93,8 @@ function LineView({ line }: { readonly line: Line }) {
             className="flex min-w-0 items-center gap-1 text-left text-foreground"
             aria-label={`${line.label}: details`}
           >
-            {glyph(line.kind)}
+            {/* Under 360 px the words alone: the glyph's 16 px is what keeps the words and the action whole (#2908). */}
+            <span className="contents max-[359px]:hidden">{glyph(line.kind)}</span>
             <span data-terminal-line-label className="min-w-0 truncate">
               {line.label}
             </span>
