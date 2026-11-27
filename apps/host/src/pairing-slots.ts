@@ -61,8 +61,8 @@ export class PairingSlots {
    * Opens a new offer (replacing any pending one) and resolves once its slot is settled with the relay. Opens run one
    * after another, so no caller is handed a code that a concurrent open is still drawing or registering.
    */
-  open(mesh = false): Promise<PendingPairing> {
-    const opened = this.#opening.then(() => this.#open(mesh));
+  open(mesh = false, agent = false): Promise<PendingPairing> {
+    const opened = this.#opening.then(() => this.#open(mesh, agent));
     this.#opening = opened.then(
       () => undefined,
       () => undefined,
@@ -70,8 +70,8 @@ export class PairingSlots {
     return opened;
   }
 
-  async #open(mesh: boolean): Promise<PendingPairing> {
-    const offer = this.#store.offer(Date.now(), mesh);
+  async #open(mesh: boolean, agent: boolean): Promise<PendingPairing> {
+    const offer = this.#store.offer(Date.now(), mesh, agent);
     this.sync();
     await this.#running;
     return this.#store.read() ?? offer;

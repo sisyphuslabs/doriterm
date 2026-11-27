@@ -1,6 +1,6 @@
 import { Button, CopyBlock, Notice, cn } from "@doriface/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { DesktopPairAnswer } from "../desktop/pair-bridge.ts";
+import type { DesktopPairAnswer, PairOfferRequest } from "../desktop/pair-bridge.ts";
 import { useNow } from "../workspace/use-now.ts";
 import { AGENTS, agentPrompt, agentSnippet, connectCommand, mcpConfig } from "./agent-snippets.ts";
 import { expiryLine, offerCode, pairDeviceView, slotNote, type PairDeviceView } from "./pair-device.ts";
@@ -18,7 +18,7 @@ export interface PairOfferState {
 
 /** Opens and polls this computer's pairing offer while `open` is true, remembering the host id once seen. */
 export function usePairOffer(
-  pair: (request: "open" | "state") => Promise<DesktopPairAnswer>,
+  pair: (request: PairOfferRequest) => Promise<DesktopPairAnswer>,
   open: boolean,
 ): PairOfferState {
   const [answer, setAnswer] = useState<DesktopPairAnswer | null>(null);
@@ -35,7 +35,7 @@ export function usePairOffer(
     }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async (request: "open" | "state"): Promise<void> => {
+    const poll = async (request: PairOfferRequest): Promise<void> => {
       if (cancelled) return;
       try {
         const next = await pair(request);
@@ -50,7 +50,8 @@ export function usePairOffer(
         setAnswer({ state: "unavailable", reason: error instanceof Error ? error.message : String(error) });
       }
     };
-    void poll("open");
+    // An agent's pairing waits for an owner's approval before it is stored (#2939).
+    void poll("open-agent");
     return () => {
       cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
@@ -66,7 +67,7 @@ export function usePairOffer(
 }
 
 export interface AgentInviteProps {
-  readonly pair: (request: "open" | "state") => Promise<DesktopPairAnswer>;
+  readonly pair: (request: PairOfferRequest) => Promise<DesktopPairAnswer>;
   /** Set false when mounted inside a closed dialog so no offer opens until shown. */
   readonly open?: boolean;
   /** Shared offer state when a parent dialog owns the header and retry action. */
@@ -202,6 +203,15 @@ function AgentInviteBody({ offer, inlineRetry }: { readonly offer: PairOfferStat
     );
   }
 
+  if (view.kind === "approval") {
+    return (
+      <p role="status" className="text-prose text-pretty text-foreground">
+        The agent is waiting for your approval. Compare the code it shows with the one Doriterm asks you about, then
+        approve it there or in Settings, under Machines.
+      </p>
+    );
+  }
+
   const notice =
     view.kind === "expired" ? (
       <Notice tone="warning" title="This invite expired">
@@ -229,7 +239,7 @@ function LiveAgentInvite({
   open,
   inlineRetry,
 }: {
-  readonly pair: (request: "open" | "state") => Promise<DesktopPairAnswer>;
+  readonly pair: (request: PairOfferRequest) => Promise<DesktopPairAnswer>;
   readonly open: boolean;
   readonly inlineRetry: boolean;
 }) {

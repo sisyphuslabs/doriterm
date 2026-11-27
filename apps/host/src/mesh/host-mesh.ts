@@ -158,11 +158,14 @@ export class HostMesh {
     return offer;
   }
 
-  /** Opens a device offer, which replaces any mesh offer: that offer's pending joins expire with it. */
-  pairDevice(): Promise<PendingPairing> {
+  /**
+   * Opens a device offer, which replaces any mesh offer: that offer's pending joins expire with it. An agent offer's
+   * device waits for an owner's approval before it is stored (#2939).
+   */
+  pairDevice(agent = false): Promise<PendingPairing> {
     this.pending.expireAll();
     this.resumes.clear();
-    return this.#options.slots.open(false);
+    return this.#options.slots.open(false, agent);
   }
 
   /** A `mesh join` withdrew this host's mesh offer: its pending joins expire with it and its relay slot is released. */

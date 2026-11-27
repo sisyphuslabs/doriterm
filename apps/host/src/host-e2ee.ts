@@ -57,6 +57,7 @@ export function e2eeDeps(
     policy,
     live: { count: (replacing?: string) => sessions.count(replacing) },
     ...meshParts,
+    approvals: meshParts.hostMesh.pending,
     rekeyInterval: options.rekeyInterval,
     log: options.log,
   };

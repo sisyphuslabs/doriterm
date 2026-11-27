@@ -9,7 +9,7 @@ import { PairingStore } from "./state/pairing.ts";
 
 const identity = generateHostIdentity();
 
-function surface(over: { readonly now?: () => number } = {}) {
+function surface(over: { readonly now?: () => number; readonly agentWaiting?: () => boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "dh-pair-surface-"));
   const pairing = new PairingStore(dir);
   const devices = new DeviceStore(dir);
@@ -17,7 +17,7 @@ function surface(over: { readonly now?: () => number } = {}) {
     identity,
     pairing,
     devices,
-    open: async () => pairing.offer(),
+    open: async (agent: boolean) => pairing.offer(Date.now(), false, agent),
     relayUrl: "wss://relay.example",
     ...over,
   });
@@ -54,6 +54,21 @@ describe("this computer's pairing offer", () => {
     if (state.state !== "paired") throw new Error(`state ${state.state}`);
     expect(state.device?.name).toBe("Safari on iOS");
     expect(state.device?.id).toMatch(/^[0-9A-F]{8}$/);
+  });
+
+  test("an agent offer whose handshake confirmed waits for approval: no device is said to be paired (#2939)", async () => {
+    let waiting = true;
+    const { offers, pairing } = surface({ agentWaiting: () => waiting });
+    const opened = await offers.open(true);
+    if (opened.state !== "pending") throw new Error(`opened ${opened.state}`);
+    expect(opened.offer.link).toContain("a=1");
+    const claim = pairing.claimLink();
+    if ("refused" in claim) throw new Error(`claim refused: ${claim.reason}`);
+    expect(claim.complete()).toBe(true);
+    expect(offers.state()).toEqual({ state: "approval" });
+    // Denied, expired or hung up: the request is gone and no device came, so the offer reads as ended.
+    waiting = false;
+    expect(offers.state()).toEqual({ state: "expired" });
   });
 
   test("an offer that ran out reads as expired, not as paired", async () => {

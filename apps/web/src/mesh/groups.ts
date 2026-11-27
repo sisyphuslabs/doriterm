@@ -53,8 +53,12 @@ export const isOnline = (member: MeshMemberStatus): boolean =>
  * approving control of every machine it can reach, and the row has to say that rather than call it a device (design of
  * #942, section 4). A machine joining is the ordinary case and gets no line of its own.
  */
-export function approvalConsequence(kind: "machine" | "client", name: string): string | undefined {
-  return kind === "client" ? `Approving gives ${name} control of every machine in this mesh.` : undefined;
+export function approvalConsequence(kind: "machine" | "client" | "agent", name: string): string | undefined {
+  if (kind === "client") return `Approving gives ${name} control of every machine in this mesh.`;
+  // An agent pairs as a device of the inviting host (#2939): what a paired device gets there, it gets.
+  if (kind === "agent")
+    return `Approving lets the agent ${name} read and type into your terminals, run commands and write files on this computer.`;
+  return undefined;
 }
 
 /**

@@ -196,7 +196,7 @@ export type MeshPendingJoin = {
   readonly fingerprint: string;
   readonly expiresAt: string;
   /** What it joins as: approving a client grants control of every machine it can reach. */
-  readonly kind: "machine" | "client";
+  readonly kind: "machine" | "client" | "agent";
   /** Absent only in documents from hosts predating committed joins. */
   readonly code?: string;
   readonly joinerConfirmed?: boolean;

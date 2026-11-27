@@ -119,6 +119,11 @@ export interface PairingTarget {
   readonly relayUrl: string;
   /** A mesh offer (`&m=1`): the link admits a host into the mesh with `doriface-host mesh join`, not a device. */
   readonly mesh?: boolean | undefined;
+  /**
+   * An agent offer (`&a=1`): the device that redeems it waits for an owner's approval before it is paired (#2939), so
+   * `doriface-host connect` waits for that answer instead of giving up after its dial bound.
+   */
+  readonly agent?: boolean | undefined;
 }
 
 /** A web pairing link: `<web origin>/pair#…`. */
@@ -175,6 +180,7 @@ function pairingFragment(link: PairingTarget): string {
     p: base64urlEncode(link.linkSecret),
     r: relayWebSocketUrl(link.relayUrl),
     ...(link.mesh === true ? { m: "1" } : {}),
+    ...(link.agent === true ? { a: "1" } : {}),
   }).toString();
 }
 
@@ -224,6 +230,7 @@ export function parsePairingLink(url: string): ParsedPairingLink {
     linkSecret,
     relayUrl,
     mesh: fragment.get("m") === "1",
+    agent: fragment.get("a") === "1",
   };
 }
 

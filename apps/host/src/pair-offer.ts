@@ -47,6 +47,8 @@ export function pairingOfferView({
     signPub: identity.sign.publicKey,
     linkSecret: offer.linkSecret,
     relayUrl,
+    // The client reads it to wait for the owner's approval; the host decides from the offer it stored, not the link.
+    ...(offer.agent ? { agent: true } : {}),
   };
   const artifact = pairingArtifact(target, webOrigin);
   return {

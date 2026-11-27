@@ -25,6 +25,8 @@ export interface PendingPairing extends PairingOffer {
   readonly codeAttempts: number;
   /** A mesh offer admits a machine into the mesh (a join); otherwise it pairs a device (contract v1.5). */
   readonly mesh: boolean;
+  /** An agent offer (#2939): a device that redeems it waits for an owner's approval before it is stored. */
+  readonly agent: boolean;
 }
 
 export const codeRetired = (pending: PendingPairing): boolean => pending.codeAttempts >= PAIRING_CODE_ATTEMPTS;
@@ -37,11 +39,12 @@ export const pendingToWire = (pending: PendingPairing) => ({
   slot: pending.slot,
   codeAttempts: pending.codeAttempts,
   mesh: pending.mesh,
+  agent: pending.agent,
 });
 
 export function pendingFromWire(value: unknown): PendingPairing {
   if (!isRecord(value)) throw new Error("the running host sent a malformed pairing");
-  const { code, linkSecret, expiresAt, slot, codeAttempts, mesh } = value;
+  const { code, linkSecret, expiresAt, slot, codeAttempts, mesh, agent } = value;
   const knownSlot = slot === "pending" || slot === "registered" || slot === "unavailable";
   if (
     typeof code !== "string" ||
@@ -49,11 +52,20 @@ export function pendingFromWire(value: unknown): PendingPairing {
     typeof expiresAt !== "number" ||
     typeof codeAttempts !== "number" ||
     (mesh !== undefined && typeof mesh !== "boolean") ||
+    (agent !== undefined && typeof agent !== "boolean") ||
     !knownSlot
   ) {
     throw new Error("the running host sent a malformed pairing");
   }
-  return { code, linkSecret: base64urlDecode(linkSecret), expiresAt, slot, codeAttempts, mesh: mesh === true };
+  return {
+    code,
+    linkSecret: base64urlDecode(linkSecret),
+    expiresAt,
+    slot,
+    codeAttempts,
+    mesh: mesh === true,
+    agent: agent === true,
+  };
 }
 
 /** A claim on the live offer: the secret the handshake finishes with, and the step that burns the offer on success. */
@@ -61,6 +73,9 @@ export interface PairingClaim {
   readonly secret: HostPairingSecret;
   /** This claim's reservation used the code's last attempt; the code is retired from now on. */
   readonly retiredCode: boolean;
+  /** The offer was an agent offer: the device waits for an owner's approval, until `expiresAt`. */
+  readonly agent: boolean;
+  readonly expiresAt: number;
   /**
    * The handshake completed: burns the whole offer (code and link secret) and returns whether this was its first
    * success before expiry. It runs before the caller stores the device, so a crash or a failed store can never leave
@@ -107,8 +122,14 @@ export class PairingStore {
     this.#lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
   }
 
-  offer(now = Date.now(), mesh = false): PendingPairing {
-    const pending = { ...createPairingOffer(now), slot: "pending" as const, codeAttempts: 0, mesh };
+  offer(now = Date.now(), mesh = false, agent = false): PendingPairing {
+    const pending = {
+      ...createPairingOffer(now),
+      slot: "pending" as const,
+      codeAttempts: 0,
+      mesh,
+      agent: agent && !mesh,
+    };
     this.#locked(() => this.#write(pending));
     return pending;
   }
@@ -197,7 +218,8 @@ export class PairingStore {
     if (slot !== "pending" && slot !== "registered" && slot !== "unavailable") throw new Error(`${FILE}: bad slot`);
     if (linkSecret.byteLength !== 32) throw new Error(`${FILE}: bad link secret`);
     const mesh = value["mesh"] === true;
-    return { code: stringField(value, "code", FILE), linkSecret, expiresAt, slot, codeAttempts, mesh };
+    const agent = value["agent"] === true;
+    return { code: stringField(value, "code", FILE), linkSecret, expiresAt, slot, codeAttempts, mesh, agent };
   }
 
   /** Reports every change this store makes (a pairing used up or burned, a code redrawn, an attempt reserved). */
@@ -223,6 +245,8 @@ export class PairingStore {
     return {
       secret,
       retiredCode,
+      agent: pending.agent,
+      expiresAt: pending.expiresAt,
       complete: (at = Date.now()) =>
         this.#locked(() => {
           if (pending.mesh && this.read()?.linkSecret.toHex() !== pending.linkSecret.toHex()) return false;
@@ -242,6 +266,7 @@ export class PairingStore {
       slot: pending.slot,
       codeAttempts: pending.codeAttempts,
       ...(pending.mesh ? { mesh: true } : {}),
+      ...(pending.agent ? { agent: true } : {}),
     });
     this.#changed();
   }

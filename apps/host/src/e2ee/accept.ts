@@ -13,12 +13,13 @@ import {
   SessionKind,
 } from "@doriface/crypto";
 import { HELLO_REQUEST_LINE } from "@doriface/client";
-import { OPEN_POLICY, type PlanPolicy, requireFeature, requireWithin } from "@doriface/policy";
+import { type PlanPolicy, requireFeature, requireWithin } from "@doriface/policy";
 import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
 import type { McpSwitch } from "../state/mcp-switch.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import { type ClaimRefusal, JOIN_ON_DEVICE_OFFER, type PairingClaim, type PairingStore } from "../state/pairing.ts";
+import { type Admission, type AgentApprovals, admitPairing, approveAgent } from "./admit.ts";
 import { authorizationOf, handshakeRefusalLine, sessionPeer } from "./authorize.ts";
 import type { SpeculativeHello } from "./speculative-hello.ts";
 
@@ -47,7 +48,15 @@ export interface E2eeDeps {
   readonly live: { readonly count: (replacing?: string) => number };
   /** Answers an early hello before key confirmation, within its own budget (#1271); absent, every hello waits. */
   readonly speculative?: Pick<SpeculativeHello, "answer"> | undefined;
+  /** Where an agent offer's pairing waits for an owner's approval (#2939); absent, such a pairing is refused. */
+  readonly approvals?: AgentApprovals | undefined;
 }
+
+/** Settles when the session closes, whoever closes it. */
+const closedOf = (secure: SecureLink): Promise<void> =>
+  new Promise((resolve) => {
+    secure.onClose(() => resolve());
+  });
 
 const refuse = (closeCode: number, reason: string): Authorization => ({ accept: false, closeCode, reason });
 
@@ -217,7 +226,21 @@ export async function acceptE2ee(
     const admitted =
       claim === undefined || "refused" in index
         ? REFUSED_CLAIM
-        : admitPairing(claim, deps.devices, secure.remoteStatic, deviceName, index.index, deps.policy);
+        : claim.agent
+          ? await approveAgent(
+              {
+                claim,
+                approvals: deps.approvals,
+                handshakeHash: secure.handshakeHash,
+                clientStatic: secure.remoteStatic,
+                name: deviceName,
+                closed: closedOf(secure),
+              },
+              deps.devices,
+              index.index,
+              deps.policy,
+            )
+          : admitPairing(claim, deps.devices, secure.remoteStatic, deviceName, index.index, deps.policy);
     if (!admitted.ok) {
       deps.log(`e2ee: close code=${admitted.code} source=pairing-admission: ${admitted.reason}`);
       secure.close(admitted.code, admitted.reason);
@@ -246,38 +269,6 @@ function logRetired(deps: E2eeDeps): void {
   );
 }
 
-export type Admission = { readonly ok: true } | { readonly ok: false; readonly code: number; readonly reason: string };
-
 const REFUSED_CLAIM: Admission = { ok: false, code: CloseCode.UnknownDevice, reason: "no pairing claim" };
-
-/**
- * Finishes a confirmed pairing: burns the offer first, then stores the device. A second handshake that confirmed with
- * an already used offer is refused, and a store failure leaves the offer burned rather than reusable.
- */
-export function admitPairing(
-  claim: PairingClaim,
-  devices: DeviceStore,
-  clientStatic: Uint8Array,
-  name: string,
-  mesh?: AuthorizeIndex | undefined,
-  policy: PlanPolicy = OPEN_POLICY,
-): Admission {
-  if (!claim.complete())
-    return { ok: false, code: CloseCode.UnknownDevice, reason: "the pairing offer was already used" };
-  if (mesh?.claimsKey(base64urlEncode(clientStatic)) === true) {
-    return { ok: false, code: CloseCode.UnknownDevice, reason: "this key belongs to a mesh member" };
-  }
-  try {
-    const paired = devices.list();
-    if (!paired.some((device) => device.clientStaticPub === base64urlEncode(clientStatic))) {
-      const room = requireWithin(policy, "devices", paired.length);
-      if (!room.allowed) return { ok: false, code: CloseCode.UnknownDevice, reason: room.message };
-    }
-    devices.add(clientStatic, name);
-  } catch (error) {
-    return { ok: false, code: 1011, reason: `cannot store the paired device: ${String(error)}` };
-  }
-  return { ok: true };
-}
 
 export const REVOKED = { code: CloseCode.UnknownDevice, reason: "device revoked" } as const;

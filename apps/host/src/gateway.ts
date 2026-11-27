@@ -77,7 +77,7 @@ export interface GatewayOptions {
 
 /** The loopback pairing routes' answers; the app renders these, so they stay JSON-serialisable. */
 export interface PairRoute {
-  open(): Promise<PairAnswer>;
+  open(agent: boolean): Promise<PairAnswer>;
   state(): PairAnswer;
 }
 
@@ -87,6 +87,7 @@ export type PairAnswer =
       readonly state: "paired";
       readonly device: { readonly name: string; readonly id: string; readonly pairedAt: string } | null;
     }
+  | { readonly state: "approval" }
   | { readonly state: "expired" }
   | { readonly state: "none" };
 
@@ -171,7 +172,8 @@ export function createGateway(options: GatewayOptions): Gateway {
     };
     if (pair !== undefined) {
       app.get("/v1/pair", pairGate, (c) => c.json(pair.state()));
-      app.post("/v1/pair", pairGate, async (c) => c.json(await pair.open()));
+      // `?agent=1` opens an agent offer, whose device waits for an owner's approval before it is paired (#2939).
+      app.post("/v1/pair", pairGate, async (c) => c.json(await pair.open(c.req.query("agent") === "1")));
     }
     if (mcpSurface !== undefined) {
       app.get("/v1/mcp", pairGate, (c) => c.json(mcpSurface.state()));

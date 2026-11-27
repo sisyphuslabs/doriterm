@@ -1,6 +1,6 @@
 import { Button, Dialog, Field, Fingerprint, Input, Notice, QrCode } from "@doriface/ui";
 import { useEffect, useMemo, useState } from "react";
-import { desktopPairOffer, type DesktopPairAnswer } from "../desktop/pair-bridge.ts";
+import { desktopPairOffer, type DesktopPairAnswer, type PairOfferRequest } from "../desktop/pair-bridge.ts";
 import { qrModules } from "../pair/qr.ts";
 import { useNow } from "../workspace/use-now.ts";
 import {
@@ -20,7 +20,7 @@ export interface PairDeviceDialogProps {
   readonly open: boolean;
   readonly onClose: () => void;
   /** The shell's pairing offer; undefined asks the desktop bridge, null means this build has none. */
-  readonly pair?: ((request: "open" | "state") => Promise<DesktopPairAnswer>) | null;
+  readonly pair?: ((request: PairOfferRequest) => Promise<DesktopPairAnswer>) | null;
 }
 
 /**
@@ -45,7 +45,7 @@ export function PairDeviceDialog({ open, onClose, pair }: PairDeviceDialogProps)
     if (!open || ask === null) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async (request: "open" | "state"): Promise<void> => {
+    const poll = async (request: PairOfferRequest): Promise<void> => {
       if (cancelled) return;
       try {
         const next = await ask(request);
@@ -145,6 +145,10 @@ export function PairDeviceDialog({ open, onClose, pair }: PairDeviceDialogProps)
             Device {view.device.id}. It can open this computer's terminals now.
           </Notice>
         )
+      ) : view.kind === "approval" ? (
+        <Notice tone="info" title="Waiting for your approval">
+          The device that used this offer asks to pair. Approve it in Settings, under Machines.
+        </Notice>
       ) : view.kind === "expired" ? (
         <Notice tone="warning" title="This offer has expired">
           Open a new one to pair a device.

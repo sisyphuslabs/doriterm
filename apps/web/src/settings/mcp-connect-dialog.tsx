@@ -1,12 +1,12 @@
 import { Button, Dialog } from "@doriface/ui";
-import type { DesktopPairAnswer } from "../desktop/pair-bridge.ts";
+import type { DesktopPairAnswer, PairOfferRequest } from "../desktop/pair-bridge.ts";
 import { AgentInvite, usePairOffer } from "./agent-invite.tsx";
 
 export interface McpConnectDialogProps {
   readonly open: boolean;
   /** Called when the dialog closes, with whether a client paired while it was open. */
   readonly onClose: (paired: boolean) => void;
-  readonly pair: (request: "open" | "state") => Promise<DesktopPairAnswer>;
+  readonly pair: (request: PairOfferRequest) => Promise<DesktopPairAnswer>;
 }
 
 /**

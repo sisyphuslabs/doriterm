@@ -1,11 +1,11 @@
-import { DEFAULT_RELAY_URL } from "@doriface/crypto";
+import { DEFAULT_RELAY_URL, PAIRING_TTL_MS } from "@doriface/crypto";
 import { hostname } from "node:os";
 import { parseArgs } from "node:util";
 import { dial, type Dialed, HostUnreachableError } from "../connect/dial.ts";
 import { initialFailureExitCode, sessionExitCode } from "../connect/exit-code.ts";
 import { meshBridge } from "../connect/mesh-bridge.ts";
 import { type Output, pipe } from "../connect/pipe.ts";
-import { parseTarget } from "../connect/target.ts";
+import { type ConnectTarget, parseTarget } from "../connect/target.ts";
 import { TOOLS_SHOWN_METHOD } from "../mcp/lines.ts";
 import { defaultStateDir } from "../state/files.ts";
 import { loadDeviceKey } from "../state/known-hosts.ts";
@@ -40,6 +40,13 @@ export const CONNECT_USAGE = `usage: doriface-host connect <hostId | pairing lin
 
 /** hc gives a dial 20 s for the hello reply; failing earlier leaves it a clear reason on stderr. */
 export const DIAL_TIMEOUT_MS = 15_000;
+
+/**
+ * An agent invite (#2939) waits for an owner's approval, which the host holds for the offer's whole life: the bound is
+ * that life, so the wait ends with the offer and never before an owner could answer.
+ */
+export const dialBoundOf = (target: ConnectTarget): number =>
+  target.kind === "link" && target.link.agent === true ? PAIRING_TTL_MS : DIAL_TIMEOUT_MS;
 
 class DialTimeoutError extends Error {
   override readonly name = "DialTimeoutError";
@@ -123,7 +130,7 @@ export async function connectCommand(args: readonly string[], log: (line: string
   if (values.tools !== undefined && values.mcp !== true) throw new Error("--tools needs --mcp");
   let dialed: Dialed;
   try {
-    dialed = await within(dial(target, options), DIAL_TIMEOUT_MS, "reaching the host through the relay");
+    dialed = await within(dial(target, options), dialBoundOf(target), "reaching the host through the relay");
   } catch (error) {
     // A refusal made here (not paired, --fingerprint, --replace) is a usage error, and is thrown as one.
     if (!(error instanceof HostUnreachableError || error instanceof DialTimeoutError)) throw error;

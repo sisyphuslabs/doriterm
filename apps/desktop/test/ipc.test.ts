@@ -7,7 +7,7 @@ import { ipcHandlers, type IpcReplySender, type IpcSender } from "../src/main/ip
 import { DictationHost } from "../src/main/dictation.ts";
 import { LocalHostStartError } from "../src/main/local-host.ts";
 import { readNoticeAuthorization } from "../src/main/notice-authorization.ts";
-import type { DesktopNotice } from "../src/shared/bridge.ts";
+import type { DesktopNotice, PairOfferRequest } from "../src/shared/bridge.ts";
 
 const endpoint = { url: "ws://127.0.0.1:1/v1/hc", token: "t".repeat(43) };
 const app: IpcSender = { senderFrame: { url: "app://doriface/hosts" }, sender: { id: 7 } };
@@ -34,7 +34,7 @@ const setup = (
   const painted: string[] = [];
   let starts = 0;
   let closes = 0;
-  const pairs: ("open" | "state")[] = [];
+  const pairs: PairOfferRequest[] = [];
   const revokes: string[] = [];
   const mcpRequests: string[] = [];
   const menus: ReadonlyMap<string, string>[] = [];
@@ -368,16 +368,17 @@ describe("IPC sender gate", () => {
     expect(opened).toEqual(["https://anywhere.example/a%20b", "http://plain.example/", "mailto:me@example.com"]);
   });
 
-  test("the app origin can ask for this computer's pairing offer, and only for the two known requests", async () => {
+  test("the app origin can ask for this computer's pairing offer, and only for the three known requests", async () => {
     const { handlers, pairs } = setup();
     expect(await handlers.pairOffer(app, "open")).toEqual({ state: "none" });
+    expect(await handlers.pairOffer(app, "open-agent")).toEqual({ state: "none" });
     expect(await handlers.pairOffer(app, "state")).toEqual({ state: "none" });
-    expect(pairs).toEqual(["open", "state"]);
-    const refused = ["pair", "", null, 7, { request: "open" }];
+    expect(pairs).toEqual(["open", "open-agent", "state"]);
+    const refused = ["pair", "", null, 7, { request: "open" }, "agent", "open-agent "];
     expect(await Promise.all(refused.map((candidate) => handlers.pairOffer(app, candidate)))).toEqual(
       refused.map(() => null),
     );
-    expect(pairs).toEqual(["open", "state"]);
+    expect(pairs).toEqual(["open", "open-agent", "state"]);
   });
 
   test("the app origin can read and set this computer's MCP switch, and only with the three known requests", async () => {
