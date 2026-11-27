@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { reconnect, STATE_BOUND_MS, switchTo, OFFLINE_BOUND_MS, OFFLINE_TEST_TIMEOUT_MS } from "./machine-switch.ts";
+import { settingsBack, settingsSection } from "./settings-sections.ts";
 
 test.describe("Settings, Machines", () => {
   test("lists this machine and the added one with their state, and says when and why one went offline", async ({
@@ -55,8 +56,9 @@ test.describe("Settings, Machines", () => {
       await expect(list.getByRole("listitem").first()).toContainText("Online", { timeout: 15_000 });
       const viewport = page.viewportSize();
       if (viewport === null) throw new Error("no viewport");
-      // The list leads: its heading sits in the screen's top third, not under a screenful of explanation.
-      const heading = await page.getByRole("heading", { name: "Machines", level: 2 }).boundingBox();
+      // The list leads: it starts in the screen's top third, not under a screenful of explanation (on a phone the
+      // section's name is the page's title, #2914, so the list itself is measured).
+      const heading = await list.boundingBox();
       expect(heading?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(viewport.height / 3);
       const add = page.getByRole("button", { name: "Add a machine" });
       for (const target of [list.getByRole("listitem").first(), add]) {
@@ -75,9 +77,12 @@ test.describe("Settings, Machines", () => {
 
     test("the join page's Connect a machine opens Machines on that group", async ({ page }) => {
       await page.goto("/settings#connect");
-      await expect(page.getByRole("tab", { name: "Machines" })).toHaveAttribute("aria-selected", "true");
-      await expect(page.getByRole("tab", { name: "Connect a machine" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Machines", level: 1 })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
+      // The list of sections has Machines and no separate Connect a machine entry.
+      await settingsBack(page).click();
+      await expect(settingsSection(page, "Machines")).toBeVisible();
+      await expect(settingsSection(page, "Connect a machine")).toHaveCount(0);
     });
   });
 });

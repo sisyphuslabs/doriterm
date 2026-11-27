@@ -1,7 +1,7 @@
 import { Button, cn } from "@doriface/ui";
 import { type KeyboardEvent, useEffect } from "react";
 import type { SettingHit } from "./setting-rows.ts";
-import { SectionHeader, rowValueClass } from "./settings-layout.tsx";
+import { SectionHeader, SettingsCard, rowDetailClass, rowValueClass } from "./settings-layout.tsx";
 import { SECTIONS } from "./settings-sections.tsx";
 
 const sectionLabel = (hit: SettingHit): string => SECTIONS.find((each) => each.id === hit.section)?.label ?? "";
@@ -28,29 +28,33 @@ export function SettingHits(props: {
   return (
     <section aria-label="Matching settings" data-setting-hits className="flex flex-col">
       <SectionHeader title="Matching settings" />
-      <ul className="flex flex-col">
-        {props.hits.map((hit) => (
-          <li key={`${hit.section}:${hit.title}`} className="border-b border-border last:border-b-0">
-            <Button
-              variant="ghost"
-              onClick={() => props.onOpen(hit)}
-              onKeyDown={(event) => stepHits(event, props.onLeave)}
-              data-list-row
-              className="h-auto min-h-12 w-full flex-col items-start justify-center gap-0.5 px-2 py-2.5 text-left"
-            >
-              <span className="flex w-full items-baseline justify-between gap-3">
-                <span className="text-base text-foreground">{hit.title}</span>
-                <span data-row-value className={cn("shrink-0", rowValueClass)}>
-                  {sectionLabel(hit)}
+      <SettingsCard>
+        <ul className="flex flex-col">
+          {props.hits.map((hit) => (
+            <li key={`${hit.section}:${hit.title}`} className="border-b border-border last:border-b-0">
+              <Button
+                variant="ghost"
+                onClick={() => props.onOpen(hit)}
+                onKeyDown={(event) => stepHits(event, props.onLeave)}
+                data-list-row
+                className="h-auto min-h-(--settings-row-min) w-full flex-col items-start justify-center gap-0.5 rounded-none py-(--settings-row-y) pr-[var(--settings-row-reach,0px)] pl-0 text-left"
+              >
+                <span className="flex w-full items-baseline justify-between gap-3">
+                  <span className="text-(length:--settings-row-title) leading-[1.375rem] text-foreground">
+                    {hit.title}
+                  </span>
+                  <span data-row-value className={cn("shrink-0", rowValueClass)}>
+                    {sectionLabel(hit)}
+                  </span>
                 </span>
-              </span>
-              <span data-row-value className={cn("line-clamp-1 font-normal", rowValueClass)}>
-                {hit.detail}
-              </span>
-            </Button>
-          </li>
-        ))}
-      </ul>
+                <span data-row-detail className={cn("line-clamp-1 font-normal", rowDetailClass)}>
+                  {hit.detail}
+                </span>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </SettingsCard>
     </section>
   );
 }
@@ -74,8 +78,24 @@ function findRow(body: Element, hit: SettingHit): HTMLElement | undefined {
 function land(row: HTMLElement): void {
   row.scrollIntoView({ block: "center" });
   row.setAttribute("data-setting-landed", "");
-  const control = row.matches(FOCUSABLE) ? row : row.querySelector<HTMLElement>(FOCUSABLE);
-  (control ?? row).focus({ preventScroll: true });
+  // The row's own control (SettingRow's control slot): its pressed or checked choice when it has one, else its first
+  // usable control. A row with a slot never lands anywhere else: when nothing in it can be used (a key this build does not
+  // apply), the row itself takes the focus, so a key's Reset on the title line, whose next Space would undo the value, is
+  // never chosen. Only a row with no slot lands on its first usable control. Anything hidden or disabled is passed over.
+  const usable = (scope: Element): HTMLElement[] =>
+    [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+      (candidate) => getComputedStyle(candidate).visibility !== "hidden" && !candidate.matches(":disabled"),
+    );
+  const slot = row.querySelector("[data-setting-control]");
+  const own = slot === null ? [] : usable(slot);
+  const chosen = own.find((candidate) => candidate.matches('[aria-pressed="true"], [aria-checked="true"]')) ?? own[0];
+  const control = row.matches(FOCUSABLE) ? row : slot === null ? usable(row)[0] : chosen;
+  if (control !== undefined) {
+    control.focus({ preventScroll: true });
+    return;
+  }
+  if (!row.hasAttribute("tabindex")) row.setAttribute("tabindex", "-1");
+  row.focus({ preventScroll: true });
 }
 
 /**

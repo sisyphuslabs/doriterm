@@ -13,6 +13,7 @@ import {
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
 import { stubSpeech } from "./speech-stub.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -71,14 +72,14 @@ test("the ended view offers no dictation: no mic, no strip, no keys bar, and a b
   const address = startShell("machine", "voice-ended");
   try {
     await page.goto("/settings");
-    await page.getByRole("tab", { name: "Keybindings" }).click();
+    await openSettingsSection(page, "Keybindings");
     await page.getByRole("button", { name: "Record a shortcut for Dictate", exact: true }).click();
     await page.keyboard.press("Control+Alt+Shift+D");
     await expect(
       page.locator('[id="keybinding-voice.dictate"]').locator("xpath=../..").getByText("Changed"),
     ).toBeVisible();
     // The speech service, so the bound key would start a real dictation if the ended view still took one.
-    await page.getByRole("tab", { name: "Voice input" }).click();
+    await openSettingsSection(page, "Voice input");
     await page.getByRole("button", { name: "Service", exact: true }).click();
     await expect(page.getByRole("button", { name: "Service", exact: true })).toHaveAttribute("aria-pressed", "true");
 

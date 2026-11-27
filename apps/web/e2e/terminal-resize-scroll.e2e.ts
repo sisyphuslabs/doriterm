@@ -18,19 +18,23 @@ const LINES = 5000;
  * An agent's transcript as pi-tui (omo, senpi) and Claude Code draw it outside a multiplexer: on every width change the
  * whole transcript again, as one synchronized update (DECSET 2026) that clears the screen and the scrollback first. A
  * native terminal swaps it in at once, and so must the view (#757). Like a TUI, it builds a frame first and then writes
- * it whole; each finished frame leaves a marker file.
+ * it whole; each finished frame leaves a marker file. Every line's fill starts with the frame's number (`f2`), so the
+ * screen tells a frame drawn after a resize from the one before it: both end at the same last line.
  */
 const AGENT = String.raw`stty -echo
 drawn=0
 frame() {
+  # Claim this frame's number first: a resize landing while it is still drawing runs a nested frame, which must take the
+  # next number rather than reuse this one (two frames numbered alike would never let the page see the newer one).
+  drawn=$((drawn + 1))
+  local n=$drawn
   cols=$(tput cols)
-  awk -v n=${LINES} -v c="$cols" 'BEGIN { fill = ""; for (k = 0; k < c - 10; k++) fill = fill "."
+  awk -v n=${LINES} -v c="$cols" -v f=$n 'BEGIN { fill = "f" f; for (k = length(fill); k < c - 10; k++) fill = fill "."
     for (i = 1; i <= n; i++) printf "\033[38;5;%dmrow %05d\033[0m %s%s", 240 + i % 10, i, fill, (i < n ? "\r\n" : "") }' > "$DRAWN.frame"
   printf '\033[?2026h\033[?7l\033[2J\033[H\033[3J'
   cat "$DRAWN.frame"
   printf '\033[?7h\033[?2026l'
-  drawn=$((drawn + 1))
-  : > "$DRAWN.$drawn"
+  : > "$DRAWN.$n"
 }
 trap frame WINCH
 frame
@@ -42,8 +46,14 @@ test.afterEach(() => {
   for (const address of started.splice(0)) hcOn("host", ["kill", address]);
 });
 
-/** Starts the agent on the core; `frames()` counts the frames it has finished writing. */
-function startAgent(dir: string): { readonly address: string; readonly frames: () => number } {
+interface Agent {
+  readonly address: string;
+  /** The frames it has finished writing. */
+  readonly frames: () => number;
+}
+
+/** Starts the agent on the core. */
+function startAgent(dir: string): Agent {
   const script = join(dir, "agent.sh");
   const marker = join(dir, "drawn");
   writeFileSync(script, AGENT);
@@ -72,13 +82,49 @@ async function slowPage(page: Page, slowdown: number): Promise<void> {
 
 const slower = (slowdown: number): string => (slowdown > 1 ? `, on a page ${slowdown}x slower` : "");
 
-/** The view at the bottom, its screen showing the transcript's last line. */
-async function atLastLine(terminal: Locator): Promise<void> {
-  await expect(terminal.locator(".term-row:not(.term-scrollback-row)").last()).toContainText(
-    `row ${String(LINES).padStart(5, "0")}`,
-    { timeout: 30_000 },
+/** How the view stood when `atLastLine` stopped waiting: the frame its screen ends with (0 for none) and its distance from the bottom. */
+interface LastLine {
+  readonly painted: number;
+  readonly away: number;
+}
+
+/**
+ * The view at the bottom, its screen showing the last line of the newest frame the agent has finished writing, or of a
+ * later one: the frame before ends with the same line, so only its number tells that the redraw has been painted. The
+ * page watches for both on every frame it draws, and each wait's budget runs on the page's own clock from when it
+ * starts looking: a page too starved to answer a read for seconds is not a view that left the bottom.
+ */
+async function atLastLine(terminal: Locator, agent: Agent): Promise<void> {
+  const written = Math.max(1, agent.frames());
+  const address = await terminal.getAttribute("data-terminal");
+  const seen = await terminal.page().evaluate(
+    ({ selector, last, frame }) =>
+      new Promise<LastLine>((resolve) => {
+        const lastLine = new RegExp(`row ${last} f(\\d+)`);
+        const read = (): LastLine => {
+          const element = document.querySelector(selector);
+          if (element === null) return { painted: 0, away: Number.POSITIVE_INFINITY };
+          const rows = element.querySelectorAll(".term-row:not(.term-scrollback-row)");
+          const painted = Number(lastLine.exec(rows[rows.length - 1]?.textContent ?? "")?.[1] ?? 0);
+          return { painted, away: element.scrollHeight - element.clientHeight - element.scrollTop };
+        };
+        let until = performance.now() + 30_000;
+        let bottom = false;
+        const look = (): void => {
+          const now = read();
+          if (!bottom && now.painted >= frame) {
+            bottom = true;
+            until = performance.now() + 5_000;
+          }
+          if ((bottom && now.away < 5) || performance.now() > until) resolve(now);
+          else requestAnimationFrame(look);
+        };
+        look();
+      }),
+    { selector: `[data-terminal="${address}"]`, last: String(LINES).padStart(5, "0"), frame: written },
   );
-  await expect.poll(() => fromBottom(terminal)).toBeLessThan(5);
+  expect(seen.painted, "the newest frame's last line on the screen").toBeGreaterThanOrEqual(written);
+  expect(seen.away, "the view's distance from its bottom").toBeLessThan(5);
 }
 
 for (const slowdown of SLOWDOWNS)
@@ -93,14 +139,14 @@ for (const slowdown of SLOWDOWNS)
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.goto("/");
       const terminal = terminalOf(page, agent.address);
-      await atLastLine(terminal);
+      await atLastLine(terminal, agent);
       await slowPage(page, slowdown);
       const resize = async (width: number): Promise<void> => {
         const drawn = agent.frames();
         const samples = await sampleWhile(page, agent.address, async () => {
           await page.setViewportSize({ width, height: 800 });
           await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
-          await atLastLine(terminal);
+          await atLastLine(terminal, agent);
         });
         expectFollowed(samples, LINES);
       };
@@ -134,7 +180,7 @@ for (const slowdown of SLOWDOWNS)
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.goto("/");
       const terminal = terminalOf(page, agent.address);
-      await atLastLine(terminal);
+      await atLastLine(terminal, agent);
       await slowPage(page, slowdown);
       const divider = page.locator('[role="separator"][data-container="tb-757"]');
       const line = await divider.boundingBox();
@@ -147,7 +193,7 @@ for (const slowdown of SLOWDOWNS)
         await page.mouse.move(x - 240, y, { steps: 8 });
         await page.mouse.up();
         await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
-        await atLastLine(terminal);
+        await atLastLine(terminal, agent);
       });
       expectFollowed(samples, LINES);
     } finally {
@@ -174,7 +220,7 @@ test.describe("on a phone", () => {
           .first()
           .click();
         const terminal = terminalOf(page, agent.address);
-        await atLastLine(terminal);
+        await atLastLine(terminal, agent);
         await slowPage(page, slowdown);
         // The keyboard takes rows from the grid, as on a phone: the agent redraws for the new height.
         const keyboard = async (px: number): Promise<void> => {
@@ -182,7 +228,7 @@ test.describe("on a phone", () => {
           const samples = await sampleWhile(page, agent.address, async () => {
             await showKeyboard(page, px);
             await expect.poll(agent.frames, { timeout: 30_000 }).toBeGreaterThan(drawn);
-            await atLastLine(terminal);
+            await atLastLine(terminal, agent);
           });
           expectFollowed(samples, LINES, { atBottom: false });
         };

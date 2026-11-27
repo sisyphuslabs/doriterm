@@ -11,6 +11,7 @@ import {
   STATE_BOUND_MS,
   switchTo,
 } from "./machine-switch.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 // Settings > Machines on a 390 px phone (#2456 review): a row with nothing to do is only its text, and an offline row
 // with a long name keeps Try again and Remove… inside the screen, under its description.
@@ -21,7 +22,7 @@ const LONG = "remote-build-machine-number-0001";
 
 async function openMachines(page: Page): Promise<Locator> {
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Machines" }).click();
+  await openSettingsSection(page, "Machines");
   const list = page.getByRole("list", { name: "Machines" });
   await expect(list).toBeVisible();
   return list;
