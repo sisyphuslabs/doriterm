@@ -149,6 +149,19 @@ export function SettingsRoute() {
       <ScrollArea slot="settings-body" className="flex-1">
         <div ref={body} className="flex max-w-2xl flex-col gap-(--settings-group-gap) px-4 pt-2 pb-6 md:px-7 md:py-5.5">
           {hits.length === 0 ? null : <SettingHits hits={hits} onOpen={open} onLeave={() => field.current?.focus()} />}
+          {/* The Update row fails alone: a throw there must not take every section with it. It leads every page, the
+              phone's list of sections included, so a pending update is seen as Settings opens. */}
+          {update === null ? null : (
+            <RegionBoundary
+              region="settings-update"
+              title="The update row could not be drawn"
+              detail="The sections below still work."
+            >
+              <Group title="Update">
+                <UpdateRow update={update} />
+              </Group>
+            </RegionBoundary>
+          )}
           {paged ? null : (
             <div className="contents md:hidden">
               {nothing}
@@ -156,18 +169,6 @@ export function SettingsRoute() {
             </div>
           )}
           <div className={cn("contents", !paged && "max-md:hidden")}>
-            {/* The Update row fails alone: a throw there must not take every section with it. */}
-            {update === null ? null : (
-              <RegionBoundary
-                region="settings-update"
-                title="The update row could not be drawn"
-                detail="The sections below still work."
-              >
-                <Group title="Update">
-                  <UpdateRow update={update} />
-                </Group>
-              </RegionBoundary>
-            )}
             <RegionBoundary
               key={section}
               region="settings-section"
