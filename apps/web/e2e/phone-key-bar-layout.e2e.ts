@@ -1,6 +1,6 @@
 import { KEYBOARD_REQUEST_MS } from "../src/terminal/keyboard-inset.ts";
 import { expect, test } from "./fixtures.ts";
-import { key, keysBar, openPhoneTerminal, resizeSeen } from "./phone-key-bar.ts";
+import { key, keyboardFromTap, keysBar, openPhoneTerminal, resizeSeen } from "./phone-key-bar.ts";
 
 // A touch phone whose browser resizes the page for its soft keyboard. A mouse-only window of this width opens the keys
 // bar by hand instead (phone-keys-mouse.e2e.ts, #287). The service worker reloads the page once it takes control; only
@@ -33,17 +33,19 @@ test("entering split screen with the terminal focused is no keyboard: the keys s
 
   // The keyboard button raises the keyboard in split screen, measured from the half screen (#1375).
   await resizeSeen(page, { width: PORTRAIT.width, height: 420 });
-  await key(page, "Show keyboard").click();
-  await resizeSeen(page, { width: PORTRAIT.width, height: 420 - 200 });
+  await keyboardFromTap(page, key(page, "Show keyboard"), { width: PORTRAIT.width, height: 420 - 200 });
   await expect(key(page, "Hide keyboard")).toBeVisible();
 });
 
 test("rotating with the keyboard up keeps the key bar up, until the keyboard closes", async ({ page }) => {
+  await page.clock.install();
   await openPhoneTerminal(page, PORTRAIT.width, "resize");
   const input = page.locator("[data-terminal] textarea");
   // The keyboard button asks for the keyboard; this browser shrinks the page for it (#1375).
-  await key(page, "Show keyboard").click();
-  await resizeSeen(page, { width: PORTRAIT.width, height: PORTRAIT.height - KEYBOARD });
+  await keyboardFromTap(page, key(page, "Show keyboard"), {
+    width: PORTRAIT.width,
+    height: PORTRAIT.height - KEYBOARD,
+  });
   const bar = keysBar(page);
   // The keys are on screen in both states (#2499): the toggle says which.
   await expect(key(page, "Hide keyboard")).toBeVisible();

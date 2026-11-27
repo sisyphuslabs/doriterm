@@ -105,6 +105,24 @@ export async function resizeSeen(page: Page, size: { readonly width: number; rea
   await page.evaluate(() => Reflect.get(window, "__resizeSeen") as Promise<void>);
 }
 
+/**
+ * Taps `tap` and resizes the page for the keyboard it raises, at one moment on the page's clock: a phone's keyboard
+ * comes up right after the tap, and the page counts a shrink as the keyboard only within KEYBOARD_REQUEST_MS of it. A
+ * loaded runner can spend longer than that between the two steps (4.5 s measured, #2553); with the clock paused, that
+ * time never reaches the page. Needs `page.clock.install()` before the page loads. The pause starts a second ahead of
+ * the page's time, so it never asks the clock to go back.
+ */
+export async function keyboardFromTap(
+  page: Page,
+  tap: Locator,
+  size: { readonly width: number; readonly height: number },
+): Promise<void> {
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+  await tap.click();
+  await resizeSeen(page, size);
+  await page.clock.resume();
+}
+
 export async function showKeyboard(page: Page, px: number): Promise<void> {
   await page.evaluate((height) => (Reflect.get(window, "softKeyboard") as (px: number) => void)(height), px);
 }
