@@ -2,6 +2,7 @@ import type { StaticKey } from "@doriface/crypto";
 import { deviceStore, type KeyValueStore } from "../storage/idb.ts";
 import { DEFAULT_SLOT, slotKeys } from "../mesh/identity-slots.ts";
 import { loadDeviceKey } from "./device-key.ts";
+import type { DialBudget } from "./relay-dial-budget.ts";
 
 /**
  * What the relay path needs from the browser; tests replace the device key. `keySlot` names the identity the member
@@ -9,6 +10,8 @@ import { loadDeviceKey } from "./device-key.ts";
  */
 export interface RelayDeps {
   readonly loadDeviceKey: (keySlot?: string) => Promise<StaticKey>;
+  /** The page's relay upgrade budget every dial acquires from (relay-dial-budget.ts); a test passes its own. */
+  readonly dials?: DialBudget | undefined;
 }
 
 /** The relay path's keys from one storage view: the page's, or the service worker's own over the same IndexedDB. */

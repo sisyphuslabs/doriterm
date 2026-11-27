@@ -75,8 +75,8 @@ test("coming back from Settings while a reconnect waits out its back-off reconne
   await openNewTerminal(page);
   const opened = socket.opened();
   await socket.drop(true);
-  // Four refused attempts (0.5 + 1 + 2 + 5 s) leave the next one 10 s away.
-  await expect.poll(socket.refused, { timeout: 30_000 }).toBeGreaterThanOrEqual(4);
+  // Seven refused attempts (0.25 x 3 + 0.5 + 1 + 2 + 5 s) leave the next one 10 s away.
+  await expect.poll(socket.refused, { timeout: 30_000 }).toBeGreaterThanOrEqual(7);
   await expect(notice(page, /Reconnecting in ([6-9]|10) s/)).toBeVisible({ timeout: 5_000 });
   socket.restore();
 

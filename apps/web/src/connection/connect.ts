@@ -1,12 +1,13 @@
 import { HcConnection, HcHandshakeTimeoutError, HELLO_REQUEST_LINE } from "@doriface/client";
 import type { ByteLink } from "@doriface/client";
 import { base64urlDecode, CloseCode, type SecureSession, secureLink, SecureLinkError } from "@doriface/crypto";
-import { connectRelayClient } from "@doriface/relay-client";
+import { clientSocketCount, connectRelayClient } from "@doriface/relay-client";
 import { directDial, type PageAccess, pageAccess, parseDirectAddress } from "./direct-address.ts";
 import { attemptDirect, DIRECT_BUDGET_MS, DirectFailure, type DirectReason, openDirectLink } from "./direct-attempt.ts";
 import { directBudgetProbe } from "./direct-budget-probe.ts";
 import { canForwardPlainWs, openForwardedLink } from "./direct-forward.ts";
 import { DIRECT_PATH_ENABLED } from "./direct-switch.ts";
+import { type DialBudget, relayUpgrades } from "./relay-dial-budget.ts";
 import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "./relay-deps.ts";
 import type { ResumableSession } from "./session-resume.ts";
 import type { ConnectionSettings } from "./settings.ts";
@@ -139,7 +140,8 @@ async function openOnPath(
   return {
     connection,
     path: "relay",
-    session: { secure: relayed, redial: (again) => dialRelay(settings, again) },
+    // A resume carries a session on, so it needs no race for the nearest socket: one socket, one upgrade of the budget.
+    session: { secure: relayed, redial: (again) => dialRelay(settings, again, deps.dials ?? relayUpgrades, 1) },
     ...(direct.reason === undefined ? {} : { directReason: direct.reason }),
   };
 }
@@ -229,20 +231,34 @@ function directFailureReason(error: unknown): DirectReason {
   return error instanceof DirectFailure ? error.reason : "could-not-connect";
 }
 
-/** One relay socket to the host: the session's first, and each one a resume carries it on over. */
-const dialRelay = (settings: ConnectionSettings, signal: AbortSignal | undefined): Promise<ByteLink> =>
-  connectRelayClient({
+/**
+ * A relay socket to the host: the session's first (the nearest of up to 3), and each one a resume carries it on over
+ * (`bestOf` 1: one socket, since the relay charges every socket of an unproven dial to the page's source, #2928 review).
+ * Every dial first takes its sockets from the page's upgrade budget, so fresh connects and resumes together stay under
+ * the relay's per-source limit (#2933 review).
+ */
+async function dialRelay(
+  settings: ConnectionSettings,
+  signal: AbortSignal | undefined,
+  dials: DialBudget,
+  bestOf?: number,
+): Promise<ByteLink> {
+  const options = {
     relayUrl: settings.relayUrl,
     hostId: settings.hostId,
     ...(signal === undefined ? {} : { signal }),
-  });
+    ...(bestOf === undefined ? {} : { bestOf }),
+  };
+  await dials.acquire(clientSocketCount(options), signal);
+  return connectRelayClient(options);
+}
 
 async function openRelaySession(
   settings: ConnectionSettings,
   deps: RelayDeps,
   signal: AbortSignal | undefined,
 ): Promise<SecureSession> {
-  return openSessionOn(await dialRelay(settings, signal), settings, deps);
+  return openSessionOn(await dialRelay(settings, signal, deps.dials ?? relayUpgrades), settings, deps);
 }
 
 const HELLO_LINE = new TextEncoder().encode(HELLO_REQUEST_LINE);

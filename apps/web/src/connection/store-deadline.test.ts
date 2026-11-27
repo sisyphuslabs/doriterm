@@ -81,15 +81,15 @@ test("the deadline doubles after each attempt that timed out, and stops at 30 s"
   // First attempt: 10 s.
   await pass(10_000);
   expect(store.state.phase).toBe("failed");
-  // Its retry is armed for 1 s; let it start, then the next deadline must be 20 s, not 10.
-  await pass(1_000);
+  // Its retry is armed for 250 ms; let it start, then the next deadline must be 20 s, not 10.
+  await pass(250);
   await pass(19_999);
   expect(store.state.phase).toBe("connecting");
   await pass(1);
   expect(store.state.phase).toBe("failed");
 
-  // Its retry is armed for 2 s; the deadline is now capped at 30 s.
-  await pass(2_000);
+  // Its retry is armed for 250 ms; the deadline is now capped at 30 s.
+  await pass(250);
   await pass(29_999);
   expect(store.state.phase).toBe("connecting");
   await pass(1);
