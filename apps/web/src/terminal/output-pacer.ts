@@ -270,6 +270,14 @@ export class OutputPacer {
     this.#endReplay();
   }
 
+  /**
+   * The stream that brought the output closed (the program ended, or the link went down): a core paint it was bringing
+   * can no longer close, so it is drawn as it stands. Queued output is kept and written as before (#2794).
+   */
+  streamClosed(): void {
+    if (this.#held?.paint === true) this.#endHeld();
+  }
+
   /** Forgets queued output (the stream it came from is gone); its credit is not returned. A replay held ends. */
   drop(): void {
     this.#cancel?.();

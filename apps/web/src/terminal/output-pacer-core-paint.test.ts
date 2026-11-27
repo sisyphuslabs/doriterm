@@ -44,6 +44,38 @@ test("the core's paint is let go once it has written as much as a replay may hol
   expect(holds.at(-1)).toBe("update let go");
 });
 
+test("a core paint left open when its stream closes is drawn as it stands, and output queued after it is still written", () => {
+  const { frames, timers, holds, written, pacer } = attached();
+  pacer.push(new Uint8Array([...text(OPEN), ...bytes(64 * KIB)]));
+  timers.advance(60_000);
+  expect(holds.at(-1)).toBe("replay let go");
+  pacer.streamClosed();
+  expect(holds.at(-1)).toBe("update let go");
+  // Nothing it wrote is lost, and what comes after it is paced as usual.
+  pacer.push(bytes(KIB));
+  frames.nextFrame();
+  expect(written).toEqual([OPEN.length + 64 * KIB, KIB]);
+});
+
+test("a core paint left open is let go when the view drops the stream, as on a reattach", () => {
+  const { timers, holds, pacer } = attached();
+  pacer.push(new Uint8Array([...text(OPEN), ...bytes(64 * KIB)]));
+  timers.advance(60_000);
+  expect(holds.at(-1)).toBe("replay let go");
+  pacer.drop();
+  expect(holds.at(-1)).toBe("update let go");
+});
+
+test("a stream closing with no core paint held changes nothing: a program's update keeps its own rules", () => {
+  const { timers, holds, pacer } = attached();
+  pacer.push(bytes(KIB));
+  pacer.push(new Uint8Array([...text(OPEN), ...bytes(KIB)]));
+  pacer.streamClosed();
+  expect(holds).toEqual(["replay held", "update held", "replay let go"]);
+  timers.advance(1850);
+  expect(holds.at(-1)).toBe("update let go");
+});
+
 test("an update a program opens later in the replay keeps the rules for a program's update: let go once it goes quiet", () => {
   const { timers, holds, pacer } = attached();
   pacer.push(bytes(KIB));

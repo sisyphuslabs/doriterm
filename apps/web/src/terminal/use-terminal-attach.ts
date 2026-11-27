@@ -318,7 +318,11 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
             pacer.push(encoder.encode(rendererOptions(terminalConfigStore.config).cursorSequence));
         });
         attached.onClose((close) => {
-          if (stream.current === attached) stream.current = null;
+          if (stream.current === attached) {
+            stream.current = null;
+            // A core paint this stream was bringing will not close now: it is drawn as it stands (#2794).
+            pacer.streamClosed();
+          }
           const end = terminalEnd(close);
           // The line went down under a painted view: what it prints meanwhile may not reach the history. Said now, the
           // note takes over the phone's Reconnecting line as the connection comes back, at its height (#2257).
