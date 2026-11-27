@@ -1,5 +1,5 @@
 import { terminalSpaceName } from "@doriface/protocol";
-import { Button, NeedsYouPill, StatusChip, StatusIndicator } from "@doriface/ui";
+import { Button, NeedsYouPill, Spinner, StatusChip, StatusIndicator } from "@doriface/ui";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useFittedLines } from "./fit-lines.ts";
@@ -10,6 +10,7 @@ import { useSpaceSelection } from "./space-selection.ts";
 import { PhoneSessionSheet } from "./phone-session-sheet.tsx";
 import { backWithMotion } from "./phone-back-motion.ts";
 import { readoutText, usePinchReadout } from "../terminal/pinch-readout.ts";
+import { useReconnectingNotice } from "./reconnect-status.tsx";
 
 export interface PhoneHeaderProps {
   readonly terminal: Session;
@@ -53,6 +54,8 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
   // While a pinch moves, the line under the title reads the size and grid instead; nothing is drawn over the terminal.
   const pinch = usePinchReadout(terminal.address);
   const where = pinch === null ? `${machine ?? host} · ${space}` : readoutText(pinch);
+  // A link being redialed is said in this same line, at its height, so the terminal under the header keeps its rows (#2853).
+  const reconnecting = useReconnectingNotice();
   return (
     <header
       data-titlebar
@@ -87,13 +90,25 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
           <StatusChip status={agentStatus(terminal)} className="hidden @min-[22rem]:inline-flex" />
           <StatusIndicator status={agentStatus(terminal)} className="mt-1 size-3.5 shrink-0 @min-[22rem]:hidden" />
         </div>
-        <p
-          title={where}
-          data-pinch-readout={pinch === null ? undefined : ""}
-          className="min-w-0 truncate text-xs leading-tight text-muted-foreground tabular-nums"
-        >
-          {where}
-        </p>
+        {reconnecting === null ? (
+          <p
+            title={where}
+            data-pinch-readout={pinch === null ? undefined : ""}
+            className="min-w-0 truncate text-xs leading-tight text-muted-foreground tabular-nums"
+          >
+            {where}
+          </p>
+        ) : (
+          <p
+            role="status"
+            title={reconnecting.detail}
+            data-header-reconnecting
+            className="flex min-w-0 items-center gap-1 text-xs leading-tight text-foreground"
+          >
+            <Spinner />
+            <span className="min-w-0 truncate">{reconnecting.label}</span>
+          </p>
+        )}
       </div>
       <NeedsYouPill
         count={waiting}
