@@ -123,36 +123,6 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     expect(holds).toEqual([true]);
   });
 
-  test("typing lets a held replay go at once: the echo is drawn at the next frame, not after the quiet window or a span (#2794)", () => {
-    const { frames, timers, written, holds, pacer } = replaying(1200);
-    // A replay's last window is in, and a program trickles after it: the hold would last a span or two more.
-    pacer.push(bytes(256 * KIB));
-    timers.advance(1500);
-    pacer.push(bytes(KIB));
-    timers.advance(100);
-    expect(holds).toEqual([true]);
-    pacer.typed();
-    expect(holds).toEqual([true, false]);
-    // The key's echo comes back a round trip later and is written at the next frame.
-    timers.advance(1200);
-    pacer.push(bytes(3));
-    frames.nextFrame();
-    expect(written.at(-1)).toBe(3);
-    expect(frames.frames).toHaveLength(0);
-  });
-
-  test("typing with no replay held changes nothing: output is paced as before", () => {
-    const { frames, timers, written, holds, pacer } = replaying(300);
-    timers.advance(500);
-    expect(holds).toEqual([true, false]);
-    pacer.typed();
-    expect(holds).toEqual([true, false]);
-    pacer.push(bytes(3));
-    expect(written).toEqual([]);
-    frames.nextFrame();
-    expect(written).toEqual([3]);
-  });
-
   test("a first span that writes under half a credit window, though more than a trickle, lets the replay go (#2271)", () => {
     const { timers, holds, pacer } = replaying(300);
     // 96 KiB over the first span, in frames under the quiet window: more than a trickle, under half a window.

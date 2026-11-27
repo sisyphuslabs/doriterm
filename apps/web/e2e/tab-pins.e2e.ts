@@ -201,13 +201,19 @@ test("pinned tabs stay in view in a group of their own while the other tabs scro
     });
     const box = first?.getBoundingClientRect();
     const hit = box === undefined ? null : document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    // The pinned group scrolls only once its tabs pass half the strip (review of #2865); one pinned tab is shown whole.
+    const pinnedGroup = first?.closest<HTMLElement>("[data-tab-pins]") ?? null;
     return {
-      pinnedScrolls: pinnedScroller !== null,
+      pinnedWhole:
+        pinnedScroller !== lastScroller &&
+        pinnedGroup !== null &&
+        pinnedGroup.scrollLeft === 0 &&
+        pinnedGroup.scrollWidth <= pinnedGroup.clientWidth,
       othersScrolled: (lastScroller?.scrollLeft ?? 0) > 0,
       pinnedOnTop: hit !== null && first?.contains(hit) === true,
     };
   });
-  expect(geometry).toEqual({ pinnedScrolls: false, othersScrolled: true, pinnedOnTop: true });
+  expect(geometry).toEqual({ pinnedWhole: true, othersScrolled: true, pinnedOnTop: true });
   expect(await pinned.boundingBox()).toEqual(before);
 });
 

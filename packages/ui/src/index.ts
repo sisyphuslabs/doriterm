@@ -87,6 +87,7 @@ export {
   type MenuItemProps,
   type MenuProps,
 } from "./components/menu.tsx";
+export { NeedsYouPill, type NeedsYouPillProps } from "./components/needs-you-pill.tsx";
 export { Notice, type NoticeProps } from "./components/notice.tsx";
 export { NumberStepper, type NumberStepperProps } from "./components/number-stepper.tsx";
 export { PaletteEditor, type PaletteEditorProps } from "./components/palette-editor.tsx";

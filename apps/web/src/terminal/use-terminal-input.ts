@@ -52,8 +52,6 @@ interface InputSources {
   readonly predict?: RefObject<((data: TerminalInput) => void) | null>;
   /** Told before each input is sent or queued: the person is using this view, so its grid may size the host (D1). */
   readonly inputStarts?: () => void;
-  /** Told as the person's own input is written to the stream, before it goes: a held replay lets go (#2794). */
-  readonly personSends?: () => void;
 }
 
 /**
@@ -80,15 +78,13 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   latestAddress.current = address;
   const latestToasts = useRef(toasts);
   latestToasts.current = toasts;
-  const latestPersonSends = useRef(sources.personSends);
-  latestPersonSends.current = sources.personSends;
   // Every human-input write goes through send, so keys pressed during a reconnect or a wake replay in the order pressed.
   const [held] = useState(
     () =>
       new HeldInput(
         unprovenLinks,
         () => latestConnection.current,
-        () => (stream.current === null ? null : streamSink(stream.current, () => latestPersonSends.current?.())),
+        () => (stream.current === null ? null : streamSink(stream.current)),
         {
           lines: machineLines,
           machine: () => machineOf(latestAddress.current),

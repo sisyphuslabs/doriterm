@@ -277,11 +277,6 @@ export class OutputPacer {
     }
   }
 
-  /** The person typed: a replay held is let go now, so what answers the keys is drawn as it arrives (#2794). */
-  typed(): void {
-    this.#endReplay();
-  }
-
   /**
    * The stream that brought the output closed (the program ended, or the link went down): a core paint it was bringing
    * can no longer close, so it is drawn as it stands. Queued output is kept and written as before (#2794).
