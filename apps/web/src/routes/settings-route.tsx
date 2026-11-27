@@ -1,125 +1,46 @@
-import { Button, IconButton, Input, ScrollArea, Tab, TabList, Tabs, cn, fieldLabelClass } from "@doriface/ui";
+import { IconButton, ScrollArea, cn } from "@doriface/ui";
 import { ArrowLeft } from "lucide-react";
-import {
-  useCallback,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-  type Ref,
-} from "react";
-import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
-import { useActionHandler } from "../keys/dispatcher.ts";
-import { stepTerminalFont } from "../workspace/use-app-actions.ts";
-import { AppearanceSection } from "../settings/appearance-section.tsx";
-import { ConnectionSection } from "../settings/connection-section.tsx";
-import { DeviceSection } from "../settings/device-section.tsx";
-import { DevicesSection } from "../settings/devices-section.tsx";
-import { desktopMcp } from "../desktop/mcp-bridge.ts";
-import { McpSection } from "../settings/mcp-section.tsx";
-import { KeybindingsSection } from "../settings/keybindings-section.tsx";
-import { KeyboardSection } from "../settings/keyboard-section.tsx";
-import { MeshSection } from "../settings/mesh-section.tsx";
-import { MachinesSection } from "../settings/machines-section.tsx";
-import { MembersSection } from "../settings/members-section.tsx";
-import { NotificationsSection } from "../settings/notifications-section.tsx";
-import { PairSection } from "../settings/pair-section.tsx";
-import { TerminalSection } from "../settings/terminal-section.tsx";
-import { UpdateRow } from "../settings/update-row.tsx";
+import { useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { CrashProbe } from "../crash/crash-probe.ts";
 import { RegionBoundary } from "../crash/region-boundary.tsx";
-import { usePendingUpdate } from "../update/update-store.ts";
-import { useCloseSettings } from "../settings/use-close-settings.ts";
-import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
-import { VoiceSection } from "../settings/voice-section.tsx";
-import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { desktopBridge } from "../desktop/bridge.ts";
-import { BrowserInvite } from "../settings/browser-invite.tsx";
-import { CONNECT_GROUP, SECTIONS, sectionFromLink, type SectionId } from "../settings/settings-sections.tsx";
-import { matchSections } from "../settings/settings-search.ts";
-import { matchSettings, type SettingHit } from "../settings/setting-rows.ts";
+import { currentPlatform, triggerKeys } from "../keys/trigger.ts";
+import { useActionHandler } from "../keys/dispatcher.ts";
+import { useBrowserMembership } from "../mesh/membership-state.ts";
+import { Group, SectionBody } from "../settings/settings-body.tsx";
+import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
 import { SettingHits, useLandOn } from "../settings/settings-hits.tsx";
-import { SectionHeader } from "../settings/settings-layout.tsx";
+import { SearchRow, sectionStackClass } from "../settings/settings-layout.tsx";
+import { SettingsNav } from "../settings/settings-nav.tsx";
+import { PhoneHeader, PhoneSections } from "../settings/settings-phone.tsx";
+import { matchSettings, type SettingHit } from "../settings/setting-rows.ts";
+import { matchSections } from "../settings/settings-search.ts";
+import { SECTIONS, sectionFromLink, type SectionId } from "../settings/settings-sections.tsx";
+import { UpdateRow } from "../settings/update-row.tsx";
+import { useCloseSettings } from "../settings/use-close-settings.ts";
+import { usePendingUpdate } from "../update/update-store.ts";
+import { stepTerminalFont } from "../workspace/use-app-actions.ts";
+
+/** The width from which Settings draws its navigation beside the form (Tailwind's `md`). */
+const WIDE = "(min-width: 48rem)";
 
 /**
- * What a link asked for (a hash, so it survives a reload): its section, and the group to land on when an older link named
- * one that is now part of a section, as Connect a machine is part of Machines.
+ * What a link asked for (a hash, so it survives a reload): its section, whether a phone opens on that section's page
+ * (the link named one, or the screen is wide, where a section is always open, so a resize to a phone keeps it) rather
+ * than the list, and the group to land on when an older link named one that is now part of a section, as Connect a
+ * machine is part of Machines.
  */
-function firstLanding(): { readonly section: SectionId; readonly landing: SettingHit | null } {
-  const { section, group } = sectionFromLink(window.location.hash);
+function firstLanding(): { readonly section: SectionId; readonly paged: boolean; readonly landing: SettingHit | null } {
+  const { section, group, named } = sectionFromLink(window.location.hash);
   const landing =
     group === undefined ? null : { section, title: "Connect a machine", detail: "", anchor: group, words: [] };
-  return { section, landing };
-}
-
-function Group({
-  title,
-  id,
-  children,
-}: {
-  readonly title: string;
-  readonly id?: string;
-  readonly children: ReactNode;
-}) {
-  return (
-    <section className="flex flex-col">
-      <SectionHeader title={title} {...(id === undefined ? {} : { id })} />
-      {children}
-    </section>
-  );
-}
-
-/** One sentence under the title, in the words the navigation uses: what this screen is about and nothing else. */
-function Lead({ children }: { readonly children: ReactNode }) {
-  return <p className="max-w-measure text-prose text-pretty text-muted-foreground">{children}</p>;
+  return { section, paged: named || window.matchMedia(WIDE).matches, landing };
 }
 
 /**
- * The one search over every section; drawn in the phone header and in the desktop navigation, each with its own id.
- * `inline` puts the label beside the field, so the phone's title row keeps its height (#1460).
+ * Settings: on a phone a list of the sections under their group captions, each opening its own page; from `md` up the
+ * same groups in a navigation beside the form. Changes apply as they are made.
  */
-function SearchSettings({
-  query,
-  onQuery,
-  onKeyDown,
-  inputRef,
-  inline = false,
-}: {
-  readonly query: string;
-  readonly onQuery: (next: string) => void;
-  readonly onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
-  readonly inputRef: Ref<HTMLInputElement>;
-  readonly inline?: boolean;
-}) {
-  const id = useId();
-  return (
-    <div className={inline ? "flex items-center gap-2" : "flex flex-col gap-1"}>
-      <label htmlFor={id} className={cn(inline ? "shrink-0" : "px-0.5", fieldLabelClass)}>
-        {inline ? (
-          <>
-            Search<span className="sr-only"> settings</span>
-          </>
-        ) : (
-          "Search settings"
-        )}
-      </label>
-      <Input
-        ref={inputRef}
-        id={id}
-        className={cn(inline && "min-w-0 flex-1")}
-        type="search"
-        placeholder="e.g. theme or relay"
-        value={query}
-        onValueChange={onQuery}
-        onKeyDown={onKeyDown}
-      />
-    </div>
-  );
-}
-
-/** Section navigation beside the form; changes apply as they are made. */
 export function SettingsRoute() {
   // Settings shows the terminals' text size under Appearance and hints at its keys, so the text-size keys step it here
   // rather than the browser's zoom, in a browser too (#859, #1162).
@@ -128,6 +49,8 @@ export function SettingsRoute() {
   );
   const [opened] = useState(firstLanding);
   const [section, setSection] = useState<SectionId>(opened.section);
+  // Below `md` only: whether the phone shows the section's page (true) or the list of sections (false).
+  const [paged, setPaged] = useState(opened.paged);
   const [query, setQuery] = useState("");
   const shown = matchSections(SECTIONS, query);
   const hits = matchSettings(query);
@@ -138,9 +61,13 @@ export function SettingsRoute() {
     useCallback(() => body.current, []),
   );
   const field = useRef<HTMLInputElement>(null);
+  const openSection = (id: SectionId) => {
+    setSection(id);
+    setPaged(true);
+  };
   const open = (hit: SettingHit) => {
     setQuery("");
-    setSection(hit.section);
+    openSection(hit.section);
     setLanding({ ...hit });
   };
   const onQuery = (next: string) => {
@@ -154,12 +81,24 @@ export function SettingsRoute() {
       event.preventDefault();
       body.current?.querySelector<HTMLElement>("[data-setting-hits] button")?.focus();
     } else if (event.key === "Enter" && hit !== undefined) open(hit);
-    else if (event.key === "Enter" && first !== undefined) setSection(first.id);
+    else if (event.key === "Enter" && first !== undefined) openSection(first.id);
   };
   const nothing =
     shown.length === 0 ? (
-      <p className="px-2 py-1 text-prose text-muted-foreground">No setting matches "{query}"</p>
+      <p className="px-(--settings-caption-inset) py-1 text-(length:--settings-row-detail) leading-5 text-muted-foreground">
+        No setting matches "{query}"
+      </p>
     ) : null;
+  const search = (
+    <SearchRow
+      ref={field}
+      name="settings"
+      placeholder="e.g. theme"
+      value={query}
+      onValueChange={onQuery}
+      onKeyDown={onSearchKey}
+    />
+  );
   const mesh = useBrowserMembership();
   const joinedBrowser = mesh.phase !== "empty" && desktopBridge() === null;
   const close = useCloseSettings();
@@ -172,95 +111,46 @@ export function SettingsRoute() {
   useLayoutEffect(() => {
     if (!dialog && !view.current?.contains(document.activeElement)) view.current?.focus({ preventScroll: true });
   }, [dialog]);
-  const back = (
-    <IconButton
-      label="Close settings"
-      keys={triggerKeys("escape", currentPlatform())}
-      icon={<ArrowLeft />}
-      onClick={close}
-    />
-  );
+  const label = SECTIONS.find((entry) => entry.id === section)?.label ?? "Settings";
   return (
     <div
       ref={view}
       tabIndex={-1}
       className={cn(
         "flex h-full min-h-0 flex-col bg-background outline-none md:flex-row",
-        // On a phone the title row takes the top inset itself, so it is the page's top edge for iOS (styles.css, #2867).
         !dialog && "pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) md:pt-(--safe-top)",
       )}
     >
       <CrashProbe region="settings" />
-      <Tabs value={section} onValueChange={(value: SectionId) => setSection(value)} className="md:hidden">
-        <div
-          {...titlebar}
-          {...(dialog ? {} : { "data-phone-top": "" })}
-          className={cn(
-            "flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]",
-            !dialog && "bg-background pt-[calc(var(--safe-top)+0.75rem)]",
-          )}
-        >
-          {back}
-          <h1 className="text-xl font-semibold text-foreground">Settings</h1>
-          {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}
-          <div className="ml-2 min-w-0 flex-1">
-            <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} inline />
-          </div>
-        </div>
-        {nothing}
-        <TabList className="scroll-px-2 px-2">
-          {shown.map((entry) => (
-            <Tab key={entry.id} value={entry.id}>
-              {entry.label}
-            </Tab>
-          ))}
-        </TabList>
-      </Tabs>
-      <nav
-        aria-label="Settings"
-        className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2 pb-2 md:flex"
-      >
-        <div
-          {...titlebar}
-          className={cn(
-            "mb-1 flex h-11 shrink-0 items-center gap-1",
-            !dialog && "pl-[calc(var(--titlebar-inset-start,0.5rem)-0.5rem)]",
-          )}
-        >
-          {back}
-          <h1 className="text-xl font-semibold text-foreground">Settings</h1>
-        </div>
-        <div className="shrink-0">
-          <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} />
-        </div>
-        {/* The sections scroll on their own, so a short window never takes the title row, which drags the window (#1915).
-            The viewport's padding, taken back by the margins, is room for each button's focus ring, which the scroller
-            would otherwise cut; scroll-padding keeps that room when the keyboard scrolls a button into view. */}
-        <ScrollArea slot="settings-sections" className="-mx-2 -mb-1 flex-1" viewportClassName="scroll-py-1 px-2 py-1">
-          <div className="flex flex-col gap-px">
-            {nothing}
-            {shown.map((entry) => (
-              <Button
-                key={entry.id}
-                variant="ghost"
-                aria-current={entry.id === section ? "page" : undefined}
-                onClick={() => setSection(entry.id)}
-                className={cn(
-                  "shrink-0 justify-start gap-2.5 px-2 text-sm [&_svg:not([data-slot=spinner])]:size-3.5",
-                  entry.id === section && "bg-selected text-foreground",
-                )}
-              >
-                {entry.icon}
-                {entry.label}
-              </Button>
-            ))}
-          </div>
-        </ScrollArea>
-      </nav>
+      <PhoneHeader
+        titlebar={titlebar}
+        dialog={dialog}
+        title={paged ? label : "Settings"}
+        onClose={close}
+        {...(paged ? { onBack: () => setPaged(false) } : { search })}
+      />
+      <SettingsNav
+        titlebar={titlebar}
+        dialog={dialog}
+        back={
+          <IconButton
+            label="Close settings"
+            keys={triggerKeys("escape", currentPlatform())}
+            icon={<ArrowLeft />}
+            onClick={close}
+          />
+        }
+        search={search}
+        nothing={nothing}
+        shown={shown}
+        section={section}
+        onSection={openSection}
+      />
       <ScrollArea slot="settings-body" className="flex-1">
-        <div ref={body} className="flex max-w-2xl flex-col gap-8 px-4 py-6 md:px-8">
+        <div ref={body} className="flex max-w-2xl flex-col gap-(--settings-group-gap) px-4 pt-2 pb-6 md:px-7 md:py-5.5">
           {hits.length === 0 ? null : <SettingHits hits={hits} onOpen={open} onLeave={() => field.current?.focus()} />}
-          {/* The Update row fails alone: a throw there must not take every section with it. */}
+          {/* The Update row fails alone: a throw there must not take every section with it. It leads every page, the
+              phone's list of sections included, so a pending update is seen as Settings opens. */}
           {update === null ? null : (
             <RegionBoundary
               region="settings-update"
@@ -272,101 +162,22 @@ export function SettingsRoute() {
               </Group>
             </RegionBoundary>
           )}
-          <RegionBoundary
-            key={section}
-            region="settings-section"
-            title="This section could not be drawn"
-            detail="The other sections still open from the list."
-          >
-            {section === "device" ? (
-              <>
-                {joinedBrowser ? (
-                  <Lead>This browser is a member of the mesh. Each machine has its own connection.</Lead>
-                ) : (
-                  <Lead>
-                    This app talks to one host: the computer that runs your terminals. Here is which host it reaches,
-                    whether it is there now, this device's own settings, and under Advanced connection the route this
-                    app takes to that host. The defaults work for everyone; change them only for a self-hosted relay or
-                    a development host.
-                  </Lead>
-                )}
-                <Group title={joinedBrowser ? "This member" : "Host"}>
-                  <DevicesSection />
-                </Group>
-                <Group title="This device">
-                  <DeviceSection />
-                </Group>
-                {!joinedBrowser && desktopMcp() !== null ? (
-                  <Group title="MCP">
-                    <McpSection />
-                  </Group>
-                ) : null}
-                {!joinedBrowser ? (
-                  <Group title="Advanced connection">
-                    <ConnectionSection />
-                  </Group>
-                ) : null}
-              </>
-            ) : section === "machines" ? (
-              <>
-                {joinedBrowser ? (
-                  <Lead>These are the machines in your mesh. Each row shows this browser's own connection.</Lead>
-                ) : (
-                  <Lead>
-                    These are the computers in your mesh that this host reaches. Connecting a machine joins it to your
-                    mesh.
-                  </Lead>
-                )}
-                <Group title="Machines">
-                  {!joinedBrowser ? <MembersSection /> : null}
-                  <MachinesSection />
-                  {/* What a row's state means sits under the rows, where a reader meets it: on a phone the list leads (#1007). */}
-                  {!joinedBrowser ? (
-                    <p className="max-w-measure pt-3 text-prose text-pretty text-muted-foreground">
-                      A machine that answers reads Connected, one still being dialled reads Connecting, and one that
-                      needs a login says so; when a machine is offline the row says when it was last seen and, where the
-                      host knows a cause, what it is.
-                    </p>
-                  ) : null}
-                </Group>
-                {/* Connecting a machine joins it to the mesh, so it is on this screen, under the rows it adds to. */}
-                <Group title="Connect a machine" id={CONNECT_GROUP}>
-                  <p className="pb-1 text-prose text-pretty text-muted-foreground">
-                    One command on this host opens an invite, and the other computer or phone joins with it. A join
-                    waits for your approval under In your mesh.
-                  </p>
-                  <PairSection />
-                </Group>
-                <Group title="In your mesh">
-                  <BrowserInvite />
-                  <MeshSection attentionOnly={joinedBrowser} />
-                </Group>
-              </>
-            ) : section === "terminal" ? (
-              <Group title="Terminal">
-                <TerminalSection />
-              </Group>
-            ) : section === "keyboard" ? (
-              // The section draws its own heading, because the heading row carries Edit and Done.
-              <KeyboardSection />
-            ) : section === "notifications" ? (
-              <Group title="Notifications">
-                <NotificationsSection />
-              </Group>
-            ) : section === "appearance" ? (
-              <Group title="Appearance">
-                <AppearanceSection />
-              </Group>
-            ) : section === "keybindings" ? (
-              <Group title="Keybindings">
-                <KeybindingsSection />
-              </Group>
-            ) : (
-              <Group title="Voice input">
-                <VoiceSection />
-              </Group>
-            )}
-          </RegionBoundary>
+          {paged ? null : (
+            <div className={cn(sectionStackClass, "md:hidden")}>
+              {nothing}
+              <PhoneSections shown={shown} onOpen={openSection} />
+            </div>
+          )}
+          <div className={cn(sectionStackClass, !paged && "max-md:hidden")}>
+            <RegionBoundary
+              key={section}
+              region="settings-section"
+              title="This section could not be drawn"
+              detail="The other sections still open from the list."
+            >
+              <SectionBody section={section} joinedBrowser={joinedBrowser} />
+            </RegionBoundary>
+          </div>
         </div>
       </ScrollArea>
     </div>

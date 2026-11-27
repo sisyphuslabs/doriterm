@@ -6,22 +6,24 @@ import { meshStatus } from "@doriface/host";
 import { meshFixture } from "@doriface/host/testing";
 import { MESH_STATUS_DOC } from "@doriface/protocol";
 
-/** The document as of `now`: its open join's offer ends 8 minutes later, and the expired one ended a minute before. */
-export function meshDocValue(now: Date): unknown {
+/**
+ * The document as of `now`: the expired join ended a minute before, and with `open` a join whose offer ends 8 minutes
+ * later waits for approval. The host starts without the open one: a waiting join raises the approval card over every
+ * screen (#2939), so only the specs about joins add it (mesh-reset.ts) and take it away again.
+ */
+export function meshDocValue(now: Date, open = false): unknown {
   const status = meshStatus(meshFixture(now).sources, now);
-  const open = status.pending[0];
-  if (open === undefined) throw new Error("the mesh fixture has no pending join");
+  const waiting = status.pending[0];
+  if (waiting === undefined) throw new Error("the mesh fixture has no pending join");
   // A join whose offer ended before the panel opened: the document can outlive its offer (design 4.3, 10.1).
   const expired = {
-    ...open,
+    ...waiting,
     nonce: "ZXhwaXJlZCBqb2lu",
     name: "old-runner",
     expiresAt: new Date(now.getTime() - 60_000).toISOString(),
   };
-  return {
-    ...status,
-    pending: [...status.pending.map((join) => Object.assign({}, join, { code: "123 456" })), expired],
-  };
+  const openJoins = open ? status.pending.map((join) => Object.assign({}, join, { code: "123 456" })) : [];
+  return { ...status, pending: [...openJoins, expired] };
 }
 
 export async function seedMeshDoc(
@@ -40,4 +42,4 @@ export async function seedMeshDoc(
   if (!reply.includes('"result"')) throw new Error(`doc.set ${MESH_STATUS_DOC} failed: ${reply.slice(0, 300)}`);
 }
 
-if (import.meta.main) console.log(JSON.stringify(meshDocValue(new Date())));
+if (import.meta.main) console.log(JSON.stringify(meshDocValue(new Date(), process.argv.includes("open"))));

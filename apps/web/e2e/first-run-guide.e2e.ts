@@ -8,6 +8,7 @@ import { expect, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { LAYOUT_DOC } from "./layout-doc.ts";
 import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -60,7 +61,7 @@ test("from the QR code's link, the first-run steps complete in order on their re
 
     // Settings opens it again, from the step after pairing.
     await page.getByRole("link", { name: /^Settings/ }).click();
-    await page.getByRole("tab", { name: "Device" }).click();
+    await openSettingsSection(page, "This device");
     await page.getByRole("link", { name: "Show again" }).click();
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
     await expect.poll(() => stepStates(page)).toEqual(["pair:done", "agent:current", "list:todo"]);

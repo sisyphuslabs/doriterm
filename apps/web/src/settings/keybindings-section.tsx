@@ -112,7 +112,7 @@ export function KeybindingsSection() {
       )}
       <SettingsToolbar
         name="keybindings"
-        placeholder="Search actions, e.g. tab"
+        placeholder="actions, e.g. tab"
         query={query}
         onQuery={setQuery}
         actions={

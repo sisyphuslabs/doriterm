@@ -9,6 +9,7 @@ import { dirname } from "node:path";
 import { sweepRunDir } from "@doriface/host/testing/run-dir";
 import type { FullConfig } from "@playwright/test";
 import { E2E_LAYOUT_ENV, E2E_LAYOUT_LEFT, E2E_LAYOUT_STOPPED, E2E_RUN_ID, hostEnvOf, hostPortOf } from "./config.ts";
+import { ownerFor, releaseClaims } from "./port-claims.ts";
 import { readSavedEnv, readSavedEnvIfWhole } from "./saved-env.ts";
 
 const STOP_WITHIN_MS = 30_000;
@@ -170,6 +171,15 @@ export function layoutStopFailures(report: LayoutStop): string[] {
 }
 
 export default async function leftoverHosts(config: FullConfig, options: LayoutStopOptions = {}): Promise<void> {
+  try {
+    await stopLeftovers(config, options);
+  } finally {
+    // Every server of the run is down, or stopping it failed: either way its ports go back for the next run (#2943).
+    releaseClaims(ownerFor(E2E_RUN_ID));
+  }
+}
+
+async function stopLeftovers(config: FullConfig, options: LayoutStopOptions): Promise<void> {
   const left: string[] = [];
   for (let slot = 0; slot < config.workers; slot++) {
     const file = hostEnvOf(hostPortOf(slot));
