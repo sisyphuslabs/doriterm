@@ -1,3 +1,4 @@
+import { cancelTap } from "@doriface/ui";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dropZone, type Zone } from "../layout/drop-zone.ts";
@@ -23,10 +24,6 @@ export interface PaneDragState {
   readonly pane: string;
   readonly target: PaneDropTarget | null;
   readonly onStrip: boolean;
-}
-
-function cancelTap(touchEnd: TouchEvent): void {
-  if (touchEnd.cancelable) touchEnd.preventDefault();
 }
 
 function hitAt(

@@ -124,6 +124,7 @@ export {
 export { StatusBar, StatusBarItem, type StatusBarProps } from "./components/status-bar.tsx";
 export { Switch, type SwitchProps } from "./components/switch.tsx";
 export { TabBar, type TabBarProps, type TabDragOut, type WorkspaceTab } from "./components/tab-bar.tsx";
+export { cancelTap } from "./components/tab-drag-helpers.ts";
 export { Tab, TabList, TabPanel, Tabs } from "./components/tabs.tsx";
 export {
   TerminalPreview,

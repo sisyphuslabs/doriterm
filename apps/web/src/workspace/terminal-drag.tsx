@@ -1,4 +1,4 @@
-import { ROW_DRAG_THRESHOLD_PX, ROW_TOUCH_HOLD_MS } from "@doriface/ui";
+import { cancelTap, ROW_DRAG_THRESHOLD_PX, ROW_TOUCH_HOLD_MS } from "@doriface/ui";
 import {
   createContext,
   type PointerEvent as ReactPointerEvent,
@@ -60,10 +60,6 @@ interface Grabbing extends TerminalGrab {
 const GrabContext = createContext<Grabbing | null>(null);
 const DragContext = createContext<TerminalDrag | null>(null);
 const StripDropContext = createContext<boolean>(false);
-
-function cancelTap(touchEnd: TouchEvent): void {
-  if (touchEnd.cancelable) touchEnd.preventDefault();
-}
 
 /**
  * Lets an agent row of the sidebar be dragged onto the panes, where it becomes a pane (herdr-app's pane drag, from the
