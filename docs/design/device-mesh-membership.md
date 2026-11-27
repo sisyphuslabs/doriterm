@@ -128,10 +128,10 @@ does not sync (`sessionPeer` refuses a client on `"mesh"`).
 
 Any member can give one, and none of them is special afterwards:
 
-| on                                       | the person does                              | what is opened                                                                                                                                                                                                                                                                                                                                                                        |
-| ---------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| a machine, CLI                           | `doriface-host mesh pair`                    | a single-use mesh offer (10 minutes): link, QR, code                                                                                                                                                                                                                                                                                                                                  |
-| any web member (browser, phone, desktop) | Settings > Mesh > **Add a browser or phone** | the same offer, opened through the `doriface-mesh-offer` document with `client: true` on one machine: by default the first online machine of the client's machine list (online first, then by name, §4.5), named in the dialog ("The invite is opened on _studio_") with a picker for another online machine. The approver is any client connected to that machine, this one included |
+| on                                       | the person does                                                                                          | what is opened                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a machine, CLI                           | `doriface-host mesh pair`                                                                                | a single-use mesh offer (10 minutes): link, QR, code                                                                                                                                                                                                                                                                                                                                  |
+| any web member (browser, phone, desktop) | **Connect a device** > Phone or browser (since #2949; formerly Settings > Mesh > Add a browser or phone) | the same offer, opened through the `doriface-mesh-offer` document with `client: true` on one machine: by default the first online machine of the client's machine list (online first, then by name, §4.5), named in the dialog ("The invite is opened on _studio_") with a picker for another online machine. The approver is any client connected to that machine, this one included |
 
 `client: true` makes the offer one that **asks** (§4.3). The computer's one-line command (#668, the Computer tab of Connect a device) keeps its auto-admitting
 offer for machines.
@@ -692,7 +692,7 @@ joined on an invite would get no push.
 | a paired browser whose host is older        | §5.4: works through that host as today                                                                                                                                        | update the host |
 | a new browser                               | joins with an invite (§4). The web's `/pair` page leads to **Join a mesh**; a device-pairing link still pairs (legacy, §9)                                                    | —               |
 
-Settings' **Pair a device** becomes **Add a browser or phone** (§4.2). The host's `doriface-host pair` stays, for older
+Settings' **Pair a device** becomes **Add a browser or phone** (§4.2), which #2949 folds into **Connect a device** > Phone or browser. The host's `doriface-host pair` stays, for older
 web builds.
 
 ## 12. Threat model
@@ -826,7 +826,7 @@ Three pull requests, one behaviour each. Each is `Part of #942` and `Part of #13
    - `leave` revokes exactly the session's client; a `leave` with another client's card is refused.
 2. **Web: the browser joins and learns the mesh** — card key custody; the join page and its states (§4.4); the join
    code; the bundle store and its checks; view members in `MeshConnections`; refresh; settling; removed and leave
-   states; **Add a browser or phone**; migration of a paired device. Unit tests:
+   states; **Connect a device** > Phone or browser (formerly Add a browser or phone); migration of a paired device. Unit tests:
    - a welcome from the inviter teaches B, and B is dialled; a record that fails `door` is refused and nothing kept;
    - a refresh that omits a held revoke keeps it; a view that revokes the browser, or orphans it, drops the members;
    - an older host's refusal leaves the roster as it was; a view member's 4401 is "settling" and retried, a paired

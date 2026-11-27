@@ -19,7 +19,7 @@ function connectsOf(session: string): number[] {
     .map(Number);
 }
 
-test("a stopped host leaves no line of its one-line Add a machine service to the core (#668)", async () => {
+test("a stopped host leaves no line of its one-line join-command service to the core (#668)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "dh-host-offers-"));
   const session = createHcSession("dh-host-offers");
   const token = generateToken();
