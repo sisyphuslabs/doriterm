@@ -1,14 +1,14 @@
 // R3 "status": a record's own verdict at level 1, then its status in canonical order, with authority propagated from
 // its signer's admission (revokes: through the whole lineage, hop by hop).
 
-import type { RecordSet } from "./dag.ts";
+import { type RecordSet, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
 import { accusers, accusers0 } from "./standing.ts";
 import { valid } from "./structure.ts";
 import { verdict } from "./testimony.ts";
 
 export type Own = "invalid" | "defeated" | "tie" | "clear";
-export type Status = "eff" | "tie" | "void";
+export type Status = "eff" | "tie" | "void" | "restore-conflict";
 
 /**
  * own(x): invalid, defeated by a standing accuser, tie (some standing accuser ties it 0:0), or clear. Without a
@@ -55,6 +55,33 @@ function revokeAuthority(e: Engine, S: RecordSet, id: string): boolean {
   return result;
 }
 
+/** A conflict removes the old identity without granting any of the competing successors authority. */
+function restoreConflict(e: Engine, S: RecordSet, id: string): boolean {
+  const r = e.dag.rec(id);
+  const old = r.readmit?.old;
+  if (old === undefined) return false;
+  const candidates = e.cached(S, "restore candidates", old, () =>
+    e.dag.index.relevant.filter((other) => {
+      if (!S.has(other)) return false;
+      const candidate = e.dag.rec(other);
+      if (candidate.readmit?.old === old) return own(e, S, other) === "clear";
+      return (
+        candidate.type === "revoke" &&
+        candidate.reason !== "leave" &&
+        subjectsOf(candidate).includes(old) &&
+        own(e, S, other) !== "invalid" &&
+        own(e, S, other) !== "defeated" &&
+        revokeAuthority(e, S, other)
+      );
+    }),
+  );
+  return candidates.some((other) => {
+    if (!e.dag.conc(id, other)) return false;
+    const candidate = e.dag.rec(other);
+    return candidate.type === "revoke" || candidate.subject !== r.subject || candidate.card?.noise !== r.card?.noise;
+  });
+}
+
 /** status(x), with `done` holding the status of every record before x in canonical order (all its ancestors). */
 export function status(e: Engine, S: RecordSet, id: string, done: ReadonlyMap<string, Status>): Status {
   if (id === e.dag.found.id) return "eff";
@@ -67,5 +94,6 @@ export function status(e: Engine, S: RecordSet, id: string, done: ReadonlyMap<st
     const gov = e.before(id)?.governing.get(r.by);
     if (gov === undefined || done.get(gov) !== "eff") return "void";
   }
-  return mine === "tie" ? "tie" : "eff";
+  if (mine === "tie") return "tie";
+  return r.type === "readmit" && restoreConflict(e, S, id) ? "restore-conflict" : "eff";
 }

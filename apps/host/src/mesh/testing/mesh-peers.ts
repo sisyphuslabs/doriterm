@@ -103,7 +103,7 @@ export class Signer {
     return this.#sign("revoke", prev, { signPubs: subjects.map((entry) => entry.signPub), reason: "revoke" });
   }
 
-  #sign(type: RecordBody["type"], prev: readonly string[], subject?: Subject): Signed {
+  #sign(type: Extract<RecordBody, { v: 2 }>["type"], prev: readonly string[], subject?: Subject): Signed {
     this.#n += 1;
     const body: RecordBody = {
       v: 2,

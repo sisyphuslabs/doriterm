@@ -16,6 +16,7 @@ function typeOk(e: Engine, r: Rec, before: EngineView | undefined): boolean {
   const members = before?.members ?? [];
   switch (r.type) {
     case "found":
+    case "readmit": // The frozen legacy evaluator predates restore.
       return false;
     case "admit": {
       const subject = r.subject ?? "";

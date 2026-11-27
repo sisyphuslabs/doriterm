@@ -23,6 +23,13 @@ export {
 } from "./link.ts";
 export { checkName, idShaped } from "./machine-name.ts";
 export { PROTOCOL_NAMES, type Pattern } from "./noise/handshake.ts";
+export {
+  answerRestoreNoise,
+  openRestoreNoise,
+  RESTORE_CHALLENGE_BYTES,
+  RESTORE_FIRST_BYTES,
+  RESTORE_SECOND_BYTES,
+} from "./noise/restore-nk.ts";
 export { SessionKind } from "./kinds.ts";
 export type { PairingSecret } from "./client-flight.ts";
 export type { HostPairingSecret } from "./host-flight.ts";
@@ -101,3 +108,9 @@ export {
   type StaticKey,
 } from "./static-key.ts";
 export { MAX_PLAINTEXT, REKEY_INTERVAL } from "./transport.ts";
+export {
+  decodeRestoreFrame,
+  encodeRestoreFrame,
+  RESTORE_REQUEST_BYTES,
+  RESTORE_RESPONSE_BYTES,
+} from "./restore-frames.ts";

@@ -4,6 +4,7 @@
 import { type PastSet, type Rec, subjectsOf } from "./dag.ts";
 import type { Engine } from "./engine.ts";
 import type { RuleView } from "./membership.ts";
+import { readmitAllowed } from "./readmit.ts";
 
 /** A member's current Noise key in `view`: a rekey's, else its governing admission's card. */
 function noiseOf(e: Engine, view: RuleView, k: string): string | undefined {
@@ -27,8 +28,10 @@ function typeOk(e: Engine, r: Rec, before: RuleView | undefined): boolean {
     case "admit": {
       const subject = r.subject ?? "";
       const sameKey = before !== undefined && r.card?.noise === noiseOf(e, before, subject);
-      return (!isMember(subject) || sameKey) && !twin(e, r, before);
+      return before?.restoredOld.has(subject) !== true && (!isMember(subject) || sameKey) && !twin(e, r, before);
     }
+    case "readmit":
+      return before !== undefined && readmitAllowed(e, r, before);
     case "name":
       return isMember(r.subject ?? "");
     case "rekey":
@@ -50,7 +53,8 @@ function authorized(e: Engine, id: string): boolean {
   return e.once("pa", id, () => {
     const r = e.dag.rec(id);
     const before = e.before(id);
-    return before?.governing.has(r.by) === true && typeOk(e, r, before);
+    const by = before?.governing.get(r.by);
+    return by !== undefined && e.dag.rec(by).card?.kind !== "client" && typeOk(e, r, before);
   });
 }
 

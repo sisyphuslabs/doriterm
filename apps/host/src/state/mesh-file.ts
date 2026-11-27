@@ -1,4 +1,4 @@
-import type { Signed } from "@doriface/mesh";
+import { parseRecord, type Signed } from "@doriface/mesh";
 import {
   type IndexData,
   INDEX_RULES,
@@ -13,9 +13,10 @@ export const MESH_FILE = "mesh.json";
  * The formats this build reads. A file above the highest is refused at the guard below, before any index is rebuilt or
  * authorization runs, which is what makes an old reader refuse new semantics instead of silently dropping them.
  */
-const READ_VERSIONS: ReadonlySet<number> = new Set([2, 3]);
+const READ_VERSIONS: ReadonlySet<number> = new Set([2, 3, 4]);
 /** The formats this build reads, said on every `hello` so a writer can gate a record an older member could not read. */
 export const MESH_READS: readonly number[] = [...READ_VERSIONS];
+export const RESTORE_FORMAT = 4;
 /** The format this build writes while it carries nothing a v2 reader cannot hold: a reader on 2 keeps working. */
 const WRITE_VERSION = 2;
 
@@ -49,20 +50,21 @@ function signedList(value: unknown, key: string): readonly Signed[] {
 const strings = (value: unknown): value is readonly string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
+const timestamp = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 8_640_000_000_000_000;
+
 function memberEntry(value: unknown): MemberEntry | undefined {
   if (!isRecord(value)) return undefined;
-  const { signPub, hostId, noisePub, devicePub, name, hcId, kind, admitter, admitId, lastSessionAt } = value;
+  const { signPub, hostId, noisePub, devicePub, name, hcId, kind, admitter, admitId, lastSessionAt, readmittedAt } =
+    value;
   if (typeof signPub !== "string" || typeof hostId !== "string" || typeof noisePub !== "string") return undefined;
   if (typeof name !== "string" || typeof hcId !== "string") return undefined;
   if (devicePub !== undefined && typeof devicePub !== "string") return undefined;
   if (kind !== undefined && kind !== "machine" && kind !== "client") return undefined;
   if (admitter !== undefined && typeof admitter !== "string") return undefined;
   if (admitId !== undefined && typeof admitId !== "string") return undefined;
-  if (
-    lastSessionAt !== undefined &&
-    (typeof lastSessionAt !== "number" || !Number.isSafeInteger(lastSessionAt) || lastSessionAt < 0)
-  )
-    return undefined;
+  if (lastSessionAt !== undefined && !timestamp(lastSessionAt)) return undefined;
+  if (readmittedAt !== undefined && !timestamp(readmittedAt)) return undefined;
   // Client indexes from before the admitter binding must be rebuilt at startup.
   if (kind === "client" && (admitter === undefined || admitId === undefined)) return undefined;
   // An index written before the kind existed says machine, which is all those members could have been.
@@ -77,15 +79,16 @@ function memberEntry(value: unknown): MemberEntry | undefined {
     admitter,
     admitId,
     ...(lastSessionAt === undefined ? {} : { lastSessionAt }),
+    ...(readmittedAt === undefined ? {} : { readmittedAt }),
   };
 }
 
 function revokedEntry(value: unknown): RevokedEntry | undefined {
   if (!isRecord(value)) return undefined;
-  const { signPub, hostId, keys } = value;
-  return typeof signPub === "string" && typeof hostId === "string" && strings(keys)
-    ? { signPub, hostId, keys }
-    : undefined;
+  const { signPub, hostId, keys, restoredAt } = value;
+  if (typeof signPub !== "string" || typeof hostId !== "string" || !strings(keys)) return undefined;
+  if (restoredAt !== undefined && !timestamp(restoredAt)) return undefined;
+  return { signPub, hostId, keys, ...(restoredAt === undefined ? {} : { restoredAt }) };
 }
 
 function namingEntry(value: unknown): NamingEntry | undefined {
@@ -152,7 +155,15 @@ export const CLIENT_FORMAT = 3;
  */
 export const writeVersionOf = (
   index: { readonly members: readonly { readonly kind?: string | undefined }[] } | undefined,
-): number => (index?.members.some((member) => member.kind === "client") === true ? CLIENT_FORMAT : WRITE_VERSION);
+  records: readonly Signed[] = [],
+  prior = WRITE_VERSION,
+): number => {
+  if (prior >= RESTORE_FORMAT || records.some((record) => parseRecord(record)?.type === "readmit"))
+    return RESTORE_FORMAT;
+  return prior === CLIENT_FORMAT || index?.members.some((member) => member.kind === "client") === true
+    ? CLIENT_FORMAT
+    : WRITE_VERSION;
+};
 
 /** A new mesh's first file, in the format this build writes today. */
 export const newMeshFile = (meshId: string, records: readonly Signed[], selfN: number): MeshFile => ({
@@ -169,7 +180,7 @@ export const newMeshFile = (meshId: string, records: readonly Signed[], selfN: n
 });
 
 export const meshFileJson = (file: MeshFile) => ({
-  version: file.version,
+  version: writeVersionOf(file.index, file.records, file.version),
   meshId: file.meshId,
   generation: file.generation,
   self: { n: file.selfN },

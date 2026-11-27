@@ -15,6 +15,7 @@ import { lazy, Suspense, useState } from "react";
 import { restoreMembership } from "../mesh/membership-lifecycle.ts";
 import { useBrowserMembership, useMembershipFailure } from "../mesh/membership-state.ts";
 import { RemovedMembership } from "../settings/membership-device.tsx";
+import { RestoreMemberNotices } from "../restore/member-notices.tsx";
 
 const Workspace = lazy(() => import("../workspace/workspace.tsx").then((module) => ({ default: module.Workspace })));
 
@@ -69,6 +70,9 @@ export function WorkspaceRoute() {
         }
       >
         <Workspace connection={shown} />
+        <div className="fixed right-2 bottom-2 z-40 flex max-w-[min(26rem,calc(100%-1rem))] flex-col gap-2">
+          <RestoreMemberNotices />
+        </div>
       </Suspense>
     );
   }

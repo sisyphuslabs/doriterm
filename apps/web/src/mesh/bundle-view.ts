@@ -1,5 +1,6 @@
-import { cardOf, hashOf, parseRecord, verifyCard, viewOf, type CardBody, type Signed } from "@doriface/mesh";
+import { hashOf, memberCardOf, parseRecord, viewOf, type CardBody, type Signed } from "@doriface/mesh";
 import type { MemberTarget } from "../connection/settings.ts";
+import type { ReadmitSubject } from "@doriface/mesh";
 
 export interface BundleView {
   readonly phase: "empty" | "joined" | "removed";
@@ -8,6 +9,8 @@ export interface BundleView {
   readonly machines: readonly MemberTarget[];
   readonly clients: readonly CardBody[];
   readonly self: CardBody | undefined;
+  readonly replacedAt?: number;
+  readonly readmissions?: readonly ReadmitSubject[];
 }
 
 export interface ClientKeys {
@@ -23,8 +26,7 @@ export function memberCards(records: readonly Signed[]): readonly CardBody[] {
   for (const signPub of view.members) {
     const record = byHash.get(view.governing.get(signPub) ?? "");
     const body = record === undefined ? undefined : parseRecord(record);
-    const signed = body === undefined ? undefined : cardOf(body);
-    const card = signed === undefined ? undefined : verifyCard(signed);
+    const card = body === undefined ? undefined : memberCardOf(body);
     if (card !== undefined) {
       members.set(signPub, {
         ...card,
@@ -47,12 +49,22 @@ export function bundleView(records: readonly Signed[], mesh: string, keys: Clien
   const self = clients.find(
     (card) => card.signPub === keys.signPub && card.devicePub === keys.devicePub && card.noisePub === keys.devicePub,
   );
+  const view = viewOf(records);
+  const replacedAt = keys === undefined ? undefined : view.restoredOld?.get(keys.signPub);
+  const readmissions = records.flatMap((record) => {
+    const body = parseRecord(record);
+    return body?.type === "readmit" && view.governing.get(body.subject.signPub) === hashOf(record)
+      ? [body.subject]
+      : [];
+  });
   return {
     phase: records.length === 0 ? "empty" : self === undefined ? "removed" : "joined",
     mesh,
     records,
     self,
     clients,
+    ...(replacedAt === undefined ? {} : { replacedAt }),
+    ...(readmissions.length === 0 ? {} : { readmissions }),
     machines:
       self === undefined
         ? []

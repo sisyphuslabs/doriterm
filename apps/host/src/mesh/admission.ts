@@ -1,4 +1,4 @@
-import { type CardBody, cardOf, parseRecord, type Signed, verifyCard } from "@doriface/mesh";
+import { type CardBody, memberCardOf, parseRecord, type Signed } from "@doriface/mesh";
 import { JoinRefused } from "@doriface/mesh/join";
 import type { AuthorizeIndex } from "./authorize-index.ts";
 import type { DeviceStore } from "../state/devices.ts";
@@ -23,8 +23,7 @@ export function isRejoin(index: AuthorizeIndex | undefined, card: CardBody, reco
     card.kind === "client" &&
     records.some((record) => {
       const body = parseRecord(record);
-      const signed = body?.type === "admit" ? cardOf(body) : undefined;
-      return signed !== undefined && verifyCard(signed)?.signPub === card.signPub;
+      return (body?.type === "admit" || body?.type === "readmit") && memberCardOf(body)?.signPub === card.signPub;
     })
   )
     throw new JoinRefused(CLIENT_REMOVED);

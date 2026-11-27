@@ -1,4 +1,6 @@
-// The record and member-card shapes of contract v1.5 ("Mesh" > "Records").
+// The record and member-card shapes ("Mesh" > "Records").
+
+import type { ReadmitSubject } from "./readmit.ts";
 
 /** A signed record or member card: the exact body bytes the signer produced, and its signature (base64url). */
 export interface Signed {
@@ -28,7 +30,7 @@ export interface CardBody {
   readonly hcId: string;
 }
 
-export const RECORD_TYPES = ["found", "admit", "revoke", "name", "rekey", "ack"] as const;
+export const RECORD_TYPES = ["found", "admit", "revoke", "name", "rekey", "ack", "readmit"] as const;
 export type RecordType = (typeof RECORD_TYPES)[number];
 
 export const REVOKE_REASONS = ["revoke", "compromised", "leave"] as const;
@@ -45,20 +47,25 @@ export interface NameSubject {
   readonly signPub: string;
   readonly name: string;
 }
-export type Subject = CardSubject | RevokeSubject | NameSubject;
+export type Subject = CardSubject | RevokeSubject | NameSubject | ReadmitSubject;
 
-export interface RecordBody {
-  readonly v: 2;
+interface RecordHeader {
   /** The meshId, or "-" only in the found record. */
   readonly mesh: string;
-  readonly type: RecordType;
   readonly by: string;
   readonly n: number;
   readonly prev: readonly string[];
-  readonly subject?: Subject;
   /** Signer time, display only. */
   readonly at?: string;
 }
+
+export const READMIT_RECORD_VERSION = 3;
+
+export type RecordBody = RecordHeader &
+  (
+    | { readonly v: 2; readonly type: Exclude<RecordType, "readmit">; readonly subject?: Subject }
+    | { readonly v: typeof READMIT_RECORD_VERSION; readonly type: "readmit"; readonly subject: ReadmitSubject }
+  );
 
 export const MAX_BODY_BYTES = 2048;
 export const MAX_PREV = 64;

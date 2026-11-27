@@ -19,7 +19,7 @@ export interface NetHost {
   readonly views: MeshView[];
   records(): readonly Signed[];
   /** Signs this host's next record through its store (the counter persisted first) and pushes it. */
-  write(type: RecordBody["type"], subject?: Subject): Signed;
+  write(type: Extract<RecordBody, { v: 2 }>["type"], subject?: Subject): Signed;
   /** Admits `joiner` with a card it signed, as a join on this host would. */
   admit(joiner: Peer): Signed;
   /** The names of the members of this host's stored view. */

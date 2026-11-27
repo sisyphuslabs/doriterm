@@ -8,6 +8,8 @@ import { forgetMembership } from "../mesh/membership-lifecycle.ts";
 import { showMachine, useBrowserMembership, useHeldMeshes } from "../mesh/membership-state.ts";
 import { leaveMembership } from "../mesh/roster-refresh.ts";
 import { useMesh } from "../mesh/use-mesh.ts";
+import { RestoreMemberNotices } from "../restore/member-notices.tsx";
+import { RestoreSetting } from "../restore/restore-setting.tsx";
 import { fingerprintOf } from "../pair/fragment.ts";
 import { MeshDevice, MeshMachineList, sortedMachines } from "./mesh-device.tsx";
 import { MeshPicker } from "./mesh-picker.tsx";
@@ -16,6 +18,7 @@ import { BrowserMemberList, RevokeCommand } from "./browser-members.tsx";
 import { useNow } from "../workspace/use-now.ts";
 
 export function RemovedMembership() {
+  const { replacedAt } = useBrowserMembership();
   const [error, setError] = useState<string>();
   const again = async (): Promise<void> => {
     try {
@@ -27,7 +30,17 @@ export function RemovedMembership() {
   };
   return (
     <div className="flex flex-col gap-4 p-6">
-      <Notice title="This browser was removed from the mesh">
+      <Notice
+        title={
+          replacedAt === undefined ? "This browser was removed from the mesh" : "This device was replaced by a restore"
+        }
+      >
+        {replacedAt === undefined ? null : (
+          <p>
+            Readmitted at{" "}
+            <time dateTime={new Date(replacedAt).toISOString()}>{new Date(replacedAt).toLocaleString()}</time>.
+          </p>
+        )}
         Join again with an invite to make a new browser identity.
       </Notice>
       {error === undefined ? null : (
@@ -131,6 +144,8 @@ export function MembershipMachines() {
           void navigate({ to: "/" });
         }}
       />
+      <RestoreMemberNotices />
+      <RestoreSetting />
       {observer?.state.phase === "open" ? (
         <ObservedBrowserMembers
           key={observer.target.hostId}
@@ -143,6 +158,7 @@ export function MembershipMachines() {
           self={mesh.self?.signPub}
           observer={undefined}
           observations={undefined}
+          readmissions={mesh.readmissions}
           now={Date.now()}
         />
       )}
@@ -166,6 +182,7 @@ function ObservedBrowserMembers({
       self={mesh.self?.signPub}
       observer={observer}
       observations={read.phase === "ready" ? read.status.members : undefined}
+      readmissions={mesh.readmissions}
       now={now}
     />
   );

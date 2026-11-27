@@ -16,6 +16,7 @@ export function BrowserMemberList({
   self,
   observer,
   observations,
+  readmissions,
   now,
 }: {
   readonly clients: readonly Pick<CardBody, "hostId" | "name" | "signPub">[];
@@ -23,10 +24,12 @@ export function BrowserMemberList({
   readonly observer: string | undefined;
   readonly observations: readonly Pick<MeshMemberStatus, "hostId" | "lastSessionAt">[] | undefined;
   readonly now: number;
+  readonly readmissions?: readonly { readonly signPub: string; readonly at: number }[] | undefined;
 }) {
   return (
     <Subgroup id="browser-members" title="Browsers and phones">
       {clients.map((client) => {
+        const restored = readmissions?.find((entry) => entry.signPub === client.signPub)?.at;
         const at = observations?.find((member) => member.hostId === client.hostId)?.lastSessionAt;
         const age = at === undefined ? undefined : formatAge(at, now);
         const time = age === undefined ? "not recorded" : age === "<1m" ? "just now" : `${age} ago`;
@@ -41,6 +44,12 @@ export function BrowserMemberList({
             description={
               <>
                 <span className="block">{report}</span>
+                {restored === undefined ? null : (
+                  <span className="block">
+                    Readmitted at{" "}
+                    <time dateTime={new Date(restored).toISOString()}>{new Date(restored).toLocaleString()}</time>.
+                  </span>
+                )}
                 <RevokeCommand name={client.name} />
               </>
             }

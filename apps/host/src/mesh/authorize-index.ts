@@ -1,12 +1,11 @@
 import {
   canonicalOrder,
-  cardOf,
   type CardBody,
   hashOf,
+  memberCardOf,
   type MemberKind,
   parseRecord,
   type Signed,
-  verifyCard,
   type View,
 } from "@doriface/mesh";
 
@@ -28,6 +27,7 @@ export interface MemberEntry {
   readonly admitId?: string | undefined;
   /** This machine's last recorded admitted client session, in epoch milliseconds; never signed or gossiped. */
   readonly lastSessionAt?: number | undefined;
+  readonly readmittedAt?: number | undefined;
 }
 
 /** A member the view removed, with every Noise and device key any of its cards ever named. */
@@ -35,6 +35,7 @@ export interface RevokedEntry {
   readonly signPub: string;
   readonly hostId: string;
   readonly keys: readonly string[];
+  readonly restoredAt?: number | undefined;
 }
 
 /** A signing key and the Noise and device keys its effective cards name: what may contest a key (#90, R2). */
@@ -48,7 +49,7 @@ export interface NamingEntry {
  * member an earlier build indexed: a saved index under other rules is rebuilt at start (#1483), as the first such change,
  * the client key binding of #1476, needs.
  */
-export const INDEX_RULES = 2;
+export const INDEX_RULES = 3;
 
 /** What `authorize` needs from one generation of `mesh.json`, persisted with it so a handshake never evaluates. */
 export interface IndexData {
@@ -68,8 +69,7 @@ export interface IndexData {
 
 const cardOfRecord = (record: Signed): CardBody | undefined => {
   const body = parseRecord(record);
-  const signed = body === undefined ? undefined : cardOf(body);
-  return signed === undefined ? undefined : verifyCard(signed);
+  return body === undefined ? undefined : memberCardOf(body);
 };
 
 const cardsBySigner = (records: readonly Signed[], eff: ReadonlySet<string> | undefined) => {
@@ -126,11 +126,13 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
       )
         return [];
     }
+    const body = governing === undefined ? undefined : parseRecord(governing);
     return [
       {
         ...entryOf(card, view.noise.get(signPub) ?? card.noisePub, view.name.get(signPub) ?? card.name),
         admitter,
         admitId: view.governing.get(signPub),
+        ...(body?.type === "readmit" ? { readmittedAt: body.subject.at } : {}),
       },
     ];
   };
@@ -138,7 +140,15 @@ export function indexOf(records: readonly Signed[], view: View, generation: numb
     const cards = everything.get(signPub) ?? [];
     const first = cards[0];
     if (first === undefined) return [];
-    return [{ signPub, hostId: first.hostId, keys: [...new Set(cards.flatMap(keysOf))] }];
+    const at = view.restoredOld?.get(signPub);
+    return [
+      {
+        signPub,
+        hostId: first.hostId,
+        keys: [...new Set(cards.flatMap(keysOf))],
+        ...(at === undefined ? {} : { restoredAt: at }),
+      },
+    ];
   });
   const members = [...view.members].flatMap(member);
   const superseded = members.flatMap(({ signPub, noisePub, devicePub }) =>
@@ -163,6 +173,7 @@ export class AuthorizeIndex {
   readonly generation: number;
   readonly #byNoise = new Map<string, MemberEntry>();
   readonly #revoked = new Set<string>();
+  readonly #restored = new Map<string, number>();
   /** The removed members whose cards named each revoked key. */
   readonly #removedBy = new Map<string, Set<string>>();
   readonly #memberDevices = new Set<string>();
@@ -195,6 +206,7 @@ export class AuthorizeIndex {
     for (const entry of data.revoked) {
       for (const key of entry.keys) {
         this.#revoked.add(key);
+        if (entry.restoredAt !== undefined) this.#restored.set(key, entry.restoredAt);
         this.#removedBy.set(key, (this.#removedBy.get(key) ?? new Set<string>()).add(entry.signPub));
       }
       this.#hostIds.add(entry.hostId);
@@ -238,6 +250,8 @@ export class AuthorizeIndex {
 
   /** Why a key that is not a current member's Noise key may not be a device, if it may not (section 9.2 step 2). */
   deviceRefusal(key: string): string | undefined {
+    const restored = this.#restored.get(key);
+    if (restored !== undefined) return `this device was replaced by a restore on ${new Date(restored).toISOString()}`;
     if (this.#revoked.has(key)) return "revoked mesh member";
     if (this.#memberDevices.has(key)) return "this key belongs to a mesh member: use the mesh line";
     if (this.#superseded.has(key)) return "a superseded key of a mesh member";

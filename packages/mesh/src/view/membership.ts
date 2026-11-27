@@ -18,6 +18,7 @@ export interface MemberView {
   readonly governing: ReadonlyMap<string, string>;
   readonly name: ReadonlyMap<string, string>;
   readonly hostId: ReadonlyMap<string, string>;
+  readonly restoredOld: ReadonlyMap<string, number>;
 }
 
 /**
@@ -26,12 +27,13 @@ export interface MemberView {
  * entry per member and leaves out what the governing card already says (the member list, the other Noise keys) and
  * what only the full view reports (admitter, names, hostIds).
  */
-export type RuleView = Pick<MemberView, "revoked" | "governing" | "rekeyed">;
+export type RuleView = Pick<MemberView, "revoked" | "governing" | "rekeyed" | "restoredOld">;
 
 export const ruleViewOf = (v: MemberView): RuleView => ({
   revoked: v.revoked,
   governing: v.governing,
   rekeyed: v.rekeyed,
+  restoredOld: v.restoredOld,
 });
 
 export interface EngineView extends MemberView {
@@ -60,11 +62,18 @@ function group(recs: readonly Rec[], keysOf: (r: Rec) => readonly string[]): Rea
 }
 
 /** Each admitted key's governing admission (the first effective one after every effective revoke of it), in order. */
-function governingAdmissions(dag: Dag, order: readonly Rec[], effective: readonly Rec[], revokes: Grouped) {
+function governingAdmissions(
+  dag: Dag,
+  order: readonly Rec[],
+  effective: readonly Rec[],
+  revokes: Grouped,
+  restoredOld: ReadonlyMap<string, number>,
+) {
   const admissions = group(effective.filter(isAdmission), (r) => (r.subject === undefined ? [] : [r.subject]));
   const keys = new Set(order.filter(isAdmission).flatMap((r) => (r.subject === undefined ? [] : [r.subject])));
   const out: (readonly [string, Rec])[] = [];
   for (const k of keys) {
+    if (restoredOld.has(k)) continue;
     const against = revokes.get(k) ?? [];
     const gov = admissions.get(k)?.find((a) => against.every((v) => dag.inPast(a.id, v.id)));
     if (gov !== undefined) out.push([k, gov]);
@@ -82,11 +91,21 @@ export function membership(dag: Dag, S: RecordSet, statuses: ReadonlyMap<string,
     effective.filter((r) => r.type === "revoke"),
     subjectsOf,
   );
-  const ordered = governingAdmissions(dag, order, effective, revokes);
+  const restoredOld = new Map<string, number>();
+  for (const r of order) {
+    const status = statuses.get(r.id);
+    if (
+      r.readmit !== undefined &&
+      (status === "eff" || status === "restore-conflict") &&
+      !restoredOld.has(r.readmit.old)
+    )
+      restoredOld.set(r.readmit.old, r.readmit.at);
+  }
+  const ordered = governingAdmissions(dag, order, effective, revokes, restoredOld);
   const members = ordered.map(([k]) => k);
   const governed = new Set(members);
   const admitted = new Set(order.filter(isAdmission).flatMap((r) => (r.subject === undefined ? [] : [r.subject])));
-  const revoked = [...admitted].filter((k) => !governed.has(k) && revokes.has(k)).toSorted();
+  const revoked = [...admitted].filter((k) => !governed.has(k) && (revokes.has(k) || restoredOld.has(k))).toSorted();
   const updates = group(
     effective.filter((r) => r.type === "rekey" || r.type === "name"),
     (r) => (r.subject === undefined ? [] : [`${r.type}:${r.subject}`]),
@@ -115,7 +134,7 @@ export function membership(dag: Dag, S: RecordSet, statuses: ReadonlyMap<string,
     taken.add(chosen);
     name.set(k, chosen);
   }
-  return { members, revoked, noise, rekeyed, admitter, governing, name, hostId };
+  return { members, revoked, noise, rekeyed, admitter, governing, name, hostId, restoredOld };
 }
 
 export const withEff = (v: MemberView, eff: ReadonlySet<string>): EngineView => ({
@@ -128,4 +147,5 @@ export const withEff = (v: MemberView, eff: ReadonlySet<string>): EngineView => 
   governing: v.governing,
   name: v.name,
   hostId: v.hostId,
+  restoredOld: v.restoredOld,
 });

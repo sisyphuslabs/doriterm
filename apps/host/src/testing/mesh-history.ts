@@ -27,6 +27,8 @@ export const signPubOf = (m: Machine): string => base64urlEncode(m.identity.sign
 export const noiseOf = (m: Machine): string => base64urlEncode(m.identity.noise.publicKey);
 export const deviceOf = (m: Machine): string => base64urlEncode(m.device.publicKey);
 
+type LegacyRecord = Extract<RecordBody, { v: 2 }>;
+
 /** `m`'s card for `meshId`, naming `inviter` (itself for a rekey), with `identity`'s Noise key. */
 export function cardFor(m: Machine, meshId: string, inviter: Machine, identity = m.identity): Signed {
   const own = { name: m.name, hcId: m.hcId, devicePub: deviceOf(m) };
@@ -55,7 +57,7 @@ export class MeshFixture {
   }
 
   /** The body `by` would sign next, without storing it. */
-  next(by: Machine, type: RecordBody["type"], subject?: Subject): RecordBody {
+  next(by: Machine, type: LegacyRecord["type"], subject?: Subject): LegacyRecord {
     const records = this.#file().records;
     const by64 = signPubOf(by);
     const n = 1 + Math.max(0, ...records.map((record) => parseRecord(record)).map((b) => (b?.by === by64 ? b.n : 0)));
@@ -64,7 +66,7 @@ export class MeshFixture {
     return { v: 2, mesh: this.meshId, type, by: by64, n, prev, ...(subject === undefined ? {} : { subject }) };
   }
 
-  record(by: Machine, type: RecordBody["type"], subject?: Subject): Signed {
+  record(by: Machine, type: LegacyRecord["type"], subject?: Subject): Signed {
     const record = signRecord(this.next(by, type, subject), by.identity.sign.secretKey);
     const { refused } = this.store.merge([record]);
     if (refused.length > 0) throw new Error(`the fixture's own record was refused: ${refused[0]?.reason}`);

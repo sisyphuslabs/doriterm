@@ -57,7 +57,13 @@ export async function clientFlight(
     );
     return finishing(SessionKind.Session, handshake, first);
   }
-  if (opts.stream === "hc" || opts.stream === "push" || opts.stream === "roster" || opts.stream === "mcp") {
+  if (
+    opts.stream === "hc" ||
+    opts.stream === "push" ||
+    opts.stream === "roster" ||
+    opts.stream === "mcp" ||
+    opts.stream === "restore-owner"
+  ) {
     throw new PayloadError(`stream "${opts.stream}" is not valid on a pairing`);
   }
   const hello = encodePairingHello(pairing.name, opts.stream);

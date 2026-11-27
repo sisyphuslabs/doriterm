@@ -15,7 +15,12 @@ export type MuxType = (typeof MuxType)[keyof typeof MuxType];
 export const MUX_HEADER_BYTES = 5;
 
 export type MuxFrame =
-  | { readonly type: typeof MuxType.Open; readonly sessionId: number; readonly pairSlot?: string }
+  | {
+      readonly type: typeof MuxType.Open;
+      readonly sessionId: number;
+      readonly pairSlot?: string;
+      readonly restore?: true;
+    }
   | { readonly type: typeof MuxType.Data; readonly sessionId: number; readonly payload: Uint8Array }
   | { readonly type: typeof MuxType.Close; readonly sessionId: number; readonly code: number }
   | { readonly type: typeof MuxType.PairSlot; readonly sessionId: number; readonly payload: Uint8Array }
@@ -47,6 +52,13 @@ export function encodeOpen(sessionId: number, pairSlot?: string): Uint8Array<Arr
   return out;
 }
 
+/** The relay emits this only for a source-budgeted `/v1/restore` upgrade. It is not client data. */
+export function encodeRestoreOpen(sessionId: number): Uint8Array<ArrayBuffer> {
+  const out = muxHeader(MuxType.Open, sessionId, 1);
+  out[MUX_HEADER_BYTES] = 1;
+  return out;
+}
+
 export function encodeData(sessionId: number, payload: Uint8Array): Uint8Array<ArrayBuffer> {
   const out = muxHeader(MuxType.Data, sessionId, payload.byteLength);
   out.set(payload, MUX_HEADER_BYTES);
@@ -72,6 +84,7 @@ export function encodeCredit(sessionId: number, bytes: number): Uint8Array<Array
 
 function decodeOpen(sessionId: number, payload: Uint8Array): MuxFrame {
   if (payload.byteLength === 0) return { type: MuxType.Open, sessionId };
+  if (payload.byteLength === 1 && payload[0] === 1) return { type: MuxType.Open, sessionId, restore: true };
   const pairSlot = payload.byteLength === PAIR_SLOT_LENGTH ? new TextDecoder().decode(payload) : "";
   if (!PAIR_SLOT_PATTERN.test(pairSlot))
     throw new MuxError(`OPEN carries ${payload.byteLength} bytes that are not a slot`);

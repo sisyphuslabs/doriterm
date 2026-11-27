@@ -13,15 +13,15 @@ describe("the mesh file format guard", () => {
     expect(meshFileJson(newMeshFile("mesh-1", [record], 1)).version).toBe(2);
   });
 
-  test("this build reads both its own format and the next one", () => {
-    for (const version of [2, 3]) {
+  test("this build reads legacy, client admission, and readmission formats", () => {
+    for (const version of [2, 3, 4]) {
       const file = parseMeshFile({ version, meshId: "m", generation: 1, self: { n: 1 }, records: [record] });
       expect(file.version).toBe(version);
     }
   });
 
   test("a format above what this build reads is refused before anything else runs", () => {
-    expect(() => parseMeshFile({ version: 4, meshId: "m", generation: 1, self: { n: 1 }, records: [record] })).toThrow(
+    expect(() => parseMeshFile({ version: 5, meshId: "m", generation: 1, self: { n: 1 }, records: [record] })).toThrow(
       "mesh.json: unsupported format",
     );
   });
@@ -33,8 +33,10 @@ describe("the mesh file format guard", () => {
   });
 
   test("a parsed file keeps its version, so a rewrite never silently downgrades it", () => {
-    const parsed = parseMeshFile({ version: 3, meshId: "m", generation: 7, self: { n: 3 }, records: [record] });
-    expect(meshFileJson(parsed).version).toBe(3);
+    for (const version of [3, 4]) {
+      const parsed = parseMeshFile({ version, meshId: "m", generation: 7, self: { n: 3 }, records: [record] });
+      expect(meshFileJson(parsed).version).toBe(version);
+    }
   });
 
   test("a member's kind survives a persisted index, and an index that predates kinds reads as a machine", () => {

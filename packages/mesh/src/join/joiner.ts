@@ -1,6 +1,6 @@
 import { base64urlDecode, base64urlEncode, CloseCode, hostIdOf, PAIRING_TTL_MS } from "@doriface/crypto";
 import { door } from "../door.ts";
-import { cardOf, hashOf, meshIdOf, parseRecord, signCard, verifyCard } from "../records/codec.ts";
+import { hashOf, memberCardOf, meshIdOf, parseRecord, signCard } from "../records/codec.ts";
 import { MAX_RECORDS, type MemberKind, type Signed } from "../records/types.ts";
 import { viewOf } from "../view/engine.ts";
 import { cardBodyFor, type MemberIdentity, type OwnCard } from "./card.ts";
@@ -86,8 +86,7 @@ export function checkWelcome(records: readonly Signed[], offer: Offer, ctx: Welc
   const governingCard = (signPub: string) => {
     const record = byHash.get(view.governing.get(signPub) ?? "");
     const body = record === undefined ? undefined : parseRecord(record);
-    const signed = body === undefined ? undefined : cardOf(body);
-    return signed === undefined ? undefined : verifyCard(signed);
+    return body === undefined ? undefined : memberCardOf(body);
   };
   const inviter = offer.inviter;
   const inviterHost = hostIdOf(base64urlDecode(inviter));

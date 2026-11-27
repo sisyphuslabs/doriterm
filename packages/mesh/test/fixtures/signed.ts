@@ -49,6 +49,7 @@ export function signScenario(records: readonly Rec[]): SignedScenario {
   let mesh = "-";
   const out: Signed[] = [];
   for (const r of records) {
+    if (r.type === "readmit") throw new RangeError("use the signed readmission fixture for readmit records");
     const signer = key(r.by);
     let subject: Subject | undefined;
     if (r.card !== undefined) {

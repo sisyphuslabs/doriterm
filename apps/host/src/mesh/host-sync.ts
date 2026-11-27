@@ -95,7 +95,7 @@ export class HostSync {
    * it checks (#1436); the answers still come from gossip. The transaction that writes the admission hands in the view it
    * already holds, so the records are not evaluated again inside the lock (#2263).
    */
-  formatReady(records?: readonly Signed[], view?: View): boolean {
+  formatReady(records?: readonly Signed[], view?: View, format = CLIENT_ADMISSION_FORMAT): boolean {
     const gossip = this.gossip;
     const roster =
       records !== undefined
@@ -105,7 +105,7 @@ export class HostSync {
     const members = machinesOf(roster)
       .map((member) => member.signPub)
       .filter((signPub) => signPub !== self);
-    return formatReadiness(members, gossip?.formatAnswers() ?? [], CLIENT_ADMISSION_FORMAT).kind === "ready";
+    return formatReadiness(members, gossip?.formatAnswers() ?? [], format).kind === "ready";
   }
 
   /** mesh.json may have changed outside sync (a join, an admit, a CLI write): start, or push what is new. */

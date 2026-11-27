@@ -2,6 +2,7 @@ import { Button } from "@doriface/ui";
 import { useConnection } from "../connection/store.ts";
 import { isIos, runsInstalled } from "../device/install.ts";
 import { JoinCommandBlock } from "../workspace/join-command-block.tsx";
+import { RestoreEntry } from "../restore/restore-entry.tsx";
 import type { PairingOffer } from "./fragment.ts";
 import { InviteField } from "./invite-field.tsx";
 
@@ -40,6 +41,7 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
         </>
       ) : null}
       <InviteField onOffer={onOffer} />
+      <RestoreEntry />
       <Button size="lg" render={<a href="/settings#connect" />}>
         Connect a machine
       </Button>
