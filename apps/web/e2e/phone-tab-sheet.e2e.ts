@@ -74,6 +74,8 @@ test("the switch sheet closes a tab as the strip's close does and starts a new t
   await opened(sheet(page));
   await newTab.click();
   await expect(sheet(page)).toBeHidden();
+  // The new tab is a screen of its own (keyed by session): a sheet opened on t1's screen goes with it once it is shown.
+  await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toHaveCount(0, { timeout: 15_000 });
   await expectTabSwitch(page, (tabs) => expect(tabs).toContainText("2/2", { timeout: 15_000 }));
 });
 
