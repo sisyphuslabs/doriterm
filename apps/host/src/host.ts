@@ -273,7 +273,8 @@ async function serve(
   const control = openHostControl(options.stateDir, e2ee, meshStatus, refreshMeshLines, push, writers);
   e2ee?.slots.start();
   writers.startIfInMesh();
-  if (stateDir !== undefined) started("state watch", watchRevocations(stateDir, writers.stateChanged, options.log));
+  const stopWatch = stateDir === undefined ? undefined : watchRevocations(stateDir, writers.stateChanged, options.log);
+  if (stopWatch !== undefined) started("state watch", stopWatch);
   const boundPort = server.port ?? port;
   const base = `ws://${formatHost(hostname)}:${boundPort}`;
   let stopping: Promise<void> | undefined;
@@ -295,6 +296,8 @@ async function serve(
     gitFactsSettled: writers.gitFactsSettled,
     meshStatusSettled: writers.meshStatusSettled,
     stop() {
+      // First: a state change from now on must start nothing (a writer's hc connect would bring the core back).
+      stopWatch?.();
       const pushStopped = push?.stop();
       e2ee?.slots.stop();
       control?.stop();
