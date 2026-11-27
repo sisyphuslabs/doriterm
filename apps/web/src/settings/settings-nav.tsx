@@ -69,6 +69,7 @@ function NavGroup({
  */
 export function SettingsNav({
   titlebar,
+  dialog,
   back,
   search,
   nothing,
@@ -77,6 +78,8 @@ export function SettingsNav({
   onSection,
 }: {
   readonly titlebar: Readonly<Record<string, string>>;
+  /** In the dialog the title row is not the window's titlebar: it makes no room for the window's buttons. */
+  readonly dialog: boolean;
   readonly back: ReactNode;
   readonly search: ReactNode;
   readonly nothing: ReactNode;
@@ -87,11 +90,19 @@ export function SettingsNav({
   return (
     <nav
       aria-label="Settings"
-      className="hidden w-[max(var(--settings-nav-width),calc(var(--titlebar-inset-start,0px)+8.5rem))] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2.5 pb-2 md:flex"
+      className={cn(
+        "hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2.5 pb-2 md:flex",
+        dialog
+          ? "w-(--settings-nav-width)"
+          : "w-[max(var(--settings-nav-width),calc(var(--titlebar-inset-start,0px)+8.5rem))]",
+      )}
     >
       <div
         {...titlebar}
-        className="mb-1 flex h-11 shrink-0 items-center gap-1 pl-[calc(var(--titlebar-inset-start,0.5rem)-0.5rem)]"
+        className={cn(
+          "mb-1 flex h-11 shrink-0 items-center gap-1",
+          !dialog && "pl-[calc(var(--titlebar-inset-start,0.5rem)-0.5rem)]",
+        )}
       >
         {back}
         <SettingsTitle>Settings</SettingsTitle>

@@ -131,6 +131,7 @@ export function SettingsRoute() {
       />
       <SettingsNav
         titlebar={titlebar}
+        dialog={dialog}
         back={
           <IconButton
             label="Close settings"
