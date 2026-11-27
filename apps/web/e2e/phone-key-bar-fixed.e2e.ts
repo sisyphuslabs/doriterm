@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
@@ -34,6 +35,7 @@ for (const width of [320, 390]) {
       await page.emulateMedia({ colorScheme });
       await openPhoneTerminal(page, width);
       await key(page, "Type in a field").click();
+      await atRest(page);
       await page.screenshot({ path: testInfo.outputPath("phone-keys.png") });
       await expect(page.getByLabel("Type into the terminal")).toBeVisible();
       await Promise.all(
@@ -50,6 +52,7 @@ for (const width of [320, 390]) {
       expect(dimensions.scroll).toBeGreaterThan(dimensions.client);
 
       // The actions pill stays fixed at the right and the input card stays fixed above the row while keys scroll.
+      await atRest(page);
       const before = await Promise.all(fixedSlots(page).map(box));
       await row.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
       await expect.poll(() => row.evaluate((el) => el.scrollLeft)).toBe(dimensions.scroll - dimensions.client);
@@ -82,6 +85,8 @@ test("scrolled-in keys and the fixed slots both reach the terminal", async ({ pa
   await expect(terminal).toContainText(/\^\[\[D\^\[\[A\^\[\[B\^\[\[Cq/, { timeout: 15_000 });
 
   await key(page, "Type in a field").click();
+
+  await atRest(page);
   await expect(page.getByLabel("Type into the terminal")).toBeFocused();
   await key(page, "Hide keyboard").click();
   await expect(key(page, "Show keyboard")).toBeVisible();

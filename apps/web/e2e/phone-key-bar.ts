@@ -1,4 +1,5 @@
 import { devices, type Locator, type Page } from "@playwright/test";
+import { atRest } from "./at-rest.ts";
 import { coreSize, gridSize } from "./core-size.ts";
 import { expect, opened } from "./fixtures.ts";
 
@@ -160,6 +161,8 @@ export async function openPhoneTerminal(
   // A keyboard that rises for the focus is up once the keys' toggle says so: the keys are on screen either way (#2499).
   const raises = keyboard === "overlay" || (keyboard !== "resize" && keyboard.raiseOnFocus);
   if (raises) await expect(key(page, "Hide keyboard")).toBeVisible();
+  // The screen pushed in and the keys riding up to the keyboard have settled: a spec reads the phone at rest (#2875).
+  await atRest(page);
   return terminal;
 }
 
@@ -236,6 +239,7 @@ export const key = (page: Page, name: string) => page.getByRole("button", { name
  * (KeyButton's hold), and the lift that follows sends nothing. Resolves once the sheet is on screen.
  */
 export async function openShortcutPacks(page: Page): Promise<void> {
+  await atRest(page);
   const ctrl = keysBar(page).getByRole("button", { name: "Control", exact: true });
   const box = await ctrl.boundingBox();
   if (box === null) throw new Error("the keys bar's Ctrl is not laid out");
@@ -247,6 +251,7 @@ export async function openShortcutPacks(page: Page): Promise<void> {
 }
 
 export async function expectTouchTargets(scope: Locator): Promise<void> {
+  await atRest(scope.page());
   const small = await scope.getByRole("button").evaluateAll((buttons) =>
     buttons
       .map((button) => ({ name: button.getAttribute("aria-label") ?? "", box: button.getBoundingClientRect() }))
