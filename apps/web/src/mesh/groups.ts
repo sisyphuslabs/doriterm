@@ -1,20 +1,31 @@
 import type { MachineView, MeshMemberStatus, MeshPendingJoin, MeshRemovedStatus, MeshStatus } from "@doriface/protocol";
 import { HOST_ID_PATTERN } from "@doriface/relay-client";
+import type { Answered } from "./mesh-reader.ts";
 
-/** What a pending join's row offers: the two answers, nothing (expired), or the answer this device gave. */
-export type PendingAnswer = "open" | "expired" | "approve" | "deny";
+/**
+ * What a pending join's row offers: the two answers (also after the host refused one), nothing (expired), an answer
+ * the host has not read yet, the answer the host took, or word that the host holds no such join any more.
+ */
+export type PendingAnswer = "open" | "expired" | "sending" | "approve" | "deny" | "gone";
 
 /**
  * A join dies with its offer (design 4.3), and the document can outlive the host that wrote it, so an expired offer
- * takes no answer and never reads as admitted, even if this device approved it before it expired.
+ * takes no answer and never reads as admitted, even if this device approved it before it expired. An answer counts only
+ * once the host says it took it (#2936).
  */
-export function pendingAnswer(
-  join: MeshPendingJoin,
-  now: number,
-  answered: "approve" | "deny" | undefined,
-): PendingAnswer {
+export function pendingAnswer(join: MeshPendingJoin, now: number, answered: Answered | undefined): PendingAnswer {
   if (now >= Date.parse(join.expiresAt)) return "expired";
-  return answered ?? "open";
+  if (answered === undefined || answered.nonce !== join.nonce) return "open";
+  switch (answered.outcome.kind) {
+    case "sent":
+      return "sending";
+    case "taken":
+      return answered.verdict;
+    case "gone":
+      return "gone";
+    case "refused":
+      return "open";
+  }
 }
 
 export interface MeshGroups {

@@ -1,4 +1,5 @@
 export {
+  DEFAULT_HANDSHAKE_TIMEOUT_MS,
   HcConnection,
   type AttachOptions,
   type CallArgs,

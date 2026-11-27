@@ -3,8 +3,9 @@ import { Button, Fingerprint, Notice, SettingRow, cn } from "@doriface/ui";
 import { useState } from "react";
 import { rowValueClass } from "../settings/settings-layout.tsx";
 import { formatAge } from "../workspace/model.ts";
-import { type Disagreement, approvalConsequence, pendingAnswer } from "./groups.ts";
+import { type Disagreement, type PendingAnswer, approvalConsequence, pendingAnswer } from "./groups.ts";
 import { Command, type NameOf } from "./mesh-rows.tsx";
+import type { Answered } from "./mesh-reader.ts";
 import type { Verdict } from "./use-mesh.ts";
 
 /** What an owner runs on an affected machine to found a fresh mesh after a fail-closed removal (design section 3.7). */
@@ -35,8 +36,23 @@ export interface PendingRowProps {
   readonly join: MeshPendingJoin;
   readonly self: string;
   readonly now: number;
-  readonly answered: Verdict | undefined;
+  /** This host's answer document, whichever join it names; the row reads it only for its own join. */
+  readonly answered: Answered | undefined;
   readonly onAnswer: (verdict: Verdict) => Promise<void>;
+}
+
+/** What a row that takes no answer says: the host's word on the last one, never more than the host said (#2936). */
+function settledText(state: Exclude<PendingAnswer, "open" | "expired">, name: string, self: string): string {
+  switch (state) {
+    case "sending":
+      return `Sending the answer to ${self}`;
+    case "approve":
+      return `Waiting for ${name} to confirm the code`;
+    case "deny":
+      return "Denied: the codes differed. Open a new invite.";
+    case "gone":
+      return `${self} no longer holds this join: it expired or was answered elsewhere. Open a new invite.`;
+  }
 }
 
 export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowProps) {
@@ -57,6 +73,11 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
   };
   const left = Date.parse(join.expiresAt) - now;
   const state = pendingAnswer(join, now, answered);
+  const refusal =
+    answered?.nonce === join.nonce && answered.outcome.kind === "refused"
+      ? `${self} refused that answer: ${answered.outcome.reason}`
+      : undefined;
+  const shownFailure = failure ?? refusal;
   const consequence = approvalConsequence(join.kind, join.name);
   // The offer can end while the row is up, before the groups move it.
   if (state === "expired") return <ExpiredJoinRow join={join} self={self} now={now} />;
@@ -83,7 +104,9 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             <summary>Details</summary>
             <Fingerprint label={`${join.name}'s key`} value={join.fingerprint.replaceAll(" ", "")} />
           </details>
-          {failure === undefined ? null : <span className="mt-1 block text-status-blocked-text">{failure}</span>}
+          {shownFailure === undefined ? null : (
+            <span className="mt-1 block text-status-blocked-text">{shownFailure}</span>
+          )}
           {consequence === undefined ? null : <span className="mt-1 block">{consequence}</span>}
         </>
       }
@@ -115,9 +138,7 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             className={cn("inline-flex min-h-(--control) items-center", rowValueClass)}
             data-mesh-answer={state}
           >
-            {state === "approve"
-              ? `Waiting for ${join.name} to confirm the code`
-              : "Denied: the codes differed. Open a new invite."}
+            {settledText(state, join.name, self)}
           </span>
         )
       }

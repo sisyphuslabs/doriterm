@@ -31,6 +31,7 @@ import { useTabRename } from "./tab-rename.tsx";
 import { DesktopStatusBar } from "./desktop-status-bar.tsx";
 import { SessionMenu } from "./session-menu.tsx";
 import { Sidebar } from "./sidebar.tsx";
+import { SidebarDrawer } from "./sidebar-drawer.tsx";
 import { sidebarFilter } from "./sidebar-filter-field.tsx";
 import { SkipLinks } from "./skip-links.tsx";
 import { frontIcon, Titled } from "./tab-live.tsx";
@@ -347,26 +348,13 @@ export function DesktopShell(props: DesktopShellProps) {
           </div>
         ) : null}
         {medium && drawer ? (
-          <>
-            <button
-              type="button"
-              aria-label="Close sidebar"
-              className="absolute inset-0 z-30 bg-black/30"
-              onClick={() => setDrawer(false)}
-            />
-            <div
-              data-sidebar-drawer
-              className="absolute top-(--safe-top) bottom-(--safe-bottom) left-(--safe-left) z-40 flex"
-            >
-              <Sidebar
-                drawer
-                terminals={terminals}
-                active={focusedAddress}
-                onOpen={openFromDrawer}
-                onPalette={onPalette}
-              />
-            </div>
-          </>
+          <SidebarDrawer
+            terminals={terminals}
+            active={focusedAddress}
+            onOpen={openFromDrawer}
+            onPalette={onPalette}
+            onClose={() => setDrawer(false)}
+          />
         ) : null}
         {/* The titlebar's leading strip, beside the toggle and, with the sidebar hidden, before it: it keeps the chrome and
           the window drag where the tab strip's own box used to reach (#643). It comes before the toggle so the toggle's

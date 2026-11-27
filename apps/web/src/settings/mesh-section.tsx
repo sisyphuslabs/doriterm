@@ -122,7 +122,7 @@ export function MeshBody({
             join={join}
             self={self}
             now={now}
-            answered={answered?.nonce === join.nonce ? answered.verdict : undefined}
+            answered={answered}
             onAnswer={(verdict) => answer(join.nonce, verdict, join.code)}
           />
         ))}

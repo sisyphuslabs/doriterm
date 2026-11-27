@@ -3,6 +3,7 @@ import { meshFixture } from "@doriface/host/testing";
 import type { MachineView, MeshMemberStatus, MeshStatus } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { approvalConsequence, disagreement, meshGroups, pendingAnswer } from "./groups.ts";
+import type { Answered, HostOutcome, Verdict } from "./mesh-reader.ts";
 
 const NOW = new Date("2026-11-03T12:00:00.000Z");
 const fixture = meshFixture(NOW);
@@ -101,13 +102,33 @@ describe("a pending join's answer", () => {
     expect(pendingAnswer(join, expires + 60_000, undefined)).toBe("expired");
   });
 
-  test("shows what this device answered while the offer is open", () => {
-    expect(pendingAnswer(join, expires - 1, "approve")).toBe("approve");
-    expect(pendingAnswer(join, expires - 1, "deny")).toBe("deny");
+  const answered = (verdict: Verdict, outcome: HostOutcome): Answered => ({ nonce: join.nonce, verdict, outcome });
+  const taken: HostOutcome = { kind: "taken" };
+
+  test("shows what this device answered once the host took it", () => {
+    expect(pendingAnswer(join, expires - 1, answered("approve", taken))).toBe("approve");
+    expect(pendingAnswer(join, expires - 1, answered("deny", taken))).toBe("deny");
+  });
+
+  test("an answer the host has not read yet is sending, never final (#2936)", () => {
+    expect(pendingAnswer(join, expires - 1, answered("approve", { kind: "sent" }))).toBe("sending");
+  });
+
+  test("an answer to a join the host no longer holds says so instead of waiting for a confirmation (#2936)", () => {
+    expect(pendingAnswer(join, expires - 1, answered("approve", { kind: "gone" }))).toBe("gone");
+  });
+
+  test("an answer the host refused takes an answer again (#2936)", () => {
+    const refused: HostOutcome = { kind: "refused", reason: "the approval code does not match this join" };
+    expect(pendingAnswer(join, expires - 1, answered("approve", refused))).toBe("open");
+  });
+
+  test("an answer to another join leaves this one open", () => {
+    expect(pendingAnswer(join, expires - 1, { nonce: "another", verdict: "approve", outcome: taken })).toBe("open");
   });
 
   test("an approval of an offer that has since expired does not read as admitted", () => {
-    expect(pendingAnswer(join, expires, "approve")).toBe("expired");
+    expect(pendingAnswer(join, expires, answered("approve", taken))).toBe("expired");
   });
 });
 

@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
 import { stubSpeech } from "./speech-stub.ts";
 
@@ -25,6 +26,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     await openPhoneTerminal(page, 390);
     await page.screenshot({ path: testInfo.outputPath("row.png") });
 
+    await atRest(page);
     const [keys, actions] = [await box(keysPill(page)), await box(actionsPill(page))];
     // One row: the two pills share a top and a height, the keys first, the actions at the right edge.
     expect(Math.abs(keys.y - actions.y)).toBeLessThanOrEqual(1);
@@ -119,6 +121,8 @@ test("the open card holds the mic just before Enter, and Enter with an empty fie
   await expect(mic(card(page))).toHaveCount(1);
   const enter = card(page).getByRole("button", { name: "Send", exact: true });
   await expect(enter).toBeEnabled();
+  // The card moves in on the motion tokens (#2875, #2917): its boxes are read once it has settled, not one per frame.
+  await atRest(page);
   const [voice, send, input] = [await box(mic(card(page))), await box(enter), await box(field(page))];
   // Under the full-width field, at its end: the mic, then Enter, on one line.
   expect(Math.abs(voice.y + voice.height / 2 - (send.y + send.height / 2))).toBeLessThanOrEqual(1);

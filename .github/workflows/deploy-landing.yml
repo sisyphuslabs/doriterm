@@ -36,9 +36,12 @@ on:
 permissions:
   contents: read
 
+# Every run deploys the one staging site, so all take turns; queue: max keeps each waiting run, where the default
+# single slot let a labelled pull request or a newer push replace a dev deploy still waiting (#2361, #868).
 concurrency:
   group: deploy-landing
   cancel-in-progress: false
+  queue: max
 
 env:
   BUN_VERSION: 1.4.4
