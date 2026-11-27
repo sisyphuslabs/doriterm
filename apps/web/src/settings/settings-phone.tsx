@@ -39,7 +39,7 @@ export function PhoneHeader({
         {onBack === undefined ? (
           <span />
         ) : (
-          <Button variant="ghost" onClick={onBack} className="gap-0.5 px-1 font-normal text-foreground">
+          <Button variant="ghost" onClick={onBack} className="gap-0.5 pr-2 pl-0 font-normal text-foreground">
             <ChevronLeft aria-hidden />
             Settings
           </Button>

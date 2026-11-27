@@ -105,3 +105,13 @@ test("a section opened from the list comes back to the list, which keeps every s
   await openSettingsSection(page, "Voice input");
   await expect(page.getByRole("heading", { name: "Voice input", level: 1 })).toBeVisible();
 });
+
+test("a section page's Back lines its chevron up with the title's left edge (#2914 review)", async ({ page }) => {
+  await page.goto("/settings#terminal");
+  const title = page.getByRole("heading", { name: "Terminal", level: 1 });
+  await expect(title).toBeVisible();
+  const chevron = page.getByRole("button", { name: "Settings", exact: true }).locator("svg");
+  const [mark, heading] = await Promise.all([chevron.boundingBox(), title.boundingBox()]);
+  expect(mark, "the chevron is drawn").not.toBeNull();
+  expect(Math.abs((mark?.x ?? 0) - (heading?.x ?? 0))).toBeLessThanOrEqual(2);
+});

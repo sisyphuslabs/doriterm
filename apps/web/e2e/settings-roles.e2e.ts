@@ -138,6 +138,50 @@ for (const width of [390, 1440] as const) {
   });
 }
 
+// On a phone's card a row's divider runs from its text to the card's trailing edge (#2914): every row on a drawn card
+// ends exactly at the card's edge, whichever row primitive draws it.
+async function rowsShortOfEdge(scope: Locator): Promise<{ readonly rows: number; readonly short: readonly string[] }> {
+  return scope.evaluate((root) => {
+    const short: string[] = [];
+    let rows = 0;
+    for (const row of root.querySelectorAll<HTMLElement>(
+      "[data-settings-card] [data-list-row], [data-settings-card] [data-setting-row]",
+    )) {
+      const card = row.closest<HTMLElement>("[data-settings-card]");
+      if (card === null || getComputedStyle(card).backgroundColor === "rgba(0, 0, 0, 0)") continue;
+      const box = row.getBoundingClientRect();
+      if (box.width === 0) continue;
+      rows += 1;
+      const gap = card.getBoundingClientRect().right - box.right;
+      if (Math.abs(gap) > 0.5)
+        short.push(`${row.textContent?.trim().slice(0, 32) ?? "?"}: ${gap}px from the card's edge`);
+    }
+    return { rows, short };
+  });
+}
+
+test.describe("390 phone rows reach their card's edge", () => {
+  const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
+  test.use(phone);
+
+  test("Settings > Keyboard in Edit, its empty-state rows included", async ({ page }) => {
+    const settings = await openSection(page, "Keyboard");
+    await settings.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(settings.locator("[data-edit-key]").first()).toBeVisible();
+    const found = await rowsShortOfEdge(settings);
+    expect(found.rows, "rows on cards").toBeGreaterThan(0);
+    expect(found.short).toEqual([]);
+  });
+
+  test("Settings > This device", async ({ page }) => {
+    const settings = await openSection(page, "This device");
+    await expect(settings.locator("[data-setting-row]").first()).toBeVisible();
+    const found = await rowsShortOfEdge(settings);
+    expect(found.rows, "rows on cards").toBeGreaterThan(0);
+    expect(found.short).toEqual([]);
+  });
+});
+
 test.describe("390 phone toolbar", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use(phone);
