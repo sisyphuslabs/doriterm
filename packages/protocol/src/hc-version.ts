@@ -4,7 +4,10 @@
  */
 export const HC_VERSION_FLOOR = "0.1.17";
 
-/** The hc a host brings itself up to when it starts on an older one; `hc update` keeps every terminal running. */
+/**
+ * The hc a host brings itself up to when it starts on an older one, through its verified installer (a release a
+ * Doriterm key signed), whose `update --from` swap keeps every terminal running; never herdr's own `hc update`.
+ */
 export const HC_VERSION_RECOMMENDED = "0.1.22";
 
 const numbers = (version: string): number[] =>
