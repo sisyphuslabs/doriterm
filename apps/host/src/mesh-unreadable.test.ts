@@ -2,12 +2,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:te
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { HcConnection } from "@doriface/client";
+import { HOST_INFO_DOC, type JsonValue } from "@doriface/protocol";
 import { generateToken } from "./auth.ts";
 import { requestControl } from "./control.ts";
 import { type Host, startHost } from "./host.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
 import { MeshStore } from "./state/mesh.ts";
 import { MESH_FILE } from "./state/mesh-file.ts";
+import { spawnHcLink } from "./mesh/hc-machines.ts";
 import { createHcSession, type HcSession } from "./testing/hc-session.ts";
 
 const CLI = join(import.meta.dir, "cli.ts");
@@ -71,6 +74,18 @@ afterEach(async () => {
 });
 
 const meshFile = () => join(stateDir, MESH_FILE);
+
+/** The host-info document on this test's core, which only the host's writers write. */
+async function hostInfoDoc(): Promise<JsonValue> {
+  const link = spawnHcLink({ hc: session.hc, session: session.name, env: session.env });
+  const core = await HcConnection.open(link);
+  try {
+    return (await core.call("doc.get", { name: HOST_INFO_DOC })).value;
+  } finally {
+    core.close();
+    link.close();
+  }
+}
 const unreadableLines = () => logs.filter((line) => line.startsWith("mesh: mesh state unreadable: "));
 
 test("a host over an unreadable mesh.json still starts, says why once, keeps the file as it is and admits no member", async () => {
@@ -125,4 +140,7 @@ test("a mesh.json repaired while the host runs is picked up without a restart: s
   expect(repaired.found(loadHostIdentity(stateDir), { name: "alpha", hcId: "" })).toBe(true);
   expect(await started).toBe(`mesh: sync started for mesh ${repaired.read()?.meshId ?? "?"}`);
   heard = undefined;
+  // The host's writers came up with the mesh too: its facts are on its core, written without a restart.
+  await host.hostInfoSettled();
+  expect(await hostInfoDoc()).toMatchObject({ v: 1 });
 });

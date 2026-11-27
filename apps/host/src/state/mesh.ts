@@ -1,8 +1,6 @@
 import { base64urlEncode, type HostIdentity } from "@doriface/crypto";
 import {
-  type CardBody,
   meshIdOf,
-  type MemberKind,
   parseRecord,
   type RecordBody,
   type Signed,
@@ -11,18 +9,20 @@ import {
   type View,
   viewOf,
 } from "@doriface/mesh";
-import { cardBodyFor, JoinRefused, type OwnCard } from "@doriface/mesh/join";
+import { JoinRefused, type OwnCard } from "@doriface/mesh/join";
 import { join } from "node:path";
-import { AuthorizeIndex } from "../mesh/authorize-index.ts";
+import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
 import { createPrivateJson, ensureStateDir, fileStamp, writePrivateJson } from "./files.ts";
 import { DEFAULT_LOCK_TIMEOUT_MS, withStateLock } from "./lock.ts";
 import { recordClientSession } from "./client-session-record.ts";
 import { cleanupAfterWrite, withIndex } from "./mesh-cleanup.ts";
 import { MESH_FILE, type MeshFile, meshFileJson, newMeshFile } from "./mesh-file.ts";
 import { readMeshFile, unreadableMesh } from "./mesh-read.ts";
+import { cardBody, foundBody, persistedIndex } from "./mesh-records.ts";
 import { type MergeResult, type MeshTx, ownN, Transaction } from "./mesh-tx.ts";
 
 export { CounterBehindError, type MergeResult, type MeshTx } from "./mesh-tx.ts";
+export { cardBody } from "./mesh-records.ts";
 
 export interface MeshStoreOptions {
   readonly log: (line: string) => void;
@@ -290,31 +290,3 @@ export class MeshStore {
     return withStateLock(this.#dir, fn, this.#options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS);
   }
 }
-
-function persistedIndex(file: MeshFile): AuthorizeIndex {
-  if (file.index?.generation !== file.generation) throw new Error(`${MESH_FILE}: its authorize index is stale`);
-  return new AuthorizeIndex(file.index);
-}
-
-/** The card body for this host in mesh `mesh`, invited by `inviter` (both `"-"` in a found). */
-export function cardBody(
-  identity: HostIdentity,
-  card: OwnCard,
-  mesh: string,
-  inviter: string,
-  at?: string,
-  kind?: MemberKind,
-): CardBody {
-  const member = { hostId: identity.hostId, sign: identity.sign, noisePub: identity.noise.publicKey };
-  return cardBodyFor(member, card, { mesh, inviter, nonce: at, kind });
-}
-
-const foundBody = (identity: HostIdentity, card: Signed): RecordBody => ({
-  v: 2,
-  mesh: "-",
-  type: "found",
-  by: base64urlEncode(identity.sign.publicKey),
-  n: 1,
-  prev: [],
-  subject: { card },
-});

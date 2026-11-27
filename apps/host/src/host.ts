@@ -96,11 +96,6 @@ async function serve(
       ? undefined
       : e2eeDeps(stateDir, identity, options.pairingSlots ?? uplink, options, proofs);
   if (e2ee !== undefined) started("mesh sync", () => e2ee.sync.stop());
-  if (e2ee !== undefined && stateDir !== undefined)
-    started(
-      "revocation watch",
-      watchRevocations(stateDir, () => e2ee.stateChanged(), options.log),
-    );
   const push =
     stateDir === undefined || e2ee === undefined
       ? undefined
@@ -278,6 +273,7 @@ async function serve(
   const control = openHostControl(options.stateDir, e2ee, meshStatus, refreshMeshLines, push, writers);
   e2ee?.slots.start();
   writers.startIfInMesh();
+  if (stateDir !== undefined) started("state watch", watchRevocations(stateDir, writers.stateChanged, options.log));
   const boundPort = server.port ?? port;
   const base = `ws://${formatHost(hostname)}:${boundPort}`;
   let stopping: Promise<void> | undefined;
