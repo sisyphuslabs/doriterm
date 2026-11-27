@@ -46,7 +46,7 @@ const spacesFirstRow = (page: Page) =>
     .locator("[data-floor=name]")
     .first();
 
-/** Each sidebar section's title, Spaces included, starts on the label column of the first row it heads (#1496, #1612). */
+/** Each sidebar section's title, Spaces included, starts on the left edge of the rows it heads (#2864; was the label column, #1612). */
 async function expectTitlesAlignedWithRows(page: Page) {
   await page.mouse.move(0, 0);
   await page.evaluate(() => document.fonts.ready);
@@ -56,7 +56,7 @@ async function expectTitlesAlignedWithRows(page: Page) {
     expect(names, `the sidebar has a "${title}" section`).toContain(title);
   expect(names, 'the sidebar has a "Spaces" section').toContain("Spaces");
   for (const section of sections) {
-    const label = `section "${section.name}": title at ${section.title}, first row's label at ${section.row}`;
+    const label = `section "${section.name}": title at ${section.title}, first row's left edge at ${section.row}`;
     expect.soft(section.row, label).not.toBeNull();
     if (section.row !== null) expect.soft(Math.abs(section.title - section.row), label).toBeLessThanOrEqual(1);
   }
