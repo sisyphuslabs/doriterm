@@ -41,7 +41,7 @@ test.describe("Settings, Machines", () => {
     const nav = page.getByRole("navigation", { name: "Settings" });
     await expect(nav.getByRole("button", { name: "Machines" })).toHaveAttribute("aria-current", "page");
     await expect(nav.getByRole("button", { name: "Connect a machine" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
+    await expect(page.getByRole("heading", { name: "From a terminal", level: 2 })).toBeInViewport();
     await expect(page.getByText("Open an invite on your host")).toBeVisible();
     await expect(page.getByRole("heading", { name: "In your mesh", level: 2 })).toBeVisible();
   });
@@ -79,7 +79,7 @@ test.describe("Settings, Machines", () => {
       await page.goto("/settings#connect");
       await expect(page.getByRole("tab", { name: "Machines" })).toHaveAttribute("aria-selected", "true");
       await expect(page.getByRole("tab", { name: "Connect a machine" })).toHaveCount(0);
-      await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
+      await expect(page.getByRole("heading", { name: "From a terminal", level: 2 })).toBeInViewport();
     });
   });
 });
