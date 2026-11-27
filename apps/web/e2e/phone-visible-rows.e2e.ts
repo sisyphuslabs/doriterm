@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
@@ -165,6 +165,7 @@ for (const width of [390, 320]) {
       seedSpaces([]);
       endAgent("host", blocked);
       for (const shell of shells) endAgent("host", shell);
+      rmSync(folder, { recursive: true, force: true });
     }
   });
 }
