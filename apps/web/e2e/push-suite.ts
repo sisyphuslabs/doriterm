@@ -6,6 +6,7 @@ import { E2E_LAYOUT_PORT } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
 import { askHost, stubPushManager, TestPushService } from "./push.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 /** Registers the suite's hooks; call once at a spec file's top level. The getter is valid inside tests. */
 export function pushSuite(): {
@@ -61,7 +62,7 @@ export async function openSettings(page: Page): Promise<void> {
   await page.goto("/settings");
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   await page.goto("/settings");
-  await settingsSection(page, "Notifications").click();
+  await openSettingsSection(page, "Notifications");
 }
 
 export const pushState = (page: Page) => page.locator("[data-push-state]");
@@ -72,14 +73,7 @@ export const pushState = (page: Page) => page.locator("[data-push-state]");
  */
 export const pushButton = (page: Page, name: string) => pushState(page).getByRole("button", { name, exact: true });
 
-/** A Settings section's entry: the side navigation from `md` up, the tab strip below it. */
-export const settingsSection = (page: Page, name: string) =>
-  page
-    .getByRole("navigation", { name: "Settings", exact: true })
-    .getByRole("button", { name, exact: true })
-    .or(page.getByRole("tablist").getByRole("tab", { name, exact: true }))
-    // Both exist in the DOM at every width; only one is shown.
-    .filter({ visible: true });
+export { openSettingsSection } from "./settings-sections.ts";
 
 export async function turnOn(page: Page): Promise<void> {
   await openSettings(page);

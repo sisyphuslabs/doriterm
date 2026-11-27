@@ -83,3 +83,12 @@ test("a drop of an address not listed live takes the next live listing there as 
   once.listed([live("t1")]);
   expect(once.take("t1")).toBe(true);
 });
+
+test("an end reported while no saved tab shows the session drops nothing, so a tab saved for it later is dropped (#2913)", () => {
+  const once = new DropOnce();
+  once.listed([live("t1")]);
+  once.listed([finished("t1")]);
+  expect(once.take("t1", false)).toBe(false);
+  expect(once.take("t1", true)).toBe(true);
+  expect(once.take("t1", true)).toBe(false);
+});

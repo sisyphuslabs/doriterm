@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -60,12 +61,12 @@ test.describe("on the phone", () => {
     await page.goto("/settings");
     await expect(page).toHaveURL(/\/settings$/);
     await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
-    await page.getByRole("tab", { name: "Appearance" }).click();
+    await openSettingsSection(page, "Appearance");
     await expect(page.getByLabel("Appearance", { exact: true }).getByRole("button", { name: "Dark" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await page.getByRole("tab", { name: "This device" }).click();
+    await openSettingsSection(page, "This device");
     await expect(page.getByRole("switch", { name: "Keep the screen awake" })).not.toBeChecked();
     expect(errors).toEqual([]);
   });

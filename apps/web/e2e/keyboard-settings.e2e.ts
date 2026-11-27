@@ -2,6 +2,7 @@ import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { fakeHostOs } from "./host-os.ts";
 import { fakeSoftKeyboard, PHONE } from "./phone-key-bar.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
@@ -35,7 +36,7 @@ async function openSettings(page: Page): Promise<void> {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible({ timeout: 20_000 });
-  await page.getByRole("tab", { name: "Keyboard" }).click();
+  await openSettingsSection(page, "Keyboard");
 }
 
 async function openTerminal(page: Page): Promise<Locator> {
