@@ -1,6 +1,7 @@
 import type { HcConnection } from "@doriface/client";
 import { Button, IconButton, cn } from "@doriface/ui";
 import { Monitor, Smartphone, X } from "lucide-react";
+import { useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWidthTier } from "../layout/width-tier.ts";
 import { formatAge } from "../workspace/model.ts";
@@ -102,7 +103,9 @@ function Card({ request, holder, now, more, compact, onAnswer, onLater }: CardPr
       data-join-request={join.nonce}
       className={cn(
         "motion-arrive pointer-events-auto flex flex-col gap-3 border border-border bg-popover p-5 text-popover-foreground shadow-overlay [--arrive-duration:var(--duration-card)] [--arrive-ease:var(--ease-enter)] [--arrive-from:translateY(8px)]",
-        compact ? "rounded-t-xl border-x-0 border-b-0 pb-[calc(var(--safe-bottom)+1.25rem)]" : "w-[25rem] rounded-xl",
+        compact
+          ? "rounded-t-xl border-x-0 border-b-0 pr-[calc(var(--safe-right)+1.25rem)] pb-[calc(var(--safe-bottom)+1.25rem)] pl-[calc(var(--safe-left)+1.25rem)]"
+          : "w-[25rem] rounded-xl",
       )}
     >
       <header className="flex items-center gap-2">
@@ -147,6 +150,8 @@ export function JoinRequestCard({ connection }: { readonly connection: HcConnect
   const now = useNow();
   const compact = useWidthTier() === "compact";
   const [later, setLater] = useState<ReadonlySet<string>>(new Set());
+  // The workspace stays mounted under Settings, whose Machines section lists the same joins: the card is the workspace's.
+  const onWorkspace = useRouterState({ select: (state) => state.location.pathname }) === "/";
   const waiting =
     read.phase === "ready"
       ? read.requests.filter(
@@ -161,6 +166,7 @@ export function JoinRequestCard({ connection }: { readonly connection: HcConnect
       {announced}
     </p>
   );
+  if (!onWorkspace) return null;
   if (read.phase !== "ready" || first === undefined) return live;
   return (
     <>
