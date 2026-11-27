@@ -15,6 +15,17 @@ import { type LayoutTab, localOf } from "./layout-model.ts";
 import type { View } from "../layout/view.ts";
 import { shownIn } from "./adoption.ts";
 
+/**
+ * Whether the person is still on the tab a split was asked from once its terminal answers: the same tab, or, for a tab of
+ * no document, the document tab that saved its terminal meanwhile (an adoption, or the write of the new tab it opened
+ * as). Only another tab picked meanwhile keeps the view where it is (#1539).
+ */
+export const stillInView = (asked: LayoutTab, active: LayoutTab | null): boolean =>
+  active !== null &&
+  (active.key === asked.key ||
+    (asked.transient &&
+      asked.panes.some((pane) => pane.address !== null && active.panes.some((each) => each.address === pane.address))));
+
 /** A tab root holding one terminal: a row `id` with the terminal `local` in pane `pane`. */
 export const terminalRow = (id: string, pane: string, local: string): Node => ({
   children: [terminalBlock(pane, local)],

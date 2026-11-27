@@ -1,7 +1,11 @@
 // A split's terminal starts asynchronously. The person can pick another tab before it answers, and that pick is theirs:
-// the split still lands in the tab it was asked for, but it must not select that tab again (#1539).
+// the split still lands in the tab it was asked for, but it must not select that tab again (#1539). A tab saved while
+// the split's terminal starts is no such pick: the person is still on it, and the new pane takes the focus (#2891).
+import { startShell } from "./agents.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
+import { clearLayout } from "./layout-doc.ts";
+import { hcOn } from "./machine-switch.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
 import { selectedIndex, tabNumberChord, tabs } from "./tab-strip.ts";
 
@@ -42,4 +46,37 @@ test("a split that starts after the person picked another tab leaves that tab se
   await expect(tabs(page).nth(splitAt)).toHaveAttribute("aria-selected", "false");
   // The terminal in view keeps the keyboard as well (#1704's claim does not reach a tab out of view).
   await expect(pickedTerminal.getByRole("textbox")).toBeFocused();
+});
+
+test("a split from a tab saved while its terminal starts focuses the new pane, as the person is still on that tab", async ({
+  page,
+}) => {
+  // With no layout saved, a live terminal shows in a tab of no document until its adoption is saved. The save is held
+  // past the split's press and let go before the split's terminal answers, as a loaded core orders them.
+  clearLayout();
+  const first = startShell("host", "split-saved-meanwhile");
+  try {
+    const link = await routeHcSocket(page);
+    const saves = link.hold("doc.set");
+    await page.goto("/");
+    await expect(page.locator("#tab-panel-transient")).toBeVisible({ timeout: 20_000 });
+    const terminal = page.locator(`[data-terminal="${first}"]`);
+    await expect(terminal).toContainText("$", { timeout: 15_000 });
+    await terminal.getByRole("textbox").focus();
+    const before = runs(link.sent());
+    const starts = link.hold("terminal.run");
+    await page.getByRole("button", { name: "Split right" }).first().click();
+    await expect.poll(() => runs(link.sent()), { timeout: 15_000 }).toBe(before + 1);
+    saves();
+    await expect(page.locator('[role="tabpanel"]:not(#tab-panel-transient)')).toHaveCount(1, { timeout: 15_000 });
+    starts();
+    const panes = page.locator("[data-terminal]");
+    await expect(panes).toHaveCount(2, { timeout: 15_000 });
+    const shown = await panes.evaluateAll((each) => each.map((element) => element.getAttribute("data-terminal")));
+    const second = shown.find((address) => address !== first) ?? "";
+    // The layout's focused pane is what a pane key, a palette action and the palette's focus return act on.
+    await expect(page.locator('[data-focused="true"] [data-terminal]')).toHaveAttribute("data-terminal", second);
+  } finally {
+    hcOn("host", ["kill", first]);
+  }
 });
