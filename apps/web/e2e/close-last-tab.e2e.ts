@@ -1,5 +1,6 @@
 import { startShell } from "./agents.ts";
 import { expect, openNewTerminal, terminalCount, test } from "./fixtures.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { pressShortcut } from "./platform-keys.ts";
 import { hcOn } from "./machine-switch.ts";
 
@@ -14,8 +15,20 @@ test("closing the only tab asks Close space?, ends its shell and empties the wor
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  const link = await routeHcSocket(page);
   await page.goto("/");
+  // The run's answer is held while the terminal opens, as a loaded host is slow to give it (#2911). The terminal is
+  // listed and shown before that answer, but only the answer writes its tab into a space: until then the tab is the
+  // terminal shown alone, in no space, whose close asks nothing. The close key waits for the sidebar to select its space.
+  const answering = link.holdFromHost('"result":{"address":"');
   const terminal = await openNewTerminal(page);
+  const space = page
+    .getByRole("complementary", { name: "Workspace" })
+    .getByRole("region", { name: "Spaces" })
+    .locator('button[aria-current="true"]:not([data-machine-header])');
+  await expect(space).toHaveCount(0);
+  answering();
+  await expect(space.getByLabel(/^\d+ tabs$/)).toHaveText("1");
   const address = (await terminal.getAttribute("data-terminal")) ?? "";
   const tabs = page.getByRole("tab");
   await expect(tabs).toHaveCount(1);
