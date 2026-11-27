@@ -14,7 +14,7 @@ import { type PaneActions, PlacedPane } from "./pane-slot.tsx";
 import { PaneDivider } from "./pane-divider.tsx";
 import { linePosition } from "./line-position.ts";
 import { targetIn, usePaneDrag } from "./use-pane-drag.ts";
-import { useTerminalDrag, useTerminalDropSurface } from "./terminal-drag.tsx";
+import { useTabStripDrop, useTerminalDrag, useTerminalDropSurface } from "./terminal-drag.tsx";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 
 /** Space between panes, px: the gap shows the canvas, so panes read as separate cards. */
@@ -132,12 +132,21 @@ export function SplitPanes(props: SplitPanesProps) {
   const byAddress = new Map(terminals.map((terminal) => [terminal.address, terminal]));
   // Each tab's panes as last laid out, in the box's coordinates: what a pane drag measures its drop zones against.
   const laidOut = useRef(new Map<string, ReadonlyMap<string, Rect>>());
+  const stripDrop = useTabStripDrop();
   const { drag, grab } = usePaneDrag(
     ref,
     (tab) => laidOut.current.get(tab),
     (_tab, pane, target) => void layout.move(pane, target.pane, target.zone),
+    stripDrop === null
+      ? undefined
+      : { over: stripDrop.inStrip, drop: (tab, pane) => void layout.detachPane?.(tab, pane) },
   );
-  // A terminal dragged from the sidebar drops on the tab in view, as a pane dragged by its header does.
+  const overStrip = drag?.onStrip === true;
+  useEffect(() => {
+    stripDrop?.setActive(overStrip);
+    return () => stripDrop?.setActive(false);
+  }, [overStrip, stripDrop]);
+  // A terminal dragged from the sidebar or tab strip drops on the tab in view, as a pane dragged by its header does.
   const fromList = useTerminalDrag();
   useTerminalDropSurface({
     targetAt: (address, x, y) => {

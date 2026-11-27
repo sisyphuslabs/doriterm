@@ -76,7 +76,7 @@ let joiner:
     }
   | undefined;
 
-/** What the one-line Add a machine command does on the machine to add, minus the install: its host joins with the link. */
+/** What the one-line command on the Computer tab of Connect a device does on the machine to add, minus the install: its host joins with the link. */
 async function joinWith(link: string): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "dw-fake-joiner-"));
   const session = createHcSession("web-e2e-joiner");

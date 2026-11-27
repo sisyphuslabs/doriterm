@@ -107,7 +107,7 @@ export function DeviceSection() {
         control={<Button onClick={() => void install(offer.prompt)}>Install</Button>}
       />
     ) : offer?.kind === "ios" && mesh.phase === "joined" ? (
-      <BrowserInvite key="install" install />
+      <BrowserInvite key="install" />
     ) : offer?.kind === "ios" ? (
       <SettingRow
         key="install"

@@ -133,9 +133,10 @@ test("the mic is live only where the app has the system recognizer: crossed out 
   const page = await launched.firstWindow();
   // The mic sits in the tab bar and dictates into the focused pane.
   const mic = page.locator("[data-voice-mic]").first();
-  if (process.platform === "darwin") {
-    // The packaged Mac app loads its recognizer, so the mic offers dictation. It is not pressed here: that would raise
-    // the system's microphone prompt on the runner.
+  // The shell exposes the start operation only when its recognizer is installed. The platform alone doesn't tell us
+  // whether this build loaded it. Don't start dictation: that would raise the system's microphone prompt.
+  const hasRecognizer = await page.evaluate(() => typeof window.doriface?.dictationStart === "function");
+  if (hasRecognizer) {
     await expect(mic).toHaveAccessibleName(/^Dictate into /);
     return;
   }

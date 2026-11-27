@@ -3,7 +3,7 @@ import { type ConnectionSettings, isConfigured } from "../connection/settings.ts
 import { connectionStore } from "../connection/store.ts";
 import { MoveQueue } from "./move-queue.ts";
 import { pushChannel } from "./push-channel.ts";
-import { recordPushMove } from "./push-move-probe.ts";
+import { recordPushMove, recordPushStep } from "./push-move-probe.ts";
 import {
   loadPushPrefs,
   loadPushRoute,
@@ -126,7 +126,13 @@ class PushSettings {
   }
 
   /** Runs from the Turn on click: the only place this app asks for the notification permission. */
-  async turnOn(): Promise<void> {
+  turnOn(): Promise<void> {
+    const done = this.#turnOn();
+    recordPushStep(done);
+    return done;
+  }
+
+  async #turnOn(): Promise<void> {
     const permission = await pushRegistrar().requestPermission();
     this.#set({ permission });
     if (permission !== "granted") return;
@@ -138,7 +144,13 @@ class PushSettings {
   }
 
   /** Removes the subscription from the host and the browser; the permission itself stays the browser's. */
-  async turnOff(): Promise<void> {
+  turnOff(): Promise<void> {
+    const done = this.#turnOff();
+    recordPushStep(done);
+    return done;
+  }
+
+  async #turnOff(): Promise<void> {
     await this.#run("turn-off", "turn notifications off", async () => {
       const registrar = pushRegistrar();
       const subscription = await registrar.current();

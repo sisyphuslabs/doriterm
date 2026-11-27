@@ -47,13 +47,15 @@ async function withDirectAddress(page: Page, paired: string, directUrl: string):
 }
 
 /**
- * The relay line the Add machine dialog offers, the one `doriface-host mesh join` takes. A desktop opens it from the
+ * The relay line the Connect a device sheet offers on its Computer tab, the one `doriface-host mesh join` takes. A desktop opens it from the
  * sidebar; a phone has no sidebar and opens it from Settings, Machines.
  */
 async function joinOneMachine(page: Page, host: FakeRelayHost, phone: boolean): Promise<void> {
   if (phone) await openMachines(page);
-  await page.getByRole("button", { name: phone ? "Add a machine" : "Add machine" }).click({ timeout: 60_000 });
-  const dialog = page.getByRole("dialog", { name: "Add a machine" });
+  await page.getByRole("button", { name: "Connect a device" }).click({ timeout: 60_000 });
+  const dialog = page.getByRole("dialog", { name: "Connect a device" });
+  // A computer joins from the Computer tab; the sheet opens on a phone or browser.
+  await dialog.getByRole("button", { name: "Computer", exact: true }).click();
   const command = dialog.getByLabel("Join command");
   await expect(command).toBeVisible({ timeout: 30_000 });
   const text = (await command.innerText()).trim();

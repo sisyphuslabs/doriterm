@@ -1,5 +1,7 @@
 import type { JsonObject } from "@doriface/protocol";
 import {
+  addTab,
+  docSpaces,
   editTab,
   movePane,
   paneNode,
@@ -11,6 +13,7 @@ import {
   swapPanes,
   tabsOf,
   terminalBlock,
+  withoutField,
   type Node,
 } from "@doriface/protocol/layout";
 import type { Zone } from "../layout/drop-zone.ts";
@@ -93,4 +96,41 @@ export function terminalDropWrite(
   const placed =
     left === null ? null : editTab(left, tab, (root) => placeBeside(root, target, zone, moving, fresh.container));
   return placed === null ? null : { doc: placed, pane: from.pane };
+}
+
+/** What to save when a pane leaves a split tab for a new tab of its own, and that new tab and pane. */
+export interface PaneToTabWrite {
+  readonly doc: JsonObject;
+  readonly tab: string;
+  readonly pane: string;
+}
+
+/**
+ * The write that moves pane `pane` out of split tab `tab` into a new tab `newTab` in the same space, right after `tab`
+ * (and after pinned tabs), keeping the pane's block node and id so its terminal never restarts. Null when the document,
+ * tab, space or pane is gone, or when `tab` holds only one pane (already a tab of its own).
+ */
+export function paneToTabWrite(
+  doc: JsonObject | null,
+  tab: string,
+  pane: string,
+  newTab: string,
+  pins?: ReadonlySet<string>,
+): PaneToTabWrite | null {
+  if (doc === null) return null;
+  const source = tabsOf(doc).find((each) => each.id === tab);
+  if (source === undefined || panesOf(source.root).length < 2) return null;
+  const moving = paneNode(source.root, pane);
+  if (moving === null) return null;
+  const space = docSpaces(doc).find((each) => each.id === source.space);
+  if (space === undefined) return null;
+  const left = editTab(doc, tab, (root) => removePane(root, pane));
+  if (left === null) return null;
+  const created: JsonObject = {
+    id: newTab,
+    name: "",
+    root: { children: [withoutField(moving, "size")], id: newTab, type: "row" },
+  };
+  const next = addTab(left, { id: space.id, folder: space.folder, name: space.name }, created, tab, pins);
+  return { doc: next, tab: newTab, pane };
 }

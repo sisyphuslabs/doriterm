@@ -168,7 +168,7 @@ test.describe("machine order", () => {
     if (typeof written !== "object" || written === null || !("machine_order" in written)) throw new Error("no order");
     const ids = written.machine_order;
     if (!Array.isArray(ids)) throw new Error("not a list");
-    const elsewhere = page.getByRole("button", { name: "Add machine" });
+    const elsewhere = page.getByRole("button", { name: "Connect a device" });
     await elsewhere.focus();
     await expect(elsewhere).toBeFocused();
     setCoreDoc(ORDER_DOC, { machine_order: ids.toReversed(), kept: { by: "another client" } });

@@ -34,7 +34,11 @@ interface Pending {
   readonly credit: (bytes: number) => void;
   /** Arrived within a round trip of the view's resize: the shell answering it (a prompt redrawn on SIGWINCH, #2922). */
   readonly answer: boolean;
+  /** A step taken between the bytes around it ({@link OutputPacer.inOrder}); its `bytes` are empty. */
+  readonly step?: () => void;
 }
+
+const NO_BYTES = new Uint8Array();
 
 /** Runs a callback on the next animation frame; returns how to cancel it. */
 export type FrameTimer = (run: () => void) => () => void;
@@ -164,6 +168,17 @@ export class OutputPacer {
       this.#cancel = null;
       this.#flush("arrived");
     }
+    this.#schedule();
+  }
+
+  /**
+   * Runs `then` once the output queued before it is written and before any queued after it: a pty size change applies
+   * to the grid between the bytes drawn for the old size and those drawn for the new one. With nothing queued it runs
+   * now.
+   */
+  inOrder(then: () => void): void {
+    if (this.#queue.length === 0) return then();
+    this.#queue.push({ bytes: NO_BYTES, credit: () => undefined, answer: false, step: then });
     this.#schedule();
   }
 
@@ -331,6 +346,13 @@ export class OutputPacer {
       if (!unpaced && size >= limit) break;
       const head = this.#queue[0];
       if (head === undefined) break;
+      if (head.step !== undefined) {
+        // What came before it is written as a batch of its own first; what follows waits for the next one.
+        if (size > 0) break;
+        this.#queue.shift();
+        head.step();
+        continue;
+      }
       drawn ||= !head.answer;
       const room = unpaced ? head.bytes.byteLength : Math.min(head.bytes.byteLength, limit - size);
       // Read up to where an open update ends: what follows it is paced again.

@@ -143,7 +143,7 @@ export function PhoneShell(props: PhoneShellProps) {
             ) : machines.terminalsLoaded ? (
               <>
                 {empty ? (
-                  <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onAddMachine={machines.openAddMachine} />
+                  <PhoneEmpty host={connection.hello.core.name} onNew={onNew} onConnect={machines.openConnect} />
                 ) : null}
                 {empty && onlyThisMachine(machines.entries) ? null : (
                   <RovingLists>

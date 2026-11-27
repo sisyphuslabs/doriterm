@@ -38,12 +38,12 @@ export function groupSections<Entry extends { readonly group: string }>(
 export type SettingsSection = (typeof SECTIONS)[number];
 export type SectionId = SettingsSection["id"];
 
-/** The id of the Connect a machine group on Machines: connecting a machine joins it to your mesh, so they are one screen. */
+/** The id of the From a terminal group on Machines: connecting a machine joins it to your mesh, so they are one screen. */
 export const CONNECT_GROUP = "connect-a-machine";
 
 /**
- * Links that name the Connect a machine group rather than a section: the join page's `#connect`, and `#pair` from when
- * Connect a machine was its own section.
+ * Links that name the From a terminal group rather than a section: the join page's `#connect`, and `#pair` from when
+ * Connect a machine was its own section (now the From a terminal group on Machines).
  */
 const GROUPS: Readonly<Record<string, { readonly section: SectionId; readonly group: string }>> = {
   pair: { section: "machines", group: CONNECT_GROUP },

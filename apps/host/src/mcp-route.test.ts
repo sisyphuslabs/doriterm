@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { generateX25519 } from "@doriface/crypto";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateToken } from "./auth.ts";
@@ -49,10 +49,32 @@ const request = (
     ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
   });
 
-test("without the host's token the switch is neither read nor set, so no switch file is written", async () => {
+test("a fresh host's first start writes MCP off, and a host with paired devices keeps serving them", async () => {
+  expect(JSON.parse(readFileSync(join(stateDir, MCP_SWITCH_FILE), "utf8"))).toEqual({ version: 1, enabled: false });
+
+  const paired = mkdtempSync(join(tmpdir(), "dh-mcp-route-paired-"));
+  new DeviceStore(paired).add(generateX25519().publicKey, "assistant");
+  const upgraded = await startHost({
+    listen: { hostname: "127.0.0.1", port: 0 },
+    token,
+    hc: session.hc,
+    session: session.name,
+    env: session.env,
+    stateDir: paired,
+    log: () => {},
+  });
+  try {
+    expect(new McpSwitch(paired).enabled()).toBe(true);
+  } finally {
+    await upgraded.stop();
+    rmSync(paired, { recursive: true, force: true });
+  }
+});
+
+test("without the host's token the switch is neither read nor set, and it stays off", async () => {
   expect((await request("GET", undefined, null)).status).toBe(401);
-  expect((await request("PUT", { enabled: false }, "Bearer wrong-token-wrong-token-xxx")).status).toBe(401);
-  expect(existsSync(join(stateDir, MCP_SWITCH_FILE))).toBe(false);
+  expect((await request("PUT", { enabled: true }, "Bearer wrong-token-wrong-token-xxx")).status).toBe(401);
+  expect(new McpSwitch(stateDir).enabled()).toBe(false);
 });
 
 test("the LAN listener has no MCP route, even with the token", async () => {
@@ -60,13 +82,12 @@ test("the LAN listener has no MCP route, even with the token", async () => {
   if (lan === undefined) throw new Error("the host started no LAN listener");
   const origin = lan.replace(/^ws/, "http").replace(/\/v1\/e2ee$/, "");
   expect((await request("GET", undefined, `Bearer ${token}`, origin)).status).toBe(404);
-  expect((await request("PUT", { enabled: false }, `Bearer ${token}`, origin)).status).toBe(404);
-  expect(existsSync(join(stateDir, MCP_SWITCH_FILE))).toBe(false);
+  expect((await request("PUT", { enabled: true }, `Bearer ${token}`, origin)).status).toBe(404);
+  expect(new McpSwitch(stateDir).enabled()).toBe(false);
 });
 
-test("MCP is on until it is set off, and what is set is what the terminal command reads", async () => {
-  expect(await (await request("GET")).json()).toEqual({ enabled: true, clients: [] });
-  expect(await (await request("PUT", { enabled: false })).json()).toEqual({ enabled: false, clients: [] });
+test("MCP is off until it is set on, and what is set is what the terminal command reads", async () => {
+  expect(await (await request("GET")).json()).toEqual({ enabled: false, clients: [] });
   expect(await (await request("PUT", { enabled: true })).json()).toEqual({ enabled: true, clients: [] });
   expect(new McpSwitch(stateDir).enabled()).toBe(true);
   expect(await (await request("PUT", { enabled: false })).json()).toEqual({ enabled: false, clients: [] });
@@ -77,7 +98,7 @@ test("a body that names no true or false is refused and changes nothing", async 
   const answers = await Promise.all([{ enabled: "true" }, {}, "not json", [true]].map((body) => request("PUT", body)));
   expect(answers.map((answer) => answer.status)).toEqual([400, 400, 400, 400]);
   expect(await answers[0]?.json()).toEqual({ error: "enabled must be true or false" });
-  expect(existsSync(join(stateDir, MCP_SWITCH_FILE))).toBe(false);
+  expect(new McpSwitch(stateDir).enabled()).toBe(false);
 });
 
 test("a connected client reads as its paired device, a key no device has as a mesh client, and off closes sessions", async () => {
