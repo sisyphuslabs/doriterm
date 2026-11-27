@@ -42,22 +42,36 @@ export function SettingRow(props: SettingRowProps) {
     <div
       data-setting-row=""
       className={cn(
-        "flex min-h-12 items-center gap-x-6 gap-y-2 border-b border-border py-2.5 last:border-b-0",
+        // Settings' row tokens (#2914); on a card it pads its own trailing side (--settings-row-reach, which only a card
+        // sets) while the card pads only its leading one, so the divider runs from the text to the card's edge.
+        "flex min-h-(--settings-row-min) items-center gap-x-6 gap-y-2 border-b border-border py-(--settings-row-y) last:border-b-0",
+        "pr-[var(--settings-row-reach,0px)]",
         "data-setting-landed:rounded-md data-setting-landed:bg-selected",
         inline ? "flex-nowrap" : "flex-wrap",
         className,
       )}
     >
       <div className={cn("min-w-0 flex-1", !inline && "min-w-[min(16rem,100%)]")}>
-        <p id={id} className={cn("text-base", disabled ? "text-muted-foreground" : "text-foreground")}>
+        <p
+          id={id}
+          className={cn(
+            "text-(length:--settings-row-title) leading-[1.375rem]",
+            disabled ? "text-muted-foreground" : "text-foreground",
+          )}
+        >
           {title}
         </p>
         {configKey === undefined ? null : <p className="mt-0.5 font-mono text-xs text-muted-foreground">{configKey}</p>}
         {description === undefined ? null : (
-          <p className="mt-0.5 text-prose text-pretty text-muted-foreground">{description}</p>
+          <p className="mt-0.5 text-(length:--settings-row-detail) leading-5 text-pretty text-muted-foreground">
+            {description}
+          </p>
         )}
         {disabled ? (
-          <p id={reasonId} className="mt-1 flex items-start gap-1.5 text-prose text-muted-foreground">
+          <p
+            id={reasonId}
+            className="mt-1 flex items-start gap-1.5 text-(length:--settings-row-detail) leading-5 text-muted-foreground"
+          >
             <Ban aria-hidden className="mt-0.5 size-3.5 shrink-0" />
             <span className="text-pretty">{disabledReason}</span>
           </p>
@@ -66,6 +80,7 @@ export function SettingRow(props: SettingRowProps) {
       {/* A row with nothing to do has no control slot: an empty one would still take its own line under 480 px. */}
       {control === null || control === undefined ? null : (
         <div
+          data-setting-control=""
           className={cn(
             "flex max-w-full shrink-0 items-center gap-2",
             !inline && "max-sm:w-full max-sm:[&>*]:flex-1 sm:[&>*]:flex-none",

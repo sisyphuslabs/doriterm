@@ -3,7 +3,7 @@ import { meshFixture } from "@doriface/host/testing";
 import type { MachineView, MeshMemberStatus, MeshStatus } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { approvalConsequence, disagreement, meshGroups, pendingAnswer } from "./groups.ts";
-import type { Answered, HostOutcome, Verdict } from "./mesh-reader.ts";
+import type { Answered, HostOutcome, JoinRequest, Verdict } from "./mesh-reader.ts";
 
 const NOW = new Date("2026-11-03T12:00:00.000Z");
 const fixture = meshFixture(NOW);
@@ -26,6 +26,9 @@ const { ids } = fixture;
 const without = (name: string): MeshStatus => ({ ...status, members: status.members.filter((m) => m.name !== name) });
 
 const names = (entries: readonly { readonly name: string | null }[]) => entries.map((entry) => entry.name);
+/** The fixture's own joins as the reader lists them: held by this core, unanswered. */
+const own: readonly JoinRequest[] = status.pending.map((join) => ({ join, machine: null, answered: undefined }));
+const joinNames = (requests: readonly JoinRequest[]) => requests.map((request) => request.join.name);
 
 /** The fixture status with tablet's entry patched. */
 const stale = (patch: Partial<MeshMemberStatus>): MeshStatus => ({
@@ -35,8 +38,8 @@ const stale = (patch: Partial<MeshMemberStatus>): MeshStatus => ({
 
 describe("meshGroups", () => {
   test("joins first, then the fail-closed removal, members by line, and revoked keys", () => {
-    const groups = meshGroups(status, NOW.getTime());
-    expect(names(groups.pending)).toEqual(["ci-runner"]);
+    const groups = meshGroups(status, own, NOW.getTime());
+    expect(joinNames(groups.pending)).toEqual(["ci-runner"]);
     expect(groups.expired).toEqual([]);
     expect(groups.removed.map((removal) => [names(removal.members), removal.revokedKey.name])).toEqual([
       [["spare"], "kiosk"],
@@ -46,7 +49,7 @@ describe("meshGroups", () => {
   });
 
   test("revoked keys are counted, never listed as machines; one a fail-closed removal shows is not counted again", () => {
-    const groups = meshGroups(status, NOW.getTime());
+    const groups = meshGroups(status, own, NOW.getTime());
     expect(groups.revokedCount).toBe(1);
     expect(Object.keys(groups)).not.toContain("revoked");
   });
@@ -56,19 +59,35 @@ describe("meshGroups", () => {
       ...status,
       members: status.members.map((member) => (member.name === "build-box" ? { ...member, overCap: true } : member)),
     };
-    expect(names(meshGroups(overCap, NOW.getTime()).offline)).toContain("build-box");
+    expect(names(meshGroups(overCap, own, NOW.getTime()).offline)).toContain("build-box");
   });
 
   test("a join whose offer ended no longer waits for approval: it moves to its own group", () => {
     const ends = Date.parse(status.pending[0]?.expiresAt ?? "");
-    expect([names(meshGroups(status, ends - 1).pending), names(meshGroups(status, ends - 1).expired)]).toEqual([
-      ["ci-runner"],
-      [],
-    ]);
-    expect([names(meshGroups(status, ends).pending), names(meshGroups(status, ends).expired)]).toEqual([
-      [],
-      ["ci-runner"],
-    ]);
+    expect([
+      joinNames(meshGroups(status, own, ends - 1).pending),
+      joinNames(meshGroups(status, own, ends - 1).expired),
+    ]).toEqual([["ci-runner"], []]);
+    expect([
+      joinNames(meshGroups(status, own, ends).pending),
+      joinNames(meshGroups(status, own, ends).expired),
+    ]).toEqual([[], ["ci-runner"]]);
+  });
+});
+
+describe("joins held on another machine (#2939)", () => {
+  const join = status.pending[0];
+  if (join === undefined) throw new Error("the fixture has a pending join");
+  const held: JoinRequest = {
+    join: { ...join, nonce: "aGVsZCBlbHNld2hlcmU", name: "qa-phone" },
+    machine: machine("build-box", "connected"),
+    answered: undefined,
+  };
+
+  test("wait for approval beside this core's own, and expire with their own offer", () => {
+    const ends = Date.parse(join.expiresAt);
+    expect(joinNames(meshGroups(status, [...own, held], ends - 1).pending)).toEqual(["ci-runner", "qa-phone"]);
+    expect(joinNames(meshGroups(status, [...own, held], ends).expired)).toEqual(["ci-runner", "qa-phone"]);
   });
 });
 
@@ -83,7 +102,9 @@ describe("an over-cap member the view gives no name, key or lineage", () => {
   };
 
   test("is offline, and machine.list is matched to it by its mesh line only", () => {
-    expect(meshGroups(nameless, NOW.getTime()).offline.map((member) => member.hostId)).toContain(ids.tablet.hostId);
+    expect(meshGroups(nameless, own, NOW.getTime()).offline.map((member) => member.hostId)).toContain(
+      ids.tablet.hostId,
+    );
     const base = [machine("build-box", "connected")];
     expect(disagreement(nameless, [...base, machine("tablet", "connected")], undefined)).toBeUndefined();
     const line = [...base, machine("tablet", "connected", ids.tablet.hostId)];

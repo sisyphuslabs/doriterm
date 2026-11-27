@@ -4,7 +4,7 @@ import type { Page } from "@playwright/test";
 import { E2E_HOST_PORT, E2E_LAYOUT_PORT } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 import { askHost, heldSubscriptions, serviceWorker, subscribedKey } from "./push.ts";
-import { openSettings, pushState, pushSuite, settingsSection, turnOn } from "./push-suite.ts";
+import { openSettings, pushState, pushSuite, openSettingsSection, turnOn } from "./push-suite.ts";
 
 const suite = pushSuite();
 
@@ -72,7 +72,7 @@ test("a connection moved to another host takes notifications along; the old host
   await page.addInitScript(() => Reflect.set(window, "__dorifacePushMoves", []));
   await turnOn(page);
   expect(await savedRoute(page)).toMatchObject({ pushUrl: `ws://127.0.0.1:${E2E_HOST_PORT}/v1/push` });
-  await settingsSection(page, "This device").click();
+  await openSettingsSection(page, "This device");
   const gateway = page.getByLabel("Gateway", { exact: true });
   await gateway.fill(`ws://127.0.0.1:${E2E_LAYOUT_PORT}/v1/hc`);
   await gateway.press("Enter");
@@ -92,7 +92,7 @@ test("a connection moved to another host takes notifications along; the old host
 
 /** Types a gateway, and waits for the notifications move that change started (see the test above). */
 async function moveGateway(page: Page, address: string): Promise<void> {
-  await settingsSection(page, "This device").click();
+  await openSettingsSection(page, "This device");
   const gateway = page.getByLabel("Gateway", { exact: true });
   await gateway.fill(address);
   await gateway.press("Enter");
@@ -115,13 +115,13 @@ test("a gateway that is not an address fails the move in view, rejects nothing u
   const failed = page.getByText("Could not move notifications to the new host.", { exact: false });
   await moveGateway(page, `127.0.0.1:${E2E_LAYOUT_PORT}`);
   // Opening Notifications reads the settings again; the failed move stays in view.
-  await settingsSection(page, "Notifications").click();
+  await openSettingsSection(page, "Notifications");
   await expect(failed).toBeVisible();
   expect(await page.evaluate(() => Reflect.get(window, "__unhandled"))).toEqual([]);
   expect(await savedRoute(page)).toMatchObject({ pushUrl: `ws://127.0.0.1:${E2E_HOST_PORT}/v1/push` });
 
   await moveGateway(page, `ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`);
-  await settingsSection(page, "Notifications").click();
+  await openSettingsSection(page, "Notifications");
   await expect(pushState(page)).toHaveAttribute("data-push-state", "on");
   await expect(failed).toHaveCount(0);
 });

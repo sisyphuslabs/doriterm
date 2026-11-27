@@ -1,4 +1,4 @@
-import { Badge, Button, IconButton, Notice, SettingRow, TerminalPreview, type TerminalLine } from "@doriface/ui";
+import { Badge, Button, IconButton, Notice, SettingRow, TerminalPreview, cn, type TerminalLine } from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
 import { RotateCcw } from "lucide-react";
 import { useState } from "react";
@@ -73,6 +73,15 @@ function KeyRow({
           {def.label ?? def.key}
           {unsupported ? <Badge>Not applied</Badge> : null}
           {def.support.level === "new-terminals" ? <Badge>New terminals</Badge> : null}
+          {/* On the title's line, so the control below has the row's whole width (#2920 review); hidden, not removed,
+              while the key is at its default, so nothing moves when it shows. */}
+          <IconButton
+            label={`Reset ${def.key}`}
+            disabled={readOnly}
+            icon={<RotateCcw />}
+            className={cn("ml-auto", !changed && "invisible")}
+            onClick={() => void terminalConfigStore.update((current) => withoutKey(current, def.key))}
+          />
         </span>
       }
       description={
@@ -83,25 +92,16 @@ function KeyRow({
         </>
       }
       control={
-        <>
-          <KeyControl
-            def={def}
-            values={effective(config, def.key)}
-            disabled={unsupported || readOnly}
-            onCommit={(values) => {
-              setInvalid(null);
-              void terminalConfigStore.update((current) => withValues(current, def.key, values));
-            }}
-            onInvalid={setInvalid}
-          />
-          <IconButton
-            label={`Reset ${def.key}`}
-            disabled={readOnly}
-            icon={<RotateCcw />}
-            className={changed ? "" : "invisible"}
-            onClick={() => void terminalConfigStore.update((current) => withoutKey(current, def.key))}
-          />
-        </>
+        <KeyControl
+          def={def}
+          values={effective(config, def.key)}
+          disabled={unsupported || readOnly}
+          onCommit={(values) => {
+            setInvalid(null);
+            void terminalConfigStore.update((current) => withValues(current, def.key, values));
+          }}
+          onInvalid={setInvalid}
+        />
       }
     />
   );
@@ -131,7 +131,7 @@ export function TerminalSection() {
       </div>
       <SettingsToolbar
         name="terminal settings"
-        placeholder="Search keys, e.g. cursor"
+        placeholder="keys, e.g. cursor"
         query={query}
         onQuery={setQuery}
         actions={<ImportExport readOnly={storageError !== null} />}
