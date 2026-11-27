@@ -1,3 +1,4 @@
+import { HeldUpdate, SYNCHRONIZED_HOLD_CAP_MS } from "./held-update.ts";
 import { opensUpdate, SynchronizedUpdate } from "./synchronized-update.ts";
 
 /** At most this much output is written to a terminal per paint: a flood costs each frame a bounded slice (#560). */
@@ -23,18 +24,7 @@ export const REPLAY_TRICKLE_BYTES = CREDIT_WINDOW_BYTES / 4;
 export const REPLAY_MAX_BYTES = 2 * 1024 * 1024;
 /** The shortest quiet after the last replay bytes that ends a replay (D5). */
 export const REPLAY_QUIET_FLOOR_MS = 100;
-/**
- * The least a synchronized update may go with no bytes before its paint is let go and the rest of it is paced (the
- * floor of its quiet window, max(this, 1.5 x SRTT + 50), #2306): wterm's own hold of one (@wterm/dom's
- * `SYNCHRONIZED_OUTPUT_TIMEOUT_MS`, which output-pacer.test.ts reads from the installed package), so an update a
- * program left open is drawn a second after its last bytes, as wterm would (#853).
- */
-export const SYNCHRONIZED_UNPACED_MS = 1000;
-/**
- * The longest a synchronized update still arriving holds the paint (#2040): a program that writes inside an update it
- * never closes is drawn after this. A whole transcript's redraw on a page starved 6x took up to 13.4 s to come in.
- */
-export const SYNCHRONIZED_HOLD_CAP_MS = 20_000;
+export { SYNCHRONIZED_HOLD_CAP_MS, SYNCHRONIZED_UNPACED_MS } from "./held-update.ts";
 
 /**
  * A pacer timer that runs later than this was held up by a page busy with other work, longer than any delay a page doing
@@ -89,15 +79,6 @@ interface Replay {
   cap: () => void;
 }
 
-/** A synchronized update whose paint is held; `paint`: the core's own paint, which the update's close ends (#2794). */
-interface Held {
-  quiet: () => void;
-  cap: () => void;
-  readonly paint: boolean;
-  /** What the core's paint has written while held. */
-  written: number;
-}
-
 /** Coming back to the app or attaching: how much its catch-up frames may write, and have written. */
 interface CatchUp {
   readonly budget: number;
@@ -149,8 +130,15 @@ export class OutputPacer {
   #openedAt: number | null = null;
   /** Holds the terminal's paint (true) and lets it go (false) for a synchronized update. */
   #holdSynchronized: (held: boolean) => void = () => undefined;
-  /** The open update whose paint is held while its bytes still arrive; null when none is. */
-  #held: Held | null = null;
+  /** The open update whose paint is held while its bytes still arrive. */
+  readonly #held = new HeldUpdate({
+    timer: (run, ms) => this.#timer(run, ms),
+    onTime: (ms, then, again) => this.#onTime(ms, then, again),
+    srtt: () => this.#srtt(),
+    hold: (held) => this.#holdSynchronized(held),
+    ended: () => this.#schedule(),
+    paintMaxBytes: REPLAY_MAX_BYTES,
+  });
   /** The link's smoothed round trip, from the last attach's replay options; an attach without one leaves it unknown. */
   #srtt: () => number | undefined = () => undefined;
   #replay: Replay | null = null;
@@ -181,7 +169,7 @@ export class OutputPacer {
     this.#lastBytes = now;
     if (this.#replay !== null) this.#quietFrom(this.#replay);
     // A shell's answer to a resize is not the held update still being drawn: a drag must not keep its paint held.
-    if (this.#held !== null && !answer) this.#heldQuietFrom(this.#held);
+    if (!answer) this.#held.drawing();
     if (this.#visible && this.#unpaced()) {
       this.#cancel?.();
       this.#cancel = null;
@@ -294,7 +282,7 @@ export class OutputPacer {
    * can no longer close, so it is drawn as it stands. Queued output is kept and written as before (#2794).
    */
   streamClosed(): void {
-    if (this.#held?.paint === true) this.#endHeld();
+    if (this.#held.paint) this.#held.end();
   }
 
   /** Forgets queued output (the stream it came from is gone); its credit is not returned. A replay held ends. */
@@ -305,45 +293,8 @@ export class OutputPacer {
     this.#update = new SynchronizedUpdate();
     this.#openedAt = null;
     this.#catchUp = null;
-    this.#endHeld();
+    this.#held.end();
     this.#endReplay();
-  }
-
-  /** An update opened in the written output: its paint is held until it closes, goes quiet, or hits the cap. */
-  /**
-   * An update opened in the written output: its paint is held. The core's own paint (`paint`: the update opens the
-   * replay's first byte, herdr-core #232) marks its end, so it is held until it closes or has written
-   * {@link REPLAY_MAX_BYTES}, with no quiet window or cap: a starved link or page may take minutes to bring it (#2794).
-   */
-  #startHeld(paint: boolean): void {
-    if (this.#held !== null) return;
-    const held: Held = { quiet: () => undefined, cap: () => undefined, paint, written: 0 };
-    this.#held = held;
-    this.#holdSynchronized(true);
-    if (paint) return;
-    this.#heldQuietFrom(held);
-    held.cap = this.#timer(() => this.#endHeld(), SYNCHRONIZED_HOLD_CAP_MS);
-  }
-
-  #heldQuietFrom(held: Held): void {
-    if (held.paint) return;
-    held.quiet();
-    held.quiet = this.#onTime(
-      Math.max(SYNCHRONIZED_UNPACED_MS, 1.5 * (this.#srtt() ?? 0) + 50),
-      () => this.#endHeld(),
-      () => this.#heldQuietFrom(held),
-    );
-  }
-
-  /** Lets the update's paint go: it closed (drawn whole), went quiet, or hit the cap (what is left of it is paced). */
-  #endHeld(): void {
-    const held = this.#held;
-    if (held === null) return;
-    this.#held = null;
-    held.quiet();
-    held.cap();
-    this.#holdSynchronized(false);
-    this.#schedule();
   }
 
   #startCatchUp(): void {
@@ -423,7 +374,7 @@ export class OutputPacer {
 
   /** Inside a synchronized update whose paint is held, or an attach replay: written as it arrives. */
   #unpaced(): boolean {
-    return this.#replay !== null || this.#held !== null;
+    return this.#replay !== null || this.#held.active;
   }
 
   #schedule(): void {
@@ -478,12 +429,12 @@ export class OutputPacer {
       if (!this.#update.open) {
         this.#openedAt = null;
         // Closed (in this chunk or an earlier one): it is drawn whole, and what follows it is paced.
-        this.#endHeld();
+        this.#held.end();
       } else {
         synchronized = true;
         if (this.#openedAt === null) {
           this.#openedAt = this.#clock();
-          this.#startHeld(this.#replay?.written === 0 && size === 0 && opensUpdate(head.bytes));
+          this.#held.start(this.#replay?.written === 0 && size === 0 && opensUpdate(head.bytes));
         }
       }
       parts.push(take === head.bytes.byteLength ? head.bytes : head.bytes.subarray(0, take));
@@ -498,11 +449,8 @@ export class OutputPacer {
     for (const [credit, bytes] of credits) credit(bytes);
     for (const listener of this.#written) listener();
     // The core sends the next window of an update once this one's credit is back, after the write (#2011).
-    const held = this.#held;
-    if (held?.paint === true) {
-      held.written += size;
-      if (held.written >= REPLAY_MAX_BYTES) this.#endHeld();
-    } else if (held !== null && drawn) this.#heldQuietFrom(held);
+    if (this.#held.paint) this.#held.wrote(size);
+    else if (drawn) this.#held.drawing();
     const replay = this.#replay;
     if (replay === null) return size;
     replay.written += size;
