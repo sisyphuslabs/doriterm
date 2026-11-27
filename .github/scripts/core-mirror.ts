@@ -3,16 +3,20 @@
  * a maintainer dispatches core-mirror.yml for a version and this signs it with the Doriterm release key; hosts check
  * that signature (RELEASE_PUBLIC_KEYS) before they download anything. The order is fixed, and a failure anywhere leaves
  * core/latest naming the version it named before:
- *   1. the upstream manifest names every target, each as a file under <upstream>/core/<version>/ with a sha256
- *   2. every downloaded archive matches its sha256 (core-mirror.yml also checks the macOS ones against herdr's codesign
- *      requirement before this runs)
+ *   1. the upstream manifest names every target by exactly herdr's archive name (`coreArchiveName`) under
+ *      <upstream>/core/<version>/, with a sha256: no other name, so none can dodge core-mirror.yml's codesign check of
+ *      the macOS archives or land on the mirror's own files
+ *   2. every downloaded archive matches its sha256 (core-mirror.yml has already checked both macOS archives, by name,
+ *      against herdr's codesign requirement)
  *   3. the signing key is one the shipped builds trust
  *   4. each archive is uploaded to core/v<version>/, created once, then read back and hashed again
- *   5. core/v<version>/manifest.json and its .sig are written once, naming the archives on Doriterm's origin
+ *   5. core/v<version>/manifest.json is written once, naming the archives on Doriterm's origin; its .sig is the
+ *      current signer's: a re-run after a key rotation replaces it with the new key's signature over the same bytes
+ *      (docs/releasing.md), and nothing else is ever replaced
  *   6. core/latest moves to this version, never back to an older one (an older version is mirrored for HC_VERSION pins)
  */
-import { compareVersions, CORE_POINTER_KEY, coreObjectKey, isReleaseFile } from "../../apps/get/src/names.ts";
-import { signRelease } from "../../packages/crypto/src/release.ts";
+import { compareVersions, CORE_POINTER_KEY, coreObjectKey } from "../../apps/get/src/names.ts";
+import { signRelease, verifyRelease } from "../../packages/crypto/src/release.ts";
 import { type ObjectStore, sha256Hex } from "./r2-store.ts";
 import { assertTrustedSigner, putImmutable } from "./release-mirror.ts";
 
@@ -26,6 +30,12 @@ export const CORE_TARGETS = [
 ] as const;
 export const HERDR_RELEASES = "https://releases.herdr.dev";
 
+type CoreTarget = (typeof CORE_TARGETS)[number];
+
+/** herdr's own name for a target's archive; a manifest naming any other file for it is refused. */
+export const coreArchiveName = (target: CoreTarget): string =>
+  `herdr-core-${target}.${target === "windows-x86_64" ? "zip" : "tar.gz"}`;
+
 export interface CoreBuild {
   readonly file: string;
   readonly sha256: string;
@@ -34,13 +44,13 @@ export interface CoreBuild {
 export interface UpstreamCore {
   readonly version: string;
   readonly generation: number;
-  readonly targets: Readonly<Record<(typeof CORE_TARGETS)[number], CoreBuild>>;
+  readonly targets: Readonly<Record<CoreTarget, CoreBuild>>;
 }
 
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
 
-/** Step 1: herdr's manifest for exactly `version`, every target a plain file under its own release directory. */
+/** Step 1: herdr's manifest for exactly `version`, every target exactly herdr's archive name in that release. */
 export function parseUpstreamCore(text: string, version: string, upstream = HERDR_RELEASES): UpstreamCore {
   const manifest: unknown = JSON.parse(text);
   if (field(manifest, "version") !== version) {
@@ -48,12 +58,12 @@ export function parseUpstreamCore(text: string, version: string, upstream = HERD
   }
   const generation = field(manifest, "generation");
   const base = `${upstream}/core/${version}/`;
-  const build = (target: (typeof CORE_TARGETS)[number]): CoreBuild => {
+  const build = (target: CoreTarget): CoreBuild => {
     const entry = field(field(manifest, "targets"), target);
     const url = field(entry, "url");
     const sha256 = field(entry, "sha256");
-    const file = typeof url === "string" && url.startsWith(base) ? url.slice(base.length) : "";
-    if (!isReleaseFile(file)) throw new Error(`${target}: ${String(url)} is not a file under ${base}`);
+    const file = coreArchiveName(target);
+    if (url !== `${base}${file}`) throw new Error(`${target}: ${String(url)} is not ${base}${file}`);
     if (typeof sha256 !== "string" || !/^[0-9a-f]{64}$/.test(sha256)) throw new Error(`${target}: no sha256`);
     return { file, sha256 };
   };
@@ -78,7 +88,7 @@ async function get(url: string): Promise<Uint8Array> {
 
 /**
  * Downloads herdr's manifest for `version` and every archive it names into `dir`, the manifest as upstream.json. Only
- * a file under that release's own directory is fetched; whether the bytes match is mirrorCore's to decide.
+ * herdr's own archive names are fetched (none can be upstream.json); whether the bytes match is mirrorCore's to decide.
  */
 export async function fetchUpstreamCore(version: string, dir: string, upstream = HERDR_RELEASES): Promise<void> {
   const manifest = await get(`${upstream}/core/${version}/manifest.json`);
@@ -117,6 +127,29 @@ export interface CoreMirrorPlan {
   readonly trustedKeys: readonly string[];
 }
 
+/**
+ * The signature beside a write-once manifest: created, kept when identical, and otherwise replaced (only over the copy
+ * read, by etag) with this run's, which a trusted key made over the very bytes stored. That is how a key rotation
+ * re-signs every mirrored version without ever replacing a manifest or an archive.
+ */
+async function putSignature(
+  store: ObjectStore,
+  key: string,
+  manifest: Uint8Array,
+  signature: Uint8Array,
+  trustedKeys: readonly string[],
+): Promise<void> {
+  if (!verifyRelease(manifest, new TextDecoder().decode(signature), trustedKeys)) {
+    throw new Error(`${key}: this run's signature does not verify under RELEASE_PUBLIC_KEYS`);
+  }
+  if (await store.put(key, signature, { create: true }, "text/plain; charset=utf-8")) return;
+  const existing = await store.get(key);
+  if (existing !== null && sha256Hex(existing.body) === sha256Hex(signature)) return;
+  const replaced =
+    existing !== null && (await store.put(key, signature, { replace: existing.etag }, "text/plain; charset=utf-8"));
+  if (!replaced) throw new Error(`${key} moved while this run re-signed it; re-run the mirror`);
+}
+
 const fileSha256 = async (path: string): Promise<string> => sha256Hex(await Bun.file(path).bytes());
 
 export async function mirrorCore(store: ObjectStore, plan: CoreMirrorPlan, log: (line: string) => void): Promise<void> {
@@ -141,7 +174,7 @@ export async function mirrorCore(store: ObjectStore, plan: CoreMirrorPlan, log: 
   const manifest = coreManifest(plan.origin, core);
   const signature = new TextEncoder().encode(signRelease(manifest, plan.secretKey));
   await putImmutable(store, coreObjectKey(plan.version, "manifest.json"), manifest, "application/json");
-  await putImmutable(store, coreObjectKey(plan.version, "manifest.json.sig"), signature, "text/plain; charset=utf-8");
+  await putSignature(store, coreObjectKey(plan.version, "manifest.json.sig"), manifest, signature, plan.trustedKeys);
   log(`wrote the signed manifest for herdr-core ${plan.version}`);
 
   const current = await store.get(CORE_POINTER_KEY);

@@ -59,17 +59,20 @@ jobs:
       - name: Download herdr's manifest and archives
         run: bun .github/scripts/release-r2.ts core-fetch --version "$VERSION" --dir "$RUNNER_TEMP/core"
       # The same requirement apps/host/src/hc-install.ts checks on a Mac: the app bundle and the bare binary, both
-      # signed by herdr's Apple team.
+      # signed by herdr's Apple team. Both macOS archives by the only names the mirror accepts for them
+      # (core-mirror.ts `coreArchiveName`), so a manifest cannot name one this step skips; a missing one fails.
       - name: herdr's macOS builds carry herdr's signature
         run: |
           requirement='=identifier "dev.herdr.core" and anchor apple generic and certificate leaf[subject.OU] = "2W9652Q7QR"'
-          for archive in "$RUNNER_TEMP"/core/herdr-core-macos-*.tar.gz; do
+          for name in herdr-core-macos-aarch64.tar.gz herdr-core-macos-x86_64.tar.gz; do
+            archive="$RUNNER_TEMP/core/$name"
+            test -f "$archive" || { echo "::error title=Core mirror::$name was not downloaded"; exit 1; }
             unpacked="$(mktemp -d)"
             tar -xzf "$archive" -C "$unpacked"
-            test -d "$unpacked/Herdr Core.app" || { echo "::error title=Core mirror::$archive holds no Herdr Core.app"; exit 1; }
+            test -d "$unpacked/Herdr Core.app" || { echo "::error title=Core mirror::$name holds no Herdr Core.app"; exit 1; }
             codesign --verify --strict -R "$requirement" "$unpacked/Herdr Core.app"
             codesign --verify --strict -R "$requirement" "$unpacked/herdr-core"
-            echo "$(basename "$archive"): signed by herdr"
+            echo "$name: signed by herdr"
           done
       - name: Mirror into the bucket, sign, and move core/latest
         env:
@@ -84,6 +87,7 @@ jobs:
         run: |
           curl -fsS "$ORIGIN/core/$VERSION/manifest.json" -o /dev/null
           curl -fsS "$ORIGIN/core/$VERSION/manifest.json.sig" -o /dev/null
+          curl -fsS "$ORIGIN/core/latest.json" -o /dev/null
           echo "$ORIGIN/core/$VERSION/manifest.json is served"
       - name: Workflow summary
         if: always()

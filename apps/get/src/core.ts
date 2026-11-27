@@ -18,9 +18,11 @@ async function serveObject(request: Request, ctx: RequestContext, key: string, f
 }
 
 /**
- * The herdr-core releases Doriterm vouched for (#2945), at the paths herdr's own release server uses, so a host reads
- * `/core/latest.json` or `/core/<version>/manifest.json` and its `.sig`, then the archive the signed manifest names.
- * `latest.json` is the manifest of the version core/latest names; a version's files never change.
+ * The herdr-core releases Doriterm vouched for (#2945), at the paths herdr's own release server uses: a host reads
+ * `/core/latest.json` (or `/core/<version>/manifest.json`), then checks it against the immutable
+ * `/core/<version>/manifest.json.sig` of the version it names, then fetches the archive the signed manifest names.
+ * `latest.json` is byte for byte the manifest of the version core/latest names, and has no signature route of its own:
+ * one that resolved core/latest separately could pair a new manifest with an old signature while either is cached.
  */
 export async function serveCore(
   request: Request,
@@ -32,12 +34,11 @@ export async function serveCore(
     if (!isVersion(version) || !isReleaseFile(file)) return text(404, "not a herdr-core file");
     return serveObject(request, ctx, coreObjectKey(version, file), file, IMMUTABLE);
   }
-  if (file !== "latest.json" && file !== "latest.json.sig") return text(404, "not a herdr-core file");
+  if (file !== "latest.json") return text(404, "not a herdr-core file");
   const pointer = await ctx.env.RELEASES.get(CORE_POINTER_KEY);
   if (pointer === null) return text(404, "no herdr-core release is mirrored yet");
   const named: unknown = JSON.parse(await pointer.text());
   const latest = typeof named === "object" && named !== null ? Reflect.get(named, "version") : undefined;
   if (typeof latest !== "string" || !isVersion(latest)) return text(503, "core/latest names no version");
-  const manifest = file === "latest.json" ? "manifest.json" : "manifest.json.sig";
-  return serveObject(request, ctx, coreObjectKey(latest, manifest), manifest, FEED_TTL);
+  return serveObject(request, ctx, coreObjectKey(latest, "manifest.json"), "manifest.json", FEED_TTL);
 }

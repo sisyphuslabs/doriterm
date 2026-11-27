@@ -38,7 +38,10 @@ test("herdr's archives are fetched, then the macOS ones checked against herdr's 
   expect(fetched).toBeGreaterThan(-1);
   expect(codesigned).toBeGreaterThan(fetched);
   expect(mirrored).toBeGreaterThan(codesigned);
-  expect(steps[codesigned]?.run).toContain('certificate leaf[subject.OU] = "2W9652Q7QR"');
+  const check = steps[codesigned]?.run ?? "";
+  expect(check).toContain('certificate leaf[subject.OU] = "2W9652Q7QR"');
+  expect(check).toContain("for name in herdr-core-macos-aarch64.tar.gz herdr-core-macos-x86_64.tar.gz; do");
+  expect(check).not.toContain("*");
   expect(mirror?.["runs-on"]).toMatch(/^macos-/);
 });
 

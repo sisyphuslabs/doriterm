@@ -77,8 +77,7 @@ herdr-core only through a manifest signed with the release key (#2945). `core-mi
 5. It writes and signs `core/v<version>/manifest.json`, whose URLs name the origin.
 6. It moves `core/latest` forward only.
 
-The origin serves `/core/latest.json` (the manifest `core/latest` names), `/core/<version>/manifest.json`, their `.sig`
-and the archives, at the same paths herdr's server uses.
+The origin serves `/core/latest.json` (byte for byte the manifest `core/latest` names), and `/core/<version>/manifest.json`, its `.sig` and the archives, at the same paths herdr's server uses. `latest.json` has no signature of its own. A host checks it against the immutable `/core/<version>/manifest.json.sig` of the version it names, so a cached `latest.json` never meets another version's signature. Each target must be exactly herdr's archive name (`herdr-core-<target>.tar.gz`, `.zip` for Windows). The codesign step checks both macOS archives by those names. A manifest naming any other file is refused before anything is uploaded.
 
 An older version can be mirrored for pinned installs (`HC_VERSION`) and leaves `core/latest` alone. A new herdr-core
 reaches hosts only after this run; raising the host's herdr-core floor is mirror first, then the pull request. Mirror to
@@ -99,7 +98,10 @@ Ed25519 seed). Both environments hold the real signing key (the mirror refuses a
 must allow deployments from `dev` and release tags only, in the environment's deployment branch rules; `release.yml`'s
 sign job runs on a tag push in `release-mirror-staging` and reads only `RELEASE_SIGNING_KEY`. Rotating the
 release key: ship a release whose `RELEASE_PUBLIC_KEYS` lists the old and the new key, signed
-with the old one; sign the next release with the new key only.
+with the old one. Then, with the new key in the environments, re-run `core-mirror.yml` for the version
+`core/latest` names and for every version still pinned. Each re-run replaces only `core/v<version>/manifest.json.sig`
+with the new key's signature over the same manifest; a manifest or an archive is never replaced. Only then sign the
+next release, the first whose builds trust the new key alone, with the new key only.
 
 ## Download counts
 
