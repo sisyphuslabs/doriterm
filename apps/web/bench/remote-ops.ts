@@ -3,7 +3,7 @@
 // (apps/web connect(), pairWithHost(), endSession() and the client SDK under them), and prints one JSON line.
 //
 //   bun apps/web/bench/remote-ops.ts pair --code <code> [--relay <url>]
-//     One typed-code pairing as the Add machine screen runs it: lookup, pairing session, then the workspace's first
+//     One typed-code pairing as the Connect a device sheet runs it: lookup, pairing session, then the workspace's first
 //     calls on that same session (the app opens its workspace on the session the pairing proved).
 //   bun apps/web/bench/remote-ops.ts ops --code <code> [--relay <url>] [--runs 30]
 //     Pairs one device with that code, then repeats the session operations `--runs` times on it.

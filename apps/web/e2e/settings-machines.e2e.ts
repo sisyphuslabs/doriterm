@@ -17,8 +17,10 @@ test.describe("Settings, Machines", () => {
     });
     const added = list.getByRole("listitem").filter({ hasText: MACHINE_NAME });
     await expect(added).toContainText("Connected", { timeout: STATE_BOUND_MS });
-    await page.getByRole("button", { name: "Add a machine" }).click();
-    const dialog = page.getByRole("dialog", { name: "Add a machine" });
+    await page.getByRole("button", { name: "Connect a device" }).click();
+    const dialog = page.getByRole("dialog", { name: "Connect a device" });
+    // A computer joins from the Computer tab; the sheet opens on a phone or browser.
+    await dialog.getByRole("button", { name: "Computer", exact: true }).click();
     await expect(dialog).toContainText("doriface-host pair");
     await dialog.getByRole("button", { name: "Done" }).click();
     await expect(dialog).toBeHidden();
@@ -40,7 +42,7 @@ test.describe("Settings, Machines", () => {
     const nav = page.getByRole("navigation", { name: "Settings" });
     await expect(nav.getByRole("button", { name: "Machines" })).toHaveAttribute("aria-current", "page");
     await expect(nav.getByRole("button", { name: "Connect a machine" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
+    await expect(page.getByRole("heading", { name: "From a terminal", level: 2 })).toBeInViewport();
     await expect(page.getByText("Open an invite on your host")).toBeVisible();
     await expect(page.getByRole("heading", { name: "In your mesh", level: 2 })).toBeVisible();
   });
@@ -48,7 +50,7 @@ test.describe("Settings, Machines", () => {
   test.describe("on a phone", () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-    test("the list and Add a machine lead the first screen, with the explanation below them (#1007)", async ({
+    test("the list and Connect a device lead the first screen, with the explanation below them (#1007)", async ({
       page,
     }) => {
       await page.goto("/settings#machines");
@@ -60,7 +62,7 @@ test.describe("Settings, Machines", () => {
       // section's name is the page's title, #2914, so the list itself is measured).
       const heading = await list.boundingBox();
       expect(heading?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(viewport.height / 3);
-      const add = page.getByRole("button", { name: "Add a machine" });
+      const add = page.getByRole("button", { name: "Connect a device" });
       for (const target of [list.getByRole("listitem").first(), add]) {
         // oxlint-disable-next-line no-await-in-loop -- each target is measured on the same settled screen
         const box = await target.boundingBox();
@@ -75,10 +77,10 @@ test.describe("Settings, Machines", () => {
       expect(glossary?.y ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual((button?.y ?? 0) + (button?.height ?? 0));
     });
 
-    test("the join page's Connect a machine opens Machines on that group", async ({ page }) => {
+    test("the join page's From a terminal link opens Machines on that group", async ({ page }) => {
       await page.goto("/settings#connect");
       await expect(page.getByRole("heading", { name: "Machines", level: 1 })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Connect a machine", level: 2 })).toBeInViewport();
+      await expect(page.getByRole("heading", { name: "From a terminal", level: 2 })).toBeInViewport();
       // The list of sections has Machines and no separate Connect a machine entry.
       await settingsBack(page).click();
       await expect(settingsSection(page, "Machines")).toBeVisible();

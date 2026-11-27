@@ -1,5 +1,6 @@
 import type { EventFeed, HcConnection } from "@doriface/client";
-import { MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
+import { DEFAULT_PAIRING_WEB_ORIGIN } from "@doriface/crypto";
+import { HcRpcError, MESH_OFFER_DOC, parseMeshOfferDoc } from "@doriface/protocol";
 import { useEffect, useRef, useState } from "react";
 
 /** get.doriterm.com answers curl with the stable channel's install.sh, and GitHub's when it is not mirrored (#1969). */
@@ -17,6 +18,15 @@ export const FOLLOWED_MS = 5_000;
 /** The wait before following again after `failures` ends in a row: at once the first time, then 250 ms doubling. */
 export const refollowMs = (failures: number): number =>
   failures === 0 ? 0 : Math.min(REFOLLOW_MAX_MS, 250 * 2 ** (failures - 1));
+
+/**
+ * The invite as a link a phone or browser opens: this app's own page when it is served over https, the hosted app
+ * otherwise (the desktop app's own scheme is no page a phone can open, #2939). The secret stays in the fragment.
+ */
+export function webInviteLink(link: string, origin: string = location.origin): string {
+  const hash = link.slice(link.indexOf("#"));
+  return `${origin.startsWith("https:") ? origin : DEFAULT_PAIRING_WEB_ORIGIN}/pair${hash}`;
+}
 
 /**
  * The one line to run on the machine to add: install (or update) the host as a service, then join this mesh. The link
@@ -68,6 +78,32 @@ export function followJoinOffer(feed: EventFeed, read: () => void, reopen?: () =
   feed.onClose((close) => {
     if (close.reason !== "detached") reopen?.();
   });
+}
+
+/** How many times a request lost to another writer of the offer document is written again on a fresh read. */
+const ASK_ATTEMPTS = 5;
+
+/**
+ * Writes this request at the version the document has now. Another writer can land between the read and the write (a
+ * sheet that asked for a phone, then for a computer, #2939), and the core refuses that write as a `conflict`: it is
+ * read and written again, a few times, and any other failure is thrown as it came. A request whose dialog or tab is gone
+ * (`closed`) writes nothing more, so it never overwrites the request that replaced it.
+ */
+export async function askOnce(
+  calls: Pick<ReturnType<typeof callsOf>, "get" | "set">,
+  value: Parameters<ReturnType<typeof callsOf>["set"]>[0],
+  closed: () => boolean,
+  attempt = 1,
+): Promise<void> {
+  if (closed()) return;
+  const { version } = await calls.get();
+  if (closed()) return;
+  try {
+    await calls.set(value, version);
+  } catch (error) {
+    if (attempt >= ASK_ATTEMPTS || !(error instanceof HcRpcError && error.kind === "conflict")) throw error;
+    await askOnce(calls, value, closed, attempt + 1);
+  }
 }
 
 /**
@@ -156,8 +192,7 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
     void (async () => {
       await follow();
       if (closed || (!fresh && (await read()))) return;
-      const { version } = await calls.get();
-      await calls.set({ request, ...(client ? { client: true } : {}) }, version);
+      await askOnce(calls, { request, ...(client ? { client: true } : {}) }, () => closed);
       await read();
     })().catch((error: unknown) =>
       settle({ phase: "failed", reason: error instanceof Error ? error.message : String(error) }),

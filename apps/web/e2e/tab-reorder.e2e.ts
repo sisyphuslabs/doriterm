@@ -132,7 +132,7 @@ test("on macOS the move chord stays with a text field, so the palette keeps its 
   await expect.poll(() => domOrder(page)).toEqual(rearranged(before, [0, 1, 3, 2]));
 });
 
-test("a drop let go below the strip leaves the next Enter or click on a tab alone, and a drop onto itself never selects", async ({
+test("a drag returned to the strip reorders and leaves the next Enter or click alone; dropping onto itself never selects", async ({
   page,
 }) => {
   await openFour(page);
@@ -143,19 +143,21 @@ test("a drop let go below the strip leaves the next Enter or click on a tab alon
   await page.mouse.down();
   await page.mouse.move(past.right - 4, past.y, { steps: 12 });
   await page.mouse.move(past.right - 4, past.y + 250, { steps: 4 });
+  await page.mouse.move(past.right - 4, past.y, { steps: 4 });
   await page.mouse.up();
   await expect.poll(() => domOrder(page)).toEqual(rearranged(before, [1, 2, 0, 3]));
   await tabs(page).nth(0).focus();
   await page.keyboard.press("Enter");
   await expect(tabs(page).nth(0)).toHaveAttribute("aria-selected", "true");
 
-  // The same off-strip drop, then a mouse click with no key between: the click lands on the tab it presses.
+  // Leave and re-enter the strip again, then click with no key between: the click lands on the tab it presses.
   const second = await centre(tabs(page).nth(1));
   const last = await centre(tabs(page).nth(3));
   await page.mouse.move(second.x, second.y);
   await page.mouse.down();
   await page.mouse.move(last.right - 4, last.y, { steps: 12 });
   await page.mouse.move(last.right - 4, last.y + 250, { steps: 4 });
+  await page.mouse.move(last.right - 4, last.y, { steps: 4 });
   await page.mouse.up();
   await expect.poll(() => domOrder(page)).toEqual(rearranged(before, [1, 0, 3, 2]));
   await tabs(page).nth(2).click();

@@ -6,7 +6,7 @@ import type { HostOptions } from "./host-types.ts";
 import { meshDeps } from "./mesh/host-deps.ts";
 import { type PairingSlotRegistrar, PairingSlots } from "./pairing-slots.ts";
 import { DeviceStore } from "./state/devices.ts";
-import { McpSwitch } from "./state/mcp-switch.ts";
+import { hasMcpPrincipals, McpSwitch } from "./state/mcp-switch.ts";
 import { MeshStore } from "./state/mesh.ts";
 import { PairingStore } from "./state/pairing.ts";
 
@@ -23,6 +23,7 @@ export function e2eeDeps(
   const pairing = new PairingStore(stateDir, options.log);
   const mesh = new MeshStore(stateDir, { log: options.log });
   mesh.ensureIndex();
+  mcp.settleUnset(() => hasMcpPrincipals(devices, mesh), options.log);
   /** Filled in once the LAN listener has its port. */
   const lanUrls: string[] = [];
   const slots = new PairingSlots(pairing, identity.noise.publicKey, registrar, options.log);

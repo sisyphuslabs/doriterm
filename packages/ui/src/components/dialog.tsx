@@ -31,7 +31,12 @@ function Body({ children, actions }: Pick<DialogProps, "children" | "actions">) 
   return (
     <>
       {children === undefined ? null : <div className="mt-4">{children}</div>}
-      {actions === undefined ? null : <div className="mt-5 flex flex-wrap justify-end gap-2">{actions}</div>}
+      {/* Sticky inside the popup's own scroller: a body taller than the screen scrolls under the actions, never past them. */}
+      {actions === undefined ? null : (
+        <div className="sticky -bottom-5 -mx-5 mt-5 flex flex-wrap justify-end gap-2 bg-popover px-5 pt-3 pb-5">
+          {actions}
+        </div>
+      )}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { IconButton, SidebarFooter, SidebarFooterItem, cn } from "@doriface/ui";
 import { Link } from "@tanstack/react-router";
 import { PanelLeftOpen, Plus, Search, Settings } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useAppearance } from "../appearance/appearance.ts";
 import { RegionBoundary } from "../crash/region-boundary.tsx";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { usePendingUpdate } from "../update/update-store.ts";
@@ -40,6 +41,7 @@ export function Sidebar({
   drawer = false,
 }: SidebarProps) {
   const paletteKeys = useActionKeys("app.palette");
+  const { showWordmark } = useAppearance();
   const filter = useSidebarFilter();
   const machines = useMachinesContext();
   const update = usePendingUpdate();
@@ -85,7 +87,9 @@ export function Sidebar({
             {/* herdr-app's titlebar: a 16 px app icon, then the name 11 px after it, 14 px semibold. */}
             <div className="flex min-w-0 flex-1 items-center gap-2.75">
               <img src="/icon.svg" alt="" className="size-4 shrink-0" />
-              <span className="truncate text-base font-semibold text-sidebar-foreground">Doriterm</span>
+              {showWordmark ? (
+                <span className="truncate text-base font-semibold text-sidebar-foreground">Doriterm</span>
+              ) : null}
             </div>
             <IconButton
               label="Command palette"
@@ -125,8 +129,8 @@ export function Sidebar({
         <SidebarFooterItem
           rail={rail}
           icon={<Plus aria-hidden />}
-          label="Add machine"
-          onClick={machines.openAddMachine}
+          label="Connect a device"
+          onClick={machines.openConnect}
         />
       </SidebarFooter>
       {drawer || railProp !== undefined ? null : (

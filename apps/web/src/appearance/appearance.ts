@@ -1,10 +1,11 @@
 import { themeVariables } from "@doriface/ui";
 import { useSyncExternalStore } from "react";
 import { themeChoices } from "./choices.ts";
-import { activeThemeId, parseAppearance, type Appearance } from "./stored.ts";
+import { activePaletteKey, activeThemeId, parseAppearance, type Appearance } from "./stored.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
 
 export { themeChoices } from "./choices.ts";
+export { activePaletteKey } from "./stored.ts";
 export type { Appearance, AppearanceMode, Density } from "./stored.ts";
 
 const KEY = "doriface.appearance";
@@ -70,6 +71,16 @@ export function startAppearance(): void {
   matchMedia(DARK_QUERY).addEventListener("change", () => applyAppearance(appearanceStore.value));
 }
 
+export type AppearanceSource = Pick<AppearanceStore, "subscribe" | "value">;
+
 export function useAppearance(): Appearance {
   return useSyncExternalStore(appearanceStore.subscribe, () => appearanceStore.value);
+}
+
+/**
+ * The active terminal palette key for the current appearance and system scheme: only updates subscribers when the
+ * active theme or its custom terminal palette changes, ignoring density and inactive-kind picks.
+ */
+export function useActiveAppearancePalette(dark: boolean, store: AppearanceSource = appearanceStore): string {
+  return useSyncExternalStore(store.subscribe, () => activePaletteKey(store.value, dark));
 }
