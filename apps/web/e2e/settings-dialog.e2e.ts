@@ -156,7 +156,8 @@ test.describe("on a phone", () => {
 
   test("opening Settings moves focus into the sheet, onto no action button (#1495)", async ({ page }) => {
     await page.goto("/settings");
-    await expect(page.getByRole("heading", { name: "This device", level: 2 }).first()).toBeVisible({ timeout: 15_000 });
+    // A phone opens on the list of sections under the Settings title (#2914).
+    await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible({ timeout: 15_000 });
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -199,7 +200,8 @@ test.describe("Settings across the md breakpoint, and its zoom keys (#859)", () 
     await page.setViewportSize({ width: 700, height: 800 });
     await expect(settingsSheet(page)).toBeVisible();
     await expect(page.locator("[data-settings-dialog]")).toHaveCount(0);
-    await expect(page.getByRole("tab", { name: "Keybindings", selected: true })).toBeVisible();
+    // The sheet keeps the section that was open: its page, titled with its name (#2914).
+    await expect(page.getByRole("heading", { name: "Keybindings", level: 1 })).toBeVisible();
     await expect(recorder).toBeFocused();
 
     await page.setViewportSize({ width: 1280, height: 800 });

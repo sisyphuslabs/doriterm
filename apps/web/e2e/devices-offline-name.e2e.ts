@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { type FakeRelayHost, startFakeRelayHost } from "./relay-route.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -48,6 +49,8 @@ for (const width of [1440, 390]) {
       await pair(page, host);
 
       await page.goto("/settings");
+      // A phone opens on the list of sections; the host's row is on This device (#2914).
+      await openSettingsSection(page, "This device");
       await expect(paired(page).getByRole("paragraph").nth(3)).toContainText(/^Connected/, { timeout: 30_000 });
       const name = (await hostName(page).innerText()).trim();
       const hostId = (JSON.parse(await stored(page)) as { hostId?: string }).hostId ?? "";
@@ -68,6 +71,7 @@ for (const width of [1440, 390]) {
       expect(await hostName(page).innerText()).not.toContain(hostId);
 
       await page.reload();
+      await openSettingsSection(page, "This device");
       await expect(paired(page)).toContainText(NOT_ANSWERING, { timeout: 30_000 });
       await expect(hostName(page)).toHaveText(name);
       expect(await hostName(page).innerText()).not.toContain(hostId);

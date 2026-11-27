@@ -19,6 +19,7 @@ import {
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 export type Width = "1440" | "390";
 /** Which stored connection a shot starts from: the e2e host, pairing against the fake relay, or none. */
@@ -61,12 +62,9 @@ const openTerminal = async (page: Page, name: RegExp, text: string | RegExp) => 
 };
 const section = async (page: Page, label: string) => {
   await page.goto("/settings");
-  await page
-    .getByRole("tab", { name: label })
-    .or(page.getByRole("button", { name: label }))
-    .first()
-    .click();
-  await expect(page.getByRole("heading", { name: label, level: 2 }).first()).toBeVisible();
+  await openSettingsSection(page, label);
+  // The section's page title on a phone, its caption from md (#2914).
+  await expect(page.getByRole("heading", { name: label, exact: true }).first()).toBeVisible();
 };
 const scrollToEnd = (page: Page) =>
   page.locator("[data-slot=settings-body]").evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
@@ -278,7 +276,7 @@ export const SHOTS: readonly Shot[] = [
     start: "connected",
     run: async (page) => {
       await page.goto("/settings");
-      await expect(page.getByRole("heading", { name: "This device", level: 2 }).first()).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Settings", level: 1 }).first()).toBeVisible();
     },
   },
   ...SETTINGS.map((label): Shot => ({
