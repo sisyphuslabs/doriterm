@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { cancelTap } from "./tab-drag-helpers.ts";
 import {
   type ListDragState,
   type ListSettle,
@@ -21,10 +22,6 @@ export const ROW_DRAG_THRESHOLD_PX = 4;
 export const ROW_TOUCH_HOLD_MS = 300;
 const TOUCH_SLOP_PX = 8;
 const SETTLE_MS = 200;
-
-function cancelTap(touchEnd: TouchEvent): void {
-  if (touchEnd.cancelable) touchEnd.preventDefault();
-}
 
 interface Press {
   readonly id: string;

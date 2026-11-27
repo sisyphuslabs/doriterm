@@ -12,6 +12,29 @@ const TEXT_SPACING = `
 `;
 
 const header = (page: Page) => page.getByRole("banner");
+
+/**
+ * Resolves once the terminal has fitted its rows to a new size and painted them, so a box read after it sees the new
+ * rows. The terminal measures its new size in a frame's ResizeObserver callbacks and rebuilds its rows in an animation
+ * frame it queues then, for the next frame, so the frame after the size change can still paint the rows sized for the
+ * old height (#2925). This resolves after the second frame from now is painted: the first frame's callback runs before
+ * that ResizeObserver, so the rebuild it queues runs in the second frame, ahead of the caller's read.
+ */
+const afterRefit = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            // A message posted in a frame's callback is delivered once that frame is painted.
+            const channel = new MessageChannel();
+            channel.port1.addEventListener("message", () => resolve(), { once: true });
+            channel.port1.start();
+            channel.port2.postMessage(null);
+          }),
+        );
+      }),
+  );
 const ACTION = "Header action";
 
 async function openPhoneTerminal(page: Page): Promise<void> {
@@ -73,7 +96,10 @@ async function expectHeaderHolds(page: Page, width: number, withAction: boolean)
   // row, so each box is read once laid out.
   const terminal = await laidOutBox(page.locator("[data-terminal]"));
   expect(terminal.y).toBeGreaterThanOrEqual(bottom - 0.5);
-  const firstRow = await laidOutBox(page.locator("[data-terminal] .term-row").first());
+  const row = page.locator("[data-terminal] .term-row").first();
+  await afterRefit(page);
+  // The refit replaces row nodes. Resolve the locator after it, not before it.
+  const firstRow = await laidOutBox(row);
   expect(firstRow.y).toBeGreaterThanOrEqual(bottom - 0.5);
 
   // Every button stays a full touch target inside the header and the screen.

@@ -6,6 +6,7 @@ import {
   Notice,
   SegmentedControl,
   SettingRow,
+  Switch,
   ThemeBrowser,
   type ThemeOption,
 } from "@doriface/ui";
@@ -142,6 +143,18 @@ export function AppearanceSection() {
         }
       />
       <TextSizeRow />
+      <SettingRow
+        inline
+        title="Show app name"
+        description="Show Doriterm beside the icon in the workspace sidebar."
+        control={
+          <Switch
+            aria-label="Show app name"
+            checked={appearance.showWordmark}
+            onCheckedChange={(showWordmark) => appearanceStore.update({ showWordmark })}
+          />
+        }
+      />
       <SettingRow
         title="Import a herdr-app theme"
         description="A herdr-app theme file (.json) imports unchanged."
