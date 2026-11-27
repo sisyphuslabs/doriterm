@@ -55,13 +55,45 @@ describe("a plan's session limit and sessions that wait for their client (#2853)
     // The phone's own waiting session is not counted against its new one.
     expect(sessions.count(base64urlEncode(phone))).toBe(0);
     const [fresh] = memoryLinkPair();
-    expect(sessions.admitLimited(session(fresh, phone), ONE)).toBe(true);
+    expect(sessions.admitHc(session(fresh, phone), ONE)).toBe(true);
     expect(old.closeCode).toBe(CloseCode.IdleTimeout);
     expect(fresh.closeCode).toBeUndefined();
     // A memory link reports its close a turn later; a real session reports it as it closes.
     await settle();
     expect(sessions.count()).toBe(1);
     expect(logs.some((line) => line.includes("replaced by a new session from the same device"))).toBe(true);
+  });
+
+  test("a device with several views replaces only as many waiting ones as it needs, oldest first; the rest stay resumable", async () => {
+    const THREE = parsePolicy('{"plan":"free","limits":{"sessions":3}}');
+    const { devices, sessions } = stores();
+    const phone = generateX25519().publicKey;
+    devices.add(phone, "phone");
+    const [live] = memoryLinkPair();
+    const [older] = memoryLinkPair();
+    const [newer] = memoryLinkPair();
+    expect(sessions.add(session(live, phone))).toBe(true);
+    expect(sessions.add(waiting(older, phone))).toBe(true);
+    expect(sessions.add(waiting(newer, phone))).toBe(true);
+    const [fresh] = memoryLinkPair();
+    expect(sessions.admitHc(session(fresh, phone), THREE)).toBe(true);
+    expect(older.closeCode).toBe(CloseCode.IdleTimeout);
+    expect(newer.closeCode).toBeUndefined();
+    expect(live.closeCode).toBeUndefined();
+    await settle();
+    expect(sessions.count()).toBe(3);
+  });
+
+  test("an MCP session never replaces a waiting one: it is refused while the plan is full", () => {
+    const { devices, sessions } = stores();
+    const phone = generateX25519().publicKey;
+    devices.add(phone, "phone");
+    const [old] = memoryLinkPair();
+    expect(sessions.add(waiting(old, phone))).toBe(true);
+    const [mcp] = memoryLinkPair();
+    expect(sessions.admitLimited(Object.assign(session(mcp, phone), { stream: "mcp" }), ONE)).toBe(false);
+    expect(mcp.closeCode).toBe(CloseCode.RateLimited);
+    expect(old.closeCode).toBeUndefined();
   });
 
   test("another device is still refused while one waits, and a device's live session is never replaced", () => {
@@ -74,7 +106,7 @@ describe("a plan's session limit and sessions that wait for their client (#2853)
     expect(sessions.add(waiting(old, phone))).toBe(true);
     const [other] = memoryLinkPair();
     expect(sessions.count(base64urlEncode(laptop))).toBe(1);
-    expect(sessions.admitLimited(session(other, laptop), ONE)).toBe(false);
+    expect(sessions.admitHc(session(other, laptop), ONE)).toBe(false);
     expect(other.closeCode).toBe(CloseCode.RateLimited);
     expect(old.closeCode).toBeUndefined();
 
@@ -84,7 +116,7 @@ describe("a plan's session limit and sessions that wait for their client (#2853)
     expect(sessions2.add(session(live, phone))).toBe(true);
     expect(sessions2.count(base64urlEncode(phone))).toBe(1);
     const [second] = memoryLinkPair();
-    expect(sessions2.admitLimited(session(second, phone), ONE)).toBe(false);
+    expect(sessions2.admitHc(session(second, phone), ONE)).toBe(false);
     expect(live.closeCode).toBeUndefined();
   });
 });

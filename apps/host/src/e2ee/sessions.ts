@@ -31,9 +31,9 @@ export class LiveSessions {
 
   /**
    * How many sessions this host serves now, for a plan's concurrent-session limit. `replacing` names the key asking for
-   * one more: its own sessions that wait for a resume (detached) are not counted, since its new session replaces them
-   * at admission (#2853). A device that dropped in the background and comes back to a new session is not refused for
-   * the one it left behind; any other key still counts every session, waiting or not.
+   * a new workspace session: its own sessions that wait for a resume (detached) are not counted, since its admission
+   * may replace as many of them as it needs (#2853). A device that dropped in the background and comes back to a new
+   * session is not refused for the one it left behind; any other key still counts every session, waiting or not.
    */
   count(replacing?: string): number {
     let total = 0;
@@ -50,34 +50,42 @@ export class LiveSessions {
     return live;
   }
 
-  /** Re-checks session room and revocation before hc admission. */
+  /**
+   * Re-checks session room and revocation before a workspace (hc) session is admitted. A device whose new workspace
+   * session finds the plan full ends as many of its own waiting sessions as that needs, oldest first, and no more: its
+   * other views stay resumable (#2853).
+   */
   admitHc(session: SecureLink, policy: PlanPolicy): boolean {
-    return this.admitLimited(session, policy);
+    return this.#admit(session, policy, true);
   }
 
-  /** A second plan check after the handshake: another session may have opened in the meantime. */
+  /** A second plan check after the handshake: another session may have opened in the meantime. Replaces nothing. */
   admitLimited(session: SecureLink, policy: PlanPolicy): boolean {
+    return this.#admit(session, policy, false);
+  }
+
+  #admit(session: SecureLink, policy: PlanPolicy, workspace: boolean): boolean {
     if (session.kind === SessionKind.Session) {
       const key = base64urlEncode(session.remoteStatic);
-      const room = requireWithin(policy, "sessions", this.count(key));
+      const room = requireWithin(policy, "sessions", this.count(workspace ? key : undefined));
       if (!room.allowed) {
         this.#log(`plan: refused a session at admission: ${room.message}`);
         session.close(CloseCode.RateLimited, room.message);
         return false;
       }
-      // Room only once this key's own waiting sessions are gone: end them, so the limit holds once this one is added.
-      if (!requireWithin(policy, "sessions", this.count()).allowed) this.#replaceWaiting(key);
+      if (workspace) this.#makeRoom(key, policy);
     }
     return this.add(session);
   }
 
-  /** Ends `key`'s sessions that wait for a resume: the same device opened a new one instead of coming back to them. */
-  #replaceWaiting(key: string): void {
-    // Closing one deletes it from this set as it is walked, which a Set's iteration allows.
-    for (const session of this.#byKey.get(key) ?? []) {
-      if (!isWaiting(session)) continue;
+  /** Ends `key`'s waiting sessions, oldest first, only until the plan has room for one more. */
+  #makeRoom(key: string, policy: PlanPolicy): void {
+    let open = this.count();
+    for (const waiting of [...(this.#byKey.get(key) ?? [])].filter(isWaiting)) {
+      if (requireWithin(policy, "sessions", open).allowed) return;
       this.#log("plan: a session waiting for its client was replaced by a new session from the same device");
-      session.close(CloseCode.IdleTimeout, "replaced by a new session from the same device");
+      waiting.close(CloseCode.IdleTimeout, "replaced by a new session from the same device");
+      open -= 1;
     }
   }
 

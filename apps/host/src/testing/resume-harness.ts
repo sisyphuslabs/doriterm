@@ -57,7 +57,19 @@ export const wireOf = (end: MemoryEnd): E2eeWire => ({
 
 const dirs: string[] = [];
 /** Removes every host's state directory; call from afterEach. */
-export function cleanupResumeHosts(): void {
+const hosts: { readonly closeAll: () => Promise<void>; readonly clients: SecureSession[] }[] = [];
+/**
+ * Closes every host's gateway, so no session is left waiting on its resume timer, then removes their state directories;
+ * call from afterEach.
+ */
+export async function cleanupResumeHosts(): Promise<void> {
+  // A client leaving ends its live session the way a page closing does; the host stopping ends the waiting ones.
+  await Promise.all(
+    hosts.splice(0).map(async ({ closeAll, clients }) => {
+      for (const client of clients) client.close();
+      await closeAll();
+    }),
+  );
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 }
 
@@ -95,6 +107,7 @@ export function resumeHost(resumeGraceMs?: number) {
       live: { count: (replacing) => sessions.count(replacing) },
     },
   });
+  const clients: SecureSession[] = [];
   const connect = async (transport: E2eeTransport = { kind: "relay" }) => {
     const [clientEnd, hostEnd] = memoryLinkPair();
     const served = gateway.serveE2ee(wireOf(hostEnd), transport);
@@ -107,6 +120,7 @@ export function resumeHost(resumeGraceMs?: number) {
     });
     await served;
     client.allowResume();
+    clients.push(client);
     const received: Uint8Array[] = [];
     client.onData((chunk) => received.push(chunk));
     return { client, clientEnd, hostEnd, received };
@@ -117,6 +131,7 @@ export function resumeHost(resumeGraceMs?: number) {
     const served = gateway.serveE2ee(wireOf(hostEnd), transport);
     return { clientEnd, hostEnd, served };
   };
+  hosts.push({ closeAll: () => gateway.closeAll(), clients });
   return { gateway, logs, children, connect, redial };
 }
 

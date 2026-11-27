@@ -45,6 +45,11 @@ describe("the hc connect behind a session that waits for its client", () => {
     await again.served;
     expect(again.hostEnd.closeCode).toBe(CloseCode.ResumeRefused);
     expect(h.children.length).toBe(MAX_DETACHED_SESSIONS + 1);
+
+    // The host stopping ends every session still waiting, so no hc connect and no resume timer is left behind.
+    await h.gateway.closeAll();
+    expect(h.children.filter((child) => !child.state.closed)).toEqual([]);
+    await Promise.all(h.children.map((child) => child.child.exited));
   });
 
   test("a session dropped and resumed five times keeps one hc connect, which exits when the session ends", async () => {
