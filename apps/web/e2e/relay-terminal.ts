@@ -53,6 +53,7 @@ export async function startRelayHost(): Promise<RelayHost> {
 export class RelayLink {
   #toPage = 0;
   #opened = 0;
+  #refusing = false;
   readonly #live = new Map<WebSocketRoute, WebSocket>();
 
   /** Frames the relay has sent toward the page so far, counted as they arrive (each reaches the page later). */
@@ -63,6 +64,16 @@ export class RelayLink {
   /** How many relay client sockets the page has opened. */
   opened(): number {
     return this.#opened;
+  }
+
+  /** While on, every relay client socket the page opens is closed at once, as when the network is gone. */
+  refuse(on: boolean): void {
+    this.#refusing = on;
+  }
+
+  /** @internal Called by delayRelaySockets. */
+  refusing(): boolean {
+    return this.#refusing;
   }
 
   /** Closes every relay client socket the page has open, on both sides, as a network blip does. */
@@ -129,6 +140,10 @@ export async function delayRelaySockets(
   };
   // Any port: a session's second and third sockets dial the relay's other HTTPS ports (#1418).
   await page.routeWebSocket(new RegExp(`^${FAKE_RELAY.replaceAll(".", "\\.")}(:\\d+)?/v1/client/`), (socket) => {
+    if (link?.refusing() === true) {
+      void socket.close({ code: 1011, reason: "relay unreachable" });
+      return;
+    }
     const target = new URL(socket.url());
     const relay = new WebSocket(`${base}${target.pathname}${target.search}`);
     relay.binaryType = "arraybuffer";

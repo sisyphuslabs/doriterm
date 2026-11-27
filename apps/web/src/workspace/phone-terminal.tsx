@@ -23,7 +23,6 @@ import { PhoneSessionExtrasContext } from "./phone-session-extras.ts";
 import { PhoneTabsChip, useTabsPlace } from "./phone-tab-switcher.tsx";
 import { KEYS_BAR_HEIGHT, keysBottom, PhoneKeys } from "./phone-keys.tsx";
 import { keysPlacement } from "./phone-keys-placement.ts";
-import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
 import { afterGrace } from "./use-dead-panes.ts";
 import { useQuietKeyboard } from "./use-quiet-keyboard.ts";
@@ -235,6 +234,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             backTo={full && panes.length > 1 ? "Split" : backTo}
             onBack={back}
             onOpen={onOpen}
+            connection={offline ? undefined : connection}
             action={
               <>
                 {place === null ? null : (
@@ -254,7 +254,6 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             }
           />
         </PhoneSessionExtrasContext>
-        <ConnectionLine address={terminal.address} reconnectingInHeader {...(offline ? {} : { connection })} />
         {pair === null || panes.length > 2 ? (
           <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
         ) : null}
