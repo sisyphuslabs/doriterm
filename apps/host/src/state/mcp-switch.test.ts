@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MCP_SWITCH_FILE, McpSwitch } from "./mcp-switch.ts";
@@ -15,7 +15,32 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-test("a missing switch is on: a host that never set it serves MCP to paired devices", () => {
+test("a missing switch is off: MCP waits for the owner to turn it on", () => {
+  expect(mcp.enabled()).toBe(false);
+});
+
+test("a host's first start settles a missing switch once: on where devices are already paired, off otherwise", () => {
+  mcp.settleUnset(true);
+  expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ version: 1, enabled: true });
+
+  const fresh = mkdtempSync(join(tmpdir(), "dh-mcp-switch-fresh-"));
+  try {
+    new McpSwitch(fresh).settleUnset(false);
+    expect(JSON.parse(readFileSync(join(fresh, MCP_SWITCH_FILE), "utf8"))).toEqual({ version: 1, enabled: false });
+    // A device paired later does not turn it on at the next start: the setting is explicit now.
+    new McpSwitch(fresh).settleUnset(true);
+    expect(new McpSwitch(fresh).enabled()).toBe(false);
+  } finally {
+    rmSync(fresh, { recursive: true, force: true });
+  }
+});
+
+test("settling never changes a setting the owner wrote", () => {
+  mcp.setEnabled(false);
+  mcp.settleUnset(true);
+  expect(mcp.enabled()).toBe(false);
+  mcp.setEnabled(true);
+  mcp.settleUnset(false);
   expect(mcp.enabled()).toBe(true);
 });
 

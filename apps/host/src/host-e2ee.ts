@@ -19,6 +19,7 @@ export function e2eeDeps(
 ) {
   const devices = new DeviceStore(stateDir);
   const mcp = new McpSwitch(stateDir);
+  mcp.settleUnset(devices.list().length > 0);
   const policy = options.policy ?? policyFromEnv(process.env);
   const pairing = new PairingStore(stateDir, options.log);
   const mesh = new MeshStore(stateDir, { log: options.log });

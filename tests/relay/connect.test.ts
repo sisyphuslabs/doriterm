@@ -245,7 +245,7 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     expect((await run.stderr()).trim().split("\n").at(-1)).toContain("pair it again (4401)");
   }, 60_000);
 
-  test("--mcp carries MCP over the relay while it is on (the default), is refused once it is turned off, and switching it off ends the session", async () => {
+  test("--mcp is refused while MCP is off (the default), carries MCP over the relay once it is on, and switching it off ends the session", async () => {
     const { relayUrl, hostId, stateDir } = host();
     const state = join(scratch, "mcp-device");
     const pairing = runConnect(state, relayUrl, await host().pairingLink(), "--name", "assistant");
@@ -254,8 +254,7 @@ describe("doriface-host connect: stdin and stdout piped to the host's hc connect
     pairing.end();
     expect(await within(pairing.exited, "the pairing run exiting")).toBe(0);
 
-    // Paired, but MCP was turned off on the host (it is on by default): the refusal says so instead of asking to pair again.
-    new McpSwitch(stateDir).setEnabled(false);
+    // Paired, but MCP is off on the host (the default): the refusal says so instead of asking to pair again.
     const refused = runConnect(state, relayUrl, hostId, "--mcp");
     expect(await within(refused.exited, "the refusal", REFUSAL_MS)).toBe(1);
     expect(await refused.stderr()).toContain("run doriface-host mcp on there");

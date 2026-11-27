@@ -4,8 +4,8 @@ import { withStateLock } from "./lock.ts";
 
 export const MCP_SWITCH_FILE = "mcp.json";
 
-/** A host that never wrote the switch serves MCP; pairing is still the gate, and an explicit off is kept. */
-const ENABLED_WITHOUT_SWITCH = true;
+/** A host that never wrote the switch serves no MCP: the owner turns it on, and pairing is still the gate on top. */
+const ENABLED_WITHOUT_SWITCH = false;
 
 function readEnabled(path: string): boolean {
   const value = readJson(path);
@@ -52,6 +52,20 @@ export class McpSwitch {
     }
     if (this.#cached.enabled instanceof Error) throw this.#cached.enabled;
     return this.#cached.enabled;
+  }
+
+  /**
+   * Run once at host start: a missing switch is written as on where devices are already paired (a host from the
+   * on-by-default releases keeps serving the assistants it has) and as off otherwise, so every host holds an explicit
+   * setting and pairing a device later never turns MCP on. A switch already written is never changed.
+   */
+  settleUnset(hasPairedDevices: boolean): void {
+    withStateLock(this.#dir, () => {
+      if (fileStamp(this.#path) === undefined) {
+        writePrivateJson(this.#path, { version: 1, enabled: hasPairedDevices });
+      }
+    });
+    this.#cached = undefined;
   }
 
   setEnabled(on: boolean): void {
