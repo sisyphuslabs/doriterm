@@ -24,14 +24,17 @@ const LINES = 5000;
 const AGENT = String.raw`stty -echo
 drawn=0
 frame() {
+  # Claim this frame's number first: a resize landing while it is still drawing runs a nested frame, which must take the
+  # next number rather than reuse this one (two frames numbered alike would never let the page see the newer one).
+  drawn=$((drawn + 1))
+  local n=$drawn
   cols=$(tput cols)
-  awk -v n=${LINES} -v c="$cols" -v f=$((drawn + 1)) 'BEGIN { fill = "f" f; for (k = length(fill); k < c - 10; k++) fill = fill "."
+  awk -v n=${LINES} -v c="$cols" -v f=$n 'BEGIN { fill = "f" f; for (k = length(fill); k < c - 10; k++) fill = fill "."
     for (i = 1; i <= n; i++) printf "\033[38;5;%dmrow %05d\033[0m %s%s", 240 + i % 10, i, fill, (i < n ? "\r\n" : "") }' > "$DRAWN.frame"
   printf '\033[?2026h\033[?7l\033[2J\033[H\033[3J'
   cat "$DRAWN.frame"
   printf '\033[?7h\033[?2026l'
-  drawn=$((drawn + 1))
-  : > "$DRAWN.$drawn"
+  : > "$DRAWN.$n"
 }
 trap frame WINCH
 frame
