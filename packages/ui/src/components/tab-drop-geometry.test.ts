@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { caretLeft, type DragState, landingIndex, landingLeft, shiftOf } from "./tab-drop-geometry.ts";
+import { caretLeft, clampOffset, type DragState, landingIndex, landingLeft, shiftOf } from "./tab-drop-geometry.ts";
 
 // Three tabs 100 px wide with a 4 px gap: centres at 50, 154, 258.
 const slots = [
@@ -33,5 +33,15 @@ describe("tab drop geometry", () => {
     expect([landingLeft(drag(0, 209)), caretLeft(drag(0, 209))]).toEqual([208, 310]);
     expect([landingLeft(drag(2, -105)), caretLeft(drag(2, -105))]).toEqual([104, 102]);
     expect([landingLeft(drag(1, 0)), caretLeft(drag(1, 0))]).toEqual([104, 102]);
+  });
+
+  test("clampOffset keeps the dragged tab within the first-to-last slot span", () => {
+    expect(clampOffset(slots, 0, -50)).toBe(0);
+    expect(clampOffset(slots, 0, 500)).toBe(208);
+    expect(clampOffset(slots, 2, -500)).toBe(-208);
+    expect(clampOffset(slots, 2, 50)).toBe(0);
+    expect(clampOffset(slots, 1, -500)).toBe(-104);
+    expect(clampOffset(slots, 1, 500)).toBe(104);
+    expect(clampOffset([{ left: 4, width: 180 }], 0, 200)).toBe(0);
   });
 });

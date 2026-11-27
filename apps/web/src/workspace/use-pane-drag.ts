@@ -16,6 +16,8 @@ export interface PaneDragState {
   readonly tab: string;
   readonly pane: string;
   readonly target: PaneDropTarget | null;
+  /** True when the dragged pane header is pulled up onto the tab strip to pop it into its own tab. */
+  readonly detach: boolean;
 }
 
 export interface PaneDrag {
@@ -31,13 +33,37 @@ export function targetIn(
   dragged: string,
   x: number,
   y: number,
+  pad = 0,
 ): PaneDropTarget | null {
   if (box === null || panes === undefined) return null;
   const origin = box.getBoundingClientRect();
+  if (origin.width <= 0 || origin.height <= 0) return null;
+  const rawX = x - origin.left;
+  const rawY = y - origin.top;
+  if (rawX < -pad || rawY < -pad || rawX >= origin.width + pad || rawY >= origin.height + pad) return null;
+  const localX = Math.min(Math.max(rawX, 0), origin.width - 0.001);
+  const localY = Math.min(Math.max(rawY, 0), origin.height - 0.001);
   for (const [id, rect] of panes) {
     if (id === dragged) continue;
-    const zone = dropZone(rect, x - origin.left, y - origin.top);
+    const zone = dropZone(rect, localX, localY);
     if (zone !== null) return { pane: id, zone };
+  }
+  if (pad > 0) {
+    const halfGap = pad / 2;
+    for (const [id, rect] of panes) {
+      if (id === dragged || rect.width <= 0 || rect.height <= 0) continue;
+      if (
+        localX < rect.x - halfGap ||
+        localY < rect.y - halfGap ||
+        localX >= rect.x + rect.width + halfGap ||
+        localY >= rect.y + rect.height + halfGap
+      )
+        continue;
+      const clampedX = Math.min(Math.max(localX, rect.x), rect.x + rect.width - 0.001);
+      const clampedY = Math.min(Math.max(localY, rect.y), rect.y + rect.height - 0.001);
+      const zone = dropZone(rect, clampedX, clampedY);
+      if (zone !== null) return { pane: id, zone };
+    }
   }
   return null;
 }
@@ -51,10 +77,12 @@ export function usePaneDrag(
   box: RefObject<HTMLElement | null>,
   rects: (tab: string) => ReadonlyMap<string, Rect> | undefined,
   onDrop: (tab: string, pane: string, target: PaneDropTarget) => void,
+  pad = 0,
+  onDetach?: (tab: string, pane: string) => void,
 ): PaneDrag {
   const [drag, setDrag] = useState<PaneDragState | null>(null);
-  const latest = useRef({ rects, onDrop });
-  latest.current = { rects, onDrop };
+  const latest = useRef({ rects, onDrop, pad, onDetach });
+  latest.current = { rects, onDrop, pad, onDetach };
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
 
@@ -73,17 +101,40 @@ export function usePaneDrag(
           const travel = Math.max(Math.abs(moved.clientX - startX), Math.abs(moved.clientY - startY));
           if (!moving && travel < PANE_DRAG_THRESHOLD_PX) return;
           moving = true;
+          const detach =
+            latest.current.onDetach !== undefined &&
+            box.current !== null &&
+            moved.clientY < box.current.getBoundingClientRect().top - latest.current.pad;
           setDrag({
             tab,
             pane,
-            target: targetIn(box.current, latest.current.rects(tab), pane, moved.clientX, moved.clientY),
+            detach,
+            target: detach
+              ? null
+              : targetIn(
+                  box.current,
+                  latest.current.rects(tab),
+                  pane,
+                  moved.clientX,
+                  moved.clientY,
+                  latest.current.pad,
+                ),
           });
         };
         const release = (up: PointerEvent): void => {
           if (up.pointerId !== pointerId) return;
-          const target = moving ? targetIn(box.current, latest.current.rects(tab), pane, up.clientX, up.clientY) : null;
+          const detach =
+            moving &&
+            latest.current.onDetach !== undefined &&
+            box.current !== null &&
+            up.clientY < box.current.getBoundingClientRect().top - latest.current.pad;
+          const target =
+            moving && !detach
+              ? targetIn(box.current, latest.current.rects(tab), pane, up.clientX, up.clientY, latest.current.pad)
+              : null;
           end();
-          if (target !== null) latest.current.onDrop(tab, pane, target);
+          if (detach) latest.current.onDetach?.(tab, pane);
+          else if (target !== null) latest.current.onDrop(tab, pane, target);
         };
         const key = (down: KeyboardEvent): void => {
           if (down.key !== "Escape") return;

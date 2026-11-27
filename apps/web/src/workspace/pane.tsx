@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
-import { cn, ContextMenu, IconButton, skipMenuHandler, skipTouchMenu, useShownAfter } from "@doriface/ui";
-import { Columns2, Maximize2, Minimize2, Rows2, X } from "lucide-react";
+import { cn, ContextMenu, IconButton, MenuItem, skipMenuHandler, skipTouchMenu, useShownAfter } from "@doriface/ui";
+import { ArrowUpRight, Columns2, Maximize2, Minimize2, Rows2, X } from "lucide-react";
 import type { Axis } from "@doriface/protocol/layout";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { memo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -31,6 +31,7 @@ export interface PaneProps {
   readonly zoomed: boolean;
   readonly onSplit: (axis: Axis) => void;
   readonly onZoom: () => void;
+  readonly onDetach?: () => void;
   readonly onClose: () => void;
   /** The view showed that its program had already ended when it attached: there is no terminal left to type into. */
   readonly onEnded: (address: string, pid: number | null) => void;
@@ -49,8 +50,9 @@ const PaneButtons = memo(function PaneButtons({
   zoomed,
   onSplit,
   onZoom,
+  onDetach,
   onClose,
-}: Pick<PaneProps, "zoomed" | "onSplit" | "onZoom" | "onClose">) {
+}: Pick<PaneProps, "zoomed" | "onSplit" | "onZoom" | "onDetach" | "onClose">) {
   const right = useActionKeys("pane.split:right");
   const down = useActionKeys("pane.split:down");
   const zoom = useActionKeys("pane.zoom");
@@ -72,6 +74,9 @@ const PaneButtons = memo(function PaneButtons({
         {...(down === undefined ? {} : { keys: down })}
         onClick={() => onSplit("column")}
       />
+      {onDetach === undefined ? null : (
+        <IconButton label="Move to new tab" icon={<ArrowUpRight />} className={small} onClick={onDetach} />
+      )}
       <IconButton
         label={zoomed ? "Show every pane" : "Zoom pane"}
         icon={zoomed ? <Minimize2 /> : <Maximize2 />}
@@ -112,6 +117,7 @@ export function Pane(props: PaneProps) {
     dock,
     onSplit,
     onZoom,
+    onDetach,
     onClose,
     onGrab,
   } = props;
@@ -135,7 +141,10 @@ export function Pane(props: PaneProps) {
       }}
       data-split={split}
       data-focused={focused}
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card [&_.wterm]:transition-opacity [&_.wterm]:duration-(--duration-color)"
+      className={cn(
+        "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card transition-colors duration-(--duration-color) [&_.wterm]:transition-opacity [&_.wterm]:duration-(--duration-color)",
+        split && (focused ? "border border-ring/60" : "border border-border"),
+      )}
     >
       {split ? (
         <ContextMenu
@@ -151,11 +160,12 @@ export function Pane(props: PaneProps) {
               onContextMenu={skipTouchMenu}
               data-pane-grab={onGrab === undefined ? undefined : ""}
               className={cn(
-                "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-0.5 pl-2.5 text-xs transition-colors duration-(--duration-color)",
-                focused ? "bg-raised text-foreground" : "text-muted-foreground",
+                "flex h-7 shrink-0 items-center gap-1.5 border-b border-border pr-0.5 pl-2.5 text-xs transition-colors duration-(--duration-color)",
+                focused ? "bg-raised font-medium text-foreground" : "text-muted-foreground",
                 onGrab !== undefined && "cursor-grab select-none",
               )}
             >
+              {focused ? <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-ring" /> : null}
               <h2 title={title} className="min-w-0 truncate">
                 {title}
               </h2>
@@ -165,10 +175,21 @@ export function Pane(props: PaneProps) {
                   Reconnecting…
                 </span>
               )}
-              <PaneButtons zoomed={zoomed} onSplit={onSplit} onZoom={onZoom} onClose={onClose} />
+              <PaneButtons
+                zoomed={zoomed}
+                onSplit={onSplit}
+                onZoom={onZoom}
+                {...(onDetach === undefined ? {} : { onDetach })}
+                onClose={onClose}
+              />
             </header>
           }
         >
+          {onDetach === undefined ? null : (
+            <MenuItem icon={<ArrowUpRight />} onClick={onDetach}>
+              Move to new tab
+            </MenuItem>
+          )}
           <SessionMenuItems address={terminal.address} />
         </ContextMenu>
       ) : null}

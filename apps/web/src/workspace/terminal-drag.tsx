@@ -15,19 +15,40 @@ import type { TerminalDropTarget } from "./use-terminal-drops.ts";
 /** A held touch that moves this far before it lifts the row was a swipe: the list scrolls and nothing drags. */
 const TOUCH_SLOP_PX = 8;
 
-/** A terminal being dragged from the sidebar: where the pointer is, and the pane it would land on there (none: no drop). */
-export interface TerminalDrag {
-  readonly address: string;
-  readonly name: string;
-  readonly x: number;
-  readonly y: number;
-  readonly target: TerminalDropTarget | null;
-}
+/** A terminal dragged from the sidebar, or a tab dragged from the top tab bar, over the workspace panes. */
+export type TerminalDrag =
+  | {
+      readonly kind: "terminal";
+      readonly address: string;
+      readonly name: string;
+      readonly x: number;
+      readonly y: number;
+      readonly target: TerminalDropTarget | null;
+    }
+  | {
+      readonly kind: "tab";
+      readonly tab: string;
+      readonly name: string;
+      readonly x: number;
+      readonly y: number;
+      readonly target: TerminalDropTarget | null;
+    };
 
-/** The panes a sidebar drag drops on: what lies under a point for a terminal, and the drop itself. */
+/** The panes a sidebar drag or tab-strip drag drops on: what lies under a point, and the drop itself. */
 export interface TerminalDropSurface {
   readonly targetAt: (address: string, x: number, y: number) => TerminalDropTarget | null;
   readonly drop: (address: string, target: TerminalDropTarget) => void;
+  readonly canDropTab: (tabKey: string) => boolean;
+  readonly tabTargetAt: (tabKey: string, x: number, y: number) => TerminalDropTarget | null;
+  readonly dropTab: (tabKey: string, target: TerminalDropTarget) => void;
+}
+
+/** Bridge connecting the top TabBar's outside-drag callbacks to the pane drop surface. */
+export interface TabDropBridge {
+  readonly onDragOutside: (
+    drag: { readonly id: string; readonly title: string; readonly x: number; readonly y: number } | null,
+  ) => boolean;
+  readonly onDropOutside: (id: string, x: number, y: number) => boolean;
 }
 
 /** What a sidebar row needs to be dragged: its pointer press, and the click a drag swallows so a drop never opens it. */
@@ -38,6 +59,7 @@ export interface TerminalGrab {
 
 interface Grabbing extends TerminalGrab {
   readonly surface: { current: TerminalDropSurface | null };
+  readonly tabBridge: TabDropBridge;
 }
 
 const GrabContext = createContext<Grabbing | null>(null);
@@ -69,6 +91,7 @@ export function TerminalDragProvider({ children }: { readonly children: ReactNod
     let armed = !touch;
     let moving = false;
     const at = (x: number, y: number): TerminalDrag => ({
+      kind: "terminal",
       address,
       name,
       x,
@@ -142,9 +165,44 @@ export function TerminalDragProvider({ children }: { readonly children: ReactNod
     event.preventDefault();
   }, []);
 
+  const onTabDragOutside = useCallback<TabDropBridge["onDragOutside"]>((outside) => {
+    if (outside === null) {
+      setDrag((prev) => (prev?.kind === "tab" ? null : prev));
+      return false;
+    }
+    const activeSurface = surface.current;
+    if (activeSurface === null || !activeSurface.canDropTab(outside.id)) {
+      setDrag((prev) => (prev?.kind === "tab" ? null : prev));
+      return false;
+    }
+    setDrag({
+      kind: "tab",
+      tab: outside.id,
+      name: outside.title,
+      x: outside.x,
+      y: outside.y,
+      target: activeSurface.tabTargetAt(outside.id, outside.x, outside.y),
+    });
+    return true;
+  }, []);
+
+  const onTabDropOutside = useCallback<TabDropBridge["onDropOutside"]>((id, x, y) => {
+    const activeSurface = surface.current;
+    const target = activeSurface?.tabTargetAt(id, x, y) ?? null;
+    setDrag((prev) => (prev?.kind === "tab" ? null : prev));
+    if (activeSurface === null || target === null) return false;
+    activeSurface.dropTab(id, target);
+    return true;
+  }, []);
+
   const grabbing = useMemo<Grabbing>(
-    () => ({ onPointerDown, onClickCapture, surface }),
-    [onPointerDown, onClickCapture],
+    () => ({
+      onPointerDown,
+      onClickCapture,
+      surface,
+      tabBridge: { onDragOutside: onTabDragOutside, onDropOutside: onTabDropOutside },
+    }),
+    [onPointerDown, onClickCapture, onTabDragOutside, onTabDropOutside],
   );
   return (
     <GrabContext.Provider value={grabbing}>
@@ -157,15 +215,15 @@ export function TerminalDragProvider({ children }: { readonly children: ReactNod
 }
 
 /**
- * The dragged agent's name beside the pointer, so the person sees what they hold over the panes: below and right of it,
- * or left of it in the window's right quarter, where it would run off the edge.
+ * The dragged agent's or tab's name beside the pointer, so the person sees what they hold over the panes: below and
+ * right of it, or left of it in the window's right quarter, where it would run off the edge.
  */
 function DragChip({ drag }: { readonly drag: TerminalDrag }) {
   const flip = drag.x > window.innerWidth * 0.75;
   return (
     <div
       aria-hidden
-      data-terminal-drag={drag.address}
+      {...(drag.kind === "terminal" ? { "data-terminal-drag": drag.address } : { "data-tab-drag": drag.tab })}
       className="pointer-events-none fixed z-50 max-w-60 truncate rounded-md border border-border bg-popover px-2 py-1 text-sm text-popover-foreground shadow-md"
       style={{
         left: drag.x,
@@ -183,12 +241,17 @@ export function useTerminalGrab(): TerminalGrab | null {
   return useContext(GrabContext);
 }
 
-/** The sidebar drag under way, for the panes to preview its drop. */
+/** Bridge for dragging tabs from the top TabBar onto workspace panes; null outside TerminalDragProvider. */
+export function useTabDropBridge(): TabDropBridge | null {
+  return useContext(GrabContext)?.tabBridge ?? null;
+}
+
+/** The sidebar or tab-bar drag under way, for the panes to preview its drop. */
 export function useTerminalDrag(): TerminalDrag | null {
   return useContext(DragContext);
 }
 
-/** Makes `surface` the panes a sidebar drag drops on, while the caller is mounted. */
+/** Makes `surface` the panes a sidebar or tab-bar drag drops on, while the caller is mounted. */
 export function useTerminalDropSurface(surface: TerminalDropSurface): void {
   const grabbing = useContext(GrabContext);
   const latest = useRef(surface);
@@ -199,6 +262,9 @@ export function useTerminalDropSurface(surface: TerminalDropSurface): void {
     ref.current = {
       targetAt: (address, x, y) => latest.current.targetAt(address, x, y),
       drop: (address, target) => latest.current.drop(address, target),
+      canDropTab: (tabKey) => latest.current.canDropTab(tabKey),
+      tabTargetAt: (tabKey, x, y) => latest.current.tabTargetAt(tabKey, x, y),
+      dropTab: (tabKey, target) => latest.current.dropTab(tabKey, target),
     };
     return () => {
       ref.current = null;

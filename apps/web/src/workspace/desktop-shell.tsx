@@ -1,5 +1,15 @@
 import type { HcConnection } from "@doriface/client";
-import { cn, IconButton, Menu, MenuItem, NeedsYouPill, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
+import {
+  cn,
+  IconButton,
+  Menu,
+  MenuItem,
+  NeedsYouPill,
+  TabBar,
+  type TabBarProps,
+  useToastManager,
+  type WorkspaceTab,
+} from "@doriface/ui";
 import { Columns2, PanelLeft, Rows2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
@@ -38,7 +48,33 @@ import { attachAhead, openingCallsOf } from "../terminal/opening-attach.ts";
 import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
-import { TerminalDragProvider } from "./terminal-drag.tsx";
+import { TerminalDragProvider, useTabDropBridge } from "./terminal-drag.tsx";
+
+/** TabBar wired to TerminalDragProvider so dragging a tab below the strip splits or swaps panes. */
+function WorkspaceTabBar(props: TabBarProps) {
+  const bridge = useTabDropBridge();
+  return (
+    <TabBar
+      {...props}
+      {...(bridge === null
+        ? {}
+        : {
+            onDragOutside: (drag) =>
+              bridge.onDragOutside(
+                drag === null
+                  ? null
+                  : {
+                      id: drag.id,
+                      title: props.tabs.find((tab) => tab.id === drag.id)?.title ?? drag.id,
+                      x: drag.x,
+                      y: drag.y,
+                    },
+              ),
+            onDropOutside: bridge.onDropOutside,
+          })}
+    />
+  );
+}
 
 /** The tab whose button has keyboard focus, which Move tab left/right moves instead of the active one. */
 const focusedTab = (): string | null =>
@@ -355,7 +391,7 @@ export function DesktopShell(props: DesktopShellProps) {
           />
         </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <TabBar
+          <WorkspaceTabBar
             tabs={tabList}
             activeId={layout.active?.key ?? ""}
             {...(newTabKeys === undefined ? {} : { newTabKeys })}

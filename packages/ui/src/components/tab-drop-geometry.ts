@@ -30,6 +30,20 @@ export function landingIndex(slots: readonly Slot[], from: number, offset: numbe
   return slots.filter((slot, index) => index !== from && slot.left + slot.width / 2 < centre).length;
 }
 
+/**
+ * Clamps the dragged tab's visual horizontal offset to the strip's own first-to-last slot span so translating it past
+ * the end never expands `scrollWidth` or triggers runaway auto-scrolling into empty space.
+ */
+export function clampOffset(slots: readonly Slot[], from: number, offset: number): number {
+  const dragged = slots[from];
+  const first = slots[0];
+  const last = slots.at(-1);
+  if (dragged === undefined || first === undefined || last === undefined) return 0;
+  const min = first.left - dragged.left;
+  const max = last.left + last.width - (dragged.left + dragged.width);
+  return Math.min(Math.max(offset, min), max);
+}
+
 /** How far a tab that is not dragged slides aside to make room: one dragged-tab width, or not at all. */
 export function shiftOf(drag: DragState, index: number): number {
   const width = (drag.slots[drag.from]?.width ?? 0) + drag.gap;

@@ -13,6 +13,7 @@ export interface PaneActions {
   readonly focus: (tab: string, pane: string) => void;
   readonly split: (axis: Axis, tab: string, pane: string) => void;
   readonly zoom: (tab: string, pane: string) => void;
+  readonly detach: (tab: string, pane: string) => void;
   readonly close: (address: string) => void;
   readonly end: (address: string, end: TerminalEnd) => void;
   readonly ended: (address: string, pid: number | null) => void;
@@ -44,6 +45,7 @@ function PaneSlot(props: PaneSlotProps) {
   const onFocus = useCallback(() => actions.focus(tab, pane), [actions, tab, pane]);
   const onSplit = useCallback((axis: Axis) => actions.split(axis, tab, pane), [actions, tab, pane]);
   const onZoom = useCallback(() => actions.zoom(tab, pane), [actions, tab, pane]);
+  const onDetach = useCallback(() => actions.detach(tab, pane), [actions, tab, pane]);
   const address = terminal?.address;
   const onClose = useCallback(() => (address === undefined ? undefined : actions.close(address)), [actions, address]);
   if (terminal !== undefined) {
@@ -60,6 +62,7 @@ function PaneSlot(props: PaneSlotProps) {
         zoomed={zoomed}
         onSplit={onSplit}
         onZoom={onZoom}
+        onDetach={onDetach}
         onClose={onClose}
         onEnded={actions.ended}
         onPort={sends.onPort(terminal.address)}
@@ -75,7 +78,7 @@ function PaneSlot(props: PaneSlotProps) {
       data-focused={focused}
       tabIndex={-1}
       onFocus={onFocus}
-      className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-lg border border-border bg-card p-4 text-center text-sm text-muted-foreground"
+      className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-card p-4 text-center text-sm text-muted-foreground"
     >
       {text}
     </section>

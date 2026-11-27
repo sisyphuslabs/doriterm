@@ -16,6 +16,8 @@ export interface PaneDividerProps {
   readonly onDrop: (delta: number) => void;
   /** One arrow key step, or Home and End. */
   readonly onResize: (delta: number) => void;
+  /** Double-clicking the divider resets pane proportions back to equal shares. */
+  readonly onEqualize?: () => void;
 }
 
 /** Hit area beyond the gap's own width on each side, so the line is easy to catch without covering the panes. */
@@ -25,7 +27,15 @@ const REACH = 4;
  * The line between two panes, a WAI-ARIA window splitter: drag it, or focus it and press the arrow keys along its
  * axis (one step each, Home and End for the ends), as Ghostty's resize keys move it from inside a pane.
  */
-export function PaneDivider({ divider, container, position, onPreview, onDrop, onResize }: PaneDividerProps) {
+export function PaneDivider({
+  divider,
+  container,
+  position,
+  onPreview,
+  onDrop,
+  onResize,
+  onEqualize,
+}: PaneDividerProps) {
   const row = divider.axis === "row";
   const length = row ? container.width : container.height;
   const start = useRef<number | null>(null);
@@ -75,6 +85,7 @@ export function PaneDivider({ divider, container, position, onPreview, onDrop, o
       onPointerUp={(event) => finish(event, true)}
       onPointerCancel={(event) => finish(event, false)}
       onLostPointerCapture={(event) => finish(event, false)}
+      onDoubleClick={onEqualize}
       onKeyDown={onKeyDown}
       style={
         row

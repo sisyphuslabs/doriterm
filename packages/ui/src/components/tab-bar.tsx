@@ -4,7 +4,7 @@ import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
 import { Menu } from "./menu.tsx";
 import { useTabActions } from "./tab-actions.ts";
-import { useTabDrag } from "./tab-drag.ts";
+import { useTabDrag, type TabOutsideDrag } from "./tab-drag.ts";
 import { DropCaret, DropIndicator, placement } from "./tab-drop.tsx";
 import { TabItem, type WorkspaceTab } from "./tab-item.tsx";
 import { TabOverflowMenu } from "./tab-overflow-menu.tsx";
@@ -54,6 +54,10 @@ export interface TabBarProps {
   readonly onRename?: (id: string) => void;
   /** Moves a tab so it ends at index `to` of `tabs`; without it tabs neither drag nor offer Move in their menu. */
   readonly onMove?: (id: string, to: number) => void;
+  /** Called while a tab is dragged below the tab strip (or null when returning/ending). Return true to claim the drag. */
+  readonly onDragOutside?: (drag: TabOutsideDrag | null) => boolean;
+  /** Called when a tab detached below the tab strip is released. Return true if the drop was handled. */
+  readonly onDropOutside?: (id: string, x: number, y: number) => boolean;
   /** The New tab shortcut as key chips, from the app's live binding; none when it is unbound. */
   readonly newTabKeys?: readonly string[];
   /** The Move tab left and right shortcuts as key chips, shown in each tab's menu. */
@@ -85,6 +89,8 @@ export function TabBar({
   newMenu,
   onRename,
   onMove,
+  onDragOutside,
+  onDropOutside,
   newTabKeys,
   moveKeys,
   moved,
@@ -124,10 +130,13 @@ export function TabBar({
       const item = list.current?.querySelector(`[data-tab-id="${CSS.escape(id)}"]`);
       item?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
     },
+    ...(onDragOutside === undefined ? {} : { onDragOutside }),
+    ...(onDropOutside === undefined ? {} : { onDropOutside }),
   });
   const pinnedDrag = useTabDrag(pinnedList, ids.slice(0, pins), dragOptions(0));
   const restDrag = useTabDrag(scroller, ids.slice(pins), dragOptions(pins));
   const lifted = pinnedDrag.lifted ?? restDrag.lifted;
+  const detached = pinnedDrag.detached ?? restDrag.detached;
   const touching = (): boolean => pinnedDrag.touching() || restDrag.touching();
 
   // With more tabs than fit, the selected one (a new tab lands after it) scrolls into view; New tab no longer scrolls
@@ -186,6 +195,7 @@ export function TabBar({
         closesOthers={firstUnpinned !== -1 && (lastUnpinned !== index || firstUnpinned !== index)}
         dragging={drag?.id === tab.id}
         lifted={lifted === tab.id}
+        detached={detached === tab.id}
         arrived={drawn.before.has(tab.arrivalKey ?? tab.id)}
         offset={place.offset}
         placeClass={place.className}

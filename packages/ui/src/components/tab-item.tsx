@@ -61,6 +61,8 @@ export interface TabItemProps {
   readonly closesOthers: boolean;
   readonly dragging: boolean;
   readonly lifted: boolean;
+  /** Dragged outside the tab strip (e.g. onto a pane drop zone): kept as a dimmed placeholder in its slot. */
+  readonly detached: boolean;
   /** Drawn before the strip's last change of tabs, so a reorder does not replay its arrival. */
   readonly arrived: boolean;
   readonly offset: number;
@@ -125,6 +127,7 @@ function sameItem(a: TabItemProps, b: TabItemProps): boolean {
     a.closesOthers === b.closesOthers &&
     a.dragging === b.dragging &&
     a.lifted === b.lifted &&
+    a.detached === b.detached &&
     a.arrived === b.arrived &&
     a.offset === b.offset &&
     a.placeClass === b.placeClass &&
@@ -160,6 +163,7 @@ export const TabItem = memo(function TabItem(props: TabItemProps) {
           ? cn("border-border bg-raised text-foreground", pinned ? "pr-2.5" : "pr-1")
           : "border-transparent pr-2.5 text-muted-foreground hover:bg-hover",
         props.lifted && "border-border bg-raised shadow-overlay hover:bg-raised",
+        props.detached && "border-dashed border-border opacity-45",
         props.placeClass,
       )}
     >
