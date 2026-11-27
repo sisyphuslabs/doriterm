@@ -210,7 +210,7 @@ main(Bun.argv.slice(2)).catch((error: unknown) => {
   if (error instanceof StartupError) {
     const hint =
       error.code === "hc-binary-missing" || error.code === "hc-version-failed"
-        ? "doriface-host: `doriface-host --install-hc` installs herdr-core from its checksummed release\n"
+        ? "doriface-host: `doriface-host --install-hc` installs herdr-core from a signature-verified release\n"
         : "";
     process.stderr.write(`doriface-host: ${error.message}\n${hint}${startupErrorLine(error)}\n`);
     process.exit(STARTUP_EXIT_CODES[error.code]);

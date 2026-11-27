@@ -92,7 +92,7 @@ test("a connected machine whose core is below the floor says to update hc there,
   );
   for (const version of ["0.1.16", "hc 0.1.16"]) {
     const cause = machineCause({ name: "box", state: "connected", why: null, version });
-    expect(cause?.title).toBe("box needs an hc update");
+    expect(cause?.title).toBe("box needs a newer herdr-core");
     expect(cause?.detail).toBe(host.replace("Your host's", "box's"));
     expect(cause?.retryless).toBe(true);
   }

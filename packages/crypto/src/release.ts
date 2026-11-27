@@ -1,13 +1,8 @@
 import { ed25519 } from "@noble/curves/ed25519.js";
 
-/**
- * The Ed25519 keys a Doriterm release is signed with (#1969), base64 of the 32 raw public-key bytes. The release's
- * mirror signs SHA256SUMS.txt and each channel's host manifest with the private half, a GitHub environment secret; the
- * host binary checks a manifest against these before it downloads anything, and install.sh asks the binary it just
- * fetched to check SHA256SUMS.txt. Rotation: a release signed by the old key ships a build that trusts both keys, and
- * the next release is signed with the new key only.
- */
-export const RELEASE_PUBLIC_KEYS: readonly string[] = ["gyHmvVxtAxI8+BK2tzpS9fotce5Tx9/KUiAVgEWp7LY="];
+import { RELEASE_PUBLIC_KEYS } from "./release-keys.ts";
+
+export { RELEASE_PUBLIC_KEYS };
 
 const decode = (text: string, length: number): Uint8Array | null => {
   const trimmed = text.trim();

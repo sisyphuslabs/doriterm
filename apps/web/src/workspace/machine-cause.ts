@@ -72,8 +72,8 @@ function coreTooOld(name: string, version: string | undefined): MachineCause | u
   const bare = version?.replace(/^hc /, "");
   if (bare === undefined || !/^\d+\.\d+/.test(bare) || meetsHcFloor(bare)) return undefined;
   return {
-    title: `${name} needs an hc update`,
-    detail: `${name}'s herdr-core is ${bare}, and Doriterm needs ${HC_VERSION_FLOOR} or newer. Run hc update on that computer.`,
+    title: `${name} needs a newer herdr-core`,
+    detail: `${name}'s herdr-core is ${bare}, and Doriterm needs ${HC_VERSION_FLOOR} or newer. Run doriface-host --install-hc on that computer.`,
     retryless: true,
   };
 }

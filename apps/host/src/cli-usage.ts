@@ -15,7 +15,7 @@ export const USAGE = `usage: doriface-host [options]
 
   --listen <host:port>  where to listen (default 127.0.0.1:7766, or any free port for a profile; loopback only)
   --hc <path>           the herdr-core binary (default hc)
-  --install-hc          install (or update) herdr-core into ~/.local/bin from its checksummed release, then exit
+  --install-hc          install (or update) herdr-core into ~/.local/bin from a release Doriterm signed (signature-verified), then exit
   --session <name>      the hc session to reach (hc connect --session; a profile's default is doriterm-<profile>)
   --token <token>       the client token (default $DORIFACE_HOST_TOKEN, else 32 random bytes)
   --print-token         print the token on stdout once listening

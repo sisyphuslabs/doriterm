@@ -19,15 +19,15 @@ describe("why the host cannot be reached, in plain words (#477)", () => {
   test.each([
     [
       { kind: "core-too-old", version: "0.1.15", need: "0.1.17" } as const,
-      "Your host's herdr-core is 0.1.15, and Doriterm needs 0.1.17 or newer. Run hc update on that computer.",
+      "Your host's herdr-core is 0.1.15, and Doriterm needs 0.1.17 or newer. Run doriface-host --install-hc on that computer.",
     ],
     [
       { kind: "core-older", generation: 0, need: "0.1.17" } as const,
-      "Your host's herdr-core is too old for Doriterm, which needs 0.1.17 or newer. Run hc update on that computer.",
+      "Your host's herdr-core is too old for Doriterm, which needs 0.1.17 or newer. Run doriface-host --install-hc on that computer.",
     ],
     [
       { kind: "core-missing", methods: ["terminal.keys"], need: "0.1.17" } as const,
-      "Your host's herdr-core is missing terminal.keys, which Doriterm needs. Run hc update on that computer.",
+      "Your host's herdr-core is missing terminal.keys, which Doriterm needs. Run doriface-host --install-hc on that computer.",
     ],
     [
       { kind: "core-newer", generation: 2 } as const,
