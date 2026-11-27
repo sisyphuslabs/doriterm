@@ -90,10 +90,10 @@ test("an update a program opens in answer to the resize is held across an in-win
   const { frames, timers, holds, pacer } = drag();
   pacer.resized(COLS);
   timers.advance(10);
-  pacer.push(new Uint8Array([...text(OPEN), ...bytes(KIB)]));
+  pacer.push(new Uint8Array([...text(OPEN), ...bytes(SCREEN)]));
   frames.nextFrame();
   timers.advance(180);
-  pacer.push(bytes(KIB));
+  pacer.push(bytes(SCREEN));
   frames.nextFrame();
   // 900 ms after its last bytes, under the 1 s window: still being drawn.
   timers.advance(900);
