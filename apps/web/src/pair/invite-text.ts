@@ -16,12 +16,12 @@ export function inviteIn(text: string): string {
 }
 
 /**
- * Added to "used already" on an iPhone Home Screen app: tapping an invite there opens it in Safari, whose storage is
+ * Added to "used already" on an iPhone or iPad Home Screen app: tapping an invite there opens it in Safari, whose storage is
  * separate, so Safari pairs and spends it and pasting the same invite here is refused (Q, 2026-11-27).
  */
 export function usedInSafariHint(installedOnIos: boolean): string {
   return installedOnIos
-    ? " On iPhone, tapping an invite opens it in Safari and uses it there: ask for a new code and type it into this app."
+    ? " On iPhone and iPad, tapping an invite opens it in Safari and uses it there: ask for a new code and type it into this app."
     : "";
 }
 
