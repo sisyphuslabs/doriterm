@@ -20,13 +20,17 @@ export const meshCallsOf = (connection: HcConnection, roster: Roster): MeshCalls
   doc: (name, on) => connection.call("doc.get", on === undefined ? { name } : { name, on }),
   setDoc: (name, value, version, on) =>
     connection.call("doc.set", on === undefined ? { name, value, version } : { name, on, value, version }),
-  // The roster keeps a failed read as `error` beside the machines it read before; the mesh read says it failed (#1876).
-  machines: () =>
-    roster.refreshMachines().then(() => {
-      const { views, error } = roster.snapshot.machines;
-      if (error !== undefined) throw new Error(error);
-      return views;
-    }),
+  // The roster's own list, which it reads again when a machine changes, after a gap and on its timer: a read forced here
+  // on every mesh refresh, now that the join card follows the mesh on the workspace, lands during a machine's reconnect
+  // and cost that machine's layout its spaces (#2944, unavailable-actions.e2e.ts). Only a roster that has listed nothing
+  // yet is asked. The roster keeps a failed read as `error` beside the machines it read before; the mesh read says it
+  // failed (#1876).
+  machines: async () => {
+    if (roster.snapshot.machines.listed === 0) await roster.refreshMachines();
+    const { views, error } = roster.snapshot.machines;
+    if (error !== undefined) throw new Error(error);
+    return views;
+  },
 });
 
 /**
