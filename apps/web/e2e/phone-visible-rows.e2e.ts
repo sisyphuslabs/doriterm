@@ -151,7 +151,9 @@ for (const width of [390, 320]) {
       const actions = page.getByRole("dialog", { name: LONG_TAB });
       const row = actions.getByRole("button", { name: `Switch tab, rows, ${LONG_TAB}, tab 1 of 3`, exact: true });
       await expect(row).toHaveText("Tabs1/3");
-      expect((await laidOutBox(row)).height).toBeGreaterThanOrEqual(44);
+      // 44 pt, read from fractional layout: a 44 px row can measure 43.99997 after subpixel rounding, while a row that is
+      // really short misses by a pixel or more. The 0.01 px allowance absorbs the rounding, never a short row.
+      expect((await laidOutBox(row)).height).toBeGreaterThanOrEqual(44 - 0.01);
       await row.click();
       await expect(actions).toHaveCount(0);
       const sheet = page.getByRole("dialog", { name: "Switch" });
