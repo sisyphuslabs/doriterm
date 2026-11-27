@@ -36,6 +36,7 @@ export class SessionLink implements ByteLink {
   readonly sessionId: number;
   /** The slot of an IKpsk2 pairing session (the client dialed `?pair=<slot>`); undefined for an ordinary session. */
   readonly pairSlot: string | undefined;
+  readonly restore: boolean;
   readonly #transport: SessionTransport;
   readonly #inbox: Inbox;
   readonly #closed = new CloseSignal();
@@ -45,9 +46,10 @@ export class SessionLink implements ByteLink {
   #uncredited = 0;
   #answered = false;
 
-  constructor(sessionId: number, pairSlot: string | undefined, transport: SessionTransport) {
+  constructor(sessionId: number, pairSlot: string | undefined, transport: SessionTransport, restore = false) {
     this.sessionId = sessionId;
     this.pairSlot = pairSlot;
+    this.restore = restore;
     this.#transport = transport;
     this.#inbox = new Inbox(
       (error) => this.#end(error instanceof Error ? error : new Error(String(error)), true),

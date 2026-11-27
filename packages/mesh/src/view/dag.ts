@@ -1,7 +1,7 @@
 // The record DAG the view is computed over. `id` is the record hash; every tie the contract breaks on hashes is
 // broken on `id`, by code unit (the same as bytewise for base64url).
 
-import type { RecordType } from "../records/types.ts";
+import type { MemberKind, RecordType, RevokeReason } from "../records/types.ts";
 import { History } from "./chain.ts";
 import { DagError } from "./dag-error.ts";
 
@@ -13,6 +13,7 @@ export interface Card {
   readonly noise: string;
   readonly name: string;
   readonly nonce: string;
+  readonly kind?: MemberKind | undefined;
 }
 
 export interface Rec {
@@ -29,10 +30,17 @@ export interface Rec {
   readonly card?: Card;
   /** name: the new mesh name. */
   readonly name?: string;
+  readonly reason?: RevokeReason;
+  readonly readmit?: {
+    readonly old: string;
+    readonly at: number;
+    readonly continuity: boolean;
+    readonly approver?: string | undefined;
+  };
 }
 
 export const subjectsOf = (r: Rec): readonly string[] => r.subjects ?? (r.subject === undefined ? [] : [r.subject]);
-export const isAdmission = (r: Rec): boolean => r.type === "found" || r.type === "admit";
+export const isAdmission = (r: Rec): boolean => r.type === "found" || r.type === "admit" || r.type === "readmit";
 
 /** A past-closed set of record ids as the rules read it: membership only. */
 export interface RecordSet {

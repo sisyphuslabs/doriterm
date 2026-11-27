@@ -41,4 +41,5 @@ export {
   type UplinkState,
 } from "./uplink.ts";
 export { WebSocketLink } from "./websocket-link.ts";
+export { readRestoreMessage, restoreLink } from "./restore-link.ts";
 export * from "./wire/index.ts";

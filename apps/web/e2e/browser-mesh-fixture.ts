@@ -48,6 +48,9 @@ export function browserMeshFixture() {
     a.sign.secretKey,
   );
   return {
+    holder: a,
+    secondHolder: b,
+    browser,
     membership: {
       meshId: mesh,
       records: [found, second, admit],

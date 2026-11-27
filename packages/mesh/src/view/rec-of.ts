@@ -1,7 +1,7 @@
 // From stored signed records to the abstract records the engine evaluates. The door has already checked signatures
 // and cards; a record that no longer parses is left out, and so is every record whose past is not complete.
 
-import { cardOf, hashOf, parseRecord, verifyCard } from "../records/codec.ts";
+import { hashOf, memberCardOf, parseRecord } from "../records/codec.ts";
 import type { Signed } from "../records/types.ts";
 import type { Card, Rec } from "./dag.ts";
 
@@ -25,9 +25,8 @@ function parse(record: Signed): Rec | undefined {
   const base = { id: hashOf(record), type: body.type, by: body.by, n: body.n, prev: body.prev };
   const subject = body.subject;
   if (subject === undefined) return base;
-  if ("card" in subject) {
-    const raw = cardOf(body);
-    const c = raw === undefined ? undefined : verifyCard(raw);
+  if (body.type === "readmit" || "card" in subject) {
+    const c = memberCardOf(body);
     if (c === undefined) return undefined;
     const card: Card = {
       by: c.signPub,
@@ -36,11 +35,21 @@ function parse(record: Signed): Rec | undefined {
       noise: c.noisePub,
       name: c.name,
       nonce: c.nonce,
+      kind: c.kind,
     };
-    return { ...base, subject: c.signPub, card };
+    const readmit =
+      body.type === "readmit"
+        ? {
+            old: body.subject.old,
+            at: body.subject.at,
+            continuity: body.subject.oldSig !== undefined,
+            approver: body.subject.approval?.by,
+          }
+        : undefined;
+    return { ...base, subject: c.signPub, card, ...(readmit === undefined ? {} : { readmit }) };
   }
-  if ("signPubs" in subject) return { ...base, subjects: subject.signPubs };
-  return { ...base, subject: subject.signPub, name: subject.name };
+  if ("signPubs" in subject) return { ...base, subjects: subject.signPubs, reason: subject.reason };
+  return "name" in subject ? { ...base, subject: subject.signPub, name: subject.name } : undefined;
 }
 
 /** The past-closed records of `set` reachable from its one found record; undefined without exactly one found. */

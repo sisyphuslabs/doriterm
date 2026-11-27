@@ -59,7 +59,7 @@ function splitLine(payload: Uint8Array): {
  * device pairing and `"mesh"` a machine join. `"mcp"` (contract v1.12) is a session's Model Context Protocol stream:
  * JSON-RPC lines served by the host to a key that holds an MCP grant, and to no other key.
  */
-export type Stream = "hc" | "mesh" | "push" | "roster" | "mcp";
+export type Stream = "hc" | "mesh" | "push" | "roster" | "mcp" | "restore-owner";
 
 /** The mesh and push streams start with their own lines, so their message 1 carries no early bytes. */
 const takesEarly = (stream: Stream | undefined): boolean => stream === undefined || stream === "hc";
@@ -87,7 +87,8 @@ function streamOf(value: unknown, pairing: boolean): Stream | undefined {
   if (
     value === undefined ||
     value === "mesh" ||
-    ((value === "hc" || value === "push" || value === "roster" || value === "mcp") && !pairing)
+    ((value === "hc" || value === "push" || value === "roster" || value === "mcp" || value === "restore-owner") &&
+      !pairing)
   )
     return value;
   throw new PayloadError(`stream ${JSON.stringify(value)} is not valid on a ${pairing ? "pairing" : "session"}`);

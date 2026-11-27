@@ -52,7 +52,7 @@ export const admitOf = (card: Signed, n = 2, prev = [hashOf(F)]): Signed =>
   signRecord({ v: 2, mesh: MESH, type: "admit", by: A.pub, n, prev, subject: { card } }, A.secret);
 export const aB = admitOf(signCard(cardBody(B, MESH, A.pub, 2), B.secret));
 export const stored: readonly Signed[] = [F, aB];
-export const record = (body: Omit<RecordBody, "v" | "mesh">, k: TestKey = A): Signed =>
+export const record = (body: Omit<Extract<RecordBody, { v: 2 }>, "v" | "mesh">, k: TestKey = A): Signed =>
   signRecord({ v: 2, mesh: MESH, ...body }, k.secret);
 export const reason = (r: Signed, set: readonly Signed[] = stored): string | undefined => {
   const result = door(r, set);

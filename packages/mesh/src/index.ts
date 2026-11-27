@@ -7,6 +7,8 @@ export {
   cardOf,
   encodeBody,
   hashOf,
+  isKey,
+  memberCardOf,
   meshIdOf,
   parseRecord,
   signCard,
@@ -27,12 +29,27 @@ export {
   RECORD_TYPES,
   type RecordBody,
   type RecordType,
+  READMIT_RECORD_VERSION,
   REVOKE_REASONS,
   type RevokeReason,
   type RevokeSubject,
   type Signed,
   type Subject,
 } from "./records/types.ts";
+export {
+  approveReadmit,
+  parseReadmit,
+  parseReadmitApproval,
+  readmitApprovalMessage,
+  readmitCode,
+  signBundleChallenge,
+  signReadmit,
+  verifyBundleChallenge,
+  verifyReadmit,
+  type ReadmitApproval,
+  type ReadmitFields,
+  type ReadmitSubject,
+} from "./records/readmit.ts";
 export { canonicalOrder } from "./view/canonical.ts";
 export { type View, ViewCache, viewOf } from "./view/engine.ts";
 export type { EngineView } from "./view/membership.ts";

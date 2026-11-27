@@ -52,6 +52,8 @@ export function sessionPeer(
     }
   }
   const mesh = meshPeer(index, base64urlEncode(key));
+  if (stream === "restore-owner")
+    return mesh?.kind === "client" ? mesh : { kind: "refused", reason: "restore requires a current client key" };
   // Each stream decides explicitly, per kind: a client is a member of the roster but not a dialer, so the mesh stream
   // must never admit one, and the push stream keeps serving only a device entry (design of #942).
   if (stream === "mesh") {

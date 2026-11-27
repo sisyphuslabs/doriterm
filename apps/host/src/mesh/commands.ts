@@ -184,7 +184,7 @@ export class MeshCommands {
     return view;
   }
 
-  #sign(tx: MeshTx, meshId: string, type: RecordBody["type"], subject: Subject): Signed {
+  #sign(tx: MeshTx, meshId: string, type: Extract<RecordBody, { v: 2 }>["type"], subject: Subject): Signed {
     checkFloor(tx.records, this.#self, this.deps.hooks.floor());
     const at = new Date().toISOString();
     return tx.sign(this.deps.identity, (n, prev) => ({

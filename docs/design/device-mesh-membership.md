@@ -138,6 +138,10 @@ offer for machines.
 
 ### 4.3 Client invites always ask
 
+The separately reviewed [passkey restore](passkey-restore.md) is the `readmit` exception. It authorizes a fresh client
+key with continuity from the old client and, when the preceding view names another client, that client's verified
+approval. An ordinary invite is unchanged.
+
 An offer opened for a browser never auto-admits. A link sent through a messenger can leak, and the browser's membership
 is owner-equivalent on every machine (revision 4 §4). So a client is admitted only on an offer that carries the join
 code's commitment (§9), always through the pending-join decision, which shows the code. `serveJoin` **refuses** a
@@ -315,6 +319,10 @@ anywhere.
   states this.
 
 ### 7.1 The iOS home-screen app has its own storage
+
+[Passkey restore](passkey-restore.md) only enrolls a WebKit identity whose device and card keys are already raw. The
+holder envelope wraps the card key alone and cannot be used to open a session. Neither a durable CryptoKey nor the vault
+key is exported. Restore replaces both the device and card keys with fresh keys.
 
 On iOS, **Add to Home Screen** makes a web app whose storage (IndexedDB, Cache Storage, cookies) is a separate partition
 from Safari's, though the origin is the same. A browser that joined in Safari therefore opens the installed app with no
@@ -696,6 +704,11 @@ Settings' **Pair a device** becomes **Add a browser or phone** (§4.2). The host
 web builds.
 
 ## 12. Threat model
+
+[Passkey restore](passkey-restore.md) adds a provider-account risk: someone with the passkey and its locator can attempt
+readmission. A mesh with no other current client and no live old client permits unattended readmission. Other meshes
+require signed approval from another current client, including when all such clients are offline. The relay sees holder
+routes, but not the credential, lookup id, or signed roster.
 
 | threat                                                                            | answer                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

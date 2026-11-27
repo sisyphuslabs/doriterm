@@ -22,6 +22,7 @@ const copy = (record: Signed): string => `${hashOf(record)} ${record.sig}`;
 /** The signPub a stored found or admit lets sign: the subject of its card. */
 function admittedKey(record: Signed): string | undefined {
   const body = parseRecord(record);
+  if (body?.type === "readmit") return body.subject.signPub;
   if (body?.type !== "found" && body?.type !== "admit") return undefined;
   const card = cardOf(body);
   return card === undefined ? undefined : verifyCard(card)?.signPub;

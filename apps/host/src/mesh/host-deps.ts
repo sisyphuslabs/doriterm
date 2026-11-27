@@ -3,6 +3,7 @@ import type { PlanPolicy } from "@doriface/policy";
 import type { CreateSocket, RelayProofs } from "@doriface/relay-client";
 import type { LiveSessions } from "../e2ee/sessions.ts";
 import type { PairingSlots } from "../pairing-slots.ts";
+import { RestoreService } from "../restore/service.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import { monotonicClock } from "./clock.ts";
 import { MeshCommands } from "./commands.ts";
@@ -75,7 +76,11 @@ export function meshDeps(options: MeshDepsOptions) {
     }));
   const hooks = options.hooks ?? syncHooks(sync, monotonicClock, pending);
   hostMesh.sweepRoster();
+  const restore = new RestoreService({ stateDir, identity, mesh, sessions, sync });
   return {
+    restore,
+    restoreOwner: (secure: SecureLink) => restore.owner(secure),
+    restoreTouch: (secure: SecureLink) => restore.touch(secure),
     hooks,
     hostMesh,
     resumeKey: (key: string) => hostMesh.resumeKey(key),

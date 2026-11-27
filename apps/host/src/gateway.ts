@@ -43,6 +43,8 @@ export interface GatewayOptions {
         readonly sessions: LiveSessions;
         readonly meshStream?: MeshStreamHandler;
         readonly rosterStream?: MeshStreamHandler;
+        readonly restoreOwner?: MeshStreamHandler;
+        readonly restoreTouch?: (secure: SecureLink) => void;
         /** Every authenticated session, so a member's hc line counts as its presence (section 8.2). */
         readonly meshPresence?: MeshStreamHandler;
       })
@@ -231,6 +233,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     }
     const secure = await acceptE2ee(wire, { ...e2ee, speculative: options.speculative }, transport);
     if (secure === undefined) return;
+    e2ee.restoreTouch?.(secure);
     e2ee.meshPresence?.(secure);
     if (secure.stream === "mesh") return serveMesh(secure);
     if (secure.stream === "roster") {
@@ -239,6 +242,11 @@ export function createGateway(options: GatewayOptions): Gateway {
       return;
     }
     if (secure.stream === "push") return servePush(secure);
+    if (secure.stream === "restore-owner") {
+      if (e2ee.restoreOwner === undefined) secure.close(1000, "this host serves no restore owner stream");
+      else e2ee.restoreOwner(secure);
+      return;
+    }
     if (secure.stream === "mcp") return serveMcp(secure);
     // A pairing session is not gated by authorize's session limit, yet the new device keeps it as its workspace.
     const room =

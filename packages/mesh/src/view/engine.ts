@@ -202,6 +202,8 @@ export interface View {
   readonly name: ReadonlyMap<string, string>;
   /** Hashes of the records that count. */
   readonly eff: ReadonlySet<string>;
+  /** The replaced client key and the signed restore time, even when its successor conflicts. */
+  readonly restoredOld?: ReadonlyMap<string, number> | undefined;
 }
 
 const EMPTY: View = {
@@ -230,5 +232,17 @@ export function viewOf(set: readonly Signed[], cache?: ViewCache): View {
     governing: v.governing,
     name: v.name,
     eff: v.eff,
+    ...(v.restoredOld.size === 0 ? {} : { restoredOld: v.restoredOld }),
   };
+}
+
+/** The door checks readmission against its DAG past, never against what happened to arrive first. */
+export function validReadmitRecord(candidate: Signed, set: readonly Signed[]): boolean {
+  const records = recordsOf([...set, candidate]);
+  if (records === undefined) return false;
+  const record = records.at(-1);
+  if (record?.type !== "readmit") return false;
+  const dag = new Dag(records);
+  void dag.index;
+  return valid(new Engine(dag), record.id);
 }

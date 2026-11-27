@@ -272,19 +272,24 @@ export class Uplink {
       ws.send(encodeClose(frame.sessionId, CloseCode.RateLimited));
       return this.#options.onRefused?.({ sessionId: frame.sessionId, reason: "pending_cap" });
     }
-    const link = new SessionLink(frame.sessionId, frame.pairSlot, {
-      sendFrame: (out) => {
-        if (!isOpen(ws)) return false;
-        ws.send(out);
-        return true;
+    const link = new SessionLink(
+      frame.sessionId,
+      frame.pairSlot,
+      {
+        sendFrame: (out) => {
+          if (!isOpen(ws)) return false;
+          ws.send(out);
+          return true;
+        },
+        release: (sessionId) => this.#sessions.delete(sessionId),
+        answer: (sessionId) => {
+          if (this.#active() < MAX_ACTIVE_SESSIONS) return true;
+          this.#options.onRefused?.({ sessionId, reason: "active_cap" });
+          return false;
+        },
       },
-      release: (sessionId) => this.#sessions.delete(sessionId),
-      answer: (sessionId) => {
-        if (this.#active() < MAX_ACTIVE_SESSIONS) return true;
-        this.#options.onRefused?.({ sessionId, reason: "active_cap" });
-        return false;
-      },
-    });
+      frame.restore,
+    );
     this.#sessions.set(frame.sessionId, link);
     this.#options.onSession(link);
   }

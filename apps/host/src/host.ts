@@ -99,7 +99,14 @@ async function serve(
   if (e2ee !== undefined && stateDir !== undefined)
     started(
       "revocation watch",
-      watchRevocations(stateDir, () => e2ee.sessions.closeRevoked(), options.log),
+      watchRevocations(
+        stateDir,
+        () => {
+          e2ee.sessions.closeRevoked();
+          e2ee.restore.prune();
+        },
+        options.log,
+      ),
     );
   const push =
     stateDir === undefined || e2ee === undefined
@@ -235,6 +242,11 @@ async function serve(
   if (uplink !== undefined) started("relay uplink", () => uplink.stop());
   await uplink?.start({
     onSession: (session) => {
+      if (session.restore) {
+        if (e2ee === undefined) session.close();
+        else void e2ee.restore.anonymous(session);
+        return;
+      }
       gateway
         .serveE2ee(new RelaySessionWire(session), { kind: "relay", openSlot: session.pairSlot })
         .catch((error: unknown) => {
