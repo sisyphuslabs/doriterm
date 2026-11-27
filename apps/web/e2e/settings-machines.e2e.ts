@@ -16,8 +16,10 @@ test.describe("Settings, Machines", () => {
     });
     const added = list.getByRole("listitem").filter({ hasText: MACHINE_NAME });
     await expect(added).toContainText("Connected", { timeout: STATE_BOUND_MS });
-    await page.getByRole("button", { name: "Add a machine" }).click();
-    const dialog = page.getByRole("dialog", { name: "Add a machine" });
+    await page.getByRole("button", { name: "Connect a device" }).click();
+    const dialog = page.getByRole("dialog", { name: "Connect a device" });
+    // A computer joins from the Computer tab; the sheet opens on a phone or browser.
+    await dialog.getByRole("button", { name: "Computer", exact: true }).click();
     await expect(dialog).toContainText("doriface-host pair");
     await dialog.getByRole("button", { name: "Done" }).click();
     await expect(dialog).toBeHidden();
@@ -47,7 +49,7 @@ test.describe("Settings, Machines", () => {
   test.describe("on a phone", () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-    test("the list and Add a machine lead the first screen, with the explanation below them (#1007)", async ({
+    test("the list and Connect a device lead the first screen, with the explanation below them (#1007)", async ({
       page,
     }) => {
       await page.goto("/settings#machines");
@@ -58,7 +60,7 @@ test.describe("Settings, Machines", () => {
       // The list leads: its heading sits in the screen's top third, not under a screenful of explanation.
       const heading = await page.getByRole("heading", { name: "Machines", level: 2 }).boundingBox();
       expect(heading?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(viewport.height / 3);
-      const add = page.getByRole("button", { name: "Add a machine" });
+      const add = page.getByRole("button", { name: "Connect a device" });
       for (const target of [list.getByRole("listitem").first(), add]) {
         // oxlint-disable-next-line no-await-in-loop -- each target is measured on the same settled screen
         const box = await target.boundingBox();

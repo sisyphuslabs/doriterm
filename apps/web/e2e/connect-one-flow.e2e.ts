@@ -1,4 +1,4 @@
-// #2795: Add a machine and Pair a host are one flow. The same dialog shows the line to run on the other machine AND takes
+// #2795, #2939: connecting a computer and pairing a host are one flow. The same dialog shows the line to run on the other machine AND takes
 // an invite for this side; this app's own line pasted back is refused before any handshake, so it still works where it
 // belongs: in the other machine's terminal.
 import type { Page } from "@playwright/test";
@@ -16,8 +16,10 @@ async function pair(page: Page, host: FakeRelayHost): Promise<void> {
 }
 
 async function openAddMachine(page: Page) {
-  await page.getByRole("button", { name: "Add machine" }).click({ timeout: 60_000 });
-  const dialog = page.getByRole("dialog", { name: "Add a machine" });
+  await page.getByRole("button", { name: "Connect a device" }).click({ timeout: 60_000 });
+  const dialog = page.getByRole("dialog", { name: "Connect a device" });
+  // A computer joins from the Computer tab; the sheet opens on a phone or browser.
+  await dialog.getByRole("button", { name: "Computer", exact: true }).click();
   const command = dialog.getByLabel("Join command");
   await expect(command).toBeVisible({ timeout: 30_000 });
   return { dialog, line: (await command.innerText()).trim() };

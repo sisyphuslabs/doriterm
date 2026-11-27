@@ -113,7 +113,7 @@ export class BrowserJoin {
           reason: refusedResume
             ? "Ask for a new invite"
             : reason === JOIN_NO_COMMIT
-              ? "This machine needs an update, or this is an Add a machine invite. Ask for an invite for a browser with doriface-host mesh pair."
+              ? "This machine needs an update, or this invite is for a computer. Ask for one for a phone or browser in Connect a device."
               : reason,
         });
       }

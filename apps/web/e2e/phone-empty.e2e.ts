@@ -27,7 +27,7 @@ test("with no terminals the phone says so and offers a new terminal and adding a
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
   const empty = page.getByRole("status").filter({ hasText: "No terminals yet" });
   await expect(empty).toBeVisible({ timeout: 15_000 });
-  await expect(empty.getByRole("button", { name: "Add a machine" })).toBeVisible();
+  await expect(empty.getByRole("button", { name: "Connect a device" })).toBeVisible();
   await empty.getByRole("button", { name: "New terminal" }).click();
   await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible({ timeout: 15_000 });
 

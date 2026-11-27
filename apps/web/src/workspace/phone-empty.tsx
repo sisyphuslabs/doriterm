@@ -19,7 +19,7 @@ export function PhoneEmpty({ host, onNew, onAddMachine }: PhoneEmptyProps) {
           <Button variant="primary" onClick={onNew}>
             New terminal
           </Button>
-          <Button onClick={onAddMachine}>Add a machine</Button>
+          <Button onClick={onAddMachine}>Connect a device</Button>
         </>
       }
     />

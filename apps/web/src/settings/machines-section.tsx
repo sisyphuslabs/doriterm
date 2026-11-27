@@ -5,7 +5,7 @@ import { Button, Notice, SettingRow, cn } from "@doriface/ui";
 import { Monitor, Plus, Server } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useConnection } from "../connection/store.ts";
-import { AddMachineDialog } from "../workspace/add-machine-dialog.tsx";
+import { ConnectDeviceDialog } from "../workspace/connect-device-dialog.tsx";
 import { machineCause } from "../workspace/machine-cause.ts";
 import { RemoveMachineButton, removable } from "../workspace/remove-machine.tsx";
 import { RetryButton } from "../workspace/retry-button.tsx";
@@ -134,7 +134,7 @@ function MachineRows({ connection, onAdd }: { readonly connection: HcConnection;
       <div>
         <Button onClick={onAdd}>
           <Plus aria-hidden />
-          Add a machine
+          Connect a device
         </Button>
       </div>
     </div>
@@ -149,7 +149,7 @@ function MachineJoinDialog({
   readonly onClose: () => void;
 }) {
   const { entries } = useMachines(connection, NO_TERMINALS);
-  return <AddMachineDialog open onClose={onClose} connection={connection} machines={entries} />;
+  return <ConnectDeviceDialog open onClose={onClose} connection={connection} machines={entries} />;
 }
 
 /** Every machine this host reaches, this one first: its state, and when it was last seen and why when it is offline. */

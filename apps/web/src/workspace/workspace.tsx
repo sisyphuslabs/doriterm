@@ -9,7 +9,7 @@ import type { Axis } from "@doriface/protocol/layout";
 import { closesTab, type TerminalEnd } from "../terminal/terminal-end.ts";
 import { CloseTabDialog } from "./close-tab-dialog.tsx";
 import { stillClosing } from "./close-set.ts";
-import { AddMachineDialog } from "./add-machine-dialog.tsx";
+import { ConnectDeviceDialog } from "./connect-device-dialog.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
 import { usePhoneRoute } from "./use-phone-route.ts";
 import { DesktopShell } from "./desktop-shell.tsx";
@@ -544,7 +544,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
               autoCorrect="off"
               spellCheck={false}
             />
-            <AddMachineDialog
+            <ConnectDeviceDialog
               open={adding}
               onClose={() => setAdding(false)}
               connection={connection}
