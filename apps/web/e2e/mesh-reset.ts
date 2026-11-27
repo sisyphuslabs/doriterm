@@ -6,9 +6,14 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { setCoreDoc } from "./core-doc.ts";
 
-export function resetMeshDocs(): void {
-  const printed = execFileSync("bun", [join(import.meta.dirname, "mesh-doc.ts")], { encoding: "utf8" });
-  const value: unknown = JSON.parse(printed);
+/**
+ * With `open` (the default) a join waits for approval: the specs about joins want it. Every such spec puts the start
+ * state back (`{ open: false }`) when it ends, because a waiting join raises the approval card over every screen of
+ * every later spec in the worker (#2939).
+ */
+export function resetMeshDocs({ open = true }: { readonly open?: boolean } = {}): void {
+  const args = [join(import.meta.dirname, "mesh-doc.ts"), ...(open ? ["open"] : [])];
+  const value: unknown = JSON.parse(execFileSync("bun", args, { encoding: "utf8" }));
   setCoreDoc(MESH_STATUS_DOC, value);
   setCoreDoc(MESH_APPROVAL_DOC, {});
 }

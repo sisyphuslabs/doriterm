@@ -1,12 +1,13 @@
 import type { HcConnection } from "@doriface/client";
 import type { MeshStatus } from "@doriface/protocol";
-import { Notice, SettingRow, Skeleton, cn } from "@doriface/ui";
+import { Notice, SettingRow, Skeleton } from "@doriface/ui";
 import { type ReactNode, useSyncExternalStore } from "react";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
 import { MemberRow } from "../mesh/mesh-rows.tsx";
+import { holderOf } from "../mesh/mesh-reader.ts";
 import { useMesh } from "../mesh/use-mesh.ts";
 import { MeshPicker } from "./mesh-picker.tsx";
 import { useNow } from "../workspace/use-now.ts";
@@ -16,18 +17,16 @@ interface MeshGroupProps {
   readonly id: string;
   readonly title: string;
   readonly count: number;
-  /** The owner has to act: the header takes the blocked status ink, as Needs you does in the sidebar. */
-  readonly urgent?: boolean;
   readonly children: ReactNode;
 }
 
-function MeshGroup({ id, title, count, urgent = false, children }: MeshGroupProps) {
+function MeshGroup({ id, title, count, children }: MeshGroupProps) {
   if (count === 0) return null;
   return (
     <Subgroup
       id={`mesh-${id}`}
       data-mesh-group={id}
-      className={cn("flex items-baseline gap-2", urgent && "text-status-blocked-text")}
+      className="flex items-baseline gap-2"
       title={
         <>
           {title}
@@ -103,9 +102,9 @@ export function MeshBody({
     case "ready":
       break;
   }
-  const { status, machines, answered } = read;
+  const { status, machines, requests, unread } = read;
   const nameOf = namesIn(status);
-  const groups = meshGroups(status, now);
+  const groups = meshGroups(status, requests, now);
   const self = nameOf(status.self);
   return (
     <div className={sectionStackClass}>
@@ -115,25 +114,29 @@ export function MeshBody({
           {`${self} reaches the other machines through its own relay only, and nowhere without one; it opens no direct link to them. A machine row says whether a session to it is open now.`}
         </p>
       ) : null}
-      <MeshGroup id="pending" title="Waiting for approval" count={groups.pending.length} urgent>
-        {groups.pending.map((join) => (
+      <MeshGroup id="pending" title="Waiting for approval" count={groups.pending.length}>
+        {groups.pending.map((request) => (
           <PendingRow
-            key={join.nonce}
-            join={join}
-            self={self}
+            key={request.join.nonce}
+            join={request.join}
+            holder={holderOf(request, status)}
             now={now}
-            answered={answered}
-            onAnswer={(verdict) => answer(join.nonce, verdict, join.code)}
+            answered={request.answered}
+            onAnswer={(verdict) => answer(request, verdict)}
           />
         ))}
       </MeshGroup>
+      {unread.length === 0 ? null : (
+        <p data-mesh-unread className="text-prose text-muted-foreground">
+          {`Join requests on ${unread.join(", ")} could not be read; any waiting there are not shown.`}
+        </p>
+      )}
       {groups.removed.map((removal) => (
         <MeshGroup
           key={removal.revokedKey.hostId}
           id={`removed-${removal.revokedKey.hostId}`}
           title="Removed by an undecidable revoke"
           count={removal.members.length}
-          urgent
         >
           <RemovedRows removal={removal} />
         </MeshGroup>
@@ -158,8 +161,8 @@ export function MeshBody({
         </>
       ) : null}
       <MeshGroup id="expired" title="Expired join requests" count={groups.expired.length}>
-        {groups.expired.map((join) => (
-          <ExpiredJoinRow key={join.nonce} join={join} self={self} now={now} />
+        {groups.expired.map((request) => (
+          <ExpiredJoinRow key={request.join.nonce} join={request.join} holder={holderOf(request, status)} now={now} />
         ))}
       </MeshGroup>
     </div>
