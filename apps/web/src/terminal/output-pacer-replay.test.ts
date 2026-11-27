@@ -164,11 +164,12 @@ describe("OutputPacer holding an attach replay (D5)", () => {
     );
     pacer.replay({ srtt: () => 300, hold: (held) => holds.push(held) });
     pacer.push(bytes(256 * KIB));
-    // The page ran nothing for 2 s: the quiet window's timer runs that late, with the next window queued behind it.
+    // The page ran nothing for 2 s: the quiet window's timer runs that late, with the next window queued behind it, posted
+    // before it ran (a task registered now, due with it, runs after it).
     stalled = 2000;
+    timers.timer(() => pacer.push(bytes(256 * KIB)), 500);
     timers.advance(500);
     expect(holds).toEqual([true]);
-    pacer.push(bytes(256 * KIB));
     timers.advance(499);
     expect(holds).toEqual([true]);
     timers.advance(1);

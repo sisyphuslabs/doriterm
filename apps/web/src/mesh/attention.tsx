@@ -1,28 +1,28 @@
 import type { MeshPendingJoin, MeshRemovedStatus, MeshStatus, MeshStuckReason } from "@doriface/protocol";
 import { Button, Fingerprint, Notice, SettingRow, cn } from "@doriface/ui";
-import { useState } from "react";
 import { rowValueClass } from "../settings/settings-layout.tsx";
 import { formatAge } from "../workspace/model.ts";
 import { type Disagreement, type PendingAnswer, approvalConsequence, pendingAnswer } from "./groups.ts";
 import { Command, type NameOf } from "./mesh-rows.tsx";
 import type { Answered } from "./mesh-reader.ts";
 import type { Verdict } from "./use-mesh.ts";
+import { useJoinAnswer } from "./use-join-answer.ts";
 
 /** What an owner runs on an affected machine to found a fresh mesh after a fail-closed removal (design section 3.7). */
 export const REFOUND_COMMAND = "doriface-host mesh leave && doriface-host mesh pair";
 
 export interface ExpiredJoinRowProps {
   readonly join: MeshPendingJoin;
-  readonly self: string;
+  readonly holder: string;
   readonly now: number;
 }
 
 /** A join whose offer ended: it takes no answer, so the row has none to give. */
-export function ExpiredJoinRow({ join, self, now }: ExpiredJoinRowProps) {
+export function ExpiredJoinRow({ join, holder, now }: ExpiredJoinRowProps) {
   return (
     <SettingRow
       title={`${join.name} asked to join`}
-      description={`through ${self}; its offer ended ${formatAge(Date.parse(join.expiresAt), now)} ago`}
+      description={`through ${holder}; its offer ended ${formatAge(Date.parse(join.expiresAt), now)} ago`}
       control={
         <span data-row-value className={rowValueClass} data-mesh-answer="expired">
           Expired
@@ -34,59 +34,52 @@ export function ExpiredJoinRow({ join, self, now }: ExpiredJoinRowProps) {
 
 export interface PendingRowProps {
   readonly join: MeshPendingJoin;
-  readonly self: string;
+  /** The machine that holds the join, whose approval document answers it. */
+  readonly holder: string;
   readonly now: number;
-  /** This host's answer document, whichever join it names; the row reads it only for its own join. */
+  /** The holder's answer document, when it names this join. */
   readonly answered: Answered | undefined;
   readonly onAnswer: (verdict: Verdict) => Promise<void>;
 }
 
-/** What a row that takes no answer says: the host's word on the last one, never more than the host said (#2936). */
-function settledText(state: Exclude<PendingAnswer, "open" | "expired">, name: string, self: string): string {
+/** What a join that takes no answer says: the host's word on the last one, never more than the host said (#2936). */
+export function settledText(state: Exclude<PendingAnswer, "open" | "expired">, name: string, holder: string): string {
   switch (state) {
     case "sending":
-      return `Sending the answer to ${self}`;
+      return `Sending the answer to ${holder}`;
     case "approve":
       return `Waiting for ${name} to confirm the code`;
     case "deny":
       return "Denied: the codes differed. Open a new invite.";
     case "gone":
-      return `${self} no longer holds this join: it expired or was answered elsewhere. Open a new invite.`;
+      return `${holder} no longer holds this join: it expired or was answered elsewhere. Open a new invite.`;
   }
 }
 
-export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowProps) {
-  const [busy, setBusy] = useState<Verdict | undefined>(undefined);
-  const [failure, setFailure] = useState<string | undefined>(undefined);
-  const send = (verdict: Verdict): void => {
-    setBusy(verdict);
-    setFailure(undefined);
-    // onAnswer settles after the documents are read again, so the buttons stay disabled until the row shows what the
-    // approval document holds now; if another writer replaced the answer by then, the row takes an answer again.
-    onAnswer(verdict).then(
-      () => setBusy(undefined),
-      (error: unknown) => {
-        setBusy(undefined);
-        setFailure(error instanceof Error ? error.message : String(error));
-      },
-    );
-  };
+/** The holder's reason for refusing the last answer to this join, when it refused one. */
+export const refusalText = (
+  join: MeshPendingJoin,
+  holder: string,
+  answered: Answered | undefined,
+): string | undefined =>
+  answered?.nonce === join.nonce && answered.outcome.kind === "refused"
+    ? `${holder} refused that answer: ${answered.outcome.reason}`
+    : undefined;
+
+export function PendingRow({ join, holder, now, answered, onAnswer }: PendingRowProps) {
+  const { busy, failure, send } = useJoinAnswer(onAnswer);
   const left = Date.parse(join.expiresAt) - now;
   const state = pendingAnswer(join, now, answered);
-  const refusal =
-    answered?.nonce === join.nonce && answered.outcome.kind === "refused"
-      ? `${self} refused that answer: ${answered.outcome.reason}`
-      : undefined;
-  const shownFailure = failure ?? refusal;
+  const shownFailure = failure ?? refusalText(join, holder, answered);
   const consequence = approvalConsequence(join.kind, join.name);
   // The offer can end while the row is up, before the groups move it.
-  if (state === "expired") return <ExpiredJoinRow join={join} self={self} now={now} />;
+  if (state === "expired") return <ExpiredJoinRow join={join} holder={holder} now={now} />;
   return (
     <SettingRow
       title={`Approve "${join.name}" (${join.kind === "client" ? "browser" : "machine"})?`}
       description={
         <>
-          <span className="block">{`through ${self}, offer open for ${formatAge(0, left)} more`}</span>
+          <span className="block">{`through ${holder}, offer open for ${formatAge(0, left)} more`}</span>
           {join.code === undefined ? (
             <span className="block">Update the inviting machine to compare a join code.</span>
           ) : (
@@ -138,7 +131,7 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             className={cn("inline-flex min-h-(--control) items-center", rowValueClass)}
             data-mesh-answer={state}
           >
-            {settledText(state, join.name, self)}
+            {settledText(state, join.name, holder)}
           </span>
         )
       }

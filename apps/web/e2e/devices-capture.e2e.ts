@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 const OUT = join(import.meta.dirname, "../../../docs/design/app");
 const SHOTS = [
@@ -26,6 +27,7 @@ async function openPairedDevices(page: Page): Promise<void> {
   const socket = await routeHcSocket(page);
   const paired = pairedDevices(page);
   await page.goto("/settings");
+  await openSettingsSection(page, "This device");
   await expect(paired).toContainText("Connected", { timeout: 30_000 });
   await socket.drop(true);
   await expect(paired).toContainText(/Your host isn't (answering|connected right now)/, { timeout: 30_000 });

@@ -2,13 +2,13 @@ import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { machineState, REDIAL_BOUND_MS } from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
-// The Settings rows that are not SettingRows keep the scale's roles too (#2878, #2882 review): a list row is at least
-// 48 px and pads no more than SettingRow, a trailing value is the prose token, and an answer reserves the --control
-// height. Each case first requires its role set to be drawn, so a renamed hook fails instead of passing on nothing.
+// The Settings rows that are not SettingRows keep the scale's roles too (#2878, #2882 review, #2914): a list row is at
+// least --settings-row-min and pads no more than SettingRow, a trailing value is the row title's size
+// (--settings-row-title, as the Herdr apps draw it), and an answer reserves the --control height. Each case first requires its role set to be drawn, so a renamed hook fails instead of passing on nothing.
 test.use({ serviceWorkers: "block" });
 
-const ROW_FLOOR = 48;
 const ROW_PADDING_CEILING = 14;
 
 interface Roles {
@@ -21,12 +21,11 @@ interface Roles {
 /** Each row and value under `scope` that misses its role, by its text, and how many of each were drawn. */
 async function roles(scope: Locator, rowSelector: string, valueSelector: string): Promise<Roles> {
   return scope.evaluate(
-    (root, [rowsAt, valuesAt, floor, ceiling]) => {
-      const probe = document.createElement("p");
-      probe.className = "text-prose";
-      document.body.append(probe);
-      const prose = Number.parseFloat(getComputedStyle(probe).fontSize);
-      probe.remove();
+    (root, [rowsAt, valuesAt, ceiling]) => {
+      const tokens = getComputedStyle(document.documentElement);
+      const rem = Number.parseFloat(tokens.fontSize);
+      const floor = Number.parseFloat(tokens.getPropertyValue("--settings-row-min")) * rem;
+      const valueSize = Number.parseFloat(tokens.getPropertyValue("--settings-row-title")) * rem;
       // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function as source, so its helpers live inside it
       const name = (el: Element): string => el.textContent?.trim().slice(0, 32) ?? "?";
       const rows = [...root.querySelectorAll(rowsAt)];
@@ -38,11 +37,11 @@ async function roles(scope: Locator, rowSelector: string, valueSelector: string)
       });
       const badValues = values.flatMap((value) => {
         const size = Number.parseFloat(getComputedStyle(value).fontSize);
-        return size === prose ? [] : [`${name(value)}: ${size}px, prose is ${prose}px`];
+        return size === valueSize ? [] : [`${name(value)}: ${size}px, the value token is ${valueSize}px`];
       });
       return { rows: badRows, values: badValues, rowCount: rows.length, valueCount: values.length };
     },
-    [rowSelector, valueSelector, ROW_FLOOR, ROW_PADDING_CEILING] as const,
+    [rowSelector, valueSelector, ROW_PADDING_CEILING] as const,
   );
 }
 
@@ -50,20 +49,16 @@ async function expectRoles(scope: Locator, rowSelector: string, valueSelector: s
   const found = await roles(scope, rowSelector, valueSelector ?? ":not(*)");
   expect(found.rowCount, `rows drawn for ${rowSelector}`).toBeGreaterThan(0);
   if (valueSelector !== null) expect(found.valueCount, `values drawn for ${valueSelector}`).toBeGreaterThan(0);
-  expect(found.rows, "rows at least 48 px, padded no more than SettingRow").toEqual([]);
-  expect(found.values, "trailing values in the prose token").toEqual([]);
+  expect(found.rows, "rows at least --settings-row-min, padded no more than SettingRow").toEqual([]);
+  expect(found.values, "trailing values in the value token").toEqual([]);
 }
 
 const settingsView = (page: Page) => page.getByRole("dialog", { name: "Settings" });
 
-async function openSection(page: Page, width: number, section: string): Promise<Locator> {
+async function openSection(page: Page, section: string): Promise<Locator> {
   await page.goto("/settings");
-  const settings = settingsView(page);
-  await settings
-    .getByRole(width === 390 ? "tab" : "button", { name: section, exact: true })
-    .first()
-    .click();
-  return settings;
+  await openSettingsSection(page, section);
+  return settingsView(page);
 }
 
 for (const width of [390, 1440] as const) {
@@ -72,19 +67,19 @@ for (const width of [390, 1440] as const) {
     test.use(width === 390 ? phone : { viewport: { width: 1440, height: 900 } });
 
     test("Settings > Keyboard link rows and their values keep the roles", async ({ page }) => {
-      const settings = await openSection(page, width, "Keyboard");
+      const settings = await openSection(page, "Keyboard");
       await expectRoles(settings, "[data-list-row]", "[data-row-value]");
     });
 
     test("Settings > Keyboard's edited lists keep the row role", async ({ page }) => {
-      const settings = await openSection(page, width, "Keyboard");
+      const settings = await openSection(page, "Keyboard");
       await settings.getByRole("button", { name: "Edit", exact: true }).click();
       await expect(settings.locator("[data-edit-key]").first()).toBeVisible();
       await expectRoles(settings, "[data-edit-key], [data-restore-key]", null);
     });
 
     test("the Packs sheet keeps the row and value roles", async ({ page }) => {
-      const settings = await openSection(page, width, "Keyboard");
+      const settings = await openSection(page, "Keyboard");
       await settings.getByRole("button", { name: /^Packs/ }).click();
       const sheet = page.getByRole("dialog", { name: "Packs" });
       await expect(sheet.locator("[data-pack-row]").first()).toBeVisible();
@@ -109,7 +104,7 @@ for (const width of [390, 1440] as const) {
       resetMeshDocs();
       try {
         await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
-        const settings = await openSection(page, width, "Machines");
+        const settings = await openSection(page, "Machines");
         const open = settings.locator('[data-mesh-answer="open"]');
         await expect(open).toBeVisible({ timeout: 20_000 });
         const control = await open.evaluate(() => {
@@ -138,11 +133,76 @@ for (const width of [390, 1440] as const) {
         ).toBeGreaterThanOrEqual(control);
         await expectRoles(settings, '[data-mesh-group="pending"] [data-setting-row]', '[data-mesh-answer="gone"]');
       } finally {
-        resetMeshDocs();
+        resetMeshDocs({ open: false });
       }
     });
   });
 }
+
+// On a phone's card a row's divider runs from its text to the card's trailing edge (#2914): every row on a drawn card
+// ends exactly at the card's edge, whichever row primitive draws it.
+async function rowsShortOfEdge(scope: Locator): Promise<{ readonly rows: number; readonly short: readonly string[] }> {
+  return scope.evaluate((root) => {
+    const short: string[] = [];
+    let rows = 0;
+    for (const row of root.querySelectorAll<HTMLElement>(
+      "[data-settings-card] [data-list-row], [data-settings-card] [data-setting-row]",
+    )) {
+      const card = row.closest<HTMLElement>("[data-settings-card]");
+      if (card === null || getComputedStyle(card).backgroundColor === "rgba(0, 0, 0, 0)") continue;
+      const box = row.getBoundingClientRect();
+      if (box.width === 0) continue;
+      rows += 1;
+      const gap = card.getBoundingClientRect().right - box.right;
+      if (Math.abs(gap) > 0.5)
+        short.push(`${row.textContent?.trim().slice(0, 32) ?? "?"}: ${gap}px from the card's edge`);
+    }
+    return { rows, short };
+  });
+}
+
+test.describe("390 phone rows reach their card's edge", () => {
+  const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
+  test.use(phone);
+
+  test("Settings > Keyboard in Edit, its empty-state rows included", async ({ page }) => {
+    const settings = await openSection(page, "Keyboard");
+    await settings.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(settings.locator("[data-edit-key]").first()).toBeVisible();
+    const found = await rowsShortOfEdge(settings);
+    expect(found.rows, "rows on cards").toBeGreaterThan(0);
+    expect(found.short).toEqual([]);
+  });
+
+  test("Settings > This device", async ({ page }) => {
+    const settings = await openSection(page, "This device");
+    await expect(settings.locator("[data-setting-row]").first()).toBeVisible();
+    const found = await rowsShortOfEdge(settings);
+    expect(found.rows, "rows on cards").toBeGreaterThan(0);
+    expect(found.short).toEqual([]);
+  });
+});
+
+test.describe("390 phone Terminal choices", () => {
+  const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
+  test.use(phone);
+
+  test("every segmented control on Settings > Terminal keeps its choices on one line (#2920 review)", async ({
+    page,
+  }) => {
+    const settings = await openSection(page, "Terminal");
+    const groups = settings.locator('[data-slot="settings-body"] [data-setting-row] [role="group"]');
+    await expect(groups.first()).toBeVisible();
+    const wrapped = await groups.evaluateAll((all) =>
+      all.flatMap((group) => {
+        const tops = new Set([...group.children].map((choice) => Math.round(choice.getBoundingClientRect().top)));
+        return tops.size > 1 ? [`${group.getAttribute("aria-label") ?? "?"}: ${tops.size} lines`] : [];
+      }),
+    );
+    expect(await groups.count()).toBeGreaterThan(0);
+    expect(wrapped).toEqual([]);
+  });
+});
 
 test.describe("390 phone toolbar", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -150,7 +210,7 @@ test.describe("390 phone toolbar", () => {
 
   for (const section of ["Terminal", "Keybindings"] as const) {
     test(`Settings > ${section}: Tab walks the toolbar in the order it is drawn`, async ({ page }) => {
-      const settings = await openSection(page, 390, section);
+      const settings = await openSection(page, section);
       const field = settings.locator('[data-slot="settings-body"] input[type=search]');
       await expect(field).toBeVisible();
       // Every control, disabled ones too (Reset all is disabled until something changed): DOM order is drawn order.
