@@ -3,6 +3,7 @@
 import { devices, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { expect, test } from "./fixtures.ts";
+import { settingsSection } from "./settings-sections.ts";
 
 // Any port: a session's second and third sockets dial the relay's other HTTPS ports (#1418).
 const PRODUCTION = /^wss:\/\/relay-doriface\.omo\.dev(:\d+)?\//;
@@ -80,7 +81,7 @@ test.describe("capture", () => {
         await (
           width === "1440"
             ? page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "This device" })
-            : page.getByRole("tab", { name: "This device" })
+            : settingsSection(page, "This device")
         ).click();
         await expect(page.getByText("relay-doriface.omo.dev", { exact: true })).toBeVisible();
         await page.evaluate(() => document.fonts.ready);

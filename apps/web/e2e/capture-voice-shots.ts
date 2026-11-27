@@ -56,7 +56,7 @@ export const VOICE_SHOTS: readonly Shot[] = [
         .or(page.getByRole("button", { name: "Voice input" }))
         .first()
         .click();
-      await expect(page.getByRole("heading", { name: "Voice input", level: 2 })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Voice input", exact: true })).toBeVisible();
     },
   },
   {

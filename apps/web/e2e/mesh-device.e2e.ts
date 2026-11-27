@@ -1,5 +1,6 @@
 import { expect, test, devices } from "@playwright/test";
 import { browserMeshFixture } from "./browser-mesh-fixture.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 for (const phone of [false, true]) {
   test(`joined ${phone ? "phone" : "desktop"} owns its device and lists every machine`, async ({
@@ -33,6 +34,7 @@ for (const phone of [false, true]) {
         db.close();
       }, browserMeshFixture());
       await page.goto("/settings");
+      await openSettingsSection(page, "This device");
       await expect(page.getByText("my-browser", { exact: true })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Host", exact: true })).toHaveCount(0);
       await expect(page.getByText("This machine", { exact: true })).toHaveCount(0);
@@ -41,11 +43,7 @@ for (const phone of [false, true]) {
         path: info.outputPath(`this-device-${phone ? "phone" : "desktop"}.png`),
         fullPage: true,
       });
-      await page
-        .getByRole("tab", { name: "Machines", exact: true })
-        .or(page.getByRole("button", { name: "Machines", exact: true }))
-        .first()
-        .click();
+      await openSettingsSection(page, "Machines");
       await expect(page.getByRole("list", { name: "Machines", exact: true })).toContainText("studio");
       await expect(page.getByRole("list", { name: "Machines", exact: true })).toContainText("workshop");
       await expect(page.getByText("my-browser (this browser)", { exact: true })).toBeVisible();

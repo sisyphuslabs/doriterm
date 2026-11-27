@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block" });
@@ -14,6 +15,8 @@ for (const width of [1440, 390]) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/settings");
+    // A phone opens on the list of sections; the host's state is on This device (#2914).
+    await openSettingsSection(page, "This device");
     await expect(page.getByText(CAUSE).filter({ visible: true }).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/\(1006\)/).filter({ visible: true })).toHaveCount(0);
   });

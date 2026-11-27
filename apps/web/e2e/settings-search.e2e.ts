@@ -1,4 +1,5 @@
 import { devices, type Page } from "@playwright/test";
+import { pickFile } from "./file-input.ts";
 import { expect, test } from "./fixtures.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -55,6 +56,55 @@ test.describe("desktop: matching settings (#1528)", () => {
     await expect.poll(() => landed.evaluate((row) => row.contains(document.activeElement))).toBe(true);
   });
 
+  test("landing on a changed key focuses its control, never its Reset, and Space keeps the value (#2920 review)", async ({
+    page,
+  }) => {
+    await page.goto("/settings#terminal");
+    const style = settings(page).getByRole("group", { name: "cursor-style" });
+    await style.getByRole("button", { name: "bar", exact: true }).click();
+    await expect(style.getByRole("button", { name: "bar", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const reset = settings(page).getByRole("button", { name: "Reset cursor-style" });
+    await expect(reset).toBeVisible();
+    await field(page).fill("cursor");
+    const hits = settings(page).getByRole("region", { name: "Matching settings" });
+    await hits.getByRole("button", { name: /^cursor-style Terminal/ }).click();
+    const landed = settings(page).locator("[data-setting-landed]");
+    await expect(landed).toHaveCount(1);
+    await expect
+      .poll(() =>
+        landed.evaluate(
+          (row) => row.querySelector("[data-setting-control]")?.contains(document.activeElement) ?? false,
+        ),
+      )
+      .toBe(true);
+    await expect(reset).not.toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(style.getByRole("button", { name: "bar", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(reset).toBeVisible();
+  });
+
+  test("landing on a set key this build does not apply focuses the row, never its Reset (#2920 review)", async ({
+    page,
+  }) => {
+    await page.goto("/settings#terminal");
+    await pickFile(page, "Import Ghostty config…", "config", "minimum-contrast = 3\n");
+    const preview = page.getByRole("dialog", { name: "Import this Ghostty config?" });
+    await preview.getByRole("button", { name: "Import", exact: true }).click();
+    await expect(preview).toHaveCount(0);
+    const reset = settings(page).getByRole("button", { name: "Reset minimum-contrast" });
+    await expect(reset).toBeVisible();
+    await field(page).fill("minimum-contrast");
+    const hits = settings(page).getByRole("region", { name: "Matching settings" });
+    await hits.getByRole("button", { name: /^minimum-contrast Terminal/ }).click();
+    const landed = settings(page).locator("[data-setting-landed]");
+    await expect(landed).toHaveCount(1);
+    await expect.poll(() => landed.evaluate((row) => document.activeElement === row)).toBe(true);
+    await expect(reset).not.toBeFocused();
+    await page.keyboard.press("Space");
+    // The imported value survives: Reset still shows, so the key is still set.
+    await expect(reset).toBeVisible();
+  });
+
   test("keybinds finds the keybinding import, and picking it focuses that button (#1472)", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "Settings" }).click();
@@ -86,12 +136,12 @@ test.describe("phone", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use(phone);
 
-  test("the phone's section tabs narrow to the sections that hold the words (#1460)", async ({ page }) => {
+  test("the phone's list of sections narrows to the sections that hold the words (#1460)", async ({ page }) => {
     await page.goto("/settings");
     await field(page).fill("relay");
-    const tabs = settings(page).getByRole("tablist");
-    await expect(tabs.getByRole("tab", { name: "This device" })).toBeVisible();
-    await expect(tabs.getByRole("tab")).toHaveCount(1);
+    const list = settings(page).locator("[data-settings-list]");
+    await expect(list.getByRole("button", { name: "This device" })).toBeVisible();
+    await expect(list.getByRole("button")).toHaveCount(1);
   });
 
   test("a tapped match opens its section with that row in view (#1528)", async ({ page }) => {
