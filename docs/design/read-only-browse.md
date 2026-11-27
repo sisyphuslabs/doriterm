@@ -64,16 +64,17 @@ switch and the app would still need the gesture.
 
 ## What the person sees
 
-- Keyboard down, on a touch device: a round **Read-only** button sits beside the round keyboard button. Tapping it
-  puts the terminal in read-only browsing: the keyboard button goes, the browse button reads pressed, and a chip at the
-  top of the terminal says `Read-only`. A mouse-only window (no soft keyboard, #287) never shows the button: shift-drag
-  is its way to select under a tracking program.
+- On a touch device, the header's session sheet ("...") has a **Read-only** row (#2879; it was a round button beside
+  the keyboard button, which cost the terminal a row of its own). Picking it puts the terminal in read-only browsing:
+  the keys go, a round **Read-only** button shows pressed at the bottom right, and a chip at the top of the terminal
+  says `Read-only`. A mouse-only window (no soft keyboard, #287) has no such row: shift-drag is its way to select under
+  a tracking program.
 - While browsing: one finger scrolls the scrollback, a held finger selects the word under it and a drag from there
   takes what it reaches, lifting offers **Copy** (Paste is not offered: nothing is written). A tap does nothing to the
   program and raises no keyboard. The key bar and the header mic stay away: there is nothing to type into.
-- Tapping the pressed button ends browsing. Opening another terminal ends it too. A terminal that ended or an
+- Tapping the pressed button ends browsing, and it goes with it. Opening another terminal ends it too. A terminal that ended or an
   offline machine has nothing to browse read-only, so the control is not shown there.
-- One accessible name for the mode: the button and the chip both say **Read-only**.
+- One accessible name for the mode: the sheet's row, the button and the chip all say **Read-only**.
 
 Scope stays the screen: a bound key from a hardware keyboard that sends bytes (`send:` actions) is a deliberate act and
 is not gated by browsing.

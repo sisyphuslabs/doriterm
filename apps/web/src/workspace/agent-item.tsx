@@ -76,6 +76,7 @@ export interface AgentItemProps {
   readonly disclosure: boolean;
   readonly parentName?: string;
   readonly folded: boolean;
+  readonly foldDisabled: boolean;
   readonly foldCount: number;
   readonly foldBlocked: number;
   readonly foldUrgency: AgentStatus;
@@ -95,6 +96,7 @@ export const AgentItem = memo(function AgentItem({
   disclosure,
   parentName,
   folded,
+  foldDisabled,
   foldCount,
   foldBlocked,
   foldUrgency,
@@ -129,6 +131,7 @@ export const AgentItem = memo(function AgentItem({
       <AgentFold
         name={agent.name}
         folded={folded}
+        disabled={foldDisabled}
         count={foldCount}
         blocked={foldBlocked}
         urgency={foldUrgency}

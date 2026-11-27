@@ -79,7 +79,7 @@ export function UpdateChannelRow({ setting }: { readonly setting: UpdateSetting 
               onValueChange={change}
             />
           )}
-          <Button size="sm" disabled={busy} onClick={() => void setting.check()}>
+          <Button disabled={busy} onClick={() => void setting.check()}>
             Check now
           </Button>
         </div>

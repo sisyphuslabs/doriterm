@@ -55,7 +55,7 @@ export function e2eeDeps(
     slots,
     sessions,
     policy,
-    live: { count: () => sessions.count() },
+    live: { count: (replacing?: string) => sessions.count(replacing) },
     ...meshParts,
     rekeyInterval: options.rekeyInterval,
     log: options.log,

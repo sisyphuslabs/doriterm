@@ -1,6 +1,7 @@
-import { Button } from "@doriface/ui";
+import { Button, cn } from "@doriface/ui";
 import { type KeyboardEvent, useEffect } from "react";
 import type { SettingHit } from "./setting-rows.ts";
+import { SectionHeader, rowValueClass } from "./settings-layout.tsx";
 import { SECTIONS } from "./settings-sections.tsx";
 
 const sectionLabel = (hit: SettingHit): string => SECTIONS.find((each) => each.id === hit.section)?.label ?? "";
@@ -26,7 +27,7 @@ export function SettingHits(props: {
 }) {
   return (
     <section aria-label="Matching settings" data-setting-hits className="flex flex-col">
-      <h2 className="pb-1 text-xl font-semibold text-foreground">Matching settings</h2>
+      <SectionHeader title="Matching settings" />
       <ul className="flex flex-col">
         {props.hits.map((hit) => (
           <li key={`${hit.section}:${hit.title}`} className="border-b border-border last:border-b-0">
@@ -34,13 +35,18 @@ export function SettingHits(props: {
               variant="ghost"
               onClick={() => props.onOpen(hit)}
               onKeyDown={(event) => stepHits(event, props.onLeave)}
-              className="h-auto w-full flex-col items-start gap-0.5 px-2 py-2.5 text-left"
+              data-list-row
+              className="h-auto min-h-12 w-full flex-col items-start justify-center gap-0.5 px-2 py-2.5 text-left"
             >
               <span className="flex w-full items-baseline justify-between gap-3">
                 <span className="text-base text-foreground">{hit.title}</span>
-                <span className="shrink-0 text-sm text-muted-foreground">{sectionLabel(hit)}</span>
+                <span data-row-value className={cn("shrink-0", rowValueClass)}>
+                  {sectionLabel(hit)}
+                </span>
               </span>
-              <span className="line-clamp-1 text-sm font-normal text-muted-foreground">{hit.detail}</span>
+              <span data-row-value className={cn("line-clamp-1 font-normal", rowValueClass)}>
+                {hit.detail}
+              </span>
             </Button>
           </li>
         ))}

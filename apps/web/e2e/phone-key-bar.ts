@@ -1,6 +1,6 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { coreSize, gridSize } from "./core-size.ts";
-import { expect } from "./fixtures.ts";
+import { expect, opened } from "./fixtures.ts";
 
 const { defaultBrowserType: _browser, ...iphone } = devices["iPhone 14"];
 export const PHONE = { ...iphone, viewport: { width: 390, height: 844 } };
@@ -87,6 +87,43 @@ export async function scrollDocument(page: Page, px: number): Promise<void> {
   await page.evaluate((offset) => (Reflect.get(window, "scrollDocument") as (px: number) => void)(offset), px);
 }
 
+/**
+ * Resizes the page as a phone does for its keyboard, split screen or a rotation, and returns once the page has handled
+ * that size: its next window resize, listened for before the size changes, after the app's own listener. Sizes set back
+ * to back otherwise reach the page as one resize, which a phone never sends: the keyboard logic then sees a rotation and
+ * the keyboard closing as one change (#2553). `size` must differ from the page's size now, or no resize comes.
+ */
+export async function resizeSeen(page: Page, size: { readonly width: number; readonly height: number }): Promise<void> {
+  await page.evaluate(() => {
+    Reflect.set(
+      window,
+      "__resizeSeen",
+      new Promise<void>((resolve) => window.addEventListener("resize", () => resolve(), { once: true })),
+    );
+  });
+  await page.setViewportSize(size);
+  await page.evaluate(() => Reflect.get(window, "__resizeSeen") as Promise<void>);
+}
+
+/**
+ * Taps `tap` and resizes the page for the keyboard it raises, at one moment on the page's clock: a phone's keyboard
+ * comes up right after the tap, and the page counts a shrink as the keyboard only within KEYBOARD_REQUEST_MS of it. A
+ * loaded runner can spend longer than that between the two steps (4.5 s measured, #2553); with the clock paused, that
+ * time never reaches the page. Needs `page.clock.install()` before the page loads. The pause lands ten seconds ahead of
+ * the page's time as last read, past any delay between that read and the pause, so it never asks the clock to go back;
+ * the jump fires each timer due by then once, as ten seconds passing would.
+ */
+export async function keyboardFromTap(
+  page: Page,
+  tap: Locator,
+  size: { readonly width: number; readonly height: number },
+): Promise<void> {
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10_000);
+  await tap.click();
+  await resizeSeen(page, size);
+  await page.clock.resume();
+}
+
 export async function showKeyboard(page: Page, px: number): Promise<void> {
   await page.evaluate((height) => (Reflect.get(window, "softKeyboard") as (px: number) => void)(height), px);
 }
@@ -148,6 +185,47 @@ export async function settledGrid(page: Page, terminal: Locator): Promise<void> 
       { timeout: 10_000 },
     )
     .toBeNull();
+}
+
+/** The round Read-only button: shown, pressed, only while the terminal is browsed read-only; a tap ends browsing. */
+export const readOnlyButton = (page: Page) => page.locator('button[aria-label="Read-only"]');
+
+/** Turns read-only browsing on as a person does: the header's session sheet, then its Read-only row (#2879). */
+export async function startBrowsing(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /^Session actions for / }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("button", { name: "Read-only", exact: true }).click();
+  await expect(readOnlyButton(page)).toHaveAttribute("aria-pressed", "true");
+  // A gesture is the terminal's once the sheet and its backdrop have left the screen.
+  await expect(sheet).toHaveCount(0);
+}
+
+const portrait = (page: Page): boolean => (page.viewportSize()?.width ?? 0) < 430;
+
+/**
+ * The tabs switch (#2879): the header's chip from 430 px, else the "..." session sheet's Tabs row, which this opens. Its
+ * accessible name is "Switch tab, <space>, <title>, tab n of m"; its text ends in "n/m".
+ */
+export async function tabSwitch(page: Page): Promise<Locator> {
+  const header = page.getByRole("banner");
+  if (!portrait(page)) return header.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
+  await header.getByRole("button", { name: /^Session actions for / }).click();
+  // Measured at rest: a frame of the sheet's open transition reads a row a hair under 44 (#583).
+  await opened(page.getByRole("dialog"));
+  return page.getByRole("dialog").getByRole("button", { name: /^Switch tab, / });
+}
+
+/** Checks the tabs switch without using it; on a portrait phone the session sheet opens for the check and closes after. */
+export async function expectTabSwitch(page: Page, check: (tabs: Locator) => Promise<void>): Promise<void> {
+  await check(await tabSwitch(page));
+  if (!portrait(page)) return;
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
+/** Opens the switch sheet as a person does: the chip, or the session sheet's Tabs row. */
+export async function openTabSwitch(page: Page): Promise<void> {
+  await (await tabSwitch(page)).click();
 }
 
 export const keysBar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });

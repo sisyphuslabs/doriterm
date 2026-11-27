@@ -1,6 +1,6 @@
-import { Badge, Button, Dialog, Input, Notice, cn, fieldLabelClass, groupHeadingClass } from "@doriface/ui";
+import { Badge, Button, Dialog, Notice } from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ACTIONS, actionFor, SCOPE_LABEL, type ActionDef } from "../keys/actions.ts";
 import { keymapStore, NewerKeymapError, useKeymapError, useOverrides } from "../keys/keymap-store.ts";
 import {
@@ -18,6 +18,7 @@ import {
 import { currentPlatform } from "../keys/trigger.ts";
 import { download } from "./download.ts";
 import { KeybindingRow } from "./keybinding-row.tsx";
+import { SettingsToolbar, Subgroup, sectionStackClass } from "./settings-layout.tsx";
 
 function ImportPreview({ parsed, onClose }: { readonly parsed: ParsedKeybinds; readonly onClose: () => void }) {
   const applied = parsed.lines.filter((line) => line.status === "applies").length;
@@ -54,7 +55,7 @@ function ImportPreview({ parsed, onClose }: { readonly parsed: ParsedKeybinds; r
             key={line.line}
             className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-2.5 py-1.5 last:border-b-0"
           >
-            <span className="w-6 shrink-0 text-right text-2xs text-muted-foreground tabular-nums">{line.line}</span>
+            <span className="w-6 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{line.line}</span>
             <span title={line.text} className="min-w-0 flex-1 truncate text-foreground">
               {line.text}
             </span>
@@ -83,7 +84,6 @@ export function KeybindingsSection() {
   const storageError = useKeymapError();
   const keymap = useMemo(() => resolveKeymap(platform, overrides), [platform, overrides]);
   const [query, setQuery] = useState("");
-  const searchId = useId();
   const [parsed, setParsed] = useState<ParsedKeybinds | null>(null);
   const sends = [...new Set(keymap.values())].filter((id) => id.startsWith("send:")).map(actionFor);
   const actions = [...ACTIONS, ...sends.filter((action): action is ActionDef => action !== null)];
@@ -99,7 +99,7 @@ export function KeybindingsSection() {
     input.click();
   };
   return (
-    <div className="flex flex-col gap-5">
+    <div className={sectionStackClass}>
       {storageError === null ? null : storageError instanceof NewerKeymapError ? (
         <Notice tone="warning" title="Keybindings were saved by a newer version of Doriterm">
           This version shows the default keys and saves no changes, so the newer version's keybindings stay as they are.
@@ -110,44 +110,37 @@ export function KeybindingsSection() {
           {asSentence(storageError.message)}
         </Notice>
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        {/* The label beside the field, so the row keeps the field's height and the rows below do not move. */}
-        <div className="flex w-full items-center gap-2 sm:w-72">
-          <label htmlFor={searchId} className={cn("shrink-0", fieldLabelClass)}>
-            Search<span className="sr-only"> keybindings</span>
-          </label>
-          <Input
-            id={searchId}
-            type="search"
-            className="min-w-0 flex-1"
-            placeholder="Search actions, e.g. tab"
-            value={query}
-            onValueChange={(next: string) => setQuery(next)}
-          />
-        </div>
-        <Button size="sm" onClick={pick} disabled={storageError !== null}>
-          Import keybinds…
-        </Button>
-        <Button size="sm" onClick={() => download("ghostty-keybinds", serializeKeybinds(overrides))}>
-          Export
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={overrides.size === 0 || storageError !== null}
-          onClick={() => void keymapStore.update(() => NO_OVERRIDES)}
-        >
-          Reset all
-        </Button>
-      </div>
+      <SettingsToolbar
+        name="keybindings"
+        placeholder="Search actions, e.g. tab"
+        query={query}
+        onQuery={setQuery}
+        actions={
+          <>
+            <Button size="sm" onClick={pick} disabled={storageError !== null}>
+              Import keybinds…
+            </Button>
+            <Button size="sm" onClick={() => download("ghostty-keybinds", serializeKeybinds(overrides))}>
+              Export
+            </Button>
+          </>
+        }
+        reset={
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={overrides.size === 0 || storageError !== null}
+            onClick={() => void keymapStore.update(() => NO_OVERRIDES)}
+          >
+            Reset all
+          </Button>
+        }
+      />
       {(["app", "terminal"] as const).map((scope) => {
         const defs = shown.filter((action) => action.scope === scope);
         if (defs.length === 0) return null;
         return (
-          <section key={scope} aria-labelledby={`keybindings-${scope}`} className="flex flex-col">
-            <h3 id={`keybindings-${scope}`} className={cn("pb-1", groupHeadingClass)}>
-              {SCOPE_LABEL[scope]}
-            </h3>
+          <Subgroup key={scope} id={`keybindings-${scope}`} title={SCOPE_LABEL[scope]}>
             {defs.map((action) => (
               <KeybindingRow
                 disabled={storageError !== null}
@@ -163,7 +156,7 @@ export function KeybindingsSection() {
                 onReset={() => void keymapStore.update((current) => resetAction(platform, current, action.id))}
               />
             ))}
-          </section>
+          </Subgroup>
         );
       })}
       {shown.length === 0 ? <p className="text-prose text-muted-foreground">No action matches “{query}”.</p> : null}

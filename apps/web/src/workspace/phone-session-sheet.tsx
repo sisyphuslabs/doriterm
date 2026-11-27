@@ -1,9 +1,10 @@
 import { Button, IconButton, Sheet, cn } from "@doriface/ui";
-import { CircleAlert, Ellipsis, Pencil, Power, Search } from "lucide-react";
+import { CircleAlert, Copy, Ellipsis, Pencil, Power, Search, TextSelect } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { runAction } from "../keys/dispatcher.ts";
 import { nextNeedingYou, waitingBesides } from "./attention.ts";
 import type { Session } from "./model.ts";
+import { usePhoneSessionExtras } from "./phone-session-extras.ts";
 import { useAskSession } from "./session-context.ts";
 
 export interface PhoneSessionSheetProps {
@@ -20,11 +21,16 @@ function Row(props: {
   readonly icon: ReactNode;
   readonly destructive?: boolean;
   readonly onClick: () => void;
+  readonly pressed?: boolean;
+  /** An accessible name that says more than the row's text. */
+  readonly label?: string;
   readonly children: ReactNode;
 }) {
   return (
     <Button
       variant="ghost"
+      aria-pressed={props.pressed}
+      aria-label={props.label}
       onClick={props.onClick}
       className={cn(
         // A long label (the next agent, with its count) wraps rather than running past a 320 px sheet.
@@ -49,9 +55,10 @@ export function SessionPlace({ where, dir }: { readonly where: string; readonly 
 }
 
 /**
- * The phone header's "..." for the session in view (#1467): one bottom sheet that says where it lives, then the next
- * agent that needs you and, while its machine is online, Find in terminal, then Rename and End. Each row closes the
- * sheet before it acts.
+ * The phone header's "..." for the session in view (#1467): one bottom sheet that says where it lives, then, on a
+ * portrait phone where the header has no room for its tabs chip, the tabs switch (#2879), then the next agent that needs you
+ * and, while its machine is online, Find in terminal and Read-only, then Rename and End. Each row closes the sheet
+ * before it acts.
  */
 export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }: PhoneSessionSheetProps) {
   const [open, setOpen] = useState(false);
@@ -63,6 +70,7 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
   // An offline machine draws MachineOffline in place of the terminal (phone-terminal.tsx), so nothing takes
   // terminal.search: Find in terminal would only close this sheet, and the row waits for the machine to come back.
   const offline = terminal.offline === true;
+  const { browse, tabs } = usePhoneSessionExtras();
   const act = (run: () => void) => () => {
     setOpen(false);
     run();
@@ -73,9 +81,18 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
       side="bottom"
       open={open}
       onOpenChange={setOpen}
-      trigger={<IconButton label={`Session actions for ${title}`} icon={<Ellipsis />} size="md" />}
+      trigger={<IconButton data-session-actions label={`Session actions for ${title}`} icon={<Ellipsis />} size="md" />}
     >
       <SessionPlace where={where} dir={terminal.foreground?.cwd ?? terminal.cwd} />
+      {tabs === null ? null : (
+        // The header's tabs chip, where the header leaves it no room: the mic keeps its place at every width.
+        <div className="flex flex-col border-t border-border pt-1 min-[430px]:hidden">
+          <Row icon={<Copy aria-hidden />} label={tabs.label} onClick={act(tabs.openSwitch)}>
+            Tabs
+            <span data-numeric className="text-muted-foreground">{`${tabs.at + 1}/${tabs.count}`}</span>
+          </Row>
+        </div>
+      )}
       {nextAgent === null && offline ? null : (
         <div className="flex flex-col border-t border-border pt-1">
           {nextAgent === null ? null : (
@@ -86,6 +103,15 @@ export function PhoneSessionSheet({ terminal, terminals, title, where, onOpen }:
           {offline ? null : (
             <Row icon={<Search aria-hidden />} onClick={act(() => runAction("terminal.search"))}>
               Find in terminal
+            </Row>
+          )}
+          {offline || browse === null ? null : (
+            <Row
+              icon={<TextSelect aria-hidden />}
+              pressed={browse.browsing}
+              onClick={act(() => browse.setBrowsing(!browse.browsing))}
+            >
+              Read-only
             </Row>
           )}
         </div>

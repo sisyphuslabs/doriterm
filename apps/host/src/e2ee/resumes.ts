@@ -3,11 +3,20 @@ import type { E2eeWire } from "./links.ts";
 
 /**
  * How long a detached session keeps its `hc connect` and its place after its link dropped, for the client to come back
- * (contract v1.11). Past it the session ends as a dropped one did before, and the client attaches anew. Long enough for
- * a phone that slept through the relay's own 90 s silence reaper and woke a minute later; short enough that a client
- * that is gone for good does not hold a session slot for long.
+ * (contract v1.11). Past it the session ends as a dropped one did before, and the client attaches anew, its terminals
+ * redrawn and what scrolled past meanwhile missing. A phone's socket drops the moment it goes to the background, and a
+ * person is in another app for minutes, not seconds: at 120 s most returns found the session gone (#2853). Ten minutes
+ * covers the usual app switch; a client gone for good holds its `hc connect` and a 1 MiB ring no longer than that.
  */
-export const RESUME_GRACE_MS = 120_000;
+export const RESUME_GRACE_MS = 600_000;
+/**
+ * How many sessions wait for their client at once. This caps sessions, not processes: each waiting one keeps its
+ * `hc connect` (5.4-7.8 MB resident each, measured on macOS arm64 with hc 0.1.22; an estimate elsewhere) and a ring of at
+ * most 1 MiB, about 140 MB at 16. One more drop past the cap ends the session that has waited longest, whose client is
+ * the least likely to come back; its `hc connect` gets its stdin closed and is killed if it has not exited within
+ * DRAIN_GRACE_MS (2 s), so a child ended here can outlive its session by up to that long.
+ */
+export const MAX_DETACHED_SESSIONS = 16;
 const IDLE_CLOSE = 4408;
 
 /**
@@ -17,6 +26,8 @@ const IDLE_CLOSE = 4408;
  */
 export class ResumableSessions {
   readonly #sessions = new Map<string, SecureSession>();
+  /** The sessions waiting for their client, the longest-waiting first. */
+  readonly #waiting = new Set<SecureSession>();
   readonly #graceMs: number;
   readonly #log: (line: string) => void;
 
@@ -39,6 +50,7 @@ export class ResumableSessions {
     const stop = (): void => {
       clearTimeout(timer);
       timer = undefined;
+      this.#waiting.delete(session);
     };
     session.allowResume();
     session.onDetached((reason) => {
@@ -47,6 +59,8 @@ export class ResumableSessions {
       timer = setTimeout(() => {
         if (session.detached) session.close(IDLE_CLOSE, "the resume window passed");
       }, this.#graceMs);
+      this.#waiting.add(session);
+      this.#evictPastCap();
     });
     session.onLink(() => {
       stop();
@@ -56,6 +70,16 @@ export class ResumableSessions {
       stop();
       if (this.#sessions.get(id) === session) this.#sessions.delete(id);
     });
+  }
+
+  /** Past {@link MAX_DETACHED_SESSIONS}, ends the sessions that have waited longest; closing one removes it from the set. */
+  #evictPastCap(): void {
+    for (const oldest of this.#waiting) {
+      if (this.#waiting.size <= MAX_DETACHED_SESSIONS) return;
+      this.#log(`session ended: ${MAX_DETACHED_SESSIONS} sessions already wait for their clients`);
+      oldest.close(IDLE_CLOSE, "too many sessions wait for their clients");
+      this.#waiting.delete(oldest);
+    }
   }
 
   /** The host is stopping: a session waiting for its client has no client to wait for, so it ends now. */

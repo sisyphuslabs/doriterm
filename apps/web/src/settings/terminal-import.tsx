@@ -55,7 +55,7 @@ export function ImportPreview({ parsed, onClose }: { readonly parsed: ParsedConf
             key={line.line}
             className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-2.5 py-1.5 last:border-b-0"
           >
-            <span className="w-6 shrink-0 text-right text-2xs text-muted-foreground tabular-nums">{line.line}</span>
+            <span className="w-6 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{line.line}</span>
             <span title={`${line.key} = ${line.value}`} className="min-w-0 flex-1 truncate text-foreground">
               {line.key} = {line.value}
             </span>
@@ -83,7 +83,7 @@ export function ImportExport({ readOnly }: { readonly readOnly: boolean }) {
     input.click();
   };
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="contents">
       <Button size="sm" disabled={readOnly} onClick={pick}>
         Import Ghostty config…
       </Button>

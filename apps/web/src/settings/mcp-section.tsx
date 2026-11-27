@@ -1,10 +1,11 @@
-import { Button, Dialog, McpClientRow, SettingRow, Switch } from "@doriface/ui";
+import { Button, Dialog, McpClientRow, SettingRow, Switch, cn } from "@doriface/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { desktopDevices } from "../desktop/device-bridge.ts";
 import { desktopMcp, type DesktopMcpAnswer, type DesktopMcpClient } from "../desktop/mcp-bridge.ts";
 import { desktopPairOffer } from "../desktop/pair-bridge.ts";
 import { McpConnectDialog } from "./mcp-connect-dialog.tsx";
 import { clientName, mcpView, turnOffLine, type McpView } from "./mcp-view.ts";
+import { listRowClass } from "./settings-layout.tsx";
 
 const DESCRIPTION =
   "Lets a paired device speak MCP to this computer, so an assistant can use its terminals. Off closes every MCP session.";
@@ -22,7 +23,7 @@ export interface McpClientsProps {
 export function McpClients({ view, busy, note, onSwitch, onConnect, onDisconnect }: McpClientsProps) {
   const connect =
     onConnect === null ? null : (
-      <Button variant="primary" size="sm" onClick={onConnect}>
+      <Button variant="primary" onClick={onConnect}>
         Connect an MCP client
       </Button>
     );
@@ -57,8 +58,8 @@ export function McpClients({ view, busy, note, onSwitch, onConnect, onDisconnect
       )}
       {view.kind !== "on" ? null : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3">
-            <h3 className="text-sm font-medium text-foreground">
+          <div className={cn(listRowClass, "flex-wrap justify-between")}>
+            <h3 className="text-base text-foreground">
               {view.clients.length === 0 ? "No MCP client is connected to this computer." : "Connected clients"}
             </h3>
             {connect}

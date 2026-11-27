@@ -10,7 +10,7 @@ export function UpdateRow({ update }: { readonly update: PendingUpdate }) {
       title={title}
       description={restart ? "Doriterm restarts to install it." : "This page reloads to use it."}
       control={
-        <Button size="sm" variant="primary" onClick={update.run}>
+        <Button variant="primary" onClick={update.run}>
           {restart ? "Restart to update" : "Reload to update"}
         </Button>
       }

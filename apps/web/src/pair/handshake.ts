@@ -5,6 +5,8 @@ import type { OpenConnection } from "../connection/connect.ts";
 import { BROWSER_DEPS, deviceKeyFor, type RelayDeps } from "../connection/relay-deps.ts";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { slotOf } from "./code.ts";
+import { isIos, runsInstalled } from "../device/install.ts";
+import { usedInSafariHint } from "./invite-text.ts";
 import type { OfferSecret, PairingOffer } from "./fragment.ts";
 
 const AGAIN = "Run doriface-host pair again.";
@@ -34,8 +36,14 @@ export class PairingFailedError extends Error {
   override readonly name = "PairingFailedError";
 }
 
-export function pairingFailureReason(mode: OfferSecret["mode"], closeCode: number | undefined): string | undefined {
-  return closeCode === undefined ? undefined : REASONS[mode][closeCode];
+export function pairingFailureReason(
+  mode: OfferSecret["mode"],
+  closeCode: number | undefined,
+  installedOnIos: boolean = isIos() && runsInstalled(),
+): string | undefined {
+  const reason = closeCode === undefined ? undefined : REASONS[mode][closeCode];
+  if (reason === undefined) return undefined;
+  return mode === "link" && closeCode === CloseCode.UnknownDevice ? reason + usedInSafariHint(installedOnIos) : reason;
 }
 
 function pairingOption(secret: OfferSecret, name: string): PairingSecret {

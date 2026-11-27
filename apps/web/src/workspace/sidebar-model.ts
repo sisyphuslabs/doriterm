@@ -59,7 +59,7 @@ function branches(terminals: readonly Session[], nowMs: number, places: AgentPla
     terminal.offline === true ? "unknown" : (places.get(terminal.address)?.status ?? agentStatus(terminal));
   const found: Branch[] = [];
   const above: { readonly depth: number; readonly branch: Branch }[] = [];
-  for (const row of agentTree(terminals, placed)) {
+  for (const row of agentTree(terminals, placed, isPinned)) {
     const terminal = byAddress.get(row.address);
     if (terminal === undefined) continue;
     while ((above.at(-1)?.depth ?? -1) >= row.depth) above.pop();

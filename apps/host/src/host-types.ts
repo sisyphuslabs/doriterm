@@ -34,7 +34,7 @@ export interface HostOptions {
   readonly rekeyInterval?: number | undefined;
   /** For tests: the direct-path idle close (default 90 s). */
   readonly directIdleMs?: number | undefined;
-  /** For tests: how long a detached hc session waits for its client's resume (default RESUME_GRACE_MS, 120 s). */
+  /** For tests: how long a detached hc session waits for its client's resume (default RESUME_GRACE_MS, 10 minutes). */
   readonly resumeGraceMs?: number | undefined;
   /**
    * For tests: how long the hello of an `hc connect` the host's own writers start (the end sweeper, the OS write, the

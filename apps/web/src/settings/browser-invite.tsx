@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { Button, Dialog, Notice, SettingRow } from "@doriface/ui";
+import { Button, Dialog, Notice, SettingRow, cn, fieldLabelClass } from "@doriface/ui";
 import { useState } from "react";
 import type { MemberEntry } from "../connection/mesh-connections.ts";
 import { useMeshMembers } from "../connection/store.ts";
@@ -25,10 +25,10 @@ export function InviteMachineChoice({
   return (
     <div className="flex flex-col gap-2">
       <p>{`The invite is opened on ${entry?.target.hostName ?? selected}`}</p>
-      <label className="flex flex-col gap-1 text-sm">
+      <label className={cn("flex flex-col gap-1", fieldLabelClass)}>
         Machine that opens the invite
         <select
-          className="rounded-md border border-border bg-background p-2"
+          className="h-(--control) rounded-md border border-border bg-background px-2 text-base text-foreground"
           value={selected}
           onChange={(event) => onSelect(event.target.value)}
         >
@@ -130,7 +130,7 @@ export function BrowserInvite({ install = false }: { readonly install?: boolean 
             : "An invite joins the browser to the whole mesh."
         }
         control={
-          <Button size="sm" disabled={online.length === 0} onClick={() => setOpen(true)}>
+          <Button disabled={online.length === 0} onClick={() => setOpen(true)}>
             {title}
           </Button>
         }

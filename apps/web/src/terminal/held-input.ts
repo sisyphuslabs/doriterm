@@ -1,11 +1,26 @@
-import type { HcConnection } from "@doriface/client";
+import type { HcConnection, TerminalStream } from "@doriface/client";
 import type { UnprovenLinks } from "../connection/wake.ts";
 import type { MachineLines } from "./machine-lines.ts";
 import type { TerminalInput } from "./terminal-view-props.ts";
 
 /** Where input goes: the open stream, which answers false once it is no longer open. */
 export interface InputSink {
-  write(data: TerminalInput): boolean;
+  /** `person`: the person typed it, not the terminal answering a program's query (#2794). */
+  write(data: TerminalInput, person: boolean): boolean;
+}
+
+/**
+ * A stream as the sink of a terminal's input: the person's input goes as typed input, and the terminal's own answers as
+ * automatic input (AUTOMATIC_INPUT where the core takes it, else DATA), which the core never counts as the person typing.
+ */
+export function streamSink(stream: Pick<TerminalStream, "write" | "writeAutomatic">): InputSink {
+  return { write: (data, person) => (person ? stream.write(data) : stream.writeAutomatic(data)) };
+}
+
+/** One input waiting to be written, with whether the person typed it: the mark lives and goes with the input. */
+export interface HeldEntry {
+  readonly data: TerminalInput;
+  readonly person: boolean;
 }
 
 /** How long input waits for its stream, link or machine's line before it is dropped: never sent stale (#1489, #2003). */
@@ -26,7 +41,7 @@ export interface MachineHold {
 }
 
 const encoder = new TextEncoder();
-const sizeOf = (data: TerminalInput): number => (typeof data === "string" ? encoder.encode(data).length : data.length);
+const sizeOf = ({ data }: HeldEntry): number => (typeof data === "string" ? encoder.encode(data).length : data.length);
 
 /**
  * One terminal's typed input, written in the order typed (#1370), Ctrl+C included, whatever it waited for (#2303). A
@@ -47,7 +62,7 @@ const sizeOf = (data: TerminalInput): number => (typeof data === "string" ? enco
  */
 export class HeldInput {
   /** Typed and not written yet, oldest first: no stream was open, the link was being proved, or the machine was away. */
-  readonly pending: TerminalInput[] = [];
+  readonly pending: HeldEntry[] = [];
   /** True while a drain is inside sink.write, so a release that fires from there does not take a byte twice (#1490). */
   #flushing = false;
   readonly #links: UnprovenLinks;
@@ -77,12 +92,13 @@ export class HeldInput {
     );
   }
 
-  send(data: TerminalInput): void {
+  send(data: TerminalInput, person = true): void {
+    const entry = { data, person };
     if (this.ready()) {
-      this.pending.push(data);
+      this.pending.push(entry);
       return this.flush();
     }
-    this.#wait(this.#awayMachine(), data);
+    this.#wait(this.#awayMachine(), entry);
     if (!this.#links.has(this.#connection())) this.flush();
   }
 
@@ -95,7 +111,7 @@ export class HeldInput {
     if (this.#flushing) return;
     this.#flushing = true;
     try {
-      for (let next = this.pending[0]; next !== undefined && sink.write(next); next = this.pending[0])
+      for (let next = this.pending[0]; next !== undefined && sink.write(next.data, next.person); next = this.pending[0])
         this.pending.shift();
     } finally {
       this.#flushing = false;
@@ -130,11 +146,11 @@ export class HeldInput {
   }
 
   /** Input that cannot be written now waits, in the order typed; a wait drained by a reattach starts afresh. */
-  #wait(machine: string | undefined, data: TerminalInput): void {
+  #wait(machine: string | undefined, entry: HeldEntry): void {
     if (this.pending.length === 0) this.#release();
-    this.#heldBytes += sizeOf(data);
+    this.#heldBytes += sizeOf(entry);
     if (this.#heldBytes > HOLD_BYTES) return this.#drop("overflow", machine);
-    this.pending.push(data);
+    this.pending.push(entry);
     if (machine !== undefined || this.#sink() === null) this.#expireIn(machine);
   }
 
@@ -163,7 +179,7 @@ export class HeldInput {
 
   /** What waits, after its cause changed: counted again, and timed, in this terminal's words, only while no stream is open. */
   #rewait(): void {
-    this.#heldBytes = this.pending.reduce((bytes, data) => bytes + sizeOf(data), 0);
+    this.#heldBytes = this.pending.reduce((bytes, entry) => bytes + sizeOf(entry), 0);
     if (this.#heldBytes > HOLD_BYTES) return this.#drop("overflow", undefined);
     if (this.#sink() === null) this.#expireIn(undefined);
   }

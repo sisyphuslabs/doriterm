@@ -148,31 +148,6 @@ export function toAgent(terminal: Terminal, nowMs: number): Agent {
   return machine === undefined ? agent : Object.assign(agent, { machine });
 }
 
-export interface AgentGroups {
-  readonly blocked: readonly Agent[];
-  readonly done: readonly Agent[];
-  readonly working: readonly Agent[];
-  readonly idle: readonly Agent[];
-  /** On a machine that cannot be reached: their state is unknown until it is back. */
-  readonly offline: readonly Agent[];
-}
-
-/** Needs you, Done, Working, Idle, then Offline; programs that never reported sit with Idle. */
-export function groupAgents(terminals: readonly Session[], nowMs: number): AgentGroups {
-  const groups = { blocked: [] as Agent[], done: [] as Agent[], working: [] as Agent[], idle: [] as Agent[] };
-  const offline: Agent[] = [];
-  for (const terminal of terminals) {
-    if (terminal.state !== "live") continue;
-    if (terminal.offline === true) {
-      offline.push(toAgent(terminal, nowMs));
-      continue;
-    }
-    const agent = toAgent(terminal, nowMs);
-    if (agent.status !== "unknown") groups[agent.status].push(agent);
-  }
-  return { ...groups, offline };
-}
-
 const ATTENTION: readonly AgentStatus[] = ["blocked", "working", "done"];
 
 const remoteRank = (machine: string | undefined): number => (machine === undefined ? 0 : 1);

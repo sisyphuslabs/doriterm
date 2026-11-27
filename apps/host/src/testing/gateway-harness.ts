@@ -81,7 +81,7 @@ export function gatewayOn(founder: Machine, member: Machine, setup: GatewaySetup
       lanUrls: [],
       sessions,
       policy: OPEN_POLICY,
-      live: { count: () => sessions.count() },
+      live: { count: (replacing) => sessions.count(replacing) },
     },
   });
   return { gateway, devices, logs, pipe, sessions, opened: () => opened };

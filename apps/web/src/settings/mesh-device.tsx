@@ -26,7 +26,7 @@ export function MeshDevice({
         <>
           <span className="block">{installed ? "Home-screen app" : "Browser"}</span>
           <span className="block">{`Member of ${mesh} · ${online} machines online`}</span>
-          <details className="mt-2 text-xs">
+          <details className="mt-1">
             <summary className="cursor-pointer">Details</summary>
             <span className="font-mono [overflow-wrap:anywhere]">{fingerprint}</span>
           </details>
@@ -113,15 +113,11 @@ export function MeshMachineList({
                     <span className="flex flex-wrap justify-end gap-2">
                       {skill.action}
                       {openMember === undefined ? null : (
-                        <Button size="sm" onClick={() => openMember(entry.target.hostId)}>
-                          Open
-                        </Button>
+                        <Button onClick={() => openMember(entry.target.hostId)}>Open</Button>
                       )}
                     </span>
                   ) : entry.state.phase === "failed" ? (
-                    <Button size="sm" onClick={() => retry(entry.target.hostId)}>
-                      Try now
-                    </Button>
+                    <Button onClick={() => retry(entry.target.hostId)}>Try now</Button>
                   ) : null
                 }
               />

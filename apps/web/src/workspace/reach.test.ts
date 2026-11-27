@@ -1,6 +1,6 @@
 import type { MachineView, Terminal } from "@doriface/protocol";
 import { expect, test } from "bun:test";
-import { groupAgents } from "./model.ts";
+import { agentGroups } from "./sidebar-model.ts";
 import { withReach } from "./reach.ts";
 
 const terminal = (address: string, state = "live"): Terminal => ({
@@ -44,9 +44,10 @@ test("only the live terminals of a machine that is not connected leave Working f
     ["finished", false],
     ["live", false],
   ]);
-  const groups = groupAgents(reached, 0);
-  expect(groups.working.map((agent) => agent.id)).toEqual(["t1", "rack/t1"]);
-  expect(groups.offline.map((agent) => [agent.id, agent.status])).toEqual([["build/t1", "unknown"]]);
+  const groups = agentGroups(reached, 0, "status");
+  const listed = (key: string) => groups.find((group) => group.key === key)?.agents ?? [];
+  expect(listed("working").map((agent) => agent.id)).toEqual(["t1", "rack/t1"]);
+  expect(listed("offline").map((agent) => [agent.id, agent.status])).toEqual([["build/t1", "unknown"]]);
 });
 
 test.each([

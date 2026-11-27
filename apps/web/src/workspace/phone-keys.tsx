@@ -25,16 +25,9 @@ export const KEYS_BAR_HEIGHT = "3.75rem";
 /** How far up from the terminal's bottom the round keyboard button reaches: its 3rem and the gap below it. */
 export const KEYBOARD_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-bottom) + 0.5rem)) + 3rem)";
 
-/** The round button's corner: Read-only on a touch phone, the keyboard button on a mouse-only one. */
+/** The round button's corner: Read-only while a touch phone browses, the keyboard button on a mouse-only one. */
 const CORNER =
   "absolute right-[max(1rem,calc(var(--safe-right)+0.5rem))] bottom-[max(1rem,calc(var(--safe-bottom)+0.5rem))] z-10";
-
-/**
- * How far in from its right edge a bar level with the round button (the tabs bar) keeps clear of it: the corner's inset
- * past the safe area, then the button's 3rem and a 0.5rem gap. One slot: the keys panel carries the keyboard's toggle
- * on a touch phone (#2499), so only one round button is ever at the corner.
- */
-export const ROUND_BUTTON_CLEARANCE = "calc(max(1rem, calc(var(--safe-right) + 0.5rem)) - var(--safe-right) + 3.5rem)";
 
 /** How far up from the terminal's bottom the arrow pad reaches: its 0.75rem gap, three 3rem rows with their gaps and padding. */
 export const DIRECTION_PAD_CLEARANCE = "calc(0.75rem + 9rem + 0.5rem + 0.75rem + 2px)";
@@ -70,7 +63,10 @@ export interface PhoneKeysProps {
   readonly onBarHeight?: (px: number) => void;
   /** The terminal is browsed read-only (browse-mode.ts); the keys are closed and the browse button reads pressed. */
   readonly browsing?: boolean;
-  /** Set on a touch device: a round Read-only button beside the keyboard button turns browsing on and off. */
+  /**
+   * Set on a touch device, where the session sheet turns browsing on (phone-session-extras.ts): while it is on, a round Read-only
+   * button, pressed, at the corner turns it off.
+   */
   readonly onBrowse?: (on: boolean) => void;
   /** The input card is open (#2778); the screen holds this, since the header gives its mic to the card while it is. */
   readonly card: boolean;
@@ -247,16 +243,16 @@ export function PhoneKeys(props: PhoneKeysProps) {
           {panel}
         </div>
       ) : null}
-      {open || onBrowse === undefined ? null : (
-        // The button stays in its slot while on, so the tap that ends browsing lands where the one that began it did.
+      {browsing && onBrowse !== undefined ? (
+        // Browsing closes the keys, so the way out has a slot of its own while it lasts, and none after (#2879).
         <KeyboardButton
           label="Read-only"
           icon={<TextSelect />}
-          pressed={browsing}
-          onPress={() => onBrowse(!browsing)}
+          pressed
+          onPress={() => onBrowse(false)}
           className={CORNER}
         />
-      )}
+      ) : null}
       {open || docked !== null || browsing ? null : (
         <KeyboardButton
           {...(onKeys === undefined ? {} : { label: "Show keys" })}

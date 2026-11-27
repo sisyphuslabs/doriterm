@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import type { MeshStatus } from "@doriface/protocol";
-import { Notice, SettingRow, Skeleton, cn, groupHeadingClass } from "@doriface/ui";
+import { Notice, SettingRow, Skeleton, cn } from "@doriface/ui";
 import { type ReactNode, useSyncExternalStore } from "react";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
@@ -9,6 +9,7 @@ import { disagreement, meshGroups } from "../mesh/groups.ts";
 import { MemberRow } from "../mesh/mesh-rows.tsx";
 import { useMesh } from "../mesh/use-mesh.ts";
 import { useNow } from "../workspace/use-now.ts";
+import { Subgroup, sectionStackClass } from "./settings-layout.tsx";
 
 interface MeshGroupProps {
   readonly id: string;
@@ -22,16 +23,19 @@ interface MeshGroupProps {
 function MeshGroup({ id, title, count, urgent = false, children }: MeshGroupProps) {
   if (count === 0) return null;
   return (
-    <section aria-labelledby={`mesh-${id}`} data-mesh-group={id} className="flex flex-col">
-      <h3
-        id={`mesh-${id}`}
-        className={cn("flex items-baseline gap-2 pb-1", groupHeadingClass, urgent && "text-status-blocked-text")}
-      >
-        {title}
-        <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
-      </h3>
+    <Subgroup
+      id={`mesh-${id}`}
+      data-mesh-group={id}
+      className={cn("flex items-baseline gap-2", urgent && "text-status-blocked-text")}
+      title={
+        <>
+          {title}
+          <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
+        </>
+      }
+    >
       {children}
-    </section>
+    </Subgroup>
   );
 }
 
@@ -103,7 +107,7 @@ export function MeshBody({
   const groups = meshGroups(status, now);
   const self = nameOf(status.self);
   return (
-    <div className="flex flex-col gap-6">
+    <div className={sectionStackClass}>
       <MeshBanners status={status} nameOf={nameOf} disagreement={disagreement(status, machines, pairedHost)} />
       {!attentionOnly ? (
         <p className="max-w-measure text-prose text-muted-foreground">

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { OutputPacer, REPLAY_CAP_MS } from "./output-pacer.ts";
-import { replayOnAttach } from "./use-terminal-attach.ts";
+import { replayOnAttach, writeQueued } from "./use-terminal-attach.ts";
 
 /** A pacer on frames and timers that move only when the test says so, recording each hold of the paint. */
 function attaching(fresh = false) {
@@ -36,6 +36,16 @@ function attaching(fresh = false) {
   return { pacer, holds, advance };
 }
 
+/** A stream recording each input as the replay's hold stood when it went, and how it went: typed or automatic. */
+function stream(holds: readonly boolean[]) {
+  const sent: string[] = [];
+  const note = (how: string) => (data: string | Uint8Array) => {
+    sent.push(`${how} ${String(data)} held=${String(holds.at(-1))}`);
+    return true;
+  };
+  return { sent, write: note("typed"), writeAutomatic: note("automatic") };
+}
+
 describe("an attach's replay hold (D5)", () => {
   test("a view mounted anew holds its first paint too: its replay covers history, held the same way (#812)", () => {
     const { pacer, holds, advance } = attaching();
@@ -57,6 +67,20 @@ describe("an attach's replay hold (D5)", () => {
     expect(holds).toEqual([true]);
     advance(1);
     expect(holds).toEqual([true, false]);
+  });
+
+  test("what was typed while no stream was open goes to the new one in order, keys as typed and answers as automatic input", () => {
+    const { holds } = attaching();
+    const pending = [
+      { data: "\u001b[?62c", person: false },
+      { data: "l", person: true },
+      { data: "s", person: true },
+    ];
+    const out = stream(holds);
+    writeQueued(pending, out);
+    expect(out.sent).toEqual(["automatic \u001b[?62c held=true", "typed l held=true", "typed s held=true"]);
+    // The replay is not cut short: its paint is held until it settles, and the keys' echo comes behind it anyway.
+    expect([holds, pending]).toEqual([[true], []]);
   });
 
   test("a terminal this page just started is not held: it has no history, so its first prompt is drawn as it arrives (#1928)", () => {
