@@ -1,3 +1,4 @@
+import { atRest } from "./at-rest.ts";
 import { expect, laidOutBox, test } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
@@ -16,13 +17,6 @@ const MAC_TITLEBAR_SHEET = [
 ].join("\n");
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Workspace" });
-/**
- * Resolves once the sidebar's own animations (its width transition into or out of a rail) have finished, so the strip
- * beside it is measured where it stays, not mid-slide; resolves at once when nothing runs.
- */
-const sidebarSettled = (page: Page): Promise<unknown> =>
-  sidebar(page).evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
-
 const toggle = (page: Page) => page.getByRole("button", { name: /^(Hide|Show) sidebar$/ });
 
 /**
@@ -101,7 +95,8 @@ test("the sidebar toggle takes a press with the sidebar open, hidden or a rail, 
   await page.getByRole("separator", { name: "Resize sidebar" }).focus();
   await page.keyboard.press("Enter");
   await expect(sidebar(page)).toHaveAttribute("data-rail", "true");
-  await sidebarSettled(page);
+  // The sidebar narrows into the rail on the motion tokens: measure the strip where it stays, not mid-slide (#2910).
+  await atRest(page);
   await expectToggleTakesPresses(page, "rail");
   await expectStripStillDrags(page, "rail");
 
