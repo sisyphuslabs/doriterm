@@ -1,9 +1,9 @@
 import { terminalSpaceName } from "@doriface/protocol";
-import { Button, Spinner, StatusChip, StatusIndicator } from "@doriface/ui";
+import { Button, NeedsYouPill, Spinner, StatusChip, StatusIndicator } from "@doriface/ui";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useFittedLines } from "./fit-lines.ts";
-import { agentStatus } from "./attention.ts";
+import { agentStatus, nextNeedingYou, waitingBesides } from "./attention.ts";
 import { machineOf, type Session, spaceOfAddress, terminalTitle } from "./model.ts";
 import { useShown } from "./use-shown.ts";
 import { useSpaceSelection } from "./space-selection.ts";
@@ -33,16 +33,20 @@ export interface PhoneHeaderProps {
 }
 
 /**
- * The phone terminal's header: Back, labelled with where it goes, then the tab and its state and where it is. Switching
- * tabs and the tab's place (n/m) live in the bottom tabs bar alone, one strip as in herdr-app (#466); how many agents
- * need the person is the agents list's to say, not this session's header.
+ * The phone terminal's header: Back, labelled with where it goes, then the tab and its state and where it is, plus a
+ * compact count of the other agents that need you so a person can jump straight to them without going back to the list
+ * (owner decision 2026-11-26, #2863). Switching tabs and the tab's place (n/m) stay in the bottom tabs bar alone, one
+ * strip as in herdr-app (#466).
  */
 export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBack, onOpen, action }: PhoneHeaderProps) {
   // The tab's own name, else the terminal's title: an agent's or a program's name, never the tab's place among its space's.
   const [now = terminal] = useShown([terminal]);
   const title = tabTitle ?? terminalTitle(now);
   const heading = useRef<HTMLHeadingElement>(null);
-  const titleLines = useFittedLines(heading, title);
+  // While the needs-you pill takes its share of the row, the title keeps one line and ends in an ellipsis: the pill must
+  // never make the header taller, or the terminal loses a row on a phone (#2865). Without it, two lines as before.
+  const waiting = waitingBesides(terminals, terminal.address);
+  const titleLines = useFittedLines(heading, title, waiting > 0 ? 1 : 2);
   const machine = machineOf(terminal.address);
   // Where it is: the layout space whose tab shows it (#404), else where it runs.
   const { spaces } = useSpaceSelection();
@@ -106,6 +110,14 @@ export function PhoneHeader({ terminal, terminals, host, tabTitle, backTo, onBac
           </p>
         )}
       </div>
+      <NeedsYouPill
+        count={waiting}
+        compact
+        onOpen={() => {
+          const next = nextNeedingYou(terminals, terminal.address);
+          if (next !== null && next !== terminal.address) onOpen(next);
+        }}
+      />
       {/* `contents`: an empty slot draws no box and takes no gap; a control in it is one more header item. */}
       <span data-header-action className="contents">
         {action}
