@@ -222,7 +222,7 @@ test.describe("phone", () => {
         await openPhoneTerminal(page);
         await context.setOffline(true);
         const line = page.locator("header [data-header-offline]");
-        await expect(line.getByRole("status")).toHaveText("Offline", { timeout: 3_000 });
+        await expect(line.locator("[data-terminal-line-label]")).toHaveText("Offline", { timeout: 3_000 });
         const retry = line.getByRole("button", { name: "Try again" });
         await expect(retry).toBeVisible();
         const box = await retry.boundingBox();

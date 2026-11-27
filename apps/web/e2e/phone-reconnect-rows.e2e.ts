@@ -40,9 +40,29 @@ for (const size of [
     const header = page.locator("header[data-phone-top]");
     const line = header.locator("[data-host-down]");
     await expect(line).toBeVisible({ timeout: 30_000 });
-    await expect(line.getByRole("status")).toHaveText("Can't connect");
+    const label = line.locator("[data-terminal-line-label]");
+    await expect(label).toHaveText("Can't connect");
+    await expect(line).toHaveAttribute("role", "status");
     // The words fit the line whole: none of them is cut behind an ellipsis.
-    expect(await line.getByRole("status").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    // Try again's 44 pt target lies inside the header: at its top and bottom edges the tap reaches the button, not the
+    // terminal pane under the header.
+    const target = await line.locator("[data-terminal-line-action]").evaluate((button) => {
+      const after = getComputedStyle(button, "::after");
+      const box = button.getBoundingClientRect();
+      const top = box.top - Number.parseFloat(after.top) * -1;
+      const bottom = box.bottom + Number.parseFloat(after.bottom) * -1;
+      const x = box.left + box.width / 2;
+      const headerBox = button.closest("header")?.getBoundingClientRect();
+      const hits = [top + 1, bottom - 1].map((y) => document.elementFromPoint(x, y) === button);
+      return {
+        height: bottom - top,
+        hits,
+        inside: headerBox !== undefined && top >= headerBox.top && bottom <= headerBox.bottom,
+      };
+    });
+    expect(target).toEqual({ height: expect.any(Number), hits: [true, true], inside: true });
+    expect(target.height).toBeGreaterThanOrEqual(44);
     await expect(line.getByRole("button", { name: "Try again" })).toBeVisible();
     // The line is in the header, above the terminal: nothing is drawn over the terminal's rows.
     const lineBox = await line.boundingBox();

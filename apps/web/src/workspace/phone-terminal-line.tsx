@@ -74,8 +74,11 @@ function LineView({ line }: { readonly line: Line }) {
     void line.action?.run();
   };
   return (
+    // The line is the live region, outside its buttons: a button's children are presentational, so a status inside one
+    // may never be announced (#2908 review).
     <div
       {...{ [MARK[line.kind]]: "" }}
+      role="status"
       data-terminal-line={line.kind}
       className="flex min-w-0 items-center gap-1 text-xs leading-tight"
     >
@@ -91,7 +94,7 @@ function LineView({ line }: { readonly line: Line }) {
             aria-label={`${line.label}: details`}
           >
             {glyph(line.kind)}
-            <span role="status" className="min-w-0 truncate">
+            <span data-terminal-line-label className="min-w-0 truncate">
               {line.label}
             </span>
           </button>
@@ -107,11 +110,13 @@ function LineView({ line }: { readonly line: Line }) {
         )}
       </Sheet>
       {line.action === undefined ? null : (
-        // Text-high, so the line keeps the header's height; the touch target reaches past it (44 pt) without laying out.
+        // Text-high, so the line keeps the header's height. Its 44 pt touch target reaches up beside the title and down to the
+        // header's own padding, never past the header: the terminal pane under it would take the taps (#2908 review).
         <button
           type="button"
+          data-terminal-line-action
           onClick={() => void line.action?.run()}
-          className="relative shrink-0 font-semibold text-foreground after:absolute after:-inset-x-2 after:-inset-y-4 after:content-['']"
+          className="relative shrink-0 font-semibold text-foreground after:absolute after:-inset-x-2 after:-top-6 after:-bottom-1 after:content-['']"
         >
           {line.action.label}
         </button>
