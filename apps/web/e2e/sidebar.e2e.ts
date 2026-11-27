@@ -1,7 +1,7 @@
 import { expect, laidOutBox, test } from "./fixtures.ts";
 import { pressShortcut } from "./platform-keys.ts";
 import { devices, type Locator, type Page } from "@playwright/test";
-import { rowEdges, rows, settle, visibleCharacters } from "./sidebar-measure.ts";
+import { rowEdges, rows, settle, showAges, visibleCharacters } from "./sidebar-measure.ts";
 import {
   clearMachineLayout,
   KOREAN_SPACE,
@@ -185,6 +185,7 @@ for (const { name, use } of VIEWPORTS) {
     test("rows naming a long machine stay inside the list, every cut text keeps a share, an ellipsis and its tooltip, and they refit when the list narrows", async ({
       page,
     }) => {
+      await showAges(page);
       await page.goto("/");
       const remote = page
         .getByRole("region", { name: "Idle" })
@@ -211,7 +212,7 @@ for (const { name, use } of VIEWPORTS) {
   });
 }
 
-test.describe("with an age wider than its 28 px column, as Linux fonts draw <1m", () => {
+test.describe("with an age wider than its 28 px column, as Linux fonts can draw one", () => {
   test.use({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 
   test("every age still ends at one edge, down to a list too narrow for three characters of each part", async ({
@@ -225,6 +226,7 @@ test.describe("with an age wider than its 28 px column, as Linux fonts draw <1m"
         document.head.append(style);
       });
     });
+    await showAges(page);
     await page.goto("/");
     const idle = page.getByRole("region", { name: "Idle" });
     await expect(rows(idle).filter({ hasText: "OmO - Verify bun" })).toBeVisible({ timeout: 20_000 });

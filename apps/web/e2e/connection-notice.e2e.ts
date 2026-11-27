@@ -54,7 +54,7 @@ test.describe("desktop", () => {
     });
     test.afterAll(async () => host.stop());
 
-    test("going offline is said in the status bar at once, and the notice leaves when the network is back", async ({
+    test("going offline is said in the status bar within a second, and the notice leaves when the network is back", async ({
       page,
       context,
     }) => {
