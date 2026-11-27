@@ -1,37 +1,27 @@
-import { HeldUpdate, SYNCHRONIZED_HOLD_CAP_MS } from "./held-update.ts";
+import { HeldUpdate, SYNCHRONIZED_UNPACED_MS } from "./held-update.ts";
+import { onTime } from "./late-timer.ts";
+import { CREDIT_WINDOW_BYTES, REPLAY_MAX_BYTES, ReplayHold, type ReplayOptions } from "./replay-hold.ts";
 import { opensUpdate, SynchronizedUpdate } from "./synchronized-update.ts";
 
 /** At most this much output is written to a terminal per paint: a flood costs each frame a bounded slice (#560). */
 export const FRAME_BYTES = 16 * 1024;
 /** Catching up, a queue deeper than this at the start of a frame is a backlog: it is caught up in that frame (D5). */
 export const CATCHUP_THRESHOLD = 2 * FRAME_BYTES;
-/** What the core sends on a stream before it waits for credit back: over the relay, at most this a round trip (D5). */
-export const CREDIT_WINDOW_BYTES = 256 * 1024;
 /** The most a catch-up frame writes, as one batch: one credit window of the stream (D5). */
 export const CATCHUP_FRAME_BYTES = CREDIT_WINDOW_BYTES;
 /** How often output is written while the app is hidden, when no animation frame runs (D5). */
 export const HIDDEN_DRAIN_MS = 50;
-/**
- * An attach replay's paint is held past each span this long only if the span and the one before it wrote at least one
- * credit window between them: a replay still coming does, at a window a round trip or, on a page slow to take each
- * window in, about a window a span, cut anywhere by the span's ends (#2271). Output that trickles (a prompt, a spinner)
- * never goes quiet, and writes less than {@link REPLAY_TRICKLE_BYTES} a span (D5).
- */
-export const REPLAY_CAP_MS = 1500;
-/** A {@link REPLAY_CAP_MS} span that wrote less than this is a trickle, not a replay: it lets the replay go (D5, #2271). */
-export const REPLAY_TRICKLE_BYTES = CREDIT_WINDOW_BYTES / 4;
-/** An attach replay's paint is held for at most this much written output (D5). */
-export const REPLAY_MAX_BYTES = 2 * 1024 * 1024;
-/** The shortest quiet after the last replay bytes that ends a replay (D5). */
-export const REPLAY_QUIET_FLOOR_MS = 100;
+export {
+  CREDIT_WINDOW_BYTES,
+  REPLAY_CAP_MS,
+  REPLAY_MAX_BYTES,
+  REPLAY_QUIET_FLOOR_MS,
+  REPLAY_TRICKLE_BYTES,
+  type ReplayOptions,
+} from "./replay-hold.ts";
 export { SYNCHRONIZED_HOLD_CAP_MS, SYNCHRONIZED_UNPACED_MS } from "./held-update.ts";
 
-/**
- * A pacer timer that runs later than this was held up by a page busy with other work, longer than any delay a page doing
- * nothing else adds to a timer (clamping, frame alignment). The output that arrived meanwhile is queued behind it, unseen,
- * so its window starts again rather than being read as quiet (#2895).
- */
-export const LATE_TIMER_MS = 50;
+export { LATE_TIMER_MS } from "./late-timer.ts";
 
 /** Milliseconds from some fixed point, for how long an update has been open. */
 export type Clock = () => number;
@@ -59,25 +49,6 @@ export const after: Timer = (run, ms) => {
   const id = setTimeout(run, ms);
   return () => clearTimeout(id);
 };
-
-/** What an attach replay needs from its view: the link's round trip, and how to hold the terminal's paint. */
-export interface ReplayOptions {
-  /** The connection's smoothed round trip in ms, or undefined before it has one. */
-  readonly srtt: () => number | undefined;
-  /** Holds the terminal's paint (true) and lets it go (false); each is called once per replay. */
-  readonly hold: (held: boolean) => void;
-}
-
-interface Replay {
-  readonly options: ReplayOptions;
-  written: number;
-  /** What had been written when the current {@link REPLAY_CAP_MS} span began. */
-  spanFrom: number;
-  /** What the span before the current one wrote, or null in the first span. */
-  lastSpan: number | null;
-  quiet: () => void;
-  cap: () => void;
-}
 
 /** Coming back to the app or attaching: how much its catch-up frames may write, and have written. */
 interface CatchUp {
@@ -141,11 +112,23 @@ export class OutputPacer {
   });
   /** The link's smoothed round trip, from the last attach's replay options; an attach without one leaves it unknown. */
   #srtt: () => number | undefined = () => undefined;
-  #replay: Replay | null = null;
+  /** The attach replay whose paint is held while it arrives. */
+  readonly #replay = new ReplayHold({
+    onTime: (ms, then, again) => this.#onTime(ms, then, again),
+    ended: (wrote) => {
+      // Every write of the replay landed while the paint was held, so a listener placing the view (hold-view-from-end)
+      // placed it on the layout before the replay; the release draws the replay, so the listeners are told once more.
+      // A replay that went quiet before any of it arrived drew nothing: telling them then would end a hold that has not
+      // placed the view on the replay yet, and leave it wherever the terminal's reset scrolled it (#1394).
+      if (wrote) for (const listener of this.#written) listener();
+      this.#schedule();
+    },
+  });
   /** When output last arrived, by {@link Clock}: a late timer is read as it is once none has come for the hold's cap. */
   #lastBytes = 0;
-  /** When the view last resized, by {@link Clock}. */
+  /** When the view last resized, and when the run of resizes it belongs to (a drag) began, by {@link Clock}. */
   #resizedAt = Number.NEGATIVE_INFINITY;
+  #resizesFrom = Number.NEGATIVE_INFINITY;
   #catchUp: CatchUp | null = null;
   readonly #written = new Set<() => void>();
 
@@ -164,10 +147,11 @@ export class OutputPacer {
   push(bytes: Uint8Array, credit: (bytes: number) => void = () => undefined): void {
     if (bytes.byteLength === 0) return;
     const now = this.#clock();
-    const answer = now - this.#resizedAt <= 1.5 * (this.#srtt() ?? 0) + 50;
+    const answer =
+      now - this.#resizedAt <= this.#roundTrip() && this.#openedAt !== null && this.#openedAt < this.#resizesFrom;
     this.#queue.push({ bytes, credit, answer });
     this.#lastBytes = now;
-    if (this.#replay !== null) this.#quietFrom(this.#replay);
+    this.#replay.arrived();
     // A shell's answer to a resize is not the held update still being drawn: a drag must not keep its paint held.
     if (!answer) this.#held.drawing();
     if (this.#visible && this.#unpaced()) {
@@ -191,7 +175,7 @@ export class OutputPacer {
 
   /** Whether output is still waiting to be written: queued bytes, a frame or drain booked, or a replay held. */
   get busy(): boolean {
-    return this.#queue.length > 0 || this.#cancel !== null || this.#replay !== null;
+    return this.#queue.length > 0 || this.#cancel !== null || this.#replay.active;
   }
 
   /** Runs `listener` after each batch is written to the terminal; returns how to stop. */
@@ -227,44 +211,11 @@ export class OutputPacer {
     this.#schedule();
   }
 
-  /**
-   * An attach replay begins: its output is written as it arrives, uncapped, while `hold` holds the terminal's paint, so
-   * the replay is drawn once, whole, and the screen before it stays until then. The hold ends at the first of: no
-   * output arriving or written for max({@link REPLAY_QUIET_FLOOR_MS}, 1.5 x SRTT + 50) ms, a {@link REPLAY_CAP_MS} span
-   * that wrote a trickle or, with the span before it, less than {@link CREDIT_WINDOW_BYTES}, or
-   * {@link REPLAY_MAX_BYTES} written.
-   *
-   * hc marks no end of the replay: the core sends its first paint as one write, cut into frames under the stream's
-   * credit window, and waits for credit after each window; credit goes back as each batch is written, and a replay is
-   * written as it arrives. So a replay still coming arrives at least a window a round trip, however slow the link: from
-   * the end of the write that handed a window's credit back, the next window is at most a round trip away, under the
-   * quiet window, which restarts at each arrival and again after each write (on a page slow to write, the gap between
-   * arrivals is a round trip plus the write, #2011), and whose SRTT is sampled on this connection (the attach answer
-   * itself is one sample), and every two spans of {@link REPLAY_CAP_MS} (a round trip or more) write a window or more:
-   * on a page slow to take each window in, a window can take about a span, and a span's ends can cut it anywhere, so
-   * one span alone can catch part of one (#2271). A quiet window or span whose timer runs more than
-   * {@link LATE_TIMER_MS} late is started again rather than read: the page was busy, so it could not see the next window,
-   * already queued behind the timer (#2895); once no bytes have arrived for {@link SYNCHRONIZED_HOLD_CAP_MS} by the
-   * page's clock, a late timer is read as it is, so a page that stays busy still lets the replay go. A fixed deadline
-   * could not hold it: over a 300 ms relay, or on a page slow to write it, a replay
-   * of a few hundred KiB to 2 MiB takes longer than any one span.
-   */
+  /** An attach replay begins: its output is written as it arrives while its paint is held ({@link ReplayHold}). */
   replay(options: ReplayOptions): void {
-    if (this.#replay !== null) this.#endReplay();
     this.#srtt = options.srtt;
-    const replay: Replay = {
-      options,
-      written: 0,
-      spanFrom: 0,
-      lastSpan: null,
-      quiet: () => undefined,
-      cap: () => undefined,
-    };
-    this.#spanFrom(replay);
-    this.#replay = replay;
+    this.#replay.begin(options);
     this.#startCatchUp();
-    options.hold(true);
-    this.#quietFrom(replay);
     if (this.#visible && this.#queue.length > 0) {
       this.#cancel?.();
       this.#cancel = null;
@@ -272,9 +223,17 @@ export class OutputPacer {
     }
   }
 
-  /** The view resized: what arrives within a round trip is the shell answering it, not output being drawn (#2922). */
+  /**
+   * The view resized. Resizes less than a quiet window apart are one drag. Within a round trip of a resize, bytes for an
+   * update that was already open when the drag began are the shell answering it (a prompt redrawn on SIGWINCH), not
+   * the update being drawn (#2922). An update opened during the drag is a program's redraw, and its bytes keep it held
+   * as before (#757, #2040); one left open during a drag is held until the drag stops plus its quiet window, under the
+   * cap.
+   */
   resized(): void {
-    this.#resizedAt = this.#clock();
+    const now = this.#clock();
+    if (now - this.#resizedAt > Math.max(SYNCHRONIZED_UNPACED_MS, this.#roundTrip())) this.#resizesFrom = now;
+    this.#resizedAt = now;
   }
 
   /**
@@ -294,7 +253,12 @@ export class OutputPacer {
     this.#openedAt = null;
     this.#catchUp = null;
     this.#held.end();
-    this.#endReplay();
+    this.#replay.end();
+  }
+
+  /** How long a reply takes over this link: 1.5 x SRTT + 50 ms. */
+  #roundTrip(): number {
+    return 1.5 * (this.#srtt() ?? 0) + 50;
   }
 
   #startCatchUp(): void {
@@ -310,71 +274,13 @@ export class OutputPacer {
     return FRAME_BYTES;
   }
 
-  #quietFrom(replay: Replay): void {
-    replay.quiet();
-    const quiet = Math.max(REPLAY_QUIET_FLOOR_MS, 1.5 * (replay.options.srtt() ?? 0) + 50);
-    replay.quiet = this.#onTime(
-      quiet,
-      () => this.#endReplay(),
-      () => this.#quietFrom(replay),
-    );
-  }
-
-  /**
-   * Runs `then` `ms` from now, or `again` when the timer runs more than {@link LATE_TIMER_MS} late: a page that ran
-   * nothing else for that long (busy writing a batch, a starved tab, a phone waking) did not see the output that came
-   * meanwhile, which is queued behind this timer, so its silence says nothing about whether the output stopped coming
-   * (#2895).
-   */
   #onTime(ms: number, then: () => void, again: () => void): () => void {
-    const due = this.#clock() + ms;
-    return this.#timer(() => {
-      const now = this.#clock();
-      // However late each timer runs, a page that has had no bytes for the hold's cap reads the window as it is.
-      const late = now - due > LATE_TIMER_MS && now - this.#lastBytes < SYNCHRONIZED_HOLD_CAP_MS;
-      if (late) again();
-      else then();
-    }, ms);
-  }
-
-  /**
-   * Starts a {@link REPLAY_CAP_MS} span; at its end the replay is let go if the span wrote a trickle, or if it and the span
-   * before it wrote less than a credit window between them. The first span, with none before it, needs half a window.
-   */
-  #spanFrom(replay: Replay): void {
-    replay.spanFrom = replay.written;
-    replay.cap = this.#onTime(
-      REPLAY_CAP_MS,
-      () => {
-        const span = replay.written - replay.spanFrom;
-        if (span < REPLAY_TRICKLE_BYTES || span + (replay.lastSpan ?? span) < CREDIT_WINDOW_BYTES) this.#endReplay();
-        else {
-          replay.lastSpan = span;
-          this.#spanFrom(replay);
-        }
-      },
-      () => this.#spanFrom(replay),
-    );
-  }
-
-  #endReplay(): void {
-    const replay = this.#replay;
-    if (replay === null) return;
-    this.#replay = null;
-    replay.quiet();
-    replay.cap();
-    replay.options.hold(false);
-    // Every write of the replay landed while the paint was held, so a listener placing the view (hold-view-from-end)
-    // placed it on the layout before the replay; the release draws the replay, so the listeners are told once more.
-    // A replay that went quiet before any of it arrived drew nothing: telling them then would end a hold that has not
-    // placed the view on the replay yet, and leave it wherever the terminal's reset scrolled it (#1394).
-    if (replay.written > 0) for (const listener of this.#written) listener();
-    this.#schedule();
+    return onTime({ clock: this.#clock, timer: this.#timer, lastBytes: () => this.#lastBytes }, ms, then, again);
   }
 
   /** Inside a synchronized update whose paint is held, or an attach replay: written as it arrives. */
   #unpaced(): boolean {
-    return this.#replay !== null || this.#held.active;
+    return this.#replay.active || this.#held.active;
   }
 
   #schedule(): void {
@@ -434,7 +340,7 @@ export class OutputPacer {
         synchronized = true;
         if (this.#openedAt === null) {
           this.#openedAt = this.#clock();
-          this.#held.start(this.#replay?.written === 0 && size === 0 && opensUpdate(head.bytes));
+          this.#held.start(this.#replay.active && this.#replay.written === 0 && size === 0 && opensUpdate(head.bytes));
         }
       }
       parts.push(take === head.bytes.byteLength ? head.bytes : head.bytes.subarray(0, take));
@@ -451,16 +357,8 @@ export class OutputPacer {
     // The core sends the next window of an update once this one's credit is back, after the write (#2011).
     if (this.#held.paint) this.#held.wrote(size);
     else if (drawn) this.#held.drawing();
-    const replay = this.#replay;
-    if (replay === null) return size;
-    replay.written += size;
-    // A synchronized update holds the paint for what it brackets itself, so a replay that met one stands down instead
-    // of holding a second time: the update's bracket draws the replay (#812). Its hold began in the loop above, before
-    // the replay's ends, so the paint is never let go between them (#2040).
-    if (synchronized || replay.written >= REPLAY_MAX_BYTES) this.#endReplay();
-    // The core sends the next window only once this one's credit is back, which is now, after the write: the quiet
-    // window starts here too, or a page slow to write a window would spend the window's slack on the write (#2011).
-    else this.#quietFrom(replay);
+    // Its hold began in the loop above, before the replay's ends, so the paint is never let go between them (#2040).
+    this.#replay.wrote(size, synchronized);
     return size;
   }
 }

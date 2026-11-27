@@ -19,6 +19,20 @@ function holding() {
   return { frames, timers, holds, pacer };
 }
 
+/** A pacer over a 100 ms round trip with no update open yet. */
+function drag() {
+  const frames = manualFrames();
+  const timers = manualTimers();
+  const holds: string[] = [];
+  const pacer = new OutputPacer(() => undefined, frames.frame, timers.now, timers.timer);
+  pacer.holdSynchronized((held) => holds.push(held ? "held" : "let go"));
+  pacer.replay({ srtt: () => 100, hold: () => undefined });
+  pacer.push(bytes(KIB));
+  frames.nextFrame();
+  timers.advance(2000);
+  return { frames, timers, holds, pacer };
+}
+
 /** The shell's answer to a resize: it clears its line and draws the prompt again. */
 const prompt = (): Uint8Array => text(`\r${" ".repeat(60)}\rbash-3.2$ `);
 
@@ -64,5 +78,41 @@ test("with no resize, bytes inside an open update keep its paint held, as before
   timers.advance(200);
   expect(holds).toEqual(["held"]);
   timers.advance(800);
+  expect(holds).toEqual(["held", "let go"]);
+});
+
+test("an update a program opens in answer to the resize is held across an in-window chunk and a gap under the window (#2040)", () => {
+  const { frames, timers, holds, pacer } = drag();
+  pacer.resized();
+  timers.advance(10);
+  pacer.push(new Uint8Array([...text(OPEN), ...bytes(KIB)]));
+  frames.nextFrame();
+  timers.advance(180);
+  pacer.push(bytes(KIB));
+  frames.nextFrame();
+  // 900 ms after its last bytes, under the 1 s window: still being drawn.
+  timers.advance(900);
+  expect(holds).toEqual(["held"]);
+  timers.advance(100);
+  expect(holds).toEqual(["held", "let go"]);
+});
+
+test("a slow redraw opened during a drag stays held while it keeps coming, and is let go once it goes quiet (#757)", () => {
+  const { frames, timers, holds, pacer } = drag();
+  pacer.resized();
+  timers.advance(10);
+  pacer.push(new Uint8Array([...text(OPEN), ...bytes(KIB)]));
+  frames.nextFrame();
+  // A resize every 100 ms for 3 s, a chunk of the redraw every 300 ms, the update not yet closed.
+  for (let at = 100; at <= 3000; at += 100) {
+    timers.advance(100);
+    pacer.resized();
+    if (at % 300 === 0) {
+      pacer.push(bytes(KIB));
+      frames.nextFrame();
+    }
+  }
+  expect(holds).toEqual(["held"]);
+  timers.advance(1000);
   expect(holds).toEqual(["held", "let go"]);
 });
