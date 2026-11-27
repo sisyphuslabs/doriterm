@@ -1,5 +1,4 @@
 import type { OpenConnection } from "./connect.ts";
-import { resumeDials } from "./resume-dial-budget.ts";
 import { SessionResumer } from "./session-resume.ts";
 import type { UnprovenLinks } from "./wake.ts";
 
@@ -38,7 +37,6 @@ export function wireResume(opened: OpenConnection, hooks: ResumeWiringHooks): Re
     },
     failed: hooks.failed,
     log: hooks.log,
-    budget: resumeDials,
   });
   session.secure.allowResume();
   const unsubscribe = session.secure.onDetached((reason) => resumer.start(reason));

@@ -1,6 +1,5 @@
 import type { ByteLink } from "@doriface/client";
 import { CloseCode, type SecureSession, SecureLinkError } from "@doriface/crypto";
-import type { DialBudget } from "./resume-dial-budget.ts";
 
 /** A session the store can carry on over a new socket (contract v1.11): the session, and how to dial that socket. */
 export interface ResumableSession {
@@ -20,11 +19,11 @@ export const RESUME_BUDGET_MS = 60_000;
  * The waits between resume dials: short, since each dial is itself bounded, and cut short by a wake. The first second is
  * dialed at 250, 500 and 1000 ms, so a link back from a sub-second blip is found before the page says anything about it
  * (#2853). No wait is longer than 3 s, so a link back after a longer outage is found within 3 s and the reason the page
- * shows clears with it (#2928). What a dial costs the relay is bounded across the page by resume-dial-budget.ts.
+ * shows clears with it (#2928). What a dial costs the relay is bounded across the page by relay-dial-budget.ts.
  */
 export const RESUME_BACKOFF_MS = [250, 250, 500, 1_000, 2_000, 3_000] as const;
 /** The ladder's last step, the wait every later dial keeps. */
-const LONGEST_WAIT_MS = RESUME_BACKOFF_MS[RESUME_BACKOFF_MS.length - 1] ?? 3_000;
+const [, , , , , LONGEST_WAIT_MS] = RESUME_BACKOFF_MS;
 
 export interface ResumeHooks {
   /** The session is being carried on (true) or is carried on or given up (false). */
@@ -35,8 +34,6 @@ export interface ResumeHooks {
   readonly now?: (() => number) | undefined;
   /** Whether the page is in the background now; the document's own visibility unless a test passes another. */
   readonly hidden?: (() => boolean) | undefined;
-  /** The dials the page may make in a minute, shared by every connection's resume; none when a test passes none. */
-  readonly budget?: DialBudget | undefined;
 }
 
 /** The running page's visibility: no document under a test runner or a worker, so never hidden there. */
@@ -135,8 +132,6 @@ export class SessionResumer {
       const abort = new AbortController();
       this.#abort = abort;
       try {
-        // oxlint-disable-next-line no-await-in-loop -- a dial waits its turn in the page's budget first
-        if (!(await this.#withinBudget())) return;
         // oxlint-disable-next-line no-await-in-loop -- dials run one after another, each after its backoff
         const link = await this.#session.redial(abort.signal);
         if (abort.signal.aborted) {
@@ -166,19 +161,6 @@ export class SessionResumer {
     this.#hooks.log?.(`giving the session up: ${message(last)}`);
     this.#end();
     this.#session.secure.abandon(new ResumeAbandonedError(last));
-  }
-
-  /** Waits until the page's budget lets a dial go and records it; false when the resume was stopped meanwhile. */
-  async #withinBudget(): Promise<boolean> {
-    const budget = this.#hooks.budget;
-    if (budget === undefined) return true;
-    for (let wait = budget.waitMs(); wait > 0; wait = budget.waitMs()) {
-      // oxlint-disable-next-line no-await-in-loop -- the budget is asked again once the wait is over
-      await this.#wait(wait);
-      if (this.#stopped) return false;
-    }
-    budget.take();
-    return true;
   }
 
   #carriedOn(): void {

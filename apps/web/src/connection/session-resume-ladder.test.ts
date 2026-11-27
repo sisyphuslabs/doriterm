@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
-import { DialBudget } from "./resume-dial-budget.ts";
 import { RESUME_BACKOFF_MS, SessionResumer } from "./session-resume.ts";
 import { fakeSession, settle, turns } from "./session-resume.test-support.ts";
 
 afterEach(() => jest.useRealTimers());
 
-describe("SessionResumer's ladder and budget", () => {
+describe("SessionResumer's ladder", () => {
   test("a wake gives the resume its whole budget again: time the page spent hidden or frozen does not use it up (#2853)", async () => {
     const { session, calls } = fakeSession(["refused", "refused", "ok"]);
     let now = 0;
@@ -123,58 +122,5 @@ describe("SessionResumer's ladder and budget", () => {
     expect(resumed.length).toBe(1);
     expect((resumed[0] ?? Infinity) - 5_500).toBeLessThanOrEqual(3_000);
     expect(Math.max(...RESUME_BACKOFF_MS)).toBe(3_000);
-  });
-
-  test("the page's dial budget holds every connection's resume to 30 dials in any minute (#2928 review)", async () => {
-    jest.useFakeTimers();
-    let now = 0;
-    const budget = new DialBudget(30, () => now);
-    const sessions = [fakeSession(["refused"]), fakeSession(["refused"]), fakeSession(["refused"])];
-    const resumers = sessions.map(
-      ({ session }) =>
-        new SessionResumer(session, { resuming: () => undefined, now: () => now, hidden: () => true, budget }),
-    );
-    try {
-      for (const resumer of resumers) resumer.start(new Error("dropped"));
-      await turns();
-      // The network is gone for all three machines: their ladders for just under a minute (at 60 s the first dials leave
-      // the window, and the budget lets as many go again), a quarter second at a time.
-      for (let step = 0; step < 239; step += 1) {
-        now += 250;
-        jest.advanceTimersByTime(250);
-        // oxlint-disable-next-line no-await-in-loop -- each backoff's dial runs before the next one is due
-        await turns();
-      }
-      const dials = sessions.reduce((sum, { calls }) => sum + calls.redials, 0);
-      expect(dials).toBe(30);
-      // Each one still dials: the budget is shared, not taken by the first.
-      expect(sessions.every(({ calls }) => calls.redials > 0)).toBe(true);
-    } finally {
-      for (const resumer of resumers) resumer.stop();
-    }
-  });
-
-  test("one connection's ladder never waits on the budget: about 24 dials in its first minute (#2928 review)", async () => {
-    jest.useFakeTimers();
-    let now = 0;
-    const budget = new DialBudget(30, () => now);
-    const { session, calls } = fakeSession(["refused"]);
-    const resumer = new SessionResumer(session, {
-      resuming: () => undefined,
-      now: () => now,
-      hidden: () => true,
-      budget,
-    });
-    resumer.start(new Error("dropped"));
-    await turns();
-    for (let step = 0; step < 240; step += 1) {
-      now += 250;
-      jest.advanceTimersByTime(250);
-      // oxlint-disable-next-line no-await-in-loop -- each backoff's dial runs before the next one is due
-      await turns();
-    }
-    expect(calls.redials).toBeLessThan(30);
-    expect(budget.waitMs()).toBe(0);
-    resumer.stop();
   });
 });
