@@ -94,7 +94,14 @@ for (const size of [
  */
 test("a 0.8 s blip on a phone terminal shows no notice at any frame, during or after", async ({ page }) => {
   test.slow();
-  const link = await routeHcSocket(page);
+  await page.clock.install();
+  const reattached = Promise.withResolvers<void>();
+  let dropped = false;
+  const link = await routeHcSocket(page, {
+    sent(frame) {
+      if (dropped && frame.includes('"method":"terminal.attach"')) reattached.resolve();
+    },
+  });
   const terminal = await openPhoneTerminal(page);
   await page.evaluate(() => {
     const seen: string[] = [];
@@ -109,10 +116,17 @@ test("a 0.8 s blip on a phone terminal shows no notice at any frame, during or a
     };
     new MutationObserver(read).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10_000);
+  dropped = true;
   await link.drop(true);
   // The blip's length is the behavior under test.
-  await page.waitForTimeout(800);
+  await page.clock.runFor(800);
   link.restore();
+  // The route now accepts redials; that alone does not mean the page has a session.
+  // Drive the 1 s redial, then keep runner latency off the UI clock until the new session sends its attach.
+  await page.clock.runFor(300);
+  await reattached.promise;
+  await page.clock.resume();
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type("echo blip-quiet-$((1+1))");
   await page.keyboard.press("Enter");
