@@ -65,6 +65,11 @@ export class MembershipStore {
     for (const listener of this.#listeners) listener();
   }
 
+  /** The public halves this store was loaded with: who it is in a welcome or roster it takes in. */
+  get keys(): ClientKeys | undefined {
+    return this.#keys;
+  }
+
   get enrollment(): Enrollment | undefined {
     return this.#enrollment;
   }

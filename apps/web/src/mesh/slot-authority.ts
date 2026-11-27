@@ -32,6 +32,15 @@ function entryAt(record: MeshRecord, slot: string, generation: number) {
   );
 }
 
+/** The public halves of the keys stored in a slot now, as `MembershipStore` keys name them. */
+export async function storedPublicHalves(keys: KeyValueStore): Promise<{ signPub?: string; devicePub?: string }> {
+  const [signPub, devicePub] = await Promise.all([
+    keys.get("mesh-sign-key").then((stored) => publicOf("mesh-sign-key", stored)),
+    keys.get("device-key").then((stored) => publicOf("device-key", stored)),
+  ]);
+  return { ...(signPub === undefined ? {} : { signPub }), ...(devicePub === undefined ? {} : { devicePub }) };
+}
+
 /** The public half of a stored key, in every form a release has stored one, or undefined when none is stored. */
 function publicOf(name: KeyName, stored: unknown): string | undefined {
   if (typeof stored !== "object" || stored === null) return undefined;

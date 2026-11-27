@@ -6,6 +6,8 @@ import { deviceStore } from "../storage/idb.ts";
 import { bundleView, type BundleView } from "./bundle-view.ts";
 import { forgetCachedIdentity, loadBrowserIdentity } from "./identity.ts";
 import { DEFAULT_SLOT, slotKeys } from "./identity-slots.ts";
+import { storedPublicHalves } from "./slot-authority.ts";
+import type { KeyValueStore } from "../storage/idb.ts";
 import { contextOf, type MeshContext } from "./mesh-context.ts";
 import { MembershipStore } from "./membership.ts";
 
@@ -83,22 +85,48 @@ export const membershipSnapshot = (): BundleView => stores.get(inViewSlot())?.sn
 export const membershipBundle = (slot: string = inViewSlot()): MembershipStore | undefined => stores.get(slot);
 export const loadedSlots = (): readonly string[] => [...stores.keys()];
 
+/** The storage each loaded slot was read from (the page's IndexedDB, or a test's store). */
+const sources = new Map<string, KeyValueStore>();
+
+/**
+ * Whether a loaded store is still who the slot's keys say. Its keys were read when it was loaded; another tab can have
+ * replaced them since (the last mesh left there resets the default keys), and a store with the old ones would refuse
+ * every roster that admits the new ones (review of #2890). Read from storage, not from what this page was told.
+ */
+export async function storeIsCurrent(store: MembershipStore, storage: KeyValueStore = deviceStore): Promise<boolean> {
+  const now = await storedPublicHalves(slotKeys(storage, store.slot));
+  return store.keys?.signPub === now.signPub && store.keys?.devicePub === now.devicePub;
+}
+
 /**
  * The store of one key slot, loaded with that slot's keys through `slotKeys`: a slot that holds no membership and no join
- * claim cannot get keys there, so a late caller (a refresh in flight after a leave) fails instead of reviving it.
+ * claim cannot get keys there, so a late caller (a refresh in flight after a leave) fails instead of reviving it. A store
+ * loaded before is handed out again only while its keys are still the slot's stored keys; else it is loaded again.
  */
-export function prepareMembership(slot: string = DEFAULT_SLOT): Promise<MembershipStore> {
+export async function prepareMembership(
+  slot: string = DEFAULT_SLOT,
+  storage: KeyValueStore = deviceStore,
+): Promise<MembershipStore> {
   const pending = loading.get(slot);
-  if (pending !== undefined) return pending;
+  if (pending !== undefined) {
+    const loaded = await pending;
+    if (loading.get(slot) !== pending || (await storeIsCurrent(loaded, storage))) return loading.get(slot) ?? loaded;
+    dropSlot(slot);
+  }
+  return loadStore(slot, storage);
+}
+
+function loadStore(slot: string, storage: KeyValueStore): Promise<MembershipStore> {
+  sources.set(slot, storage);
   const token = Symbol(slot);
   tokens.set(slot, token);
   const load = (async () => {
-    const identity = await loadBrowserIdentity(slotKeys(deviceStore, slot));
+    const identity = await loadBrowserIdentity(slotKeys(storage, slot));
     const keys = {
       signPub: base64urlEncode(identity.card.publicKey),
       devicePub: base64urlEncode(identity.device.publicKey),
     };
-    const store = new MembershipStore(deviceStore, keys, slot);
+    const store = new MembershipStore(storage, keys, slot);
     await store.load();
     if (tokens.get(slot) !== token) return store;
     stores.set(slot, store);
@@ -118,12 +146,16 @@ export function dropSlot(slot: string): void {
   loading.delete(slot);
   tokens.delete(slot);
   if (order.includes(slot)) order.splice(order.indexOf(slot), 1);
-  forgetCachedIdentity(slotKeys(deviceStore, slot));
+  forgetCachedIdentity(slotKeys(sources.get(slot) ?? deviceStore, slot));
+  sources.delete(slot);
   publish();
 }
 
 export function dropAll(): void {
-  for (const slot of [...stores.keys(), ...loading.keys()]) forgetCachedIdentity(slotKeys(deviceStore, slot));
+  for (const slot of [...stores.keys(), ...loading.keys()]) {
+    forgetCachedIdentity(slotKeys(sources.get(slot) ?? deviceStore, slot));
+  }
+  sources.clear();
   stores.clear();
   loading.clear();
   tokens.clear();

@@ -19,9 +19,12 @@ const card = (who: Identity, name: string, mesh: string, inviter: string, client
   );
 
 /** A real signed mesh: the first machine founds it and admits the others and one browser, as a host would. */
-export function meshFixture(machines: readonly string[] = ["studio", "workshop"], browserName = "my-browser") {
+export function meshFixture(
+  machines: readonly string[] = ["studio", "workshop"],
+  browserName = "my-browser",
+  browser: Identity = generateHostIdentity(),
+) {
   const hosts = machines.map(() => generateHostIdentity());
-  const browser = generateHostIdentity();
   const founder = hosts[0];
   if (founder === undefined) throw new Error("a mesh needs a machine");
   const found = signRecord(

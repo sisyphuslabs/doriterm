@@ -33,10 +33,16 @@ export async function reconcile(): Promise<void> {
     ...record.memberships.map((held) => held.keySlot),
     ...record.slots.flatMap((claim) => (claim.phase === "enrolling" ? [claim.slot] : [])),
   ]);
-  // A store that never held a mesh holds nothing to clean up, and dropping it would forget its roster refresh's bound.
-  for (const slot of view.loadedSlots()) {
-    if (!kept.has(slot) && view.membershipBundle(slot)?.snapshot().phase !== "empty") view.dropSlot(slot);
-  }
+  // A store that never held a mesh is kept with its roster refresh's bound, but only while its keys are still the slot's:
+  // another tab's last leave resets the default keys, and a store with the old ones would refuse every roster.
+  await Promise.all(
+    view.loadedSlots().map(async (slot) => {
+      if (kept.has(slot)) return;
+      const store = view.membershipBundle(slot);
+      const keep = store?.snapshot().phase === "empty" && (await view.storeIsCurrent(store));
+      if (!keep) view.dropSlot(slot);
+    }),
+  );
   await Promise.all(record.memberships.map((held) => view.prepareMembership(held.keySlot)));
 }
 
