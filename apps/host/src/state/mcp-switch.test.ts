@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MCP_SWITCH_FILE, McpSwitch } from "./mcp-switch.ts";
@@ -19,16 +19,18 @@ test("a missing switch is off: MCP waits for the owner to turn it on", () => {
   expect(mcp.enabled()).toBe(false);
 });
 
-test("a host's first start settles a missing switch once: on where devices are already paired, off otherwise", () => {
-  mcp.settleUnset(true);
+const quiet = (): void => {};
+
+test("a host's first start settles a missing switch once: on where someone could already use MCP, off otherwise", () => {
+  mcp.settleUnset(() => true, quiet);
   expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ version: 1, enabled: true });
 
   const fresh = mkdtempSync(join(tmpdir(), "dh-mcp-switch-fresh-"));
   try {
-    new McpSwitch(fresh).settleUnset(false);
+    new McpSwitch(fresh).settleUnset(() => false, quiet);
     expect(JSON.parse(readFileSync(join(fresh, MCP_SWITCH_FILE), "utf8"))).toEqual({ version: 1, enabled: false });
     // A device paired later does not turn it on at the next start: the setting is explicit now.
-    new McpSwitch(fresh).settleUnset(true);
+    new McpSwitch(fresh).settleUnset(() => true, quiet);
     expect(new McpSwitch(fresh).enabled()).toBe(false);
   } finally {
     rmSync(fresh, { recursive: true, force: true });
@@ -37,10 +39,27 @@ test("a host's first start settles a missing switch once: on where devices are a
 
 test("settling never changes a setting the owner wrote", () => {
   mcp.setEnabled(false);
-  mcp.settleUnset(true);
+  mcp.settleUnset(() => true, quiet);
   expect(mcp.enabled()).toBe(false);
   mcp.setEnabled(true);
-  mcp.settleUnset(false);
+  mcp.settleUnset(() => false, quiet);
+  expect(mcp.enabled()).toBe(true);
+});
+
+test("when who uses the host cannot be read, MCP stays off, the reason is logged, and the next start settles it", () => {
+  const logged: string[] = [];
+  mcp.settleUnset(
+    () => {
+      throw new Error("devices.json: unsupported format");
+    },
+    (line) => logged.push(line),
+  );
+  expect(existsSync(file)).toBe(false);
+  expect(mcp.enabled()).toBe(false);
+  expect(logged).toEqual([
+    "mcp: cannot read who uses this host (Error: devices.json: unsupported format); MCP stays off until the next start settles it",
+  ]);
+  mcp.settleUnset(() => true, quiet);
   expect(mcp.enabled()).toBe(true);
 });
 
