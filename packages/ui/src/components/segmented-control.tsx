@@ -38,7 +38,11 @@ export function SegmentedControl<T extends string>({
         const picked = options.find((option) => next.includes(option.value));
         if (picked !== undefined && onValueChange !== undefined) onValueChange(picked.value);
       }}
-      className={cn("inline-flex gap-0 rounded-md border border-border bg-chrome p-0.5", className)}
+      // Never wider than where it sits: choices that cannot share one line take a second (a narrow Settings card, #2914).
+      className={cn(
+        "inline-flex max-w-full flex-wrap gap-0 rounded-md border border-border bg-chrome p-0.5",
+        className,
+      )}
     >
       {options.map((option) => (
         <Toggle

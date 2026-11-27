@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures.ts";
-import { pushButton, pushState, settingsSection } from "./push-suite.ts";
+import { pushButton, pushState, openSettingsSection } from "./push-suite.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -22,7 +22,7 @@ test("a refused desktop notification shows Check again and Turn off together and
     localStorage.setItem("doriface.desktop-notices", JSON.stringify({ on: true, prefs: { events, muted: [] } }));
   });
   await page.goto("/settings");
-  await settingsSection(page, "Notifications").click();
+  await openSettingsSection(page, "Notifications");
 
   await expect(pushState(page)).toHaveAttribute("data-push-state", "blocked", { timeout: 20_000 });
   await expect(pushButton(page, "Check again")).toBeEnabled();

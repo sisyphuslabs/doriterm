@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 import { askHost, stubPushManager, TestPushService } from "./push.ts";
-import { pushButton, settingsSection } from "./push-suite.ts";
+import { pushButton, openSettingsSection } from "./push-suite.ts";
 
 const OUT = join(import.meta.dirname, "../../../docs/design/app");
 const SHOTS = [
@@ -56,8 +56,8 @@ async function openSection(
   await page.goto("/settings");
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   await page.goto("/settings");
-  await settingsSection(page, "Notifications").click();
-  await expect(page.getByRole("heading", { name: "Notifications", level: 2, exact: true })).toBeVisible();
+  await openSettingsSection(page, "Notifications");
+  await expect(page.getByRole("heading", { name: "Notifications", exact: true })).toBeVisible();
   return { page, close: () => context.close() };
 }
 

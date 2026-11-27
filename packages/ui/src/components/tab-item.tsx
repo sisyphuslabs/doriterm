@@ -16,6 +16,8 @@ export interface WorkspaceTab {
   readonly controls?: string;
   /** Pinned in front of the others (#1561): drawn as its icon alone, with no close button. */
   readonly pinned?: boolean;
+  /** Its close was taken and waits (#2913): the close button is busy, and turns into a spinner if the wait goes on. */
+  readonly closing?: boolean;
 }
 
 /** What a tab asks of its strip, by tab id: one object for every tab, the same on every render. */
@@ -101,7 +103,8 @@ const sameTab = (a: WorkspaceTab, b: WorkspaceTab): boolean =>
   a.icon === b.icon &&
   a.status === b.status &&
   a.controls === b.controls &&
-  a.pinned === b.pinned;
+  a.pinned === b.pinned &&
+  a.closing === b.closing;
 
 const sameKeys = (a: readonly string[] | undefined, b: readonly string[] | undefined): boolean =>
   a === b || (a !== undefined && b !== undefined && a.join("\u0000") === b.join("\u0000"));
@@ -185,6 +188,7 @@ export const TabItem = memo(function TabItem(props: TabItemProps) {
           label={`Close ${tab.title}`}
           icon={<X />}
           data-tab-close
+          loading={tab.closing === true}
           onClick={(event) => {
             // Selecting a tab moves the strip (only the selected tab has this button), so the second click of a
             // double-click on the tab can land here: that is a rename of the tab, never its close.
