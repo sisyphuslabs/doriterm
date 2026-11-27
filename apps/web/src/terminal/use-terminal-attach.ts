@@ -25,7 +25,7 @@ import {
   unsentReason,
 } from "./terminal-settle.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
-import type { HostSize } from "./host-size.ts";
+import { fitOwnBox, type HostSize } from "./host-size.ts";
 
 const encoder = new TextEncoder();
 
@@ -205,8 +205,10 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     // wterm pins the row height it measured at mount inline, over the stylesheet's font-size-derived one; without this
     // a font-size change (zoom, Settings) keeps the old row height, so the grid gains columns but never rows.
     ready.element.style.removeProperty("--term-row-height");
-    // wterm starts every grid at 80x24 and fits it later; the pty starts at the size the view renders.
-    ready.fit();
+    // wterm starts every grid at 80x24 and fits it later; the pty starts at the size the view renders. Every attach asks
+    // for the view's own box, a watching one's included: the core gives it the pty only when no viewer is more recently
+    // active, and the answer says which size the view draws at (D1, host-size.ts).
+    fitOwnBox(ready);
     const { cols, rows } = ready;
     noteViewSize(cols, rows);
     const display = readDisplay(ready.element);
@@ -251,6 +253,9 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           return undefined;
         }
         stream.current = attached;
+        // A watching view draws at the pty's grid (D1): the size the answer carries, before its first paint; later
+        // changes come from the core's size events (usePtySize).
+        hostSize.ptySized(ready, attached.size);
         // The view in use (the focused pane, in a focused window) was the active viewer before the drop; a FOCUS frame
         // makes it active again, so the core applies its size now. Other views send no FOCUS, which would report
         // focus-in to their programs; their size applies when they are focused or resized.
