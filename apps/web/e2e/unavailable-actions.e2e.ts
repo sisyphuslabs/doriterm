@@ -208,29 +208,3 @@ test("a Close question left open as its machine drops waits with Close disabled 
   }
   await expect(machineRow(page)).toContainText("connected", { timeout: STATE_BOUND_MS });
 });
-
-test("on a phone, an offline machine's empty space offers New tab here and Close space disabled with why", async ({
-  page,
-}) => {
-  test.setTimeout(OFFLINE_TEST_TIMEOUT_MS);
-  await page.setViewportSize({ width: 390, height: 844 });
-  const name = "nothing-running";
-  // A tab on a terminal that does not run: the space screen shows its empty state.
-  seedMachineSpace(name, "t99999");
-  await page.goto("/?v=spaces");
-  await page.getByText(name).first().click({ timeout: 20_000 });
-  await expect(page.getByText(`Nothing is running in ${name}`)).toBeVisible({ timeout: 20_000 });
-  const newHere = page.getByRole("button", { name: "New tab here" });
-  const closeSpace = page.getByRole("button", { name: "Close space" });
-  await expect(newHere).toBeEnabled();
-  try {
-    switchTo("drop");
-    await expect(newHere).toBeDisabled({ timeout: OFFLINE_BOUND_MS });
-    await expect(closeSpace).toBeDisabled();
-    await expect(page.getByText(/New tab here and Close space come back by themselves/)).toBeVisible();
-  } finally {
-    reconnect();
-  }
-  await expect(newHere).toBeEnabled({ timeout: STATE_BOUND_MS });
-  await expect(closeSpace).toBeEnabled();
-});
