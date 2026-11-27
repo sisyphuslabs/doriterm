@@ -104,15 +104,19 @@ for (const width of [390, 1440] as const) {
       // Room for both named waits, the core's redial and the mesh groups', past the default 60 s test timeout.
       test.setTimeout(REDIAL_BOUND_MS + MESH_GROUPS_MS + 30_000);
       resetMeshDocs();
-      await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
-      await page.goto("/settings");
-      const settings = settingsDialog(page);
-      await settings
-        .getByRole(width === 390 ? "tab" : "button", { name: "Machines", exact: true })
-        .first()
-        .click();
-      await expect(settings.locator("[data-mesh-group]").first()).toBeVisible({ timeout: MESH_GROUPS_MS });
-      await expectScale(settings);
+      try {
+        await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
+        await page.goto("/settings");
+        const settings = settingsDialog(page);
+        await settings
+          .getByRole(width === 390 ? "tab" : "button", { name: "Machines", exact: true })
+          .first()
+          .click();
+        await expect(settings.locator("[data-mesh-group]").first()).toBeVisible({ timeout: MESH_GROUPS_MS });
+        await expectScale(settings);
+      } finally {
+        resetMeshDocs({ open: false });
+      }
     });
   });
 }

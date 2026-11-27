@@ -138,7 +138,7 @@ for (const width of [390, 1440] as const) {
         ).toBeGreaterThanOrEqual(control);
         await expectRoles(settings, '[data-mesh-group="pending"] [data-setting-row]', '[data-mesh-answer="gone"]');
       } finally {
-        resetMeshDocs();
+        resetMeshDocs({ open: false });
       }
     });
   });

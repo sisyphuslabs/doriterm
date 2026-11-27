@@ -4,6 +4,7 @@ import {
   type MachineView,
   MESH_APPROVAL_DOC,
   MESH_STATUS_DOC,
+  type MeshPendingJoin,
   type MeshStatus,
   parseMeshStatus,
 } from "@doriface/protocol";
@@ -36,13 +37,29 @@ export type MeshRead =
       readonly phase: "ready";
       readonly status: MeshStatus;
       readonly machines: readonly MachineView[];
-      /** This host's answer document: which pending join was approved or denied last, and what the host made of it. */
-      readonly answered: Answered | undefined;
+      /** Every join waiting on a machine this app reaches, this core's first (#2939). */
+      readonly requests: readonly JoinRequest[];
+      /** Connected machines whose mesh documents could not be read, so their joins may be missing here. */
+      readonly unread: readonly string[];
     };
 
+/**
+ * A pending join and the machine that holds it. Pending joins live in the inviting host's memory and are published only
+ * in its own status document, so an owner looking at another machine reads them there and answers through that
+ * machine's approval document.
+ */
+export interface JoinRequest {
+  readonly join: MeshPendingJoin;
+  /** The machine that holds the join, as machine.list lists it; null for this core. */
+  readonly machine: MachineView | null;
+  /** That machine's answer document, when it names this join. */
+  readonly answered: Answered | undefined;
+}
+
 export interface MeshCalls {
-  readonly doc: (name: string) => Promise<{ readonly value: JsonValue; readonly version: number }>;
-  readonly setDoc: (name: string, value: JsonValue, version: number) => Promise<unknown>;
+  /** `on` names another machine as machine.list does; omitted for this core. */
+  readonly doc: (name: string, on?: string) => Promise<{ readonly value: JsonValue; readonly version: number }>;
+  readonly setDoc: (name: string, value: JsonValue, version: number, on?: string) => Promise<unknown>;
   readonly machines: () => Promise<readonly MachineView[]>;
 }
 
@@ -69,6 +86,29 @@ const failedRead = (error: unknown): MeshRead => ({
   message: error instanceof Error ? error.message : String(error),
 });
 
+const requestsIn = (
+  pending: readonly MeshPendingJoin[],
+  machine: MachineView | null,
+  answer: JsonValue,
+): JoinRequest[] => {
+  const answered = answeredIn(answer);
+  return pending.map((join) => ({ join, machine, answered: answered?.nonce === join.nonce ? answered : undefined }));
+};
+
+/** The joins waiting on one other machine; undefined when its documents cannot be read. */
+async function machineRequests(calls: MeshCalls, machine: MachineView): Promise<JoinRequest[] | undefined> {
+  try {
+    const [doc, answer] = await Promise.all([
+      calls.doc(MESH_STATUS_DOC, machine.name),
+      calls.doc(MESH_APPROVAL_DOC, machine.name),
+    ]);
+    const status = doc.value === null ? undefined : parseMeshStatus(doc.value);
+    return requestsIn(status?.pending ?? [], machine, answer.value);
+  } catch {
+    return undefined;
+  }
+}
+
 async function readMesh(calls: MeshCalls): Promise<MeshRead> {
   const [doc, machines, answer] = await Promise.all([
     calls.doc(MESH_STATUS_DOC),
@@ -78,7 +118,19 @@ async function readMesh(calls: MeshCalls): Promise<MeshRead> {
   if (doc.value === null) return { phase: "none" };
   const status = parseMeshStatus(doc.value);
   if (status === undefined) return { phase: "unreadable" };
-  return { phase: "ready", status, machines, answered: answeredIn(answer.value) };
+  const connected = machines.filter((machine) => machine.state === "connected");
+  const elsewhere = await Promise.all(connected.map((machine) => machineRequests(calls, machine)));
+  const requests = requestsIn(status.pending, null, answer.value);
+  const held = new Set(requests.map((request) => request.join.nonce));
+  for (const found of elsewhere) {
+    for (const request of found ?? []) {
+      if (held.has(request.join.nonce)) continue;
+      held.add(request.join.nonce);
+      requests.push(request);
+    }
+  }
+  const unread = connected.filter((_, index) => elsewhere[index] === undefined).map((machine) => machine.name);
+  return { phase: "ready", status, machines, requests, unread };
 }
 
 /**
@@ -112,14 +164,17 @@ export class MeshReader {
     this.#onRead?.(next);
   }
 
-  async answer(nonce: string, verdict: Verdict, code?: string): Promise<void> {
+  /** Answers a join on the machine that holds it, through that machine's approval document. */
+  async answer(request: JoinRequest, verdict: Verdict): Promise<void> {
+    const { nonce, code } = request.join;
     if (verdict === "approve" && (code === undefined || !/^\d{3} \d{3}$/.test(code))) {
       throw new Error("Update this client to approve with the join code.");
     }
-    const { version } = await this.#calls.doc(MESH_APPROVAL_DOC);
+    const on = request.machine?.name;
+    const { version } = await this.#calls.doc(MESH_APPROVAL_DOC, on);
     const value = verdict === "approve" ? { approve: nonce, code: code ?? "" } : { deny: nonce };
     try {
-      await this.#calls.setDoc(MESH_APPROVAL_DOC, value, version);
+      await this.#calls.setDoc(MESH_APPROVAL_DOC, value, version, on);
     } finally {
       await this.refresh();
     }
