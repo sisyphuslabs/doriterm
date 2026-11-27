@@ -96,11 +96,7 @@ export function ConnectDeviceDialog({ open, onClose, connection, machines, kind 
       title="Connect a device"
       description="One invite for a phone, a browser or a computer. A phone or browser waits for your approval."
       className="w-[min(36rem,calc(100%-2rem))]"
-      actions={
-        <Button variant="primary" onClick={onClose}>
-          Done
-        </Button>
-      }
+      actions={<Button onClick={onClose}>Done</Button>}
     >
       <div className="flex flex-col gap-5">
         <SegmentedControl label="What to connect" options={KINDS} value={shown} onValueChange={setShown} />

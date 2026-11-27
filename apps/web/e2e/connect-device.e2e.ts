@@ -24,3 +24,22 @@ test("Connect a device opens on a phone or browser invite: a QR and an https lin
     await phone.close();
   }
 });
+
+// The sheet on a phone (#2949 review): a computer's tab is the tallest; it stays a bounded scroller inside the viewport,
+// and its Done stays reachable at the end, at 390 and at 320.
+for (const width of [390, 320] as const) {
+  test(`at ${width} the Computer tab stays inside the screen and its Done stays in view`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/settings#machines");
+    await page.getByRole("button", { name: "Connect a device" }).first().click({ timeout: 60_000 });
+    const dialog = page.getByRole("dialog", { name: "Connect a device" });
+    await dialog.getByRole("button", { name: "Computer", exact: true }).click();
+    await expect(dialog.getByLabel("Join command")).toBeVisible({ timeout: 20_000 });
+    const box = await dialog.boundingBox();
+    expect(
+      box === null ? "no box" : box.y >= 0 && box.y + box.height <= 844 && box.x >= 0 && box.x + box.width <= width,
+    ).toBe(true);
+    await dialog.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+    await expect(dialog.getByRole("button", { name: "Done" })).toBeInViewport();
+  });
+}
