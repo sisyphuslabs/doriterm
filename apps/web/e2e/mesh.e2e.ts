@@ -101,13 +101,14 @@ test("a member that joined as a client is listed under Browsers and phones, neve
   updateCoreDoc(MESH_STATUS_DOC, (current) => {
     const status = parseMeshStatus(current);
     if (status === undefined) throw new Error("the e2e core has no mesh status");
-    return {
-      ...status,
-      members: status.members.map((m) => (m.name === "tablet" ? Object.assign({}, m, { kind: "client" }) : m)),
-    };
+    const members = [...status.members];
+    const at = members.findIndex((member) => member.name === "tablet");
+    const tablet = members[at];
+    if (tablet !== undefined) members[at] = { ...tablet, kind: "client" };
+    return { ...status, members };
   });
   await openMesh(page);
-  const clients = group(page, "clients");
+  const clients = page.getByRole("region", { name: "Browsers and phones" });
   await expect(clients).toContainText("tablet");
   await expect(group(page, "offline")).not.toContainText("tablet");
 });

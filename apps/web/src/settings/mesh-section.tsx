@@ -6,7 +6,8 @@ import type { ConnectionSettings } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
-import { ClientRow, MemberRow } from "../mesh/mesh-rows.tsx";
+import { MemberRow } from "../mesh/mesh-rows.tsx";
+import { BrowserMemberList } from "./browser-members.tsx";
 import { holderOf } from "../mesh/mesh-reader.ts";
 import { useMesh } from "../mesh/use-mesh.ts";
 import { MeshPicker } from "./mesh-picker.tsx";
@@ -153,11 +154,15 @@ export function MeshBody({
               <MemberRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
             ))}
           </MeshGroup>
-          <MeshGroup id="clients" title="Browsers and phones" count={groups.clients.length}>
-            {groups.clients.map((member) => (
-              <ClientRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
-            ))}
-          </MeshGroup>
+          {groups.clients.length === 0 ? null : (
+            <BrowserMemberList
+              clients={groups.clients.map((member) => ({ hostId: member.hostId, name: member.name ?? member.hostId }))}
+              self={undefined}
+              observer={self}
+              observations={groups.clients}
+              now={now}
+            />
+          )}
           {groups.revokedCount === 0 ? null : (
             <p data-mesh-revoked className="text-prose text-muted-foreground tabular-nums">
               {groups.revokedCount} removed {groups.revokedCount === 1 ? "machine" : "machines"}

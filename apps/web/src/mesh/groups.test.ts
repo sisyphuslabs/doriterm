@@ -75,16 +75,18 @@ describe("meshGroups", () => {
   });
 });
 
-test("a member that joined as a client is a browser or phone, never an offline machine (#2939)", () => {
-  const tabletClient: MeshStatus = {
-    ...status,
-    members: status.members.map((member) =>
-      member.name === "tablet" ? Object.assign({}, member, { kind: "client" as const }) : member,
-    ),
-  };
-  const groups = meshGroups(tabletClient, own, NOW.getTime());
+test("a member that joined as a client is a browser or phone, never an online or offline machine (#2939)", () => {
+  const groups = meshGroups(stale({ kind: "client" }), own, NOW.getTime());
   expect(names(groups.clients)).toEqual(["tablet"]);
   expect([...names(groups.online), ...names(groups.offline)]).not.toContain("tablet");
+});
+
+test("an older host's status, with no kind on any member, groups every member as a machine (#2948 review)", () => {
+  const kindless: MeshStatus = { ...status, members: status.members.map(({ kind: _kind, ...member }) => member) };
+  const groups = meshGroups(kindless, own, NOW.getTime());
+  const current = meshGroups(status, own, NOW.getTime());
+  expect(groups.clients).toEqual([]);
+  expect([names(groups.online), names(groups.offline)]).toEqual([names(current.online), names(current.offline)]);
 });
 
 describe("joins held on another machine (#2939)", () => {

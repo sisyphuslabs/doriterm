@@ -1,6 +1,6 @@
 import { type MeshMemberStatus, meshRevokeCommand, replacedMachineText } from "@doriface/protocol";
 import { IconButton, SettingRow, cn } from "@doriface/ui";
-import { Check, Copy, Monitor, Server, Smartphone } from "lucide-react";
+import { Check, Copy, Monitor, Server } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { formatAge } from "../workspace/model.ts";
 import { REACH_LABEL, reachOf } from "./reach.ts";
@@ -103,38 +103,6 @@ function RevokeCaveat({ name, ask }: { readonly name: string; readonly ask: stri
       {`A revoke of ${name} written here could not be decided`}
       {ask === null ? "; re-found the mesh." : `; revoke it from ${ask}.`}
     </details>
-  );
-}
-
-/** A browser or phone in the mesh: never dialed, so it has no line; it says when it last opened a session here. */
-export function ClientRow({ member, nameOf, now }: MemberRowProps) {
-  const name = member.name ?? member.hostId;
-  const facts = [
-    member.admittedBy === null ? "joined" : `joined · admitted by ${nameOf(member.admittedBy)}`,
-    member.lastSessionAt === undefined
-      ? "no session here yet"
-      : `last session here ${formatAge(member.lastSessionAt, now)} ago`,
-  ];
-  return (
-    <SettingRow
-      inline
-      title={
-        <span className="flex items-center gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
-          <Smartphone aria-hidden />
-          {name}
-        </span>
-      }
-      description={
-        <>
-          <span className="block">{facts.join(" · ")}</span>
-          <Key fingerprint={member.fingerprint} hostId={member.hostId} />
-          {member.witnessPool.length === 0 ? (
-            <RevokeCaveat name={name} ask={member.witnessAsk === null ? null : nameOf(member.witnessAsk)} />
-          ) : null}
-        </>
-      }
-      control={null}
-    />
   );
 }
 

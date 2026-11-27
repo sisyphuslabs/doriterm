@@ -161,6 +161,12 @@ describe("parseMeshStatus", () => {
     const added = parseMeshStatus(memberAt(1, { kind: "robot" }))?.members[1];
     expect(added === undefined ? "refused" : "kind" in added).toBe(false);
     expect(parseMeshStatus(memberAt(1, { kind: 7 }))).toBeUndefined();
+    const { kind: _kind, ...older } = status.members[1] ?? {};
+    const kindless = parseMeshStatus({
+      ...status,
+      members: status.members.map((entry, at) => (at === 1 ? older : entry)),
+    });
+    expect(kindless?.members[1] === undefined ? "refused" : "kind" in kindless.members[1]).toBe(false);
   });
 
   test.each(["name", "localName", "fingerprint"])("refuses a member within the cap without its %s", (key) => {
