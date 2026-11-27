@@ -56,6 +56,8 @@ export class MeshStore {
   readonly #options: MeshStoreOptions;
   #cache: { readonly stamp: string; readonly index: AuthorizeIndex } | undefined;
   #candidate: { file: MeshFile; users: number; committed: boolean } | undefined;
+  /** The file stamp an unreadable mesh.json was last reported at. */
+  #unreadable: string | undefined;
 
   constructor(stateDir: string, options: MeshStoreOptions) {
     this.#dir = ensureStateDir(stateDir);
@@ -63,9 +65,27 @@ export class MeshStore {
     this.#options = options;
   }
 
+  /**
+   * The mesh file, or undefined when this host is in no mesh it can use: none exists, or one that cannot be read or
+   * parsed (#2951). An unreadable file never stops the host: it runs as in no mesh, admits no member from it, and says
+   * why once per change on disk. Nothing is ever written over it, as every write follows a read of the file or creates
+   * one only where none exists.
+   */
   read(): MeshFile | undefined {
-    const value = readJson(this.#path);
-    return value === undefined ? undefined : parseMeshFile(value);
+    try {
+      const value = readJson(this.#path);
+      return value === undefined ? undefined : parseMeshFile(value);
+    } catch (error) {
+      const stamp = fileStamp(this.#path);
+      if (stamp !== this.#unreadable) {
+        this.#unreadable = stamp;
+        const why = error instanceof Error ? error.message : String(error);
+        this.#options.log(
+          `mesh: cannot read ${MESH_FILE} (${why}); this host runs as in no mesh and leaves it as it is`,
+        );
+      }
+      return undefined;
+    }
   }
 
   /** Best-effort local observation, at most once per client per five minutes; never waits for a busy state lock. */
