@@ -9,12 +9,38 @@ export interface GridSize {
   readonly rows: number;
 }
 
+/** The view's grid: fitted to its box while `autoResize` is on, or held at a size it is given (wterm's WTerm). */
+export interface ViewGrid extends GridSize {
+  autoResize: boolean;
+  resize(cols: number, rows: number): void;
+  fit(): void;
+}
+
+/** Fits the grid to its box unless it holds the pty's size. */
+export function fitGrid(view: ViewGrid): void {
+  if (view.autoResize) view.fit();
+}
+
+/**
+ * Fits the grid to the view's own box, held or not: the size an attach asks for. The core gives it the pty only when no
+ * other viewer is more recently active (viewers.rs `apply_size`), so a phone alone on a terminal sizes it, and one
+ * watching a desk's draws at the desk's size again once the answer and the core's size events say so.
+ */
+export function fitOwnBox(view: ViewGrid): void {
+  view.autoResize = true;
+  view.fit();
+}
+
 /**
  * When this view's grid may size the host's pty (redesign D1, as Herdr mobile does). herdr-core makes a viewer the size
  * leader when it types, resizes or gains focus, and an attach with `resumed: true` joins without taking the lead
  * (herdr-core viewers.rs `touch`, `active_at`). So a touch view only watching attaches that way and holds its RESIZE and
- * FOCUS frames: the desk that is typing keeps its columns, and the phone fits the output to its own grid. Its first
- * input sends its size and focus ahead of the input, and from then on it sizes the host as any view does.
+ * FOCUS frames: the desk that is typing keeps its columns, and a terminal no other viewer is on takes the phone's own
+ * size from its attach (the core's leader is then the phone, active or not). The program draws for the pty's grid, so the watching view
+ * draws at that grid too, not one fitted to its own box: a narrower grid wraps the program's rows, and each redraw that
+ * goes back up by the program's own row count leaves the wrapped pieces behind (#2819's copies, #2974). Its first
+ * input fits the grid to its box again and sends that size and focus ahead of the input, and from then on it sizes the
+ * host as any view does.
  */
 export class HostSize {
   #watching: boolean;
@@ -61,11 +87,20 @@ export class HostSize {
     if (!this.#watching || !gained) stream?.focus(gained);
   }
 
-  /** Called before each person's input is sent: the first one makes this view the one in use. */
-  inputStarts(stream: SizedStream | null, grid: GridSize): void {
+  /** The pty's size as the core has it (the attach's answer, then each core RESIZE): a watching view draws at it. */
+  ptySized(view: ViewGrid, size: GridSize): void {
     if (!this.#watching) return;
+    view.autoResize = false;
+    if (view.cols !== size.cols || view.rows !== size.rows) view.resize(size.cols, size.rows);
+  }
+
+  /** Called before each person's input is sent: the first one makes this view the one in use. */
+  inputStarts(stream: SizedStream | null, view: ViewGrid): void {
+    if (!this.#watching) return;
+    // Fitted while still watching, so the grid's own resize is not sent ahead of the size below.
+    fitOwnBox(view);
     this.#watching = false;
-    this.#send(stream, this.#held ?? grid);
+    this.#send(stream, this.#held ?? { cols: view.cols, rows: view.rows });
     if (this.#focused) stream?.focus(true);
   }
 }

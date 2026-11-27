@@ -7,6 +7,8 @@
  *   channel --bucket B --origin O --channel stable|beta --op head|promote|rollback|yank [--version V] [--percent N]
  *   probe   --origin O --channel stable|beta --version V   waits up to five minutes for /dl to name V
  *   sign    --dir D   signs D/SHA256SUMS.txt into D/SHA256SUMS.txt.sig, for release.yml's draft before Publish (#2297)
+ *   core-fetch  --version V --dir D   downloads herdr-core V's manifest (D/upstream.json) and archives (core-mirror.ts)
+ *   core-mirror --bucket B --origin O --version V --dir D   checks, uploads and signs them, then moves core/latest
  *
  * Secrets come from the environment and are never printed: R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY (an R2 token
  * scoped to the one bucket), CLOUDFLARE_ACCOUNT_ID (the R2 endpoint) and RELEASE_SIGNING_KEY (base64 Ed25519 seed).
@@ -16,6 +18,7 @@ import { type Channel, isChannel, isVersion } from "../../apps/get/src/names.ts"
 import { parseReleaseSecret, RELEASE_PUBLIC_KEYS } from "../../packages/crypto/src/release.ts";
 import { R2Store } from "./r2-store.ts";
 import { type Operation, runOperation } from "./release-channel.ts";
+import { fetchUpstreamCore, mirrorCore } from "./core-mirror.ts";
 import { type GitHubAsset, mirrorRelease, signChecksums } from "./release-mirror.ts";
 
 const fail = (message: string): never => {
@@ -135,8 +138,24 @@ try {
   } else if (command === "sign") {
     await signChecksums(arg("dir"), parseReleaseSecret(env("RELEASE_SIGNING_KEY")), RELEASE_PUBLIC_KEYS);
     console.log(`signed ${arg("dir")}/SHA256SUMS.txt`);
+  } else if (command === "core-fetch") {
+    await fetchUpstreamCore(versionArg(), arg("dir"));
+    console.log(`downloaded herdr-core ${versionArg()} into ${arg("dir")}`);
+  } else if (command === "core-mirror") {
+    await mirrorCore(
+      store(),
+      {
+        version: versionArg(),
+        origin: origin(),
+        upstreamManifest: await Bun.file(`${arg("dir")}/upstream.json`).text(),
+        dir: arg("dir"),
+        secretKey: parseReleaseSecret(env("RELEASE_SIGNING_KEY")),
+        trustedKeys: RELEASE_PUBLIC_KEYS,
+      },
+      (line) => console.log(line),
+    );
   } else {
-    fail("usage: release-r2.ts mirror|channel|probe|sign (see the header)");
+    fail("usage: release-r2.ts mirror|channel|probe|sign|core-fetch|core-mirror (see the header)");
   }
 } catch (error) {
   if (!(error instanceof Error)) throw error;

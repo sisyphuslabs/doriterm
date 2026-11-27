@@ -123,11 +123,13 @@ test("a phone only watching leaves the size of the device typing; asking for the
       .click();
     const phoneTerminal = page.locator(`[data-terminal="${address}"]`);
     await expect(phoneTerminal).toContainText("desk", { timeout: 15_000 });
-    await expect.poll(() => gridSize(phoneTerminal)).not.toBe(deskSize);
+    // Only watching, it draws the program at the desk's grid, the pty's (#2974).
+    await expect.poll(() => gridSize(phoneTerminal)).toBe(deskSize);
     expect(coreSize(address)).toBe(deskSize);
 
     await page.getByRole("button", { name: "Show keyboard", exact: true }).click();
     await settledGrid(page, phoneTerminal);
+    expect(coreSize(address)).not.toBe(deskSize);
   } finally {
     await deskContext.close();
     endAgent("host", address);

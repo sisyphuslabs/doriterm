@@ -44,8 +44,10 @@ test("Settings > This device has no Direct address and shows the relay with no f
 test("adding a machine offers only the relay path", async ({ page }) => {
   await page.goto("/");
   const footer = page.getByRole("complementary", { name: "Workspace" }).locator('[data-slot="sidebar-footer"]');
-  await footer.getByRole("button", { name: "Add machine" }).click();
-  const dialog = page.getByRole("dialog", { name: "Add a machine" });
+  await footer.getByRole("button", { name: "Connect a device" }).click();
+  const dialog = page.getByRole("dialog", { name: "Connect a device" });
+  // A computer joins from the Computer tab; the sheet opens on a phone or browser.
+  await dialog.getByRole("button", { name: "Computer", exact: true }).click();
   await expect(dialog).toContainText("through the relay");
   // It says it needs no ssh: what it must not offer is a direct or LAN path.
   await expect(dialog).not.toContainText(/direct|\bLAN\b|local network/i);

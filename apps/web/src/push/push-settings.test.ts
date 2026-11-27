@@ -55,3 +55,27 @@ for (const action of ["turnOn", "turnOff"] as const) {
     expect(pushSettings.view.error).toBeNull();
   });
 }
+
+test("turning notifications on at a host that refuses them shows the host's reason, and they stay off", async () => {
+  const store = memoryStore();
+  spyOn(deviceStore, "get").mockImplementation(store.get);
+  spyOn(deviceStore, "put").mockImplementation(store.put);
+  spyOn(browserRegistrar, "permission").mockResolvedValue("granted");
+  spyOn(browserRegistrar, "requestPermission").mockResolvedValue("granted");
+  spyOn(browserRegistrar, "current").mockResolvedValue(null);
+  const subscribe = spyOn(browserRegistrar, "subscribe");
+  spyOn(pushChannel, "reset").mockImplementation(() => undefined);
+  const reason = "this host runs local-only (--local-only): it sends no notifications";
+  spyOn(pushChannel, "requestOnce").mockImplementation(async () => ({ t: "error", reason }));
+  await pushSettings.retarget({
+    ...DEFAULT_SETTINGS,
+    mode: "loopback",
+    loopbackUrl: "ws://localhost/v1/hc",
+    token: "t",
+  });
+
+  await pushSettings.turnOn();
+  expect(pushSettings.view.on).toBe(false);
+  expect(pushSettings.view.error).toContain(reason);
+  expect(subscribe).not.toHaveBeenCalled();
+});

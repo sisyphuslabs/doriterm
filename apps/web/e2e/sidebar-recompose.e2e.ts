@@ -125,10 +125,10 @@ test("with a second machine known, spaces sit under machine rows that start a ne
   if (address !== null) started.push(address);
 });
 
-test("the footer holds Settings and Add machine", async ({ page }) => {
+test("the footer holds Settings and Connect a device", async ({ page }) => {
   await page.goto("/");
   const footer = sidebar(page).locator('[data-slot="sidebar-footer"]');
-  await footer.getByRole("button", { name: "Add machine" }).click();
+  await footer.getByRole("button", { name: "Connect a device" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await footer.getByRole("link", { name: /^Settings/ }).click();

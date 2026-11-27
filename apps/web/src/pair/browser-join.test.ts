@@ -131,7 +131,7 @@ test("an offer without commitment names both causes and sends no card", async ()
   link.host.send({ t: "offer", mesh: offer.mesh, inviter: offer.inviter, nonce: offer.nonce });
   await done;
   expect(run.join.snapshot()).toMatchObject({ phase: "refused" });
-  expect(JSON.stringify(run.join.snapshot())).toContain("Add a machine");
+  expect(JSON.stringify(run.join.snapshot())).toContain("invite is for a computer");
   expect(await loadJoinAnchor(run.storage)).toBeUndefined();
 });
 

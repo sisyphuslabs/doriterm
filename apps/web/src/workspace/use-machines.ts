@@ -27,8 +27,8 @@ export interface Machines {
   readonly start: (params: TerminalRunParams) => void;
   /** Why the last machine.list failed, until one succeeds. */
   readonly listError: string | undefined;
-  /** Shows how to add a machine (the pairing commands). */
-  readonly openAddMachine: () => void;
+  /** Opens Connect a device: a phone or browser invite, or a computer's one-line command. */
+  readonly openConnect: () => void;
   /**
    * The added machines as the page shows them: as machine.list last said (state, `why`, since when), except a machine
    * whose line hc is redialing, which reads reconnecting for `OFFLINE_GRACE_MS` (#904).
@@ -54,7 +54,7 @@ export const MachinesContext = createContext<Machines>({
   newTerminalOn: () => {},
   start: () => {},
   listError: undefined,
-  openAddMachine: () => {},
+  openConnect: () => {},
   views: [],
   retry: async () => {},
   remove: async () => {},

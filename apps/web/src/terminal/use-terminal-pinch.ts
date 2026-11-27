@@ -1,7 +1,7 @@
 import type { TerminalStream } from "@doriface/client";
 import type { WTerm } from "@wterm/react";
 import { type RefObject, useEffect, useRef } from "react";
-import type { HostSize } from "./host-size.ts";
+import { fitGrid, type HostSize } from "./host-size.ts";
 import { fontPixels } from "../ghostty/values.ts";
 import { applyFontMetrics } from "./font-metrics.ts";
 import { pinchFontStore } from "./pinch-font-store.ts";
@@ -56,7 +56,7 @@ export function useTerminalPinch(
         frame = requestAnimationFrame(() => {
           clearPreview();
           applyFontMetrics(element);
-          wt.fit();
+          fitGrid(wt);
           host.size.release(host.stream.current);
         });
       });

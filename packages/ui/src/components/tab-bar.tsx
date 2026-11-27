@@ -1,15 +1,14 @@
-import { Plus } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
-import { IconButton } from "./icon-button.tsx";
-import { Menu } from "./menu.tsx";
 import { useTabActions } from "./tab-actions.ts";
-import { useTabDrag } from "./tab-drag.ts";
+import { type TabDragOut, useTabDrag } from "./tab-drag.ts";
 import { DropCaret, DropIndicator, placement } from "./tab-drop.tsx";
 import { TabItem, type WorkspaceTab } from "./tab-item.tsx";
+import { TabNewButton } from "./tab-new-button.tsx";
 import { TabOverflowMenu } from "./tab-overflow-menu.tsx";
 import { type TabOverflow, useTabOverflow } from "./tab-overflow.ts";
 
+export type { TabDragOut } from "./tab-drag.ts";
 export type { WorkspaceTab } from "./tab-item.tsx";
 
 /**
@@ -65,6 +64,12 @@ export interface TabBarProps {
   readonly trailing?: ReactNode;
   /** Shows edge fades and an "All tabs" menu when the tab scroller overflows horizontally. Defaults to true. */
   readonly overflow?: boolean;
+  /** Ref to the strip's outer bar element, e.g. to hit-test drops onto the strip. */
+  readonly barRef?: RefObject<HTMLDivElement | null>;
+  /** Handles a tab dragged past the strip's lower edge onto another drop surface. */
+  readonly onDragOut?: TabDragOut;
+  /** True while a dragged pane header hovers over the strip to become a new tab. */
+  readonly dropActive?: boolean;
   readonly className?: string;
 }
 
@@ -91,14 +96,14 @@ export function TabBar({
   leading,
   trailing,
   overflow = true,
+  barRef,
+  onDragOut,
+  dropActive = false,
   className,
 }: TabBarProps) {
+  const bar = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
-  // Whether the New tab menu closed on one of its items, rather than Escape or a click away, and what that item gave the
-  // keyboard to (a terminal being started takes it at once, type-ahead).
-  const chose = useRef(false);
-  const handedTo = useRef<HTMLElement | null>(null);
   // Whether the open tab menu's item handed the keyboard to a question it opened. The choice decides, not who holds
   // the keyboard as the menu closes: the question's first paint can come after that, and the strip would take it back.
   const handedOn = useRef(false);
@@ -124,6 +129,8 @@ export function TabBar({
       const item = list.current?.querySelector(`[data-tab-id="${CSS.escape(id)}"]`);
       item?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
     },
+    bounds: bar,
+    ...(onDragOut === undefined ? {} : { onDragOut }),
   });
   const pinnedDrag = useTabDrag(pinnedList, ids.slice(0, pins), dragOptions(0));
   const restDrag = useTabDrag(scroller, ids.slice(pins), dragOptions(pins));
@@ -203,9 +210,15 @@ export function TabBar({
     // controls. A shell that puts a control over the row's start moves the row past it (a margin) rather than unmarking
     // the row: Electron applies the regions in layout order and the last one over a point wins (#643, #688).
     <div
+      ref={(element) => {
+        bar.current = element;
+        if (barRef !== undefined) barRef.current = element;
+      }}
       data-titlebar
+      {...(dropActive ? { "data-tab-strip-drop": "" } : {})}
       className={cn(
         "flex h-(--tabbar-height) shrink-0 items-center gap-[3px] border-b border-border bg-chrome px-2.5",
+        dropActive && "cursor-grabbing bg-ring/10 ring-2 ring-inset ring-ring",
         className,
       )}
     >
@@ -256,63 +269,7 @@ export function TabBar({
         </div>
       </div>
 
-      {/* Outside the scrolling tabs, as herdr-app's tab-new beside #tab-scroll: 22 tabs never push it away (item 5). */}
-      {newMenu === undefined ? (
-        <IconButton
-          label="New tab"
-          {...(newTabKeys === undefined ? {} : { keys: newTabKeys })}
-          icon={<Plus />}
-          disabled={newDisabled}
-          onClick={onNew}
-        />
-      ) : (
-        <Menu
-          trigger={
-            <IconButton
-              label="New tab"
-              {...(newTabKeys === undefined ? {} : { keys: newTabKeys })}
-              icon={<Plus />}
-              disabled={newDisabled}
-            />
-          }
-          className="w-[250px]"
-          disabled={newDisabled}
-          onOpenChange={(open) => {
-            if (!open) return;
-            chose.current = false;
-            handedTo.current = null;
-          }}
-          // A choice starts a tab that takes the keyboard at once, so the page stays live (not modal) and, as the menu
-          // closes, focus goes where the choice put it rather than back to +, where the next keys typed would press it.
-          modal={false}
-          // Base UI asks once the closing animation has ended. The page was live all along, so by then the person may
-          // have moved on (another menu, a dialog): what holds the keyboard now keeps it (#1014).
-          finalFocus={() => {
-            const holder = document.activeElement;
-            const movedOn = holder instanceof HTMLElement && holder !== document.body && holder !== handedTo.current;
-            if (movedOn) return false;
-            return chose.current ? (handedTo.current ?? false) : true;
-          }}
-        >
-          <div
-            className="contents"
-            onClickCapture={(event) => {
-              chose.current = true;
-              const popup = event.currentTarget;
-              const record = (focus: FocusEvent): void => {
-                if (focus.target instanceof HTMLElement && !popup.contains(focus.target))
-                  handedTo.current = focus.target;
-              };
-              document.addEventListener("focusin", record, true);
-              // Removed once the whole click has been dispatched (microtasks would run between its listeners, before the
-              // item's own handler focuses anything).
-              setTimeout(() => document.removeEventListener("focusin", record, true), 0);
-            }}
-          >
-            {newMenu}
-          </div>
-        </Menu>
-      )}
+      <TabNewButton onNew={onNew} disabled={newDisabled} menu={newMenu} keys={newTabKeys} />
       {overflowing ? <TabOverflowMenu tabs={tabs} activeId={activeId} onSelect={onSelect} /> : null}
       <div aria-hidden className="flex-1 self-stretch" />
       <span role="status" aria-live="polite" className="sr-only">

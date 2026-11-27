@@ -2,7 +2,6 @@ import type { Signed, View } from "@doriface/mesh";
 import {
   base64urlEncode,
   CloseCode,
-  DEFAULT_RELAY_URL,
   type HostIdentity,
   PAIRING_TTL_MS,
   type SecureLink,
@@ -28,6 +27,7 @@ import { serveRoster, type RosterDeps } from "./roster.ts";
 import { removedKey } from "./roster-removal.ts";
 import { sweepRoster } from "./roster-admits.ts";
 import { finishJoin, JoinResumes } from "./join-resumes.ts";
+import { LocalOnlyError } from "./local-only.ts";
 import { spendMeshOffer } from "../e2ee/accept.ts";
 
 export interface HostMeshOptions {
@@ -45,6 +45,8 @@ export interface HostMeshOptions {
     readonly url: string | undefined;
     readonly createSocket?: CreateSocket | undefined;
     readonly proofs?: RelayProofs | undefined;
+    /** `--local-only`: every offer and join is refused, instead of handing out or dialing a default relay. */
+    readonly localOnly?: boolean | undefined;
   };
   /**
    * The sync layer (section 5, PR 5): receives every authorized mesh session that is not a join, and the session a
@@ -150,6 +152,7 @@ export class HostMesh {
    * admitted without asking.
    */
   async pair(auto: boolean): Promise<PendingPairing> {
+    this.#refuseLocalOnly();
     this.pending.expireAll();
     this.resumes.clear();
     const offer = await this.#options.slots.open(true);
@@ -160,6 +163,7 @@ export class HostMesh {
 
   /** Opens a device offer, which replaces any mesh offer: that offer's pending joins expire with it. */
   pairDevice(): Promise<PendingPairing> {
+    this.#refuseLocalOnly();
     this.pending.expireAll();
     this.resumes.clear();
     return this.#options.slots.open(false);
@@ -210,6 +214,7 @@ export class HostMesh {
     request: MeshJoinRequest,
     confirm?: (code: string) => Promise<boolean>,
   ): Promise<{ readonly meshId: string; readonly hostId: string; readonly withdrewOffer: boolean }> {
+    this.#refuseLocalOnly();
     const { stateDir, identity, relay, log } = this.#options;
     const own = await this.#own(request.name);
     const joined = await joinMesh({
@@ -223,7 +228,8 @@ export class HostMesh {
       ask: request.ask === true,
       confirm: confirm ?? (async () => false),
       relayUrl: request.relay,
-      defaultRelayUrl: relay.url ?? DEFAULT_RELAY_URL,
+      // A host with no uplink (--no-relay) names none: a code is then looked up only on a relay the request names.
+      defaultRelayUrl: relay.url,
       createSocket: relay.createSocket,
       proofs: relay.proofs,
       offerWithdrawn: () => this.offerWithdrawn(),
@@ -231,6 +237,10 @@ export class HostMesh {
     });
     this.#keep(joined.secure);
     return { meshId: joined.meshId, hostId: joined.hostId, withdrewOffer: joined.withdrewOffer };
+  }
+
+  #refuseLocalOnly(): void {
+    if (this.#options.relay.localOnly === true) throw new LocalOnlyError();
   }
 
   /** The session a join ran on stays open as a sync session, registered so a revoke closes it. */

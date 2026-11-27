@@ -1,7 +1,7 @@
 import type { JsonObject } from "@doriface/protocol";
 import { childrenOf, idOf, panesOf, tabsOf, typeOf, type Node } from "@doriface/protocol/layout";
 import { describe, expect, test } from "bun:test";
-import { terminalDropWrite } from "./terminal-drop.ts";
+import { paneToTabWrite, terminalDropWrite } from "./terminal-drop.ts";
 
 /** A layout document of one space whose tabs are rows of terminal panes (local addresses); pane ids are `p<terminal>`. */
 const docOf = (tabs: readonly (readonly string[])[]): JsonObject => ({
@@ -91,5 +91,29 @@ describe("a terminal dropped from the sidebar onto a pane", () => {
     expect(terminalDropWrite(doc, "t9", { tab: "tb0", target: "pgone", zone: "left" }, fresh)).toBeNull();
     expect(terminalDropWrite(doc, "t9", { tab: "tb-gone", target: "pt1", zone: "left" }, fresh)).toBeNull();
     expect(terminalDropWrite(null, "t9", { tab: "tb0", target: "pt1", zone: "left" }, fresh)).toBeNull();
+  });
+});
+
+describe("a split pane dragged onto the tab strip", () => {
+  test("leaves its tab for a new tab right after it, keeping its pane id and terminal", () => {
+    const doc = docOf([["t1", "t2"], ["t3"]]);
+    const moved = paneToTabWrite(doc, "tb0", "pt2", "tbn");
+    expect(tabs(moved?.doc)).toEqual(["tb0:row(t1)", "tbn:row(t2)", "tb1:row(t3)"]);
+    expect(moved?.tab).toBe("tbn");
+    expect(moved?.pane).toBe("pt2");
+  });
+
+  test("from a pinned tab, lands after the last pinned tab, never between pinned ones", () => {
+    const doc = docOf([["t1", "t2"], ["t3"], ["t4"]]);
+    const moved = paneToTabWrite(doc, "tb0", "pt1", "tbn", new Set(["tb0", "tb1"]));
+    expect(tabs(moved?.doc)).toEqual(["tb0:row(t2)", "tb1:row(t3)", "tbn:row(t1)", "tb2:row(t4)"]);
+  });
+
+  test("writes nothing for a tab of one pane, a pane or tab that is gone, or no document", () => {
+    const doc = docOf([["t1", "t2"], ["t3"]]);
+    expect(paneToTabWrite(doc, "tb1", "pt3", "tbn")).toBeNull();
+    expect(paneToTabWrite(doc, "tb0", "pgone", "tbn")).toBeNull();
+    expect(paneToTabWrite(doc, "tb-gone", "pt1", "tbn")).toBeNull();
+    expect(paneToTabWrite(null, "tb0", "pt1", "tbn")).toBeNull();
   });
 });

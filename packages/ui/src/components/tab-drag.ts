@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { cancelTap, edgeStep, useClickLatch } from "./tab-drag-helpers.ts";
 import { type DragState, landingIndex, landingLeft, measure, type Settle, type Slot } from "./tab-drop-geometry.ts";
 
 /** Pointer travel before a press becomes a drag; less is still a click that selects. */
@@ -13,15 +14,7 @@ export const DRAG_THRESHOLD_PX = 4;
 /** On touch a swipe scrolls the strip; a press held this long lifts the tab instead. */
 export const TOUCH_HOLD_MS = 300;
 const TOUCH_SLOP_PX = 8;
-/** Within this distance of an end of an overflowing strip the strip scrolls under the dragged tab. */
-const EDGE_PX = 32;
-const EDGE_STEP_PX = 8;
 const SETTLE_MS = 200;
-
-/** Cancels a touch's tap, so the browser sends no mouse events for it. */
-function cancelTap(touchEnd: TouchEvent): void {
-  if (touchEnd.cancelable) touchEnd.preventDefault();
-}
 
 interface Press {
   readonly id: string;
@@ -32,7 +25,19 @@ interface Press {
   readonly startY: number;
   armed: boolean;
   clientX: number;
+  clientY: number;
+  detached: boolean;
   dragging: { readonly slots: readonly Slot[]; readonly gap: number; readonly startScroll: number } | null;
+}
+
+/** Handles a tab dragged past the strip's lower edge onto another drop surface (e.g. terminal panes). */
+export interface TabDragOut {
+  /** Updates the external drag at (x, y); return false to keep the drag in the strip. */
+  readonly move: (id: string, x: number, y: number) => boolean;
+  /** Drops the detached tab at (x, y). */
+  readonly drop: (id: string, x: number, y: number) => void;
+  /** Cancels the external drag when the pointer returns to the strip or the drag aborts. */
+  readonly cancel: () => void;
 }
 
 export interface TabDrag {
@@ -48,52 +53,34 @@ export interface TabDrag {
 }
 
 export interface TabDragOptions {
-  /** Gets the item and its new index; without it nothing drags. */
+  /** Gets the item and its new index; without it (and without `onDragOut`) nothing drags. */
   readonly onMove: ((id: string, to: number) => void) | undefined;
   /** Runs once a press becomes a drag. */
   readonly onStart?: () => void;
   /** A held touch let go without moving: where the finger was, for the item's menu. */
   readonly onHoldRelease?: (id: string, x: number, y: number) => void;
+  /** Strip container whose bottom edge separates horizontal reorder from dragging out; defaults to `list`. */
+  readonly bounds?: RefObject<HTMLElement | null>;
+  /** Invoked while a dragged tab is below the strip's lower edge. */
+  readonly onDragOut?: TabDragOut;
 }
 
 /** Pointer drag for a horizontal strip whose items carry `data-tab-id`. */
 export function useTabDrag(
   list: RefObject<HTMLElement | null>,
   ids: readonly string[],
-  { onMove, onStart, onHoldRelease }: TabDragOptions,
+  { onMove, onStart, onHoldRelease, bounds, onDragOut }: TabDragOptions,
 ): TabDrag {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [settle, setSettle] = useState<Settle | null>(null);
   const [lifted, setLifted] = useState<string | null>(null);
   const press = useRef<Press | null>(null);
-  const swallowClick = useRef(false);
-  const disarm = useRef<() => void>(() => undefined);
+  const { arm: swallowNextClick, onClickCapture } = useClickLatch();
   const stop = useRef<() => void>(() => undefined);
-  const latestMove = useRef(onMove);
-  latestMove.current = onMove;
-  const latestStart = useRef(onStart);
-  latestStart.current = onStart;
-  const latestHoldRelease = useRef(onHoldRelease);
-  latestHoldRelease.current = onHoldRelease;
+  const latest = useRef({ onMove, onStart, onHoldRelease, bounds, onDragOut });
+  latest.current = { onMove, onStart, onHoldRelease, bounds, onDragOut };
 
   const end = useCallback(() => stop.current(), []);
-
-  // The click that ends a drag is swallowed; a drop let go off the strip sends none, so the next press or key anywhere
-  // clears the latch instead, and a later click or Enter on a tab still selects it.
-  const swallowNextClick = useCallback(() => {
-    disarm.current();
-    swallowClick.current = true;
-    const clear = (): void => {
-      swallowClick.current = false;
-      window.removeEventListener("pointerdown", clear, true);
-      window.removeEventListener("keydown", clear, true);
-      disarm.current = () => undefined;
-    };
-    window.addEventListener("pointerdown", clear, true);
-    window.addEventListener("keydown", clear, true);
-    disarm.current = clear;
-  }, []);
-  useEffect(() => () => disarm.current(), []);
 
   const update = useCallback(() => {
     const current = press.current;
@@ -116,6 +103,16 @@ export function useTabDrag(
   const finish = useCallback(
     (commit: boolean) => {
       const current = press.current;
+      if (current?.detached) {
+        const { id, clientX, clientY, touch } = current;
+        current.detached = false;
+        end();
+        swallowNextClick();
+        if (touch) window.addEventListener("touchend", cancelTap, { once: true, passive: false, capture: true });
+        if (commit) latest.current.onDragOut?.drop(id, clientX, clientY);
+        else latest.current.onDragOut?.cancel();
+        return;
+      }
       const last = current === null || current.dragging === null ? null : update();
       end();
       if (last === null) return;
@@ -124,14 +121,15 @@ export function useTabDrag(
       const landed = commit ? landingLeft(last) : (last.slots[last.from]?.left ?? 0);
       const offset = (last.slots[last.from]?.left ?? 0) + last.offset - landed;
       setSettle({ id: last.id, offset, running: false });
-      if (to !== last.from) latestMove.current?.(last.id, to);
+      if (to !== last.from) latest.current.onMove?.(last.id, to);
     },
     [end, swallowNextClick, update],
   );
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>, id: string, index: number) => {
-      if (event.button !== 0 || press.current !== null || latestMove.current === undefined) return;
+      if (event.button !== 0 || !event.isPrimary || press.current !== null) return;
+      if (latest.current.onMove === undefined && latest.current.onDragOut === undefined) return;
       if (event.target instanceof Element && event.target.closest("[data-tab-close]") !== null) return;
       const touch = event.pointerType === "touch";
       const current: Press = {
@@ -143,6 +141,8 @@ export function useTabDrag(
         startY: event.clientY,
         armed: !touch,
         clientX: event.clientX,
+        clientY: event.clientY,
+        detached: false,
         dragging: null,
       };
       press.current = current;
@@ -155,14 +155,8 @@ export function useTabDrag(
         : 0;
       const scrollEdges = (): void => {
         const element = list.current;
-        if (element !== null && current.dragging !== null) {
-          const box = element.getBoundingClientRect();
-          const step =
-            current.clientX < box.left + EDGE_PX
-              ? -EDGE_STEP_PX
-              : current.clientX > box.right - EDGE_PX
-                ? EDGE_STEP_PX
-                : 0;
+        if (element !== null && current.dragging !== null && !current.detached) {
+          const step = edgeStep(current.clientX, element.getBoundingClientRect());
           if (step !== 0) {
             element.scrollLeft += step;
             update();
@@ -173,6 +167,7 @@ export function useTabDrag(
       const onMoveEvent = (move: PointerEvent): void => {
         if (move.pointerId !== current.pointerId) return;
         current.clientX = move.clientX;
+        current.clientY = move.clientY;
         const dx = move.clientX - current.startX;
         const dy = move.clientY - current.startY;
         if (!current.armed) {
@@ -184,20 +179,37 @@ export function useTabDrag(
           if (element === null || Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
           current.dragging = { ...measure(element), startScroll: element.scrollLeft };
           window.getSelection()?.removeAllRanges();
-          latestStart.current?.();
+          latest.current.onStart?.();
           frame = window.requestAnimationFrame(scrollEdges);
+        }
+        const dragOut = latest.current.onDragOut;
+        const strip = latest.current.bounds?.current ?? list.current;
+        const beyond = dragOut !== undefined && strip !== null && move.clientY > strip.getBoundingClientRect().bottom;
+        if (beyond && dragOut.move(current.id, move.clientX, move.clientY)) {
+          if (!current.detached) {
+            current.detached = true;
+            setDrag(null);
+            setLifted(null);
+          }
+          return;
+        }
+        if (current.detached) {
+          current.detached = false;
+          dragOut?.cancel();
         }
         update();
       };
       const onUp = (up: PointerEvent): void => {
         if (up.pointerId !== current.pointerId) return;
+        current.clientX = up.clientX;
+        current.clientY = up.clientY;
         if (!current.touch || !current.armed || current.dragging !== null) return finish(true);
         // A lifted tab let go where it was: its menu opens instead of a tap selecting it. Cancelling the touchend that
         // follows keeps the browser from sending the tap's mouse events, whose mousedown would close the menu at once.
         swallowNextClick();
         window.addEventListener("touchend", cancelTap, { once: true, passive: false, capture: true });
         end();
-        latestHoldRelease.current?.(current.id, up.clientX, up.clientY);
+        latest.current.onHoldRelease?.(current.id, up.clientX, up.clientY);
       };
       const onCancel = (cancel: PointerEvent): void => {
         if (cancel.pointerId === current.pointerId) finish(false);
@@ -205,7 +217,7 @@ export function useTabDrag(
       const onKey = (key: KeyboardEvent): void => {
         if (key.key !== "Escape" || current.dragging === null) return;
         key.preventDefault();
-        key.stopPropagation();
+        key.stopImmediatePropagation();
         finish(false);
       };
       const onBlur = (): void => finish(false);
@@ -228,6 +240,10 @@ export function useTabDrag(
         window.removeEventListener("keydown", onKey, { capture: true });
         window.removeEventListener("blur", onBlur);
         window.removeEventListener("touchmove", onTouchMove);
+        if (current.detached) {
+          current.detached = false;
+          latest.current.onDragOut?.cancel();
+        }
         press.current = null;
         stop.current = () => undefined;
         setDrag(null);
@@ -251,13 +267,6 @@ export function useTabDrag(
   // A tab that opens or closes mid-drag changes every index, so the drag gives up.
   const order = ids.join("\n");
   useEffect(() => end, [order, end]);
-
-  const onClickCapture = useCallback((event: { stopPropagation(): void; preventDefault(): void }) => {
-    if (!swallowClick.current) return;
-    disarm.current();
-    event.stopPropagation();
-    event.preventDefault();
-  }, []);
 
   const touching = useCallback(() => press.current?.touch === true, []);
 

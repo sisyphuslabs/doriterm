@@ -67,7 +67,9 @@ async function sharedShell(phonePage: Page, browser: Browser, loopbackUrl: strin
   await expect(onDesktop).toContainText("$", { timeout: 20_000 });
   await onDesktop.getByRole("textbox").focus();
   await expect.poll(() => coreSize(address), { timeout: 15_000 }).toBe(await gridSize(onDesktop));
-  expect(await gridSize(onDesktop)).not.toBe(await gridSize(onPhone));
+  // A phone in use draws its own grid, which a reclaim gives the pty; one only watching draws the pty's (#2974).
+  if (startsInput) expect(await gridSize(onDesktop)).not.toBe(await gridSize(onPhone));
+  else await expect.poll(() => gridSize(onPhone), { timeout: 10_000 }).toBe(await gridSize(onDesktop));
   return { address, onPhone, deskSize: await gridSize(onDesktop) };
 }
 
@@ -97,10 +99,11 @@ test("a phone only watching does not reclaim the desktop's size on return (D1)",
   browser,
   loopbackUrl,
 }) => {
-  const { address, deskSize } = await sharedShell(page, browser, loopbackUrl, "watch-visible", false);
+  const { address, onPhone, deskSize } = await sharedShell(page, browser, loopbackUrl, "watch-visible", false);
   await backAndForth(page);
   await page.evaluate(
     () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
   );
   expect(coreSize(address)).toBe(deskSize);
+  expect(await gridSize(onPhone)).toBe(deskSize);
 });
