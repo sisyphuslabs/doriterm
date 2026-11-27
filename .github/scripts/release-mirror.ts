@@ -116,6 +116,15 @@ async function putComplete(store: ObjectStore, record: CompleteRecord): Promise<
   }
 }
 
+/** Refuses a signing key no shipped build trusts, before anything is signed with it. */
+export function assertTrustedSigner(secretKey: Uint8Array, trustedKeys: readonly string[]): void {
+  if (!trustedKeys.includes(releasePublicKey(secretKey))) {
+    throw new Error(
+      "the signing key is not one of RELEASE_PUBLIC_KEYS, so no shipped build would accept its signatures",
+    );
+  }
+}
+
 /**
  * Signs `<dir>/SHA256SUMS.txt` into `<dir>/SHA256SUMS.txt.sig` and answers the signature, refusing a key no shipped
  * build trusts. Ed25519 is deterministic, so the mirror and release.yml's sign job write the same bytes (#2297).
@@ -125,11 +134,7 @@ export async function signChecksums(
   secretKey: Uint8Array,
   trustedKeys: readonly string[],
 ): Promise<Uint8Array> {
-  if (!trustedKeys.includes(releasePublicKey(secretKey))) {
-    throw new Error(
-      "the signing key is not one of RELEASE_PUBLIC_KEYS, so no shipped build would accept its signatures",
-    );
-  }
+  assertTrustedSigner(secretKey, trustedKeys);
   const sums = await Bun.file(`${dir}/SHA256SUMS.txt`).bytes();
   const signature = new TextEncoder().encode(signRelease(sums, secretKey));
   await Bun.write(`${dir}/${SIGNATURE}`, signature);

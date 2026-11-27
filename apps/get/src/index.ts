@@ -1,5 +1,6 @@
 import type { Env, EdgeCache, RequestContext } from "./bindings.ts";
 import { resolveChannel } from "./channel.ts";
+import { serveCore } from "./core.ts";
 import { isDesktopFeed, serveDesktopFeed, serveHostManifest } from "./feeds.ts";
 import { neverPublished } from "./github-feed.ts";
 import { type Channel, dlFile, githubLatestUrl, isChannel, isVersionFree } from "./names.ts";
@@ -13,6 +14,7 @@ const DESKTOP_PATH = /^\/desktop\/([^/]+)\/(?:([^/]+)\/)?([^/]+)$/;
 const HOST_PATH = /^\/host\/([^/]+)\/(?:([^/]+)\/)?([^/]+)$/;
 const DL_PATH = /^\/dl\/(?:(beta)\/)?([^/]+)$/;
 const INSTALL_PATH = /^\/(?:(beta)\/)?install\.sh$/;
+const CORE_PATH = /^\/core\/(?:([^/]+)\/)?([^/]+)$/;
 
 const redirect = (location: string, source: string): Response =>
   new Response(null, {
@@ -136,6 +138,9 @@ export async function route(request: Request, ctx: RequestContext): Promise<Resp
     if (version !== undefined) return serveFile(request, ctx, { version, file, route: "desktop-update", channel });
     return isDesktopFeed(file) ? serveDesktopFeed(request, ctx, channel, file) : text(404, "unknown feed");
   }
+
+  const core = CORE_PATH.exec(pathname);
+  if (core?.[2] !== undefined) return serveCore(request, ctx, core[1], core[2]);
 
   const host = HOST_PATH.exec(pathname);
   if (host?.[1] !== undefined && host[3] !== undefined) {
