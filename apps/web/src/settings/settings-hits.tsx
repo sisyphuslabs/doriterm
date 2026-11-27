@@ -78,12 +78,17 @@ function findRow(body: Element, hit: SettingHit): HTMLElement | undefined {
 function land(row: HTMLElement): void {
   row.scrollIntoView({ block: "center" });
   row.setAttribute("data-setting-landed", "");
-  // The first control a person could reach: one hidden until it applies (a key's Reset) or disabled is passed over.
-  const control = row.matches(FOCUSABLE)
-    ? row
-    : ([...row.querySelectorAll<HTMLElement>(FOCUSABLE)].find(
-        (candidate) => getComputedStyle(candidate).visibility !== "hidden" && !candidate.matches(":disabled"),
-      ) ?? null);
+  // The row's own control (SettingRow's control slot): its pressed or checked choice when it has one, else its first
+  // usable control; a row without a slot falls back to its first usable control. Never a key's Reset on the title line,
+  // whose next Space would undo the value; anything hidden until it applies, or disabled, is passed over.
+  const usable = (scope: Element): HTMLElement[] =>
+    [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+      (candidate) => getComputedStyle(candidate).visibility !== "hidden" && !candidate.matches(":disabled"),
+    );
+  const slot = row.querySelector("[data-setting-control]");
+  const own = slot === null ? [] : usable(slot);
+  const chosen = own.find((candidate) => candidate.matches('[aria-pressed="true"], [aria-checked="true"]')) ?? own[0];
+  const control = row.matches(FOCUSABLE) ? row : (chosen ?? usable(row)[0] ?? null);
   (control ?? row).focus({ preventScroll: true });
 }
 

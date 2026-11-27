@@ -55,6 +55,33 @@ test.describe("desktop: matching settings (#1528)", () => {
     await expect.poll(() => landed.evaluate((row) => row.contains(document.activeElement))).toBe(true);
   });
 
+  test("landing on a changed key focuses its control, never its Reset, and Space keeps the value (#2920 review)", async ({
+    page,
+  }) => {
+    await page.goto("/settings#terminal");
+    const style = settings(page).getByRole("group", { name: "cursor-style" });
+    await style.getByRole("button", { name: "bar", exact: true }).click();
+    await expect(style.getByRole("button", { name: "bar", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const reset = settings(page).getByRole("button", { name: "Reset cursor-style" });
+    await expect(reset).toBeVisible();
+    await field(page).fill("cursor");
+    const hits = settings(page).getByRole("region", { name: "Matching settings" });
+    await hits.getByRole("button", { name: /^cursor-style Terminal/ }).click();
+    const landed = settings(page).locator("[data-setting-landed]");
+    await expect(landed).toHaveCount(1);
+    await expect
+      .poll(() =>
+        landed.evaluate(
+          (row) => row.querySelector("[data-setting-control]")?.contains(document.activeElement) ?? false,
+        ),
+      )
+      .toBe(true);
+    await expect(reset).not.toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(style.getByRole("button", { name: "bar", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(reset).toBeVisible();
+  });
+
   test("keybinds finds the keybinding import, and picking it focuses that button (#1472)", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "Settings" }).click();

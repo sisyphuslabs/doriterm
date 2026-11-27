@@ -80,6 +80,7 @@ export function SettingRow(props: SettingRowProps) {
       {/* A row with nothing to do has no control slot: an empty one would still take its own line under 480 px. */}
       {control === null || control === undefined ? null : (
         <div
+          data-setting-control=""
           className={cn(
             "flex max-w-full shrink-0 items-center gap-2",
             !inline && "max-sm:w-full max-sm:[&>*]:flex-1 sm:[&>*]:flex-none",
