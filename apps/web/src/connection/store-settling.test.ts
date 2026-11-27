@@ -28,10 +28,10 @@ test.each([true, false])("4401 retries only a view member (view=%s)", async (vie
   store.start();
   await first;
   if (viewMember) {
-    expect(store.state).toMatchObject({ settling: true, retryInMs: 1_000 });
+    expect(store.state).toMatchObject({ settling: true, retryInMs: 250 });
     if (store.state.phase === "failed") expect(store.state.error).not.toBeInstanceOf(DeviceNotPairedError);
     const second = failed();
-    jest.advanceTimersByTime(1_000);
+    jest.advanceTimersByTime(250);
     await second;
     expect(attempts).toBe(2);
   } else {

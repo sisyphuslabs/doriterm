@@ -15,8 +15,15 @@ export interface ResumableSession {
  * there is the host's to say (its own window after it noticed the drop, docs/transport.md).
  */
 export const RESUME_BUDGET_MS = 60_000;
-/** The waits between resume dials: short, since each dial is itself bounded, and cut short by a wake. */
-export const RESUME_BACKOFF_MS = [500, 1_000, 2_000, 5_000] as const;
+/**
+ * The waits between resume dials: short, since each dial is itself bounded, and cut short by a wake. The first second is
+ * dialed at 250, 500 and 1000 ms, so a link back from a sub-second blip is found before the page says anything about it
+ * (#2853). No wait is longer than 3 s, so a link back after a longer outage is found within 3 s and the reason the page
+ * shows clears with it (#2928). What a dial costs the relay is bounded across the page by relay-dial-budget.ts.
+ */
+export const RESUME_BACKOFF_MS = [250, 250, 500, 1_000, 2_000, 3_000] as const;
+/** The ladder's last step, the wait every later dial keeps. */
+const [, , , , , LONGEST_WAIT_MS] = RESUME_BACKOFF_MS;
 
 export interface ResumeHooks {
   /** The session is being carried on (true) or is carried on or given up (false). */
@@ -145,7 +152,7 @@ export class SessionResumer {
         this.#hooks.log?.(`resume attempt ${attempt + 1} failed: ${message(error)}`);
         this.#hooks.failed?.(error instanceof Error ? error : new Error(String(error)));
         // oxlint-disable-next-line no-await-in-loop -- dials run one after another, each after its backoff
-        await this.#wait(RESUME_BACKOFF_MS[Math.min(attempt, RESUME_BACKOFF_MS.length - 1)] ?? 5_000);
+        await this.#wait(RESUME_BACKOFF_MS[Math.min(attempt, RESUME_BACKOFF_MS.length - 1)] ?? LONGEST_WAIT_MS);
       } finally {
         if (this.#abort === abort) this.#abort = null;
       }

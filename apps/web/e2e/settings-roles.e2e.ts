@@ -128,14 +128,15 @@ for (const width of [390, 1440] as const) {
         await expectRoles(settings, "[data-mesh-group] [data-setting-row]", "[data-mesh-answer][data-row-value]");
 
         await open.locator('[data-mesh-verdict="approve"]').click();
-        const answered = settings.locator('[data-mesh-answer="approve"]');
+        // The fixture's join is not one the e2e host holds, so the host answers that it is gone (#2936).
+        const answered = settings.locator('[data-mesh-answer="gone"]');
         await expect(answered).toBeVisible({ timeout: 15_000 });
         const box = await answered.boundingBox();
         expect(
           box?.height ?? 0,
           "the answered state keeps the height of the buttons it replaced",
         ).toBeGreaterThanOrEqual(control);
-        await expectRoles(settings, '[data-mesh-group="pending"] [data-setting-row]', '[data-mesh-answer="approve"]');
+        await expectRoles(settings, '[data-mesh-group="pending"] [data-setting-row]', '[data-mesh-answer="gone"]');
       } finally {
         resetMeshDocs();
       }
