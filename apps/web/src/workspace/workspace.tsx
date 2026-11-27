@@ -30,7 +30,7 @@ import { MachinesContext, useMachines } from "./use-machines.ts";
 import { runParamsFor, type StartSpace } from "./new-terminal.ts";
 import { useWidthTier } from "../layout/width-tier.ts";
 import { machineIds } from "./tab-keys.ts";
-import { findTerminal, type LayoutTab } from "./layout-model.ts";
+import { findTerminal } from "./layout-model.ts";
 import { useLayout, withoutClaim, type PaneTarget } from "./use-layout.ts";
 import { chainedSplit, SplitChain } from "./split-chain.ts";
 import { afterEnd } from "./session-actions.ts";
@@ -57,6 +57,7 @@ import { useStableCallback } from "./use-stable-callback.ts";
 import { useNoticeOpen } from "../push/notice-open.ts";
 import { usePushPresence } from "../push/use-push-presence.ts";
 import { PromptAnswerBanner } from "../push/prompt-answer-banner.tsx";
+import { useTabClosing } from "./use-tab-closing.ts";
 import { CATCHER_ATTRIBUTES, type DropReason, useTypeAhead } from "./use-type-ahead.ts";
 
 export interface WorkspaceProps {
@@ -182,8 +183,6 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
     },
     [openInLayout, showOnPhone],
   );
-  const [closingTab, setClosingTab] = useState<string | null>(null);
-  const [closingSet, setClosingSet] = useState<readonly string[]>([]);
   const notSent = useCallback(
     (reason: DropReason) =>
       toasts.add({
@@ -270,50 +269,24 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
       (address, pane, made) => layout.split(axis, address, { tab: tab.key, pane }, made),
     );
   };
-  // A space's last tab takes the space with it, as herdr-app's tab.close: that always asks first (CloseTabDialog).
-  const lastOfSpace = (tab: LayoutTab | undefined): boolean =>
-    tab !== undefined && !tab.transient && layout.tabs.filter((each) => each.spaceKey === tab.spaceKey).length === 1;
-  // What a close of this tab does once it is confirmed, not while it asks and not when it is cancelled: the phone
-  // leaving the tab it is showing (#1478).
-  const afterClose = useRef<{ readonly key: string; readonly leave: () => void } | null>(null);
-  const closed = (key: string): void => {
-    const after = afterClose.current;
-    if (after?.key !== key) return;
-    afterClose.current = null;
-    after.leave();
-  };
-  const closeTab = (key: string): void => {
-    const tab = layout.tabs.find((each) => each.key === key);
-    if (lastOfSpace(tab)) return setClosingTab(key);
-    const shown = tab?.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
-    const [only] = shown;
-    if (shown.length === 1 && only !== undefined) setAsk({ kind: "close", address: only });
-    else if (shown.length > 1) setClosingTab(key);
-    else {
-      closed(key);
-      layout.closeTab(key);
-    }
-  };
-  // "Close tabs to the right" and "Close other tabs" (#1561): at once when nothing runs in them, else one question for
-  // all of them, as closing one tab of several panes asks once.
-  const closeTabs = (keys: readonly string[]): void => {
-    const closing = layout.tabs.filter((tab) => keys.includes(tab.key));
-    const running = closing.some((tab) => tab.panes.some((pane) => pane.address !== null));
-    if (running) setClosingSet(closing.map((tab) => tab.key));
-    else for (const tab of closing) layout.closeTab(tab.key);
-  };
+  const {
+    closingTab,
+    setClosingTab,
+    closingSet,
+    setClosingSet,
+    afterClose,
+    lastOfSpace,
+    closed,
+    closeTab,
+    closeTabs,
+    closePane,
+  } = useTabClosing(layout, terminals, setAsk);
   const onEnd = (address: string, end: TerminalEnd): void => {
     // An End of this session drops its pane only once it has removed the terminal (see afterEnd), and a program that
     // ended in its first seconds keeps its pane for the just-born grace, so its failure shows (afterGrace).
     if (!closesTab(end)) return;
     const created = terminals.find((terminal) => terminal.address === address)?.created_ms;
     afterGrace(created, () => afterEnd(address, () => dropEnded(address)));
-  };
-  // A tab's only pane closes as its tab, as herdr-app's pane.close does.
-  const closePane = (address: string): void => {
-    const found = findTerminal(layout.tabs, address);
-    if (found !== null && found.tab.panes.length === 1) closeTab(found.tab.key);
-    else setAsk({ kind: "close", address });
   };
   const closing = layout.tabs.find((tab) => tab.key === closingTab);
   // The tabs a close-to-the-right or close-others takes, as one tab of all their panes for the one question it asks.
