@@ -10,7 +10,7 @@ import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { Group, SectionBody } from "../settings/settings-body.tsx";
 import { useSettingsInDialog } from "../settings/settings-dialog.tsx";
 import { SettingHits, useLandOn } from "../settings/settings-hits.tsx";
-import { SearchRow } from "../settings/settings-layout.tsx";
+import { SearchRow, sectionStackClass } from "../settings/settings-layout.tsx";
 import { SettingsNav } from "../settings/settings-nav.tsx";
 import { PhoneHeader, PhoneSections } from "../settings/settings-phone.tsx";
 import { matchSettings, type SettingHit } from "../settings/setting-rows.ts";
@@ -163,12 +163,12 @@ export function SettingsRoute() {
             </RegionBoundary>
           )}
           {paged ? null : (
-            <div className="flex flex-col gap-(--settings-group-gap) md:hidden">
+            <div className={cn(sectionStackClass, "md:hidden")}>
               {nothing}
               <PhoneSections shown={shown} onOpen={openSection} />
             </div>
           )}
-          <div className={cn("flex flex-col gap-(--settings-group-gap)", !paged && "max-md:hidden")}>
+          <div className={cn(sectionStackClass, !paged && "max-md:hidden")}>
             <RegionBoundary
               key={section}
               region="settings-section"
