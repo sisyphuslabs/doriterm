@@ -33,7 +33,10 @@ export async function reconcile(): Promise<void> {
     ...record.memberships.map((held) => held.keySlot),
     ...record.slots.flatMap((claim) => (claim.phase === "enrolling" ? [claim.slot] : [])),
   ]);
-  for (const slot of view.loadedSlots()) if (!kept.has(slot)) view.dropSlot(slot);
+  // A store that never held a mesh holds nothing to clean up, and dropping it would forget its roster refresh's bound.
+  for (const slot of view.loadedSlots()) {
+    if (!kept.has(slot) && view.membershipBundle(slot)?.snapshot().phase !== "empty") view.dropSlot(slot);
+  }
   await Promise.all(record.memberships.map((held) => view.prepareMembership(held.keySlot)));
 }
 
@@ -77,6 +80,15 @@ const afterKeys =
     if (claim.last) await strangerAgain(storage, claim);
   };
 
+/**
+ * Whether retiring drops the slot's store from this page. A join dropped on the default slot before it held a mesh (a
+ * roster refresh of a paired machine that offered none) keeps its keys, which are the pairing identity, and its empty
+ * store: that store carries the per-machine refresh bound (`claimRefresh`), and a fresh store each time would refresh,
+ * abandon and republish on every new session of a paired machine, restarting it in a loop (relay e2e on #2890).
+ */
+export const dropsStore = (slot: string, claim: RetiringClaim | undefined): boolean =>
+  claim === undefined || claim.joined || slot !== DEFAULT_SLOT;
+
 /** Retires one lifecycle of a slot (`RetireTarget`) and drops it from every tab; see `beginRetire`/`finishRetire`. */
 export async function retireSlot(
   slot: string,
@@ -84,7 +96,7 @@ export async function retireSlot(
   target: RetireTarget = {},
 ): Promise<void> {
   const claim = await beginRetire(storage, slot, target);
-  view.dropSlot(slot);
+  if (dropsStore(slot, claim)) view.dropSlot(slot);
   announce();
   if (claim !== undefined) await finishRetire(storage, claim, afterKeys(storage));
   announce();
