@@ -10,13 +10,11 @@ const agent = (id: string, name: string, extra: Partial<Agent> = {}): Agent => (
   status: "idle",
   ...extra,
 });
-const group = (key: string, agents: readonly Agent[]): AgentGroup => ({
-  key,
-  title: key,
-  compactBlocked: false,
-  agents,
-  count: agents.length,
-});
+const group = (
+  key: string,
+  agents: readonly Agent[],
+  counted: ReadonlySet<string> = new Set(agents.map((one) => one.id)),
+): AgentGroup => ({ key, title: key, compactBlocked: false, agents, count: counted.size, counted });
 const space = (id: string, name: string, machine?: string): Space => ({
   id,
   name,
@@ -94,6 +92,12 @@ describe("filterAgentGroups: sub-agents (#2746)", () => {
   test("a matching sub-agent keeps the agents above it, and the count follows", () => {
     const kept = filterAgentGroups(groups, "probe", null);
     expect(kept.map((one) => [one.count, one.agents.map((row) => row.id)])).toEqual([[3, ["a1", "a2", "a3"]]]);
+  });
+
+  test("the count keeps to the rows its group counts: the agents kept above a match count only if they did (#2881)", () => {
+    const needsYou = [group("blocked", [lead, worker, probe, scout], new Set(["a3"]))];
+    const [kept] = filterAgentGroups(needsYou, "probe", null);
+    expect([kept?.count, [...(kept?.counted ?? [])]]).toEqual([1, ["a3"]]);
   });
 
   test("the kept rows are shaped as the narrowed list draws them; a row whose shape holds is the same object", () => {

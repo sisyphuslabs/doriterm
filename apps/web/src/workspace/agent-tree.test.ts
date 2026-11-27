@@ -61,10 +61,10 @@ describe("agentTree: nesting", () => {
     expect(drawn(fleet)).toEqual(["t1@0", "t9@1", "t10@1", "t2@1"]);
   });
 
-  test("a bare parent names the child's own machine; a qualified one is taken as given, from this machine or its own", () => {
+  test("a parent is an address as the feed names it: on an added machine qualified, on this one bare", () => {
     const fleet = [
       terminal("box/t3", null),
-      terminal("box/t9", "t3"),
+      terminal("box/t9", "box/t3"),
       terminal("t1", null),
       terminal("box/t4", "box/t9"),
       terminal("t2", "box/t3"),
@@ -72,8 +72,9 @@ describe("agentTree: nesting", () => {
     expect(drawn(fleet)).toEqual(["box/t3@0", "box/t9@1", "box/t4@2", "t2@1", "t1@0"]);
   });
 
-  test("a bare parent on another machine does not resolve to this machine's terminal of that name", () => {
-    expect(drawn([terminal("t3", null), terminal("box/t9", "t3")])).toEqual(["t3@0", "box/t9@0"]);
+  test("a child on an added machine nests under its parent on this machine (#2779)", () => {
+    const fleet = [terminal("t3", null), terminal("box/t3", null), terminal("box/t9", "t3")];
+    expect(drawn(fleet)).toEqual(["t3@0", "box/t9@1", "box/t3@0"]);
   });
 
   test("a child whose parent is not listed, ended or unknown, is a top-level row", () => {
@@ -108,7 +109,7 @@ describe("agentTree: nesting", () => {
   });
 
   test("an offline machine's terminals keep their parent and their place", () => {
-    const fleet = [terminal("box/t1", null, "working", { offline: true }), terminal("box/t2", "t1", "blocked")];
+    const fleet = [terminal("box/t1", null, "working", { offline: true }), terminal("box/t2", "box/t1", "blocked")];
     expect(drawn(fleet)).toEqual(["box/t1@0", "box/t2@1"]);
   });
 });

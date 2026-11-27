@@ -1,5 +1,6 @@
 import { devices, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { key, type KeyboardShape, keysBar, openPhoneTerminal, showKeyboard } from "./phone-key-bar.ts";
 
 const { defaultBrowserType: _iphoneBrowser, ...IPHONE } = devices["iPhone 14"];
@@ -80,6 +81,7 @@ for (const { name, shape } of SHAPES) {
     await openPhoneTerminal(page, SIZE.width, shape);
     await pressShowKeyboard(page);
     await key(page, "Type in a field").click();
+    await atRest(page);
     await expectAboveKeyboard(page);
     await field(page).click();
     await expect(field(page)).toBeFocused();

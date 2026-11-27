@@ -54,7 +54,8 @@ export function filterAgentGroups(
       for (const above of ancestorsOf(group.agents, index)) keep.add(above);
     });
     const agents = withShape(group.agents.filter((agent) => keep.has(agent.id)));
-    return agents.length === 0 ? [] : [{ ...group, agents, count: agents.length }];
+    const counted = new Set(agents.filter((agent) => group.counted.has(agent.id)).map((agent) => agent.id));
+    return agents.length === 0 ? [] : [{ ...group, agents, count: counted.size, counted }];
   });
 }
 

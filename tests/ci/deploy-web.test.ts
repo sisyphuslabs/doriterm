@@ -49,7 +49,7 @@ test("only what deploys dev to production shares dev's concurrency group, and de
 // ends fails it, or passes it on the other run's build. queue: max keeps every waiting deploy, where a group's single
 // pending slot would let a newer run cancel a pending dev deploy (#868, #884).
 // Before a run reaches the staging queue the run-level group (tested above) still applies: a newer push to one pull
-// request cancels that pull request's own older run, and a newer dev run replaces a pending dev run (#1783).
+// request cancels that pull request's own older run, while dev runs wait there in order (#1783, dev-push-queue.test.ts).
 test("every run deploys and probes staging in one queue, where no run cancels a deploy that is waiting in it", () => {
   const { staging } = workflow.jobs;
   if (staging?.concurrency === undefined) throw new Error("deploy-web.yml's staging job has no concurrency group");

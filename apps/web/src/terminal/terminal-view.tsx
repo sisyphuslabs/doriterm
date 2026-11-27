@@ -301,12 +301,11 @@ export function TerminalView(props: TerminalViewProps) {
           // It attaches once it is shown (useTerminalAttach): a pane that mounts out of view opens no stream yet.
           setWt(ready);
         }}
-        onData={(data) => {
-          if (!isRegainingReport(handle, data)) typedInto(data);
-        }}
+        onData={(data) => isRegainingReport(handle, data) || typedInto(data)}
         onResize={(cols, rows) => {
           // The core reflows its rows to the new width, with no output: the cells a find read have moved.
           written.current += 1;
+          pacer.resized(cols);
           hostSize.resize(stream.current, cols, rows);
         }}
         onFocus={(event) => {

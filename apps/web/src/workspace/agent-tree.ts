@@ -1,7 +1,6 @@
 import type { AgentStatus, AgentTreeGuide } from "@doriface/ui";
 import { BY_ADDRESS } from "./adoption.ts";
 import { agentStatus, type Session } from "./attention.ts";
-import { machineOf } from "./model.ts";
 
 /**
  * The deepest a row is nested. hc never makes a chain this deep in use; a deeper one, or a feed gone wrong, goes on as
@@ -30,12 +29,14 @@ export interface TreeRow {
   readonly urgency: AgentStatus;
 }
 
-/** A parent as the child's own core names it, on the child's machine: `t3` under `box/t9` is `box/t3`. */
+/**
+ * A parent as the feed's core names it, an address like the terminals' own: bare on this machine, `box/t3` on an added
+ * one, wherever the child runs. The core rewrites what the child's machine recorded, so a child on `box` started from
+ * this machine's `t3` reads `t3` (#2779).
+ */
 function parentAddress(terminal: Session): string | null {
   const parent = terminal.parent ?? null;
-  if (parent === null || parent === "" || parent.includes("/")) return parent === "" ? null : parent;
-  const machine = machineOf(terminal.address);
-  return machine === undefined ? parent : `${machine}/${parent}`;
+  return parent === "" ? null : parent;
 }
 
 /** Each listed terminal's parent where that parent is listed too and the chain above it does not come back to it. */

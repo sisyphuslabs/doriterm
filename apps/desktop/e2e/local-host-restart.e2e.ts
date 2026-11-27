@@ -13,6 +13,8 @@ interface Scratch {
   readonly hc: ReturnType<typeof scratchHcSession>;
   readonly profile: string;
   readonly shellHome: string;
+  /** While this file exists, a host the app starts waits before it runs (the e2e host wrapper's hold). */
+  readonly hold: string;
 }
 let scratch: Scratch | undefined;
 let launched: ElectronApplication | undefined;
@@ -25,7 +27,8 @@ test.beforeAll(async () => {
   // the host and user) and a scratch HOME, so the screenshot shows nothing of this machine.
   const shellHome = mkdtempSync(join(tmpdir(), "dd-shell-"));
   writeFileSync(join(shellHome, "clean-shell"), "#!/bin/sh\nexec /bin/bash --noprofile --norc -i\n", { mode: 0o755 });
-  scratch = { hc, profile, shellHome };
+  const hold = join(shellHome, "hold-host");
+  scratch = { hc, profile, shellHome, hold };
   const env = Object.fromEntries(
     Object.entries({
       ...process.env,
@@ -37,6 +40,7 @@ test.beforeAll(async () => {
       PS1: "$ ",
       ENV: "",
       BASH_SILENCE_DEPRECATION_WARNING: "1",
+      DORIFACE_E2E_HOST_HOLD: hold,
     }).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
   const args = [`--user-data-dir=${profile}`];
@@ -90,15 +94,42 @@ test("when the app's own host dies, a new one starts and the terminal answers ag
   const [host] = localHostPids(main);
   if (host === undefined) throw new Error("the app runs no doriface-host");
   process.kill(host, "SIGKILL");
-  // The status bar's connection notice; a New terminal the drop cut off says Reconnecting too, in a toast (#1010).
-  const reconnecting = page.getByRole("status").filter({ hasText: /Reconnecting/ });
-  await expect(reconnecting).toBeVisible({ timeout: 15_000 });
 
-  // A new host, not the dead one, and the page connected to it again.
+  // A new host, not the dead one, and the page connected to it again. The app restarts its host and reconnects in about
+  // a second, inside the 1.5 s a lost link goes unsaid (#2904), so no Reconnecting needs to show; that the link did drop
+  // and come back is the note the reattach leaves, that output from the gap may be missing.
   await expect.poll(() => localHostPids(main).filter((pid) => pid !== host).length, { timeout: 30_000 }).toBe(1);
-  await expect(reconnecting).toHaveCount(0, { timeout: 30_000 });
+  await expect(
+    page.getByRole("status").filter({ hasText: /Output from while disconnected may be missing/ }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: /Reconnecting/ })).toHaveCount(0, { timeout: 30_000 });
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type("echo host-came-back");
   await page.keyboard.press("Enter");
   await expect(terminal).toContainText(/host-came-back[\s\S]*host-came-back/, { timeout: 15_000 });
+});
+
+test("when the app's own host stays down past 1.5 s, the status bar says Reconnecting until it is back", async () => {
+  if (launched === undefined || scratch === undefined) throw new Error("the app did not launch");
+  const page = await launched.firstWindow();
+  const terminal = page.locator('[data-focused="true"] [data-terminal]');
+  await expect(terminal).toContainText("$", { timeout: 30_000 });
+  const main = launched.process().pid;
+  if (main === undefined) throw new Error("no main process pid");
+  const [host] = localHostPids(main);
+  if (host === undefined) throw new Error("the app runs no doriface-host");
+
+  // The new host is held until the notice is seen: an outage past the 1.5 s a lost link goes unsaid is said (#2904).
+  writeFileSync(scratch.hold, "");
+  process.kill(host, "SIGKILL");
+  const reconnecting = page.getByRole("status").filter({ hasText: /Reconnecting/ });
+  await expect(reconnecting).toBeVisible({ timeout: 15_000 });
+  rmSync(scratch.hold);
+
+  await expect.poll(() => localHostPids(main).filter((pid) => pid !== host).length, { timeout: 30_000 }).toBe(1);
+  await expect(reconnecting).toHaveCount(0, { timeout: 30_000 });
+  await terminal.getByRole("textbox").focus();
+  await page.keyboard.type("echo host-held-came-back");
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText(/host-held-came-back[\s\S]*host-held-came-back/, { timeout: 15_000 });
 });

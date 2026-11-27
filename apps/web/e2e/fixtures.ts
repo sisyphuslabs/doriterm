@@ -1,5 +1,6 @@
 import { expect, test as base, type Locator, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { settled } from "./at-rest.ts";
 import { E2E_HOST_ENV, E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { clearLayouts } from "./layout-doc.ts";
 import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
@@ -213,12 +214,11 @@ export async function pressNewTab(button: Locator, options: { readonly timeout?:
 
 /**
  * A sheet or dialog once it is open and at rest: visible, past its starting style, and with every animation inside it
- * finished, so a measurement reads its resting size and not a frame of the open transition (#583).
+ * finished, so a measurement reads its resting size and not a frame of the open transition (#583). A sheet the page
+ * drops before or while it settles fails here at once, by name: evaluate() would wait out the test for it to come back.
  */
 export async function opened(sheet: Locator): Promise<void> {
   await expect(sheet).toBeVisible();
   await expect(sheet).not.toHaveAttribute("data-starting-style");
-  await sheet.evaluate(async (el) => {
-    await Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished));
-  });
+  if (!(await sheet.evaluateAll(settled))) throw new Error(`${String(sheet)} left the page before it came to rest`);
 }

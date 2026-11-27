@@ -75,7 +75,10 @@ function isSingleRoute(relayUrl: string): boolean {
   );
 }
 
-function socketCount(options: ClientConnectOptions): number {
+/** How many sockets a dial with these options opens: what it costs the relay's per-source upgrade limit. */
+export function clientSocketCount(
+  options: Pick<ClientConnectOptions, "relayUrl" | "pairSlot" | "proofs" | "bestOf">,
+): number {
   if (options.pairSlot !== undefined || options.proofs !== undefined) return 1;
   const count = options.bestOf ?? (isSingleRoute(options.relayUrl) ? 1 : RELAY_BEST_OF);
   return Math.max(1, Math.floor(count));
@@ -92,7 +95,7 @@ export async function connectRelayClient(options: ClientConnectOptions): Promise
   if (pairSlot !== undefined && !PAIR_SLOT_PATTERN.test(pairSlot)) throw new Error(`invalid pairing slot ${pairSlot}`);
   const { signal } = options;
   if (signal?.aborted === true) throw cancelledBy(signal);
-  const count = socketCount(options);
+  const count = clientSocketCount(options);
   if (count === 1) return openSocket(options).opened;
   const entrants = Array.from({ length: count }, (_, index) => {
     const { ws, opened } = openSocket(options, index);
