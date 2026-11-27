@@ -79,8 +79,9 @@ function land(row: HTMLElement): void {
   row.scrollIntoView({ block: "center" });
   row.setAttribute("data-setting-landed", "");
   // The row's own control (SettingRow's control slot): its pressed or checked choice when it has one, else its first
-  // usable control; a row without a slot falls back to its first usable control. Never a key's Reset on the title line,
-  // whose next Space would undo the value; anything hidden until it applies, or disabled, is passed over.
+  // usable control. A row with a slot never lands anywhere else: when nothing in it can be used (a key this build does not
+  // apply), the row itself takes the focus, so a key's Reset on the title line, whose next Space would undo the value, is
+  // never chosen. Only a row with no slot lands on its first usable control. Anything hidden or disabled is passed over.
   const usable = (scope: Element): HTMLElement[] =>
     [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       (candidate) => getComputedStyle(candidate).visibility !== "hidden" && !candidate.matches(":disabled"),
@@ -88,8 +89,13 @@ function land(row: HTMLElement): void {
   const slot = row.querySelector("[data-setting-control]");
   const own = slot === null ? [] : usable(slot);
   const chosen = own.find((candidate) => candidate.matches('[aria-pressed="true"], [aria-checked="true"]')) ?? own[0];
-  const control = row.matches(FOCUSABLE) ? row : (chosen ?? usable(row)[0] ?? null);
-  (control ?? row).focus({ preventScroll: true });
+  const control = row.matches(FOCUSABLE) ? row : slot === null ? usable(row)[0] : chosen;
+  if (control !== undefined) {
+    control.focus({ preventScroll: true });
+    return;
+  }
+  if (!row.hasAttribute("tabindex")) row.setAttribute("tabindex", "-1");
+  row.focus({ preventScroll: true });
 }
 
 /**
