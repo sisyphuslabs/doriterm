@@ -43,6 +43,17 @@ for (const [width, size] of [
   });
 }
 
+test("the card gives focus back to where it came from when it leaves (#2944 review)", async ({ page }) => {
+  await page.goto("/");
+  const card = page.locator(`[data-join-request="${RUNNER_NONCE}"]`);
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  const before = page.getByRole("button", { name: "New terminal" }).first();
+  await before.focus();
+  await card.getByRole("button", { name: "Not now" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(before).toBeFocused();
+});
+
 test("Not now hides the card here while the join keeps waiting in Settings (#2939)", async ({ page }) => {
   await page.goto("/");
   const card = page.locator(`[data-join-request="${RUNNER_NONCE}"]`);

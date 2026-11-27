@@ -1,13 +1,13 @@
 import type { HcConnection } from "@doriface/client";
 import { Button, IconButton, cn } from "@doriface/ui";
 import { Monitor, Smartphone, X } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWidthTier } from "../layout/width-tier.ts";
 import { formatAge } from "../workspace/model.ts";
 import { useNow } from "../workspace/use-now.ts";
 import { refusalText, settledText } from "./attention.tsx";
 import { pendingAnswer } from "./groups.ts";
-import type { JoinRequest } from "./mesh-reader.ts";
+import { holderOf, type JoinRequest } from "./mesh-reader.ts";
 import { useJoinAnswer } from "./use-join-answer.ts";
 import { useMesh } from "./use-mesh.ts";
 
@@ -15,6 +15,36 @@ const grants = (request: JoinRequest): string =>
   request.join.kind === "client"
     ? "Approve only if it shows the same code. It will reach every machine in this mesh."
     : "Approve only if it shows the same code. It joins this mesh as a machine.";
+
+/**
+ * The card never takes focus from a terminal, but a person may tab or click into it; when it leaves (answered, Not now)
+ * with focus inside, focus goes back to where it came from instead of falling to the page body.
+ */
+function useFocusReturn(): (node: HTMLElement | null) => void {
+  const card = useRef<HTMLElement | null>(null);
+  const came = useRef<HTMLElement | null>(null);
+  const onFocusIn = useCallback((event: FocusEvent) => {
+    const from = event.relatedTarget;
+    if (from instanceof HTMLElement && card.current?.contains(from) !== true) came.current = from;
+  }, []);
+  useEffect(
+    () => () => {
+      const from = came.current;
+      const inside =
+        card.current?.contains(document.activeElement) === true || document.activeElement === document.body;
+      if (from !== null && from.isConnected && inside) from.focus({ preventScroll: true });
+    },
+    [],
+  );
+  return useCallback(
+    (node: HTMLElement | null) => {
+      card.current?.removeEventListener("focusin", onFocusIn);
+      card.current = node ?? card.current;
+      node?.addEventListener("focusin", onFocusIn);
+    },
+    [onFocusIn],
+  );
+}
 
 interface CardProps {
   readonly request: JoinRequest;
@@ -32,6 +62,7 @@ function Card({ request, holder, now, more, compact, onAnswer, onLater }: CardPr
   const state = pendingAnswer(join, now, request.answered);
   const shownFailure = failure ?? refusalText(join, holder, request.answered);
   const Icon = join.kind === "client" ? Smartphone : Monitor;
+  const keepFocus = useFocusReturn();
   const source = `Invite from ${holder} · ends in ${formatAge(0, Date.parse(join.expiresAt) - now)}${more > 0 ? ` · ${more} more in Settings` : ""}`;
   const buttons =
     state === "open" ? (
@@ -66,7 +97,7 @@ function Card({ request, holder, now, more, compact, onAnswer, onLater }: CardPr
     );
   return (
     <section
-      role="alertdialog"
+      ref={keepFocus}
       aria-labelledby="join-request-title"
       data-join-request={join.nonce}
       className={cn(
@@ -116,29 +147,43 @@ export function JoinRequestCard({ connection }: { readonly connection: HcConnect
   const now = useNow();
   const compact = useWidthTier() === "compact";
   const [later, setLater] = useState<ReadonlySet<string>>(new Set());
-  if (read.phase !== "ready") return null;
-  const waiting = read.requests.filter(
-    (request) => !later.has(request.join.nonce) && pendingAnswer(request.join, now, undefined) !== "expired",
-  );
+  const waiting =
+    read.phase === "ready"
+      ? read.requests.filter(
+          (request) => !later.has(request.join.nonce) && pendingAnswer(request.join, now, undefined) !== "expired",
+        )
+      : [];
   const first = waiting[0];
-  if (first === undefined) return null;
+  // Mounted, empty, before any card, so a screen reader announces a card arriving without moving focus to it.
+  const announced = first === undefined ? "" : `${first.join.name} wants to join`;
+  const live = (
+    <p aria-live="polite" aria-atomic="true" className="sr-only" data-join-request-live>
+      {announced}
+    </p>
+  );
+  if (read.phase !== "ready" || first === undefined) return live;
   return (
-    <div
-      className={cn(
-        "pointer-events-none fixed z-40 flex",
-        compact ? "inset-x-0 bottom-0 flex-col" : "right-3 bottom-[calc(var(--statusbar-height)+0.75rem)] justify-end",
-      )}
-    >
-      <Card
-        key={first.join.nonce}
-        request={first}
-        holder={first.machine?.name ?? connection.hello.core.name}
-        now={now}
-        more={waiting.length - 1}
-        compact={compact}
-        onAnswer={answer}
-        onLater={() => setLater((hidden) => new Set([...hidden, first.join.nonce]))}
-      />
-    </div>
+    <>
+      {live}
+      <div
+        className={cn(
+          "pointer-events-none fixed z-40 flex",
+          compact
+            ? "inset-x-0 bottom-0 flex-col"
+            : "right-3 bottom-[calc(var(--statusbar-height)+0.75rem)] justify-end",
+        )}
+      >
+        <Card
+          key={first.join.nonce}
+          request={first}
+          holder={holderOf(first, read.status)}
+          now={now}
+          more={waiting.length - 1}
+          compact={compact}
+          onAnswer={answer}
+          onLater={() => setLater((hidden) => new Set([...hidden, first.join.nonce]))}
+        />
+      </div>
+    </>
   );
 }

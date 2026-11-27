@@ -7,7 +7,7 @@ import { connectionStore, useConnection } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
 import { ClientRow, MemberRow } from "../mesh/mesh-rows.tsx";
-import type { JoinRequest } from "../mesh/mesh-reader.ts";
+import { holderOf } from "../mesh/mesh-reader.ts";
 import { useMesh } from "../mesh/use-mesh.ts";
 import { MeshPicker } from "./mesh-picker.tsx";
 import { useNow } from "../workspace/use-now.ts";
@@ -106,7 +106,6 @@ export function MeshBody({
   const nameOf = namesIn(status);
   const groups = meshGroups(status, requests, now);
   const self = nameOf(status.self);
-  const holderOf = (request: JoinRequest): string => request.machine?.name ?? self;
   return (
     <div className={sectionStackClass}>
       <MeshBanners status={status} nameOf={nameOf} disagreement={disagreement(status, machines, pairedHost)} />
@@ -120,7 +119,7 @@ export function MeshBody({
           <PendingRow
             key={request.join.nonce}
             join={request.join}
-            holder={holderOf(request)}
+            holder={holderOf(request, status)}
             now={now}
             answered={request.answered}
             onAnswer={(verdict) => answer(request, verdict)}
@@ -168,7 +167,7 @@ export function MeshBody({
       ) : null}
       <MeshGroup id="expired" title="Expired join requests" count={groups.expired.length}>
         {groups.expired.map((request) => (
-          <ExpiredJoinRow key={request.join.nonce} join={request.join} holder={holderOf(request)} now={now} />
+          <ExpiredJoinRow key={request.join.nonce} join={request.join} holder={holderOf(request, status)} now={now} />
         ))}
       </MeshGroup>
     </div>

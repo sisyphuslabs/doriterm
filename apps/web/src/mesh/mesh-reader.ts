@@ -95,21 +95,59 @@ const requestsIn = (
   return pending.map((join) => ({ join, machine, answered: answered?.nonce === join.nonce ? answered : undefined }));
 };
 
-/** The joins waiting on one other machine; undefined when its documents cannot be read. */
-async function machineRequests(calls: MeshCalls, machine: MachineView): Promise<JoinRequest[] | undefined> {
+/** How long another machine's mesh documents may take before the read goes on without them (and names it unread). */
+export const REMOTE_READ_MS = 3_000;
+
+/** Settles with the read, or with undefined once its bound passes; a test passes one that settles when it says. */
+export type ReadBound = <T>(read: Promise<T>) => Promise<T | undefined>;
+
+export const boundBy =
+  (ms: number): ReadBound =>
+  (read) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), ms);
+    });
+    return Promise.race([read, late]).finally(() => clearTimeout(timer));
+  };
+
+/**
+ * Another machine's status belongs to this mesh only when it names this mesh and its own host is one of this mesh's
+ * members: an added machine can sit in another owner's mesh, whose joins are not this owner's to see or answer.
+ */
+const sameMesh = (ours: MeshStatus, theirs: MeshStatus): boolean =>
+  theirs.meshId === ours.meshId && ours.members.some((member) => member.hostId === theirs.self);
+
+/** The joins of this mesh waiting on one other machine; undefined when its documents cannot be read in time. */
+async function machineRequests(
+  calls: MeshCalls,
+  machine: MachineView,
+  ours: MeshStatus,
+  bound: ReadBound,
+): Promise<JoinRequest[] | undefined> {
+  let read: readonly [{ readonly value: JsonValue }, { readonly value: JsonValue }] | undefined;
   try {
-    const [doc, answer] = await Promise.all([
-      calls.doc(MESH_STATUS_DOC, machine.name),
-      calls.doc(MESH_APPROVAL_DOC, machine.name),
-    ]);
-    const status = doc.value === null ? undefined : parseMeshStatus(doc.value);
-    return requestsIn(status?.pending ?? [], machine, answer.value);
+    read = await bound(
+      Promise.all([calls.doc(MESH_STATUS_DOC, machine.name), calls.doc(MESH_APPROVAL_DOC, machine.name)]),
+    );
   } catch {
     return undefined;
   }
+  if (read === undefined) return undefined;
+  const [doc, answer] = read;
+  if (doc.value === null) return [];
+  const theirs = parseMeshStatus(doc.value);
+  if (theirs === undefined) return undefined;
+  return sameMesh(ours, theirs) ? requestsIn(theirs.pending, machine, answer.value) : [];
 }
 
-async function readMesh(calls: MeshCalls): Promise<MeshRead> {
+/** The name a join's holder goes by: the machine as machine.list names it, or this host by its mesh name. */
+export function holderOf(request: JoinRequest, status: MeshStatus): string {
+  if (request.machine !== null) return request.machine.name;
+  return status.members.find((member) => member.hostId === status.self)?.name ?? status.self;
+}
+
+async function readMesh(calls: MeshCalls, bound: ReadBound): Promise<MeshRead> {
   const [doc, machines, answer] = await Promise.all([
     calls.doc(MESH_STATUS_DOC),
     calls.machines(),
@@ -119,7 +157,7 @@ async function readMesh(calls: MeshCalls): Promise<MeshRead> {
   const status = parseMeshStatus(doc.value);
   if (status === undefined) return { phase: "unreadable" };
   const connected = machines.filter((machine) => machine.state === "connected");
-  const elsewhere = await Promise.all(connected.map((machine) => machineRequests(calls, machine)));
+  const elsewhere = await Promise.all(connected.map((machine) => machineRequests(calls, machine, status, bound)));
   const requests = requestsIn(status.pending, null, answer.value);
   const held = new Set(requests.map((request) => request.join.nonce));
   for (const found of elsewhere) {
@@ -140,12 +178,14 @@ async function readMesh(calls: MeshCalls): Promise<MeshRead> {
  */
 export class MeshReader {
   readonly #calls: MeshCalls;
+  readonly #bound: ReadBound;
   #onRead: ((read: MeshRead) => void) | undefined;
   #started = 0;
   #shown = 0;
 
-  constructor(calls: MeshCalls) {
+  constructor(calls: MeshCalls, bound: ReadBound = boundBy(REMOTE_READ_MS)) {
     this.#calls = calls;
+    this.#bound = bound;
   }
 
   /** Shows each read to `onRead` until the returned stop is called. */
@@ -158,7 +198,7 @@ export class MeshReader {
 
   async refresh(): Promise<void> {
     const read = ++this.#started;
-    const next = await readMesh(this.#calls).catch(failedRead);
+    const next = await readMesh(this.#calls, this.#bound).catch(failedRead);
     if (read <= this.#shown) return;
     this.#shown = read;
     this.#onRead?.(next);
@@ -171,12 +211,23 @@ export class MeshReader {
       throw new Error("Update this client to approve with the join code.");
     }
     const on = request.machine?.name;
+    if (on !== undefined) await this.#heldInThisMesh(on);
     const { version } = await this.#calls.doc(MESH_APPROVAL_DOC, on);
     const value = verdict === "approve" ? { approve: nonce, code: code ?? "" } : { deny: nonce };
     try {
       await this.#calls.setDoc(MESH_APPROVAL_DOC, value, version, on);
     } finally {
       await this.refresh();
+    }
+  }
+
+  /** Refuses to answer on a machine whose status, read now, is not of this mesh (it may have left since the read). */
+  async #heldInThisMesh(on: string): Promise<void> {
+    const [ours, theirs] = await Promise.all([this.#calls.doc(MESH_STATUS_DOC), this.#calls.doc(MESH_STATUS_DOC, on)]);
+    const own = parseMeshStatus(ours.value);
+    const held = parseMeshStatus(theirs.value);
+    if (own === undefined || held === undefined || !sameMesh(own, held)) {
+      throw new Error(`${on} is not in this mesh now, so its joins are not answered from here.`);
     }
   }
 }
