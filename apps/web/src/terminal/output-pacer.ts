@@ -152,6 +152,8 @@ export class OutputPacer {
   /** The link's smoothed round trip, from the last attach's replay options; an attach without one leaves it unknown. */
   #srtt: () => number | undefined = () => undefined;
   #replay: Replay | null = null;
+  /** When output last arrived, by {@link Clock}: a late timer is read as it is once none has come for the hold's cap. */
+  #lastBytes = 0;
   #catchUp: CatchUp | null = null;
   readonly #written = new Set<() => void>();
 
@@ -170,6 +172,7 @@ export class OutputPacer {
   push(bytes: Uint8Array, credit: (bytes: number) => void = () => undefined): void {
     if (bytes.byteLength === 0) return;
     this.#queue.push({ bytes, credit });
+    this.#lastBytes = this.#clock();
     if (this.#replay !== null) this.#quietFrom(this.#replay);
     if (this.#held !== null) this.#heldQuietFrom(this.#held);
     if (this.#visible && this.#unpaced()) {
@@ -244,9 +247,11 @@ export class OutputPacer {
    * arrivals is a round trip plus the write, #2011), and whose SRTT is sampled on this connection (the attach answer
    * itself is one sample), and every two spans of {@link REPLAY_CAP_MS} (a round trip or more) write a window or more:
    * on a page slow to take each window in, a window can take about a span, and a span's ends can cut it anywhere, so
-   * one span alone can catch part of one (#2271). A quiet window or span whose timer runs more than its own length late
-   * is started again rather than read: the page was not running, so it could not see the next window, already queued
-   * behind the timer. A fixed deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay
+   * one span alone can catch part of one (#2271). A quiet window or span whose timer runs more than
+   * {@link LATE_TIMER_MS} late is started again rather than read: the page was busy, so it could not see the next window,
+   * already queued behind the timer (#2895); once no bytes have arrived for {@link SYNCHRONIZED_HOLD_CAP_MS} by the
+   * page's clock, a late timer is read as it is, so a page that stays busy still lets the replay go. A fixed deadline
+   * could not hold it: over a 300 ms relay, or on a page slow to write it, a replay
    * of a few hundred KiB to 2 MiB takes longer than any one span.
    */
   replay(options: ReplayOptions): void {
@@ -365,7 +370,13 @@ export class OutputPacer {
    */
   #onTime(ms: number, then: () => void, again: () => void): () => void {
     const due = this.#clock() + ms;
-    return this.#timer(() => (this.#clock() - due > LATE_TIMER_MS ? again() : then()), ms);
+    return this.#timer(() => {
+      const now = this.#clock();
+      // However late each timer runs, a page that has had no bytes for the hold's cap reads the window as it is.
+      const late = now - due > LATE_TIMER_MS && now - this.#lastBytes < SYNCHRONIZED_HOLD_CAP_MS;
+      if (late) again();
+      else then();
+    }, ms);
   }
 
   /**
