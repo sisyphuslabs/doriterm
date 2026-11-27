@@ -2,7 +2,7 @@ import { meshStatus } from "@doriface/host";
 import { meshFixture } from "@doriface/host/testing";
 import { type JsonValue, type MachineView, MESH_APPROVAL_DOC, MESH_STATUS_DOC } from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
-import { type JoinRequest, type MeshCalls, type MeshRead, MeshReader } from "./mesh-reader.ts";
+import { type JoinRequest, type MeshCalls, type MeshRead, MeshReader, type ReadBound } from "./mesh-reader.ts";
 
 const NOW = new Date("2026-11-03T12:00:00.000Z");
 const status = meshStatus(meshFixture(NOW).sources, NOW);
@@ -27,9 +27,12 @@ const machineView = (name: string, state: string): MachineView => ({
 /** A document's place in the held core: this core's, or another machine's by the name machine.list gives it. */
 const key = (name: string, on?: string): string => `${on ?? ""}/${name}`;
 const unreadable = new Set<string>();
+/** Machines whose documents never answer: only a read's bound ends the wait for them. */
+const stalled = new Set<string>();
 
 function heldCore() {
   unreadable.clear();
+  stalled.clear();
   const docs = new Map<string, { value: JsonValue; version: number }>([
     [key(MESH_STATUS_DOC), { value: status, version: 1 }],
     [key(MESH_APPROVAL_DOC), { value: { deny: OTHER }, version: 1 }],
@@ -39,6 +42,7 @@ function heldCore() {
   const calls: MeshCalls = {
     doc: async (name, on) => {
       if (on !== undefined && unreadable.has(on)) throw new Error(`${on} does not answer`);
+      if (on !== undefined && stalled.has(on)) return new Promise(() => undefined);
       return docs.get(key(name, on)) ?? { value: null, version: 0 };
     },
     setDoc: async (name, value, version, on) => {
@@ -75,6 +79,20 @@ const ownJoin = { ...fixtureJoin, code: CODE };
 const OWN: JoinRequest = { join: ownJoin, machine: null, answered: undefined };
 // The held core never plays the host, so an answer written through it stays unread: sent.
 const APPROVED = { nonce: OPEN, verdict: "approve", outcome: { kind: "sent" } } as const;
+
+/** Reads once with these machines listed, and returns what was shown. */
+const readWith = async (reader: MeshReader, nextRequest: () => Promise<Reply>, machines: MachineView[]) => {
+  const { reads } = shownBy(reader);
+  const read = reader.refresh();
+  (await nextRequest())(machines);
+  await read;
+  const last = reads.at(-1);
+  if (last?.phase !== "ready") throw new Error("the mesh read is not ready");
+  return last;
+};
+
+/** A mesh id of the right shape that is not the fixture's: the status of another owner's mesh. */
+const FOREIGN_MESH = [...status.meshId].toReversed().join("");
 
 describe("MeshReader", () => {
   test("approval carries the code the person compared and rejects a missing code before writing", async () => {
@@ -162,6 +180,59 @@ describe("MeshReader", () => {
     await answered;
     expect(docs.get(key(MESH_APPROVAL_DOC, "build-box"))?.value).toEqual({ approve: held.nonce, code: CODE });
     expect(docs.get(key(MESH_APPROVAL_DOC))?.value).toEqual({ deny: OTHER });
+  });
+
+  test("a connected machine whose status is another mesh's lists none of its joins here (#2944 review)", async () => {
+    const { calls, nextRequest, docs } = heldCore();
+    const held = { ...ownJoin, nonce: "Zm9yZWlnbiBqb2lu", name: "stranger" };
+    docs.set(key(MESH_STATUS_DOC, "build-box"), {
+      value: { ...status, meshId: FOREIGN_MESH, pending: [held] },
+      version: 1,
+    });
+    const shown = await readWith(new MeshReader(calls), nextRequest, [machineView("build-box", "connected")]);
+    expect(shown.requests.map((request) => request.join.name)).toEqual(["ci-runner"]);
+    expect(shown.unread).toEqual([]);
+  });
+
+  test("a machine that does not answer in time never holds back this core's joins, and is named (#2944 review)", async () => {
+    const { calls, nextRequest } = heldCore();
+    stalled.add("build-box");
+    const expire = Promise.withResolvers<undefined>();
+    const bound: ReadBound = (read) => Promise.race([read, expire.promise]);
+    const reader = new MeshReader(calls, bound);
+    const { reads } = shownBy(reader);
+    const read = reader.refresh();
+    (await nextRequest())([machineView("build-box", "connected")]);
+    expire.resolve(undefined);
+    await read;
+    const last = reads.at(-1);
+    expect(last?.phase === "ready" ? [last.requests.map((r) => r.join.name), last.unread] : undefined).toEqual([
+      ["ci-runner"],
+      ["build-box"],
+    ]);
+  });
+
+  test("a machine whose status is there but unreadable is named, not read as no joins (#2944 review)", async () => {
+    const { calls, nextRequest, docs } = heldCore();
+    docs.set(key(MESH_STATUS_DOC, "build-box"), { value: { v: 999 }, version: 1 });
+    const shown = await readWith(new MeshReader(calls), nextRequest, [machineView("build-box", "connected")]);
+    expect(shown.unread).toEqual(["build-box"]);
+  });
+
+  test("an answer on a machine that has left this mesh since the read is refused and writes nothing (#2944 review)", async () => {
+    const { calls, nextRequest, docs } = heldCore();
+    const held = { ...ownJoin, nonce: "aGVsZCBlbHNld2hlcmU", name: "qa-phone" };
+    docs.set(key(MESH_STATUS_DOC, "build-box"), { value: { ...status, pending: [held] }, version: 1 });
+    const reader = new MeshReader(calls);
+    const shown = await readWith(reader, nextRequest, [machineView("build-box", "connected")]);
+    const elsewhere = shown.requests.find((request) => request.machine !== null);
+    if (elsewhere === undefined) throw new Error("the held join is listed");
+    docs.set(key(MESH_STATUS_DOC, "build-box"), {
+      value: { ...status, meshId: "R".repeat(26), pending: [held] },
+      version: 2,
+    });
+    await expect(reader.answer(elsewhere, "approve")).rejects.toThrow("not in this mesh");
+    expect(docs.get(key(MESH_APPROVAL_DOC, "build-box"))).toBeUndefined();
   });
 
   test("a connected machine whose documents cannot be read is named, not dropped in silence", async () => {
