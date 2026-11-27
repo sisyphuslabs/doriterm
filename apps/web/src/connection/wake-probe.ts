@@ -19,10 +19,11 @@ export function wakeProbeMs(srtt: number | undefined): number {
 export type SrttOf = (connection: HcConnection) => number | undefined;
 
 /**
- * The seam the connection's own round-trip estimator plugs into (S0 of the remote-input plan). Until it does, no link has
- * a sample, so every wake waits {@link WAKE_PROBE_MAX_MS} as before.
+ * The connection's own round-trip estimate (design D7). A link with no answered call yet has no sample and waits
+ * {@link WAKE_PROBE_MAX_MS}; one with samples is dropped within a few round trips, so a phone that woke on a socket the
+ * relay already closed resumes in about 1.5 s instead of holding typed input for 10 s (#2853).
  */
-export const noSrtt: SrttOf = () => undefined;
+export const measuredSrtt: SrttOf = (connection) => connection.rtt?.srtt;
 
 /** How a store sizes a wake's check and where it lists the link meanwhile; both are the app's own unless a test passes others. */
 export interface WakeProbing {
@@ -42,7 +43,7 @@ export class WakeProbe {
   readonly #links: UnprovenLinks;
 
   constructor(probing: WakeProbing = {}) {
-    this.#srttOf = probing.srttOf ?? noSrtt;
+    this.#srttOf = probing.srttOf ?? measuredSrtt;
     this.#links = probing.links ?? unprovenLinks;
   }
 
