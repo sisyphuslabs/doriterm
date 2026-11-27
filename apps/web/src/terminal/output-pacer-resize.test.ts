@@ -141,6 +141,30 @@ test("an update opened just after a drag began, with only prompt redraws after i
   expect(holds).toEqual(["held", "let go"]);
 });
 
+test("a pty size change takes the grid between the output drawn before it and after it, whatever the frames batch (#2974)", () => {
+  const frames = manualFrames();
+  const timers = manualTimers();
+  const seen: string[] = [];
+  const decoder = new TextDecoder();
+  const pacer = new OutputPacer(
+    (written) => seen.push(decoder.decode(written)),
+    frames.frame,
+    timers.now,
+    timers.timer,
+  );
+  pacer.inOrder(() => seen.push("resize 100x30"));
+  pacer.push(text("old-size"));
+  pacer.inOrder(() => seen.push("resize 120x36"));
+  pacer.push(text("new-size"));
+  // Nothing was queued ahead of the first: it applied at once. The second waits for the bytes ahead of it.
+  expect(seen).toEqual(["resize 100x30"]);
+  frames.nextFrame();
+  expect(seen).toEqual(["resize 100x30", "old-size"]);
+  frames.nextFrame();
+  expect(seen).toEqual(["resize 100x30", "old-size", "resize 120x36", "new-size"]);
+  expect(pacer.busy).toBe(false);
+});
+
 test("on a narrow terminal a themed prompt redrawn after every resize still does not keep an open update held", () => {
   const { frames, timers, holds, pacer } = holding();
   // 40 columns (a phone, a narrow split): three rows are 120 bytes, a themed prompt is about 200.
