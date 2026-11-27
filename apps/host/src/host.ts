@@ -3,9 +3,8 @@ import { controlIsLive } from "./control.ts";
 import { lanUrlsFor } from "./lan-urls.ts";
 import { coreWatches } from "./core-watches.ts";
 import { createGateway } from "./gateway.ts";
-import { homedir } from "node:os";
-import { HC_VERSION_FLOOR, hcInstallDir, meetsHcFloor } from "./hc-install.ts";
-import { keepHcCurrent, runOnSession } from "./hc-keep-current.ts";
+import { HC_VERSION_FLOOR, meetsHcFloor } from "./hc-install.ts";
+import { keepHostCoreCurrent } from "./hc-keep-current.ts";
 import { watchRevocations } from "./e2ee/revocation-watch.ts";
 import { SpeculativeHello } from "./e2ee/speculative-hello.ts";
 import { HcPipe, readHcVersion } from "./hc-pipe.ts";
@@ -52,14 +51,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
       parts.push(kill === undefined ? { name, stop } : { name, stop, kill }),
     );
     // In the background, so a slow download never holds up the host; terminals keep running through the core restart.
-    void keepHcCurrent({
-      hc: options.hc,
-      version: hcVersion,
-      installDir: hcInstallDir(process.platform, homedir(), options.env ?? process.env),
-      env: options.env ?? process.env,
-      run: (argv) => runOnSession(argv, options.session, options.env),
-      log: options.log,
-    });
+    keepHostCoreCurrent(options, hcVersion);
     return host;
   } catch (error) {
     await stopStarted(parts, options.log);
