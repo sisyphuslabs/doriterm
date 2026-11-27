@@ -1,6 +1,5 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { atRest } from "./at-rest.ts";
 import { pressShortcut } from "./platform-keys.ts";
 import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
@@ -98,7 +97,6 @@ for (const [name, device] of PHONES) {
     test("the keys bar's Type field and the command palette do not zoom when focused", async ({ page }) => {
       await openPhoneTerminal(page);
       await key(page, "Type in a field").click();
-      await atRest(page);
       await expectNoZoomOnFocus(page.getByLabel("Type into the terminal"));
       expect(await zoomingFields(page)).toEqual([]);
 

@@ -52,12 +52,6 @@ const twoFrames = (page: Page) =>
   page.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(null)))),
   );
-/** Forgets the arrivals so far: Settings' own dialog arrives as it opens (#2875), and only what comes after counts. */
-const forgetArrivals = (page: Page) =>
-  page.evaluate(() => {
-    const seen: unknown = Reflect.get(window, "__arrivals");
-    if (Array.isArray(seen)) seen.length = 0;
-  });
 const arrivals = (page: Page) =>
   page.evaluate(() => {
     const seen: unknown = Reflect.get(window, "__arrivals");
@@ -145,7 +139,6 @@ test("a kept tab on an added machine does not arrive late on the way back from S
   const release = socket.hold("machine.list");
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "This device", level: 2 })).toBeVisible();
-  await forgetArrivals(page);
   await page.goBack();
   await expect(page.getByRole("contentinfo").getByText(/^\d+ terminals?\b/)).toBeVisible({ timeout: 20_000 });
   await twoFrames(page);
@@ -182,7 +175,6 @@ test("coming back from Settings is not an arrival: the workspace returns without
   await expect(tab).toBeVisible();
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "This device", level: 2 })).toBeVisible();
-  await forgetArrivals(page);
   await page.goBack();
   await expect(page.locator(SIDEBAR)).toBeVisible({ timeout: 20_000 });
   await expect(tab).toBeVisible();

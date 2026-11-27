@@ -1,6 +1,5 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { atRest } from "./at-rest.ts";
 import { fakeSoftKeyboard, key, keysBar, PHONE } from "./phone-key-bar.ts";
 
 // A narrow desktop window driven by a mouse and a physical keyboard: the phone shell, with no soft keyboard (#287).
@@ -52,7 +51,6 @@ test("with the keys put away, an input card left open no longer takes the header
   const mic = header.getByRole("button", { name: /^Dictat/ });
   await key(page, "Show keys").click();
   await key(page, "Type in a field").click();
-  await atRest(page);
   await expect(page.getByRole("group", { name: "Input card", exact: true })).toBeVisible();
   await expect(mic).toHaveCount(0);
 

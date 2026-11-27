@@ -1,6 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
-import { atRest } from "./at-rest.ts";
 import {
   expectTouchTargets,
   key,
@@ -52,7 +51,6 @@ for (const width of [390, 320]) {
     await expectTouchTargets(bar);
     const keysPill = bar.getByRole("group", { name: "Keys", exact: true });
     const actionsPill = bar.getByRole("group", { name: "Actions", exact: true });
-    await atRest(page);
     const [keysBox, actionsBox] = await Promise.all([keysPill.boundingBox(), actionsPill.boundingBox()]);
     if (keysBox === null || actionsBox === null) throw new Error("pill not laid out");
     expect(Math.abs(keysBox.y - actionsBox.y)).toBeLessThanOrEqual(1);
@@ -145,13 +143,8 @@ test("a browser that shrinks the layout viewport for the keyboard shows the bar 
   await key(page, "Show keyboard").click();
   await page.setViewportSize({ width: 390, height: 844 - 336 });
   await expect(key(page, "Hide keyboard")).toBeVisible();
-  // The bar rides up to its place over the keyboard (#2875): its drawn bottom arrives there.
-  await expect
-    .poll(async () => {
-      const box = await bar.boundingBox();
-      return Math.round((box?.y ?? 0) + (box?.height ?? 0));
-    })
-    .toBe(844 - 336);
+  const box = await bar.boundingBox();
+  expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBe(844 - 336);
 
   // It closes by its own key: the page grows back and the bar stays, under the terminal (#2499).
   await page.setViewportSize({ width: 390, height: 844 });

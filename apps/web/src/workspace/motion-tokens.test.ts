@@ -1,9 +1,7 @@
 import { expect, test } from "bun:test";
 import { layoutMotion } from "./layout-motion.ts";
 import { PINCH_SETTLE } from "../terminal/use-terminal-pinch.ts";
-import { SHEET_OUT } from "./leave-motion.ts";
 import { BACK_MOTION } from "./phone-back-motion.ts";
-import { RIDE_MOTION } from "./use-ride-motion.ts";
 
 const tokens = await Bun.file(new URL("../../../../packages/ui/src/styles/tokens.css", import.meta.url)).text();
 
@@ -24,14 +22,6 @@ test("the motion the scripts play is the one tokens.css names", () => {
   });
   expect(PINCH_SETTLE).toEqual({
     duration: Number.parseInt(token("--duration-settle")),
-    easing: token("--ease-standard"),
-  });
-  expect(SHEET_OUT).toEqual({
-    duration: Number.parseInt(token("--duration-sheet-out")),
-    easing: token("--ease-exit"),
-  });
-  expect(RIDE_MOTION).toEqual({
-    duration: Number.parseInt(token("--duration-card")),
     easing: token("--ease-standard"),
   });
 });

@@ -128,13 +128,6 @@
       transform: var(--arrive-from, scale(0.97));
     }
   }
-
-  /* A leaving region's picture (leave-motion.ts) is inserted as it was drawn: nothing in it eases in from @starting-style
-     again, and only its own exit, a script animation, moves it. */
-  [data-leaving],
-  [data-leaving] * {
-    transition: none !important;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

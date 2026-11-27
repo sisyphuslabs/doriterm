@@ -11,7 +11,7 @@ import { PairRoute } from "./routes/pair-route.tsx";
 import { PerfRoute } from "./routes/perf-route.tsx";
 import { JoinLanding } from "./pair/join-landing.tsx";
 import { SettingsRoute } from "./routes/settings-route.tsx";
-import { SettingsDialog, SettingsInDialog, SettingsSheet, useSettingsSheet } from "./settings/settings-dialog.tsx";
+import { SettingsDialog, SettingsInDialog, useSettingsSheet } from "./settings/settings-dialog.tsx";
 import { WorkspaceRoute } from "./routes/workspace-route.tsx";
 
 /** Where the settings body was scrolled to when its frame was taken out of the page, and which element scrolled. */
@@ -85,9 +85,19 @@ function Root() {
   return (
     <>
       {sheet ? (
-        <SettingsSheet>
+        // No z-index: a menu or dialog Settings portals to the body paints in DOM order, and a layer above it would
+        // cover the menu (the workspace behind is invisible, so this layer only has to paint over nothing). It is a modal
+        // dialog named Settings, as the wide screen's is: the workspace under it is hidden from assistive tech, so the
+        // sheet is the page's one landmark (#1378).
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
+          data-settings-sheet
+          className="fixed inset-0 bg-background"
+        >
           <SettingsSlot frame={frame} refocus={refocus} scroll={scroll} />
-        </SettingsSheet>
+        </div>
       ) : null}
       {/* The view on screen is #root's first child: the desktop window waits for `#root > *` to paint, and the
           workspace kept under the phone's sheet is invisible, so it must not come first there. Under the sheet every
