@@ -250,10 +250,11 @@ describe("tabTitle", () => {
     ).toBe("lane doriterm-2670");
   });
 
-  test("an unnamed tab whose pane runs a program reads the program's title (#2670)", () => {
-    expect(tabTitle("", 1, undefined, terminal({ title: "build watcher", argv: ["node", "watch.js"] }))).toBe(
-      "build watcher",
-    );
+  test("a bare shell keeps its number even when renamed, and a program's window title alone names no tab (#2670, #466)", () => {
+    expect(
+      tabTitle("", 1, undefined, terminal({ argv: ["zsh", "-l"], labels: { "herdr.name": "deploy-check" } })),
+    ).toBe("2");
+    expect(tabTitle("", 1, undefined, terminal({ title: "build watcher", argv: ["node", "watch.js"] }))).toBe("2");
   });
 
   test("an unnamed shell pane at a prompt keeps its place counted from 1 (#466)", () => {

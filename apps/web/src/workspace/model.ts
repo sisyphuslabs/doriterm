@@ -89,37 +89,37 @@ export function terminalTitle(terminal: Terminal): string {
 }
 
 /**
- * A tab's title on the desktop strip: its own name, else the title of the agent it runs (#1541), else its first pane's
- * title when that pane names itself — one a name was given (a lane's, #2670) or one whose program is not a plain shell
- * — else its place in its space counted from 1 (#466). A shell at a prompt keeps the number: its window title is the
- * prompt's own, and one that flaps with every command names nothing. It does not follow the pane in focus (the phone
- * reads {@link phoneTabTitle}).
+ * A tab's title on the desktop strip: its own name, else the title of the agent it runs (#1541), else the name its first
+ * pane was given when that pane was started with a command, a lane's above all (#2670), else its place in its space
+ * counted from 1 (#466). A shell opened bare keeps the number even when renamed, as herdr-app's strip does, and no
+ * window title counts: a prompt's flaps with every command. It does not follow the pane in focus (the phone reads
+ * {@link phoneTabTitle}).
  */
 export function tabTitle(name: string, position: number, agent?: Terminal, pane?: Terminal): string {
   if (name !== "") return name;
   if (agent !== undefined) return terminalTitle(agent);
-  if (pane !== undefined && namesItself(pane)) return terminalTitle(pane);
-  return String(position + 1);
+  const given = pane === undefined ? undefined : laneName(pane);
+  return given ?? String(position + 1);
 }
 
 /**
- * What a pane gives its tab's title on the desktop strip ({@link tabTitle}): its kind, and its own title wherever the tab
- * reads it (an agent's, or a pane that names itself). The strip watches this, so a program's title change or a
- * foreground change that turns a shell into a program redraws its tab (#2672 review).
+ * What a pane gives its tab's title on the desktop strip ({@link tabTitle}): an agent's title, or the name a pane started
+ * with a command was given. The strip watches this, so a rename redraws its tab, and a foreground change alone, which
+ * names nothing here, draws no part of the shell (#2607).
  */
 export function tabTitleKey(terminal: Session): string {
-  const kind = programKind(terminal);
-  return kind === "agent" || namesItself(terminal) ? `${kind}:${terminalTitle(terminal)}` : kind;
+  if (programKind(terminal) === "agent") return `agent:${terminalTitle(terminal)}`;
+  return laneName(terminal) ?? "";
 }
 
-/** Whether a pane's own title names it: a name it was given, or, for a program that is not a plain shell, its window
- * title. A shell at a prompt flaps its title with every command, so only a given name counts there. */
-function namesItself(terminal: Terminal): boolean {
+/** The name a pane started with a command was given (`hc run --name X -- cmd`, a lane's); none for a bare shell. */
+function laneName(terminal: Terminal): string | undefined {
+  const [program = "", ...args] = terminal.argv;
+  if (SHELLS.has(programName(program)) && args.every((arg) => arg.startsWith("-"))) return undefined;
   const renamed = terminal.labels[TITLE_LABEL];
-  if (renamed !== undefined && renamed !== "") return true;
+  if (renamed !== undefined && renamed !== "") return renamed;
   const given = isOpeningName(terminal.name) ? undefined : terminal.name;
-  if (given !== undefined && given !== null && given !== "") return true;
-  return programKind(terminal) !== "shell";
+  return given === undefined || given === null || given === "" ? undefined : given;
 }
 
 /**

@@ -67,23 +67,27 @@ const startOnHost = (args: readonly string[]): string => {
 const startLane = (name: string): string =>
   startOnHost(["--name", name, "--cwd", "/", "--", "bash", "-c", "exec sleep 600"]);
 
-// A program, not a shell, that titles its window, then titles it again once it reads a line.
-const RETITLES = '$|=1; print "\\e]2;title-before\\a"; <STDIN>; print "\\e]2;title-after\\a"; sleep 600';
-
-test("a program's tab follows its title as it changes after the tab is drawn (#2672 review)", async ({ page }) => {
-  const address = startOnHost(["--cwd", "/", "--", "perl", "-e", RETITLES]);
+test("a lane's tab follows the lane's name when it is renamed after the tab is drawn (#2672 review)", async ({
+  page,
+}) => {
+  const address = startLane("lane-before-rename");
   try {
     seedSpaces([
-      { id: "spc-titles", name: "titles", folder: "", tabs: [{ id: "tb-titles", name: "", terminal: address }] },
+      { id: "spc-rename", name: "renames", folder: "", tabs: [{ id: "tb-rename", name: "", terminal: address }] },
     ]);
     await page.goto("/");
     const spacesRegion = page.getByRole("complementary", { name: "Workspace" }).getByRole("region", { name: "Spaces" });
-    await rows(spacesRegion).filter({ hasText: "titles" }).first().click();
+    await rows(spacesRegion).filter({ hasText: "renames" }).first().click();
     const tab = await tabOf(page, address);
-    await expect(tab).toHaveText("title-before", { timeout: 15_000 });
-    await page.locator(`[data-terminal="${address}"]`).click();
+    await expect(tab).toHaveText("lane-before-rename", { timeout: 15_000 });
+    await page.getByRole("button", { name: "Session actions" }).click();
+    await page.getByRole("menuitem", { name: "Rename…" }).click();
+    await page
+      .getByRole("dialog", { name: /^Rename / })
+      .getByRole("textbox", { name: "Name" })
+      .fill("lane-after-rename");
     await page.keyboard.press("Enter");
-    await expect(tab).toHaveText("title-after", { timeout: 15_000 });
+    await expect(tab).toHaveText("lane-after-rename", { timeout: 15_000 });
   } finally {
     endAgent("host", address);
   }
