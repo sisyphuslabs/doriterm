@@ -3,9 +3,10 @@ name: CI
 on:
   push:
     branches: [dev]
-  # ready_for_review runs the e2e suites a draft skipped (below) once the pull request leaves draft.
+  # ready_for_review runs the e2e suites a draft skipped (below) once the pull request leaves draft, and
+  # converted_to_draft re-runs CI when a ready pull request goes back to draft, so its e2e checks turn failed again.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   merge_group:
 
 concurrency:

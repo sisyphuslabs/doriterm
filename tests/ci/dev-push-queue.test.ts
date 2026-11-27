@@ -70,7 +70,7 @@ test("a pull request run that cancels its older run keeps the single pending slo
   }
 });
 
-type Job = { if?: string; steps?: { if?: string; run?: string }[] };
+type Job = { if?: string; env?: Record<string, string>; steps?: { if?: string; run?: string }[] };
 const ci = Bun.YAML.parse(readFileSync(join(DIR, "ci.yml"), "utf8")) as {
   on: { pull_request?: { types?: string[] } };
   jobs: Record<string, Job>;
@@ -89,14 +89,34 @@ const runs = (job: Job | undefined, event: Event): Value =>
 // A draft pull request skips the e2e suites, and leaving draft starts them; the required reporters fail for a draft so
 // it never shows those checks green (LEAD ruling, 2026-11-27).
 test("a draft pull request skips the e2e suites, reports them failed, and runs them once it is ready for review", () => {
-  expect(ci.on.pull_request?.types).toContain("ready_for_review");
+  expect(ci.on.pull_request?.types).toEqual(expect.arrayContaining(["ready_for_review", "converted_to_draft"]));
   for (const name of ["relay-e2e-part", "web-e2e-shard"]) {
     expect({ name, draft: runs(ci.jobs[name], prEvent(true)) }).toEqual({ name, draft: false });
     expect({ name, ready: runs(ci.jobs[name], prEvent(false)) }).toEqual({ name, ready: true });
     expect({ name, push: runs(ci.jobs[name], push) }).toEqual({ name, push: true });
   }
+  // The reporter's draft step must run (and fail) exactly when the pull request is a draft: evaluate its if: against
+  // each event, with the env the job sets, rather than matching its text.
   for (const name of ["relay-e2e", "web-e2e"]) {
-    const draftStep = ci.jobs[name]?.steps?.find((step) => step.run?.includes("draft: e2e not run"));
-    expect({ name, failsForDraft: draftStep?.run?.includes("exit 1") === true }).toEqual({ name, failsForDraft: true });
+    const job = ci.jobs[name];
+    const draftStep = job?.steps?.find((step) => step.run?.includes("draft: e2e not run"));
+    expect({ name, exits: draftStep?.run?.includes("exit 1") === true }).toEqual({ name, exits: true });
+    const stepRuns = (event: Event): Value => {
+      if (draftStep?.if === undefined) return true;
+      const env = Object.fromEntries(
+        Object.entries(job?.env ?? {}).map(([key, value]) => [
+          key,
+          typeof value === "string" && value.trim().startsWith("${{")
+            ? String(evaluate(value, { contexts: event }))
+            : value,
+        ]),
+      );
+      return evaluate(draftStep.if.startsWith("${{") ? draftStep.if : `\${{ ${draftStep.if} }}`, {
+        contexts: { ...event, env },
+      });
+    };
+    expect({ name, draft: stepRuns(prEvent(true)) }).toEqual({ name, draft: true });
+    expect({ name, ready: stepRuns(prEvent(false)) }).toEqual({ name, ready: false });
+    expect({ name, push: stepRuns(push) }).toEqual({ name, push: false });
   }
 });
