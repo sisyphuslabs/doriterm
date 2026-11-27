@@ -15,6 +15,7 @@ import { lazy, Suspense, useState } from "react";
 import { restoreMembership } from "../mesh/membership-lifecycle.ts";
 import { useBrowserMembership, useMembershipFailure } from "../mesh/membership-state.ts";
 import { RemovedMembership } from "../settings/membership-device.tsx";
+import { JoinRequestCard } from "../mesh/join-request-card.tsx";
 
 const Workspace = lazy(() => import("../workspace/workspace.tsx").then((module) => ({ default: module.Workspace })));
 
@@ -69,6 +70,7 @@ export function WorkspaceRoute() {
         }
       >
         <Workspace connection={shown} />
+        {state.phase === "open" ? <JoinRequestCard connection={state.connection} /> : null}
       </Suspense>
     );
   }

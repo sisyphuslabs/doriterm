@@ -4,6 +4,7 @@ import { expect, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { hcOn } from "./machine-switch.ts";
 import { stubSpeech } from "./speech-stub.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -130,7 +131,7 @@ test("Settings > Voice input picks the language and the speech service, and the 
 }) => {
   const speech = await stubSpeech(page);
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Voice input" }).click();
+  await openSettingsSection(page, "Voice input");
   await page.getByRole("button", { name: /^Language/ }).click();
   await page.getByRole("menuitem", { name: "Korean (South Korea)" }).click();
   await expect(page.getByRole("button", { name: /^Language/ })).toContainText("Korean (South Korea)");
