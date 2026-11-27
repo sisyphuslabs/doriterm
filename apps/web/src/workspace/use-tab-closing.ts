@@ -9,19 +9,22 @@ import { useStableCallback } from "./use-stable-callback.ts";
 export type HeldClose = "wait" | "close" | "drop";
 
 /**
- * A close of the terminal shown alone (the TRANSIENT tab: its run has not answered, so no space holds its tab yet) waits
- * for the run's answer to place it, then goes ahead as the placed tab's close: a space's last tab asks Close space? as
- * it always does, instead of the shell ending unasked and its placement writing a tab for it afterwards (#2911, #2913).
- * It goes ahead too once the terminal shows in any tab of its own, and is dropped once the terminal is no longer live.
+ * A close of the terminal shown alone (the TRANSIENT tab) while this page's start of it has not settled (`opening`: its
+ * run has not answered, so no space holds its tab yet) waits for that answer to place it, then goes ahead as the placed
+ * tab's close: a space's last tab asks Close space? as it always does, instead of the shell ending unasked (#2911,
+ * #2913). It is bounded by the run: once the run has answered or failed it goes ahead on whatever tab shows the terminal,
+ * and it is dropped once the terminal is no longer live.
  */
 export function heldClose(
   tabs: readonly LayoutTab[],
   terminals: readonly Pick<Terminal, "address" | "state">[],
   address: string,
+  opening: boolean,
 ): HeldClose {
   if (!terminals.some((terminal) => terminal.address === address && terminal.state === "live")) return "drop";
   const found = findTerminal(tabs, address);
-  return found === null || found.tab.key === TRANSIENT ? "wait" : "close";
+  const placed = found !== null && found.tab.key !== TRANSIENT;
+  return placed || !opening ? "close" : "wait";
 }
 
 /** What a close of this tab does once it is confirmed: the phone leaving the tab it is showing (#1478). */
@@ -40,6 +43,8 @@ export interface TabClosing {
   readonly closeTab: (key: string) => void;
   readonly closeTabs: (keys: readonly string[]) => void;
   readonly closePane: (address: string) => void;
+  /** The terminal whose close waits for its tab to be placed: its tab shows the close as taken. */
+  readonly holding: string | null;
 }
 
 /** Closing panes and tabs as herdr-app does: what asks first, what goes at once, and what waits for its tab. */
@@ -47,6 +52,8 @@ export function useTabClosing(
   layout: Pick<Layout, "tabs" | "closeTab">,
   terminals: readonly Pick<Terminal, "address" | "state">[],
   setAsk: Dispatch<SetStateAction<SessionAsk | null>>,
+  /** Whether this page's start of the terminal has not settled yet (useMachineRuns). */
+  opening: (address: string) => boolean,
 ): TabClosing {
   const [closingTab, setClosingTab] = useState<string | null>(null);
   const [closingSet, setClosingSet] = useState<readonly string[]>([]);
@@ -63,7 +70,8 @@ export function useTabClosing(
   };
   const closeTab = (key: string): void => {
     const tab = layout.tabs.find((each) => each.key === key);
-    if (tab?.key === TRANSIENT) return setHeld(tab.panes[0]?.address ?? null);
+    const alone = tab?.key === TRANSIENT ? tab.panes[0]?.address : undefined;
+    if (alone != null && opening(alone)) return setHeld(alone);
     if (lastOfSpace(tab)) return setClosingTab(key);
     const shown = tab?.panes.flatMap((pane) => (pane.address === null ? [] : [pane.address])) ?? [];
     const [only] = shown;
@@ -88,7 +96,7 @@ export function useTabClosing(
     if (found !== null && found.tab.panes.length === 1) closeTab(found.tab.key);
     else setAsk({ kind: "close", address });
   };
-  const step = held === null ? null : heldClose(layout.tabs, terminals, held);
+  const step = held === null ? null : heldClose(layout.tabs, terminals, held, opening(held));
   const placed = useStableCallback((address: string): void => {
     setHeld(null);
     // What the close does afterwards was asked of the tab shown alone; it is now the placed tab's.
@@ -113,5 +121,6 @@ export function useTabClosing(
     closeTab,
     closeTabs,
     closePane,
+    holding: held,
   };
 }

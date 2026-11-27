@@ -112,6 +112,9 @@ export function endSession(calls: SessionCalls, address: string): Promise<void> 
   return run;
 }
 
+/** Whether an End of this session is in flight from this page. */
+export const endingNow = (address: string): boolean => ending.has(address);
+
 /** Runs `then` once no End of this session is in flight: at once, or when that End has removed the terminal or failed. */
 export function afterEnd(address: string, then: () => void): void {
   const run = ending.get(address);

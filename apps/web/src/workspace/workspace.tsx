@@ -149,7 +149,11 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
     machineReads > 0,
   );
   // A session that ends is dropped from the layout once; a refused drop keeps the pane, showing the ended session.
-  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane);
+  const inDocument = useStableCallback((address: string): boolean => {
+    const found = findTerminal(layout.tabs, address);
+    return found !== null && !found.tab.transient;
+  });
+  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane, inDocument);
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useWidthTier() === "compact";
   const ids = useMemo(() => machineIds(views), [views]);
@@ -177,9 +181,10 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
   });
   const { openTerminal: openInLayout } = layout;
   const opened = useCallback(
-    (address: string): void => {
-      openInLayout(address);
+    (address: string): Promise<unknown> => {
+      const saving = openInLayout(address);
       showOnPhone(address);
+      return saving;
     },
     [openInLayout, showOnPhone],
   );
@@ -218,7 +223,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
       // The first run's agent step completes once the terminal really started, not when it was asked for (#668).
       (address) => {
         guideStore.opened(address, ids);
-        opened(address);
+        return opened(address);
       },
     );
   };
@@ -229,10 +234,11 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
   };
   // The latest `opened`, into a named space: a tab started from a space screen goes after that space's selected tab once
   // it is the selected one (addTab's `near`), and into that space even when it has no tab to select.
-  const openInSpace = useRef<(address: string, key: string) => void>(() => undefined);
+  const openInSpace = useRef<(address: string, key: string) => Promise<unknown>>(() => Promise.resolve());
   openInSpace.current = (address, key) => {
-    openInLayout(address, false, key);
+    const saving = openInLayout(address, false, key);
     showOnPhone(address);
+    return saving;
   };
   // The listed space a new terminal is started for, with its id in its machine's document (a tab of it names that).
   const startSpace = (key: string | undefined): StartSpace | undefined => {
@@ -248,7 +254,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
     withoutClaim(() => layout.selectSpace(key));
     runs.start(runParamsFor(near, startSpace(key)), (address) => {
       guideStore.opened(address, ids);
-      openInSpace.current(address, key);
+      return openInSpace.current(address, key);
     });
   };
   const split = (axis: Axis, target?: PaneTarget): void => {
@@ -280,7 +286,8 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
     closeTab,
     closeTabs,
     closePane,
-  } = useTabClosing(layout, terminals, setAsk);
+    holding,
+  } = useTabClosing(layout, terminals, setAsk, runs.opening);
   const onEnd = (address: string, end: TerminalEnd): void => {
     // An End of this session drops its pane only once it has removed the terminal (see afterEnd), and a program that
     // ended in its first seconds keeps its pane for the just-born grace, so its failure shows (afterGrace).
@@ -332,9 +339,10 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
   useResumeEnds(connection, machinesListed ? views : undefined);
   // The sidebar's runs are its New space buttons: each terminal they start is the first tab of a new space (#404).
   const inNewSpace = useCallback(
-    (address: string): void => {
-      openInLayout(address, true);
+    (address: string): Promise<unknown> => {
+      const saving = openInLayout(address, true);
       showOnPhone(address);
+      return saving;
     },
     [openInLayout, showOnPhone],
   );
@@ -496,6 +504,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
                         onCloseTab={closeTab}
                         onCloseTabs={closeTabs}
                         onClosePane={closePane}
+                        closeWaiting={holding}
                         onEnd={onEnd}
                         onPalette={onPalette}
                         onSession={onSession}

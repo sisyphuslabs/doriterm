@@ -14,7 +14,11 @@ const handler = (terminals: readonly Terminal[], focused: string, opened: string
   desktopActions(
     {
       terminals,
-      layout: { ...layout, focused: { ...pane, address: focused }, placeTerminal: (address) => opened.push(address) },
+      layout: {
+        ...layout,
+        focused: { ...pane, address: focused },
+        placeTerminal: (address) => Promise.resolve(opened.push(address)),
+      },
       ...spaces(),
       onNew: noop,
       onNewSpace: noop,
