@@ -15,7 +15,7 @@ async function pair(page: Page, host: FakeRelayHost): Promise<void> {
   await page.getByRole("link", { name: "Open terminals" }).click({ timeout: 30_000 });
 }
 
-async function openAddMachine(page: Page) {
+async function openConnectSheet(page: Page) {
   await page.getByRole("button", { name: "Connect a device" }).click({ timeout: 60_000 });
   const dialog = page.getByRole("dialog", { name: "Connect a device" });
   // A computer joins from the Computer tab; the sheet opens on a phone or browser.
@@ -32,7 +32,7 @@ test("this app's own line pasted back into its invite field is refused, and stil
   const host = await startFakeRelayHost();
   try {
     await pair(page, host);
-    const { dialog, line } = await openAddMachine(page);
+    const { dialog, line } = await openConnectSheet(page);
     await dialog.getByLabel("Invite link or code").fill(line);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(dialog.getByText(/This is this app's invite for adding another machine/)).toBeVisible();
@@ -54,7 +54,7 @@ test("the same dialog takes an invite from another machine and opens it for this
     await pair(page, host);
     await other.route(page);
     const { link } = await other.meshOffer();
-    const { dialog } = await openAddMachine(page);
+    const { dialog } = await openConnectSheet(page);
     await dialog
       .getByLabel("Invite link or code")
       .fill(`curl -fsSL https://get.doriterm.com | DORIFACE_JOIN='<${link}>' sh`);

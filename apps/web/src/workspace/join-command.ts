@@ -80,33 +80,38 @@ export function followJoinOffer(feed: EventFeed, read: () => void, reopen?: () =
   });
 }
 
-/**
- * While `open`, asks this host for a single-use mesh offer through the offer document and follows the document's events
- * on its own event feed until the host answers; a host that does not answer in {@link OFFER_ANSWER_MS} cannot make one.
- * The request lasts while the dialog is open: a new connection reads it back before asking again, so a join the host
- * took on a connection that dropped still shows (#1780).
- */
 /** How many times a request lost to another writer of the offer document is written again on a fresh read. */
 const ASK_ATTEMPTS = 5;
 
 /**
  * Writes this request at the version the document has now. Another writer can land between the read and the write (a
  * sheet that asked for a phone, then for a computer, #2939), and the core refuses that write as a `conflict`: it is
- * read and written again, a few times, and any other failure is thrown as it came.
+ * read and written again, a few times, and any other failure is thrown as it came. A request whose dialog or tab is gone
+ * (`closed`) writes nothing more, so it never overwrites the request that replaced it.
  */
-async function askOnce(
-  calls: ReturnType<typeof callsOf>,
+export async function askOnce(
+  calls: Pick<ReturnType<typeof callsOf>, "get" | "set">,
   value: Parameters<ReturnType<typeof callsOf>["set"]>[0],
+  closed: () => boolean,
   attempt = 1,
 ): Promise<void> {
+  if (closed()) return;
   const { version } = await calls.get();
+  if (closed()) return;
   try {
     await calls.set(value, version);
   } catch (error) {
     if (attempt >= ASK_ATTEMPTS || !(error instanceof HcRpcError && error.kind === "conflict")) throw error;
-    await askOnce(calls, value, attempt + 1);
+    await askOnce(calls, value, closed, attempt + 1);
   }
 }
+
+/**
+ * While `open`, asks this host for a single-use mesh offer through the offer document and follows the document's events
+ * on its own event feed until the host answers; a host that does not answer in {@link OFFER_ANSWER_MS} cannot make one.
+ * The request lasts while the dialog is open: a new connection reads it back before asking again, so a join the host
+ * took on a connection that dropped still shows (#1780).
+ */
 
 export function useJoinOffer(connection: HcConnection, open: boolean, client = false): JoinOffer {
   const [offer, setOffer] = useState<JoinOffer>({ phase: "asking" });
@@ -188,7 +193,7 @@ export function useJoinOffer(connection: HcConnection, open: boolean, client = f
     void (async () => {
       await follow();
       if (closed || (!fresh && (await read()))) return;
-      await askOnce(calls, { request, ...(client ? { client: true } : {}) });
+      await askOnce(calls, { request, ...(client ? { client: true } : {}) }, () => closed);
       await read();
     })().catch((error: unknown) =>
       settle({ phase: "failed", reason: error instanceof Error ? error.message : String(error) }),

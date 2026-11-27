@@ -351,7 +351,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
     [connection, toasts],
   );
 
-  const openAddMachine = useCallback(() => setAdding(true), []);
+  const openConnect = useCallback(() => setAdding(true), []);
   const terminalsLoaded = fed.loaded;
   const terminalsError = fed.loaded ? null : fed.error;
   const retryTerminals = fed.retry;
@@ -377,7 +377,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
       retryTerminals,
       machinesListed,
       listError,
-      openAddMachine,
+      openConnect,
       views,
       retry,
       remove,
@@ -392,7 +392,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
       retryTerminals,
       machinesListed,
       listError,
-      openAddMachine,
+      openConnect,
       views,
       retry,
       remove,

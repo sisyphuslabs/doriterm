@@ -1,4 +1,5 @@
 import type { HcConnection } from "@doriface/client";
+import type { Terminal } from "@doriface/protocol";
 import { Button, Dialog, Notice, QrCode, SegmentedControl, Spinner } from "@doriface/ui";
 import { useMemo, useState } from "react";
 import { qrModules } from "../pair/qr.ts";
@@ -6,16 +7,15 @@ import { InviteField } from "../pair/invite-field.tsx";
 import { JoinCommandBlock } from "./join-command-block.tsx";
 import { useJoinOffer, webInviteLink } from "./join-command.ts";
 import type { MachineEntry } from "./machines.ts";
+import { useMachines } from "./use-machines.ts";
 
-export type ConnectKind = "phone" | "computer";
+const NO_TERMINALS: readonly Terminal[] = [];
 
 export interface ConnectDeviceDialogProps {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly connection: HcConnection;
   readonly machines: readonly MachineEntry[];
-  /** The tab it opens on; a phone or browser unless the caller asked for a computer. */
-  readonly kind?: ConnectKind;
 }
 
 const KINDS = [
@@ -85,8 +85,8 @@ function PhoneInvite({ connection, open }: { readonly connection: HcConnection; 
  * The one place to connect anything to this mesh (#2939): a phone or browser joins with an invite link and the
  * owner's approval; a computer joins with one command (#668) or from an invite it already holds (#2795).
  */
-export function ConnectDeviceDialog({ open, onClose, connection, machines, kind = "phone" }: ConnectDeviceDialogProps) {
-  const [shown, setShown] = useState<ConnectKind>(kind);
+export function ConnectDeviceDialog({ open, onClose, connection, machines }: ConnectDeviceDialogProps) {
+  const [shown, setShown] = useState<"phone" | "computer">("phone");
   return (
     <Dialog
       open={open}
@@ -121,4 +121,16 @@ export function ConnectDeviceDialog({ open, onClose, connection, machines, kind 
       </div>
     </Dialog>
   );
+}
+
+/** The sheet for a caller that has the connection but not its machine list (Settings, the join page). */
+export function ConnectDeviceSheet({
+  connection,
+  onClose,
+}: {
+  readonly connection: HcConnection;
+  readonly onClose: () => void;
+}) {
+  const { entries } = useMachines(connection, NO_TERMINALS);
+  return <ConnectDeviceDialog open onClose={onClose} connection={connection} machines={entries} />;
 }

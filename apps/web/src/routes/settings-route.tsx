@@ -44,12 +44,12 @@ import { SectionHeader } from "../settings/settings-layout.tsx";
 
 /**
  * What a link asked for (a hash, so it survives a reload): its section, and the group to land on when an older link named
- * one that is now part of a section, as Connect a machine is part of Machines.
+ * one that is now part of a section, as From a terminal is part of Machines.
  */
 function firstLanding(): { readonly section: SectionId; readonly landing: SettingHit | null } {
   const { section, group } = sectionFromLink(window.location.hash);
   const landing =
-    group === undefined ? null : { section, title: "Connect a machine", detail: "", anchor: group, words: [] };
+    group === undefined ? null : { section, title: "From a terminal", detail: "", anchor: group, words: [] };
   return { section, landing };
 }
 

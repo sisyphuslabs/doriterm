@@ -43,7 +43,7 @@ export function InviteMachineChoice({
   );
 }
 
-function InviteAnswer({ connection, install }: { readonly connection: HcConnection; readonly install: boolean }) {
+function InviteAnswer({ connection }: { readonly connection: HcConnection }) {
   const offer = useJoinOffer(connection, true, true);
   const [copied, setCopied] = useState(false);
   const [failure, setFailure] = useState<string>();
@@ -69,10 +69,8 @@ function InviteAnswer({ connection, install }: { readonly connection: HcConnecti
   if (offer.phase === "joined")
     return (
       <div className="flex flex-col gap-3">
-        <p role="status">
-          {install ? "The home-screen app joined. Remove this tab from the mesh?" : `${offer.name} joined the mesh.`}
-        </p>
-        {install && !keep ? (
+        <p role="status">The home-screen app joined. Remove this tab from the mesh?</p>
+        {!keep ? (
           <>
             <div className="flex gap-2">
               <Button variant="primary" onClick={() => setLeaving(true)}>
@@ -90,45 +88,35 @@ function InviteAnswer({ connection, install }: { readonly connection: HcConnecti
     );
   return (
     <div className="flex flex-col gap-3">
-      {install ? <Button render={<a href={offer.link} target="_blank" rel="noreferrer" />}>Open invite</Button> : null}
+      <Button render={<a href={offer.link} target="_blank" rel="noreferrer" />}>Open invite</Button>
       <Button onClick={() => void copy(offer.link)}>{copied ? "Copied invite" : "Copy invite"}</Button>
       {failure === undefined ? null : (
         <Notice title="Could not copy the invite" tone="error">
           {failure}
         </Notice>
       )}
-      {install ? (
-        <p>
-          Copy the invite, then in Safari tap Share and Add to Home Screen. Open the app and tap Paste invite. Switch
-          back to Safari to compare and approve its code.
-        </p>
-      ) : (
-        <p>
-          Open the link in the browser or phone to add. Compare the join codes by a call or in person, not in the chat
-          that carried the link.
-        </p>
-      )}
+      <p>
+        Copy the invite, then in Safari tap Share and Add to Home Screen. Open the app and tap Paste invite. Switch back
+        to Safari to compare and approve its code.
+      </p>
       <MeshBody connection={connection} attentionOnly />
     </div>
   );
 }
 
-export function BrowserInvite({ install = false }: { readonly install?: boolean }) {
+/** The home-screen app joins as its own member: Safari's tab opens the invite and approves it (#2939: the only use left). */
+export function BrowserInvite() {
   const entries = useMeshMembers();
   const online = onlineInviters(entries);
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<string>();
   const selected = online.find((entry) => entry.target.hostId === chosen) ?? online[0];
-  const title = install ? "Join in the home-screen app" : "Add a browser or phone";
+  const title = "Join in the home-screen app";
   return (
     <>
       <SettingRow
         title={title}
-        description={
-          install
-            ? "The home-screen app joins as its own member, with its own keys."
-            : "An invite joins the browser to the whole mesh."
-        }
+        description="The home-screen app joins as its own member, with its own keys."
         control={
           <Button disabled={online.length === 0} onClick={() => setOpen(true)}>
             {title}
@@ -144,7 +132,7 @@ export function BrowserInvite({ install = false }: { readonly install?: boolean 
         {open && selected !== undefined && selected.state.phase === "open" ? (
           <div className="flex flex-col gap-4">
             <InviteMachineChoice entries={online} selected={selected.target.hostId} onSelect={setChosen} />
-            <InviteAnswer key={selected.target.hostId} connection={selected.state.connection} install={install} />
+            <InviteAnswer key={selected.target.hostId} connection={selected.state.connection} />
           </div>
         ) : (
           <p>No machine is online to open an invite.</p>

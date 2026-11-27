@@ -75,7 +75,7 @@ test.describe("Settings, Machines", () => {
       expect(glossary?.y ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual((button?.y ?? 0) + (button?.height ?? 0));
     });
 
-    test("the join page's Connect a machine opens Machines on that group", async ({ page }) => {
+    test("the join page's From a terminal link opens Machines on that group", async ({ page }) => {
       await page.goto("/settings#connect");
       await expect(page.getByRole("tab", { name: "Machines" })).toHaveAttribute("aria-selected", "true");
       await expect(page.getByRole("tab", { name: "Connect a machine" })).toHaveCount(0);

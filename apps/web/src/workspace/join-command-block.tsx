@@ -71,7 +71,7 @@ export function JoinCommandBlock({
         </p>
       ) : offer.phase === "ready" ? (
         <div className="flex flex-col gap-2">
-          <p className="text-prose text-foreground">On the machine to add, run:</p>
+          <p className="text-prose text-foreground">On the machine to add, run this. It joins without asking:</p>
           <code aria-label="Join command" className={codeClass} title={offer.command}>
             <span className="line-clamp-2">{offer.command}</span>
           </code>
