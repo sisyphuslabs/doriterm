@@ -6,9 +6,9 @@ import { type BunWebSocketData, upgradeWebSocket } from "hono/bun";
 import type { WSEvents } from "hono/ws";
 import { attachAfterRun } from "./attach-after-run.ts";
 import type { RunTokens } from "./resume/run-tokens.ts";
-import { checkBearer, checkHandshake } from "./auth.ts";
+import { checkHandshake } from "./auth.ts";
 import { bridge } from "./bridge.ts";
-import { AmbiguousDeviceError, type DeviceSurface, UnknownDeviceError } from "./device-surface.ts";
+import type { DeviceSurface } from "./device-surface.ts";
 import type { McpSurface } from "./mcp-surface.ts";
 import { acceptE2ee, type E2eeDeps, type E2eeTransport } from "./e2ee/accept.ts";
 import { meshPeer } from "./e2ee/authorize.ts";
@@ -21,7 +21,7 @@ import { type SpeculativeHello, withoutFirstLine } from "./e2ee/speculative-hell
 import type { LiveSessions } from "./e2ee/sessions.ts";
 import type { Link } from "./link.ts";
 import type { AuthorizeIndex } from "./mesh/authorize-index.ts";
-import type { PairingOfferView } from "./pair-offer.ts";
+import { mountOwnerRoutes, type PairRoute } from "./owner-routes.ts";
 import type { PushLink } from "./push/push-stream.ts";
 import { LOOPBACK_OWNER } from "./push/subscriptions.ts";
 import { DIRECT_IDLE_MS, WsLink } from "./ws-link.ts";
@@ -74,21 +74,6 @@ export interface GatewayOptions {
    */
   readonly mcpSurface?: McpSurface | undefined;
 }
-
-/** The loopback pairing routes' answers; the app renders these, so they stay JSON-serialisable. */
-export interface PairRoute {
-  open(): Promise<PairAnswer>;
-  state(): PairAnswer;
-}
-
-export type PairAnswer =
-  | { readonly state: "pending"; readonly offer: PairingOfferView }
-  | {
-      readonly state: "paired";
-      readonly device: { readonly name: string; readonly id: string; readonly pairedAt: string } | null;
-    }
-  | { readonly state: "expired" }
-  | { readonly state: "none" };
 
 /** Serves a session whose plaintext is the mesh stream (a member's sync session, or a machine join). */
 export type MeshStreamHandler = (secure: SecureLink) => void;
@@ -159,42 +144,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       return events;
     }),
   );
-  const pair = options.pair;
-  const devices = options.devices;
-  const mcpSurface = options.mcpSurface;
-  if (pair !== undefined || devices !== undefined || mcpSurface !== undefined) {
-    const pairGate = async (c: Context, next: Next) => {
-      if (!checkBearer(c.req.header("authorization"), options.token))
-        return c.text("missing or wrong doriface token", 401);
-      await next();
-      return undefined;
-    };
-    if (pair !== undefined) {
-      app.get("/v1/pair", pairGate, (c) => c.json(pair.state()));
-      app.post("/v1/pair", pairGate, async (c) => c.json(await pair.open()));
-    }
-    if (mcpSurface !== undefined) {
-      app.get("/v1/mcp", pairGate, (c) => c.json(mcpSurface.state()));
-      app.put("/v1/mcp", pairGate, async (c) => {
-        const body: unknown = await c.req.json().catch(() => undefined);
-        const enabled = typeof body === "object" && body !== null ? Reflect.get(body, "enabled") : undefined;
-        if (typeof enabled !== "boolean") return c.json({ error: "enabled must be true or false" }, 400);
-        return c.json(await mcpSurface.set(enabled));
-      });
-    }
-    if (devices !== undefined) {
-      app.get("/v1/devices", pairGate, (c) => c.json({ devices: devices.list() }));
-      app.delete("/v1/devices/:id", pairGate, async (c) => {
-        try {
-          return c.json({ revoked: await devices.revoke(c.req.param("id") ?? "") });
-        } catch (error) {
-          if (error instanceof UnknownDeviceError) return c.json({ error: error.message }, 404);
-          if (error instanceof AmbiguousDeviceError) return c.json({ error: error.message }, 409);
-          throw error instanceof Error ? error : new Error(String(error));
-        }
-      });
-    }
-  }
+  mountOwnerRoutes(app, options);
 
   const pipeTo = (link: Link, closeClient: (code: number, reason: string) => void): void => {
     let pipe: ChildLink;

@@ -1,4 +1,4 @@
-# Doriterm transport contract v1.12.5
+# Doriterm transport contract v1.12.7
 
 This is the binding wire contract for every Doriterm package. Each rule below is the current one; the change log at the end records what each revision changed.
 
@@ -198,6 +198,13 @@ Relay passes (v1.6) are optional for a stand-in: one that ignores `?pass=1` and 
 - The mechanism: a client may try direct (when a LAN URL is known and reachable within 300 ms) and the relay in parallel. The relay is the default; once a direct session's handshake completes, it is preferred. The session swap reattaches terminals with `resumed: true`.
 - Before the decision, no shipped client dialed the direct path either: the Direct address setting was hidden with #458, and v0.1.0-v0.1.2 were the only releases that offered it.
 
+## Local-only mode
+
+- `doriface-host --local-only` runs a host with no relay at all. A host normally keeps its relay uplink; this is the supported way to run without one. It opens no uplink, fetches no relay pass, registers no pairing slot and dials no mesh member, so nothing about the host reaches a relay.
+- Only this computer reaches the host: the desktop app and local tools on the loopback listener (`/v1/hc`, `/v1/push`, `/v1/pair`, `/v1/devices`, `/v1/mcp`, behind the per-launch token).
+- Every pairing or mesh offer and every mesh join is refused instead of handing out or dialing a relay. This covers `doriface-host pair`, `mesh pair`, `mesh join`, `POST /v1/pair` (answered 409 with the reason), the `mesh_invite` MCP tool and a client's mesh-offer document. Devices paired earlier stay paired, but cannot reach the host while it runs local-only. The MCP switch is unchanged; with no relay, no remote device can open an MCP session.
+- `--local-only` cannot be combined with `--relay` or `--lan-listen`. `--no-relay` remains a test knob: it drops the uplink but still lets tests pair over `--lan-listen`.
+
 ## Mesh
 
 A mesh is a set of hosts that trust each other fully: a host admitted by any member is reached by every member, and each member's core adds every other member as a herdr machine on its own. Mesh traffic is ordinary sessions between hosts; the relay keeps nothing about a mesh beyond its anonymous daily counts and its monthly pool pseudonyms (see Relay passes) and needs no mesh-specific behaviour.
@@ -379,6 +386,7 @@ One more stream for a device (v1.12): the Model Context Protocol in place of her
 
 ## Change log
 
+- v1.12.7 (host behaviour, no relay or wire change; #2945): `doriface-host --local-only`, a supported mode with no relay (see Local-only mode). Every offer and join is refused with one reason, so the host never dials a relay. Under `--no-relay`, a mesh join used to dial the release relay.
 - v1.12.5 (host behaviour, no relay or wire change; #2857): program resume. The host adds a per-terminal `OSC7577_TOKEN` to the env of a client's `terminal.run` on its own core, the one exception to an unchanged stream ("What the host adds"); `doriface-host --no-resume` turns it off.
 - v1.12.4 (host behaviour, no relay change; #2735): MCP is on by default. A missing `mcp.json` now means on instead of off; a written `{"enabled":false}` still turns it off and survives an update.
 - v1.12.3 (host behaviour, no relay change; #2735): hc's event stream over MCP. Terminals are resources (`doriterm://terminal/<address>`, `resources/list`, `resources/read` returns the screen). `subscriptions/listen` acknowledges, then sends `notifications/resources/updated` for subscribed terminals and `notifications/resources/list_changed` when one is created or removed. The Events extension (`io.modelcontextprotocol/events`) offers one event type, `terminal.changed`, by push (`events/stream`): `active`, then one `event` per hc event with its payload, a heartbeat, and a fresh `active` with `truncated` after the core dropped events; cursors are null (no replay). Each subscription is one `events.subscribe` on the session's own core connection and ends on cancel or when the session closes. `terminal.attach` stays excluded.
