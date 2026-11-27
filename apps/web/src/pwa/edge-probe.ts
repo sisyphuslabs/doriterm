@@ -20,21 +20,37 @@ interface ProbeDeps {
 
 const browserDeps = (): ProbeDeps => ({ storage: guardedLocalStorage(), show: showEdgeProbe });
 
-/** Turns the readout on or off now, and remembers the choice for the next launch. */
-export function setEdgeProbe(on: boolean, deps: ProbeDeps = browserDeps()): void {
-  deps.storage.setItem(KEY, on ? "1" : "0");
+/**
+ * Turns the readout on or off now. `remember` stores the choice for the next launch; it is stored as on only after the
+ * readout actually showed, so a readout that throws can never be left on to break every later launch.
+ */
+export function setEdgeProbe(on: boolean, deps: ProbeDeps = browserDeps(), remember = true): void {
   if (on && running === null) running = deps.show();
   if (!on && running !== null) {
     running();
     running = null;
   }
+  if (remember) deps.storage.setItem(KEY, on ? "1" : "0");
   for (const listener of listeners) listener();
 }
 
 /** Starts the readout at launch when `?edgeprobe=1` asks for it or Settings left it on. */
-export function startEdgeProbe(search: string, deps: ProbeDeps = browserDeps()): void {
+export function startEdgeProbe(
+  search: string,
+  deps: ProbeDeps = browserDeps(),
+  report: (error: unknown) => void = (error) => console.error("edge readout failed to start", error),
+): void {
   const asked = new URLSearchParams(search).get("edgeprobe") === "1";
-  if (asked || deps.storage.getItem(KEY) === "1") setEdgeProbe(true, deps);
+  const stored = deps.storage.getItem(KEY) === "1";
+  if (!asked && !stored) return;
+  try {
+    // ?edgeprobe=1 shows it for this visit only; only the Settings switch remembers it.
+    setEdgeProbe(true, deps, false);
+  } catch (error) {
+    // The app must start even if the readout cannot: the stored switch is turned off so the next launch is clean.
+    if (stored) deps.storage.setItem(KEY, "0");
+    report(error);
+  }
 }
 
 /**

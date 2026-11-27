@@ -32,11 +32,44 @@ test("the Settings switch shows the readout now, hides it, and a later launch st
   setEdgeProbe(false, deps);
 });
 
-test("?edgeprobe=1 starts it, and nothing starts it when neither asks", () => {
-  const { shown, deps } = fakes();
+test("?edgeprobe=1 shows it for this visit without remembering it, and nothing starts it when neither asks", () => {
+  const { stored, shown, deps } = fakes();
   startEdgeProbe("", deps);
   expect(shown.on).toBe(0);
   startEdgeProbe("?edgeprobe=1", deps);
   expect(shown.on).toBe(1);
-  setEdgeProbe(false, deps);
+  expect(stored.has("doriface.debug.edge-probe")).toBe(false);
+  setEdgeProbe(false, deps, false);
+});
+
+test("a readout that throws at launch is reported, the stored switch turns off, and the app keeps starting", () => {
+  const stored = new Map([["doriface.debug.edge-probe", "1"]]);
+  const reported: unknown[] = [];
+  const deps = {
+    storage: {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => void stored.set(key, value),
+    },
+    show: (): (() => void) => {
+      throw new Error("no body");
+    },
+  };
+  expect(() => startEdgeProbe("", deps, (error) => reported.push(error))).not.toThrow();
+  expect(reported).toHaveLength(1);
+  expect(stored.get("doriface.debug.edge-probe")).toBe("0");
+});
+
+test("the switch stores on only after the readout showed", () => {
+  const stored = new Map<string, string>();
+  const deps = {
+    storage: {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => void stored.set(key, value),
+    },
+    show: (): (() => void) => {
+      throw new Error("no body");
+    },
+  };
+  expect(() => setEdgeProbe(true, deps)).toThrow();
+  expect(stored.has("doriface.debug.edge-probe")).toBe(false);
 });
