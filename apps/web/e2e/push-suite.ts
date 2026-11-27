@@ -73,7 +73,7 @@ export const pushState = (page: Page) => page.locator("[data-push-state]");
  */
 export const pushButton = (page: Page, name: string) => pushState(page).getByRole("button", { name, exact: true });
 
-export { openSettingsSection, settingsSection } from "./settings-sections.ts";
+export { openSettingsSection } from "./settings-sections.ts";
 
 export async function turnOn(page: Page): Promise<void> {
   await openSettings(page);
