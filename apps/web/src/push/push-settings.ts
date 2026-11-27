@@ -109,6 +109,7 @@ class PushSettings {
       }
       const subscription = await pushRegistrar().current();
       const ready = await pushChannel.requestOnce({ t: "hello" }, route);
+      expect(ready, "send notifications");
       if (ready.t !== "ready") throw new Error("the host did not answer");
       const held = ready.subscriptions.find((entry) => entry.endpoint === subscription?.endpoint);
       const action = reconcile({
@@ -233,6 +234,7 @@ class PushSettings {
     let vapidKey = knownKey;
     if (vapidKey === undefined) {
       const ready = await pushChannel.requestOnce({ t: "hello" }, route);
+      expect(ready, "send notifications");
       if (ready.t !== "ready") throw new Error("the host did not answer");
       vapidKey = ready.vapidKey;
     }
