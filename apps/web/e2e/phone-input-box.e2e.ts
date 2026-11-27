@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { Touch } from "./touch.ts";
 import { commandModifier, pressWithCommand } from "./platform-keys.ts";
 import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
@@ -12,6 +13,7 @@ const value = (page: Page) => page.locator("[data-terminal]").evaluate((el) => e
 
 async function openInputCard(page: Page): Promise<void> {
   await key(page, "Type in a field").click();
+  await atRest(page);
   await expect(field(page)).toBeVisible();
   await expect(field(page)).toBeFocused();
 }
@@ -92,6 +94,7 @@ test("the field lives in the card above the keys bar, and stays when the keyboar
   const terminal = await openPhoneTerminal(page);
   await expect(card(page)).toHaveCount(0);
   await openInputCard(page);
+  await atRest(page);
   const [box, cardBox, bar, term] = await Promise.all([
     field(page).boundingBox(),
     card(page).boundingBox(),
@@ -114,6 +117,7 @@ test("the field lives in the card above the keys bar, and stays when the keyboar
   await expect(field(page)).toBeVisible();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await key(page, "Type in a field").click();
+  await atRest(page);
   await expect(card(page)).toHaveCount(0);
 });
 
@@ -175,6 +179,8 @@ test("a press held in the terminal while typing gives the keyboard back as it li
   await key(page, "Show keyboard").click();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await expect(field(page)).toBeVisible();
+  // Read where the terminal is once the keys have ridden up over its bottom edge (#2875).
+  await atRest(page);
   const box = await terminal.boundingBox();
   if (box === null) throw new Error("the terminal is not laid out");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -199,6 +205,8 @@ test("another pointer lifting during a held press in the terminal leaves that pr
   await key(page, "Show keyboard").click();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await expect(field(page)).toBeVisible();
+  // Read where the terminal is once the keys have ridden up over its bottom edge (#2875).
+  await atRest(page);
   const box = await terminal.boundingBox();
   if (box === null) throw new Error("the terminal is not laid out");
   const frames = (): Promise<void> =>

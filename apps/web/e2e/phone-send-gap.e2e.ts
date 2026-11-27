@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { join } from "node:path";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 // No clipboard permissions here: WebKit refuses them, and this spec has to run there too (iOS is the phone it guards).
@@ -16,6 +17,7 @@ const field = (page: Page) => page.getByLabel("Type into the terminal");
  * (#1516). An outline drawn outside the field's box takes that much of the gap; one drawn inside it takes none.
  */
 async function ringGap(page: Page): Promise<number> {
+  await atRest(page);
   const [outer, send] = await Promise.all([
     field(page).evaluate((element) => {
       const style = getComputedStyle(element);
@@ -36,6 +38,7 @@ async function ringGap(page: Page): Promise<number> {
 async function measure(
   page: Page,
 ): Promise<{ gap: number; micGap: number; send: { width: number; height: number }; field: number }> {
+  await atRest(page);
   const [box, send, mic] = await Promise.all([
     field(page).boundingBox(),
     key(page, "Send").boundingBox(),
@@ -63,6 +66,7 @@ for (const theme of ["day", "night"] as const) {
     }, theme);
     const terminal = await openPhoneTerminal(page);
     await key(page, "Type in a field").click();
+    await atRest(page);
     await terminal.click();
     await expect(field(page)).toBeVisible();
     await expect.poll(async () => (await field(page).boundingBox())?.height).toBe(44);
