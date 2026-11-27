@@ -11,6 +11,8 @@ export interface Appearance {
   readonly dark: string;
   readonly light: string;
   readonly density: Density;
+  /** Whether the Doriterm name shows beside the app icon in the workspace sidebar title bar. */
+  readonly showWordmark: boolean;
   readonly custom: readonly CustomTheme[];
 }
 
@@ -19,6 +21,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   dark: "night",
   light: "day",
   density: "comfortable",
+  showWordmark: true,
   custom: [],
 };
 
@@ -54,6 +57,7 @@ export function parseAppearance(stored: unknown): Appearance {
     dark: pick(text(stored, "dark"), false) ?? DEFAULT_APPEARANCE.dark,
     light: pick(text(stored, "light"), true) ?? DEFAULT_APPEARANCE.light,
     density: DENSITIES.find((entry) => entry === text(stored, "density")) ?? DEFAULT_APPEARANCE.density,
+    showWordmark: Reflect.get(stored, "showWordmark") !== false,
     custom,
   };
   const mode = MODES.find((entry) => entry === text(stored, "mode"));

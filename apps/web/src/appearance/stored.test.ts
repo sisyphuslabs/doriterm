@@ -8,6 +8,7 @@ describe("parseAppearance", () => {
       dark: "dracula",
       light: "solarized-light",
       density: "compact",
+      showWordmark: false,
       custom: [],
     };
     expect(parseAppearance(stored)).toEqual(stored);
@@ -19,7 +20,12 @@ describe("parseAppearance", () => {
     [{ theme: "paper" }, { mode: "light", dark: "night", light: "paper" }],
     [{ theme: "gone" }, { mode: "dark", dark: "night", light: "day" }],
   ] as const)("the one-theme form %j becomes a mode and a pick", (stored, expected) => {
-    expect(parseAppearance({ ...stored, custom: [] })).toEqual({ ...expected, density: "comfortable", custom: [] });
+    expect(parseAppearance({ ...stored, custom: [] })).toEqual({
+      ...expected,
+      density: "comfortable",
+      showWordmark: true,
+      custom: [],
+    });
   });
 
   test("a pick of the wrong kind or an unknown id falls back to the default for that kind", () => {
@@ -35,6 +41,18 @@ describe("parseAppearance", () => {
 
   test("an unknown density is comfortable", () => {
     expect(parseAppearance({ density: "tight", custom: [] }).density).toBe("comfortable");
+  });
+
+  test("showWordmark defaults to true and only explicit false hides it (#2967)", () => {
+    expect(DEFAULT_APPEARANCE.showWordmark).toBe(true);
+    expect(
+      parseAppearance({ mode: "dark", dark: "night", light: "day", density: "comfortable", custom: [] }).showWordmark,
+    ).toBe(true);
+    expect(parseAppearance({ showWordmark: true }).showWordmark).toBe(true);
+    expect(parseAppearance({ showWordmark: false }).showWordmark).toBe(false);
+    for (const invalid of ["false", 0, null, "", {}]) {
+      expect(parseAppearance({ showWordmark: invalid }).showWordmark).toBe(true);
+    }
   });
 
   test("anything that is not an object is the default", () => {
