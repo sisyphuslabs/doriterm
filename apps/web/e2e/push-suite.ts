@@ -29,6 +29,8 @@ export function pushSuite(): {
     await context.grantPermissions(["notifications"]);
     if (service !== undefined) await stubPushManager(page, service);
     await page.addInitScript(() => {
+      // Turn on and Turn off record their action here, so a spec waits for it to be done (recordPushStep, #2934).
+      Reflect.set(globalThis, "__dorifacePushSteps", []);
       const ask = Notification.requestPermission.bind(Notification);
       Reflect.set(globalThis, "permissionAsks", 0);
       Notification.requestPermission = () => {
@@ -81,10 +83,22 @@ export const settingsSection = (page: Page, name: string) =>
     // Both exist in the DOM at every width; only one is shown.
     .filter({ visible: true });
 
+/**
+ * Waits for the Turn on or Turn off the page started (recordPushStep): its round trips to the host can take longer than
+ * any fixed read on a loaded machine, so the state is read once the action is done (#2934).
+ */
+export async function pushStepsDone(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const steps: unknown = Reflect.get(globalThis, "__dorifacePushSteps");
+    if (Array.isArray(steps)) await Promise.all(steps);
+  });
+}
+
 export async function turnOn(page: Page): Promise<void> {
   await openSettings(page);
   await expect(pushState(page)).toHaveAttribute("data-push-state", "off");
   await pushButton(page, "Turn on").click();
+  await pushStepsDone(page);
   await expect(pushState(page)).toHaveAttribute("data-push-state", "on");
 }
 
