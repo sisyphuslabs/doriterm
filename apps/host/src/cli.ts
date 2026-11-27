@@ -4,6 +4,7 @@ import { PrivateStateRefused } from "./state/private-state-refused.ts";
 import { parseArgs } from "node:util";
 import { DEFAULT_RELAY_URL } from "@doriface/crypto";
 import { assertValidToken, generateToken } from "./auth.ts";
+import { HostRefused } from "./control.ts";
 import { CONNECT_USAGE, connectCommand } from "./commands/connect.ts";
 import { DEVICES_USAGE, devicesCommand } from "./commands/devices.ts";
 import { FINGERPRINT_USAGE, fingerprintCommand } from "./commands/fingerprint.ts";
@@ -212,6 +213,10 @@ main(Bun.argv.slice(2)).catch((error: unknown) => {
         : "";
     process.stderr.write(`doriface-host: ${error.message}\n${hint}${startupErrorLine(error)}\n`);
     process.exit(STARTUP_EXIT_CODES[error.code]);
+  }
+  if (error instanceof HostRefused) {
+    process.stderr.write(`doriface-host: ${error.message}\n`);
+    process.exit(1);
   }
   if (error instanceof PrivateStateRefused) {
     // The command line was fine; the state it names is not private. The fix is in the message, not the usage.

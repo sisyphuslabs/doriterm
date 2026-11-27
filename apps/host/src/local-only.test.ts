@@ -118,3 +118,12 @@ test("--local-only is a supported option in --help, and a relay or LAN listener 
     expect(run.stderr).toContain(`--local-only cannot be combined with ${beside[i]}`);
   });
 });
+
+test("doriface-host pair against a local-only host exits 1 with the host's reason, not the usage", async () => {
+  const refused = await cli("pair", "--state-dir", stateDir);
+  expect(refused.code).toBe(1);
+  expect(refused.stderr.trim()).toBe(
+    `doriface-host: the running host refused: ${REFUSAL} (--local-only): it keeps no relay, so no device or machine outside this computer can pair with it or join a mesh through it`,
+  );
+  expect(refused.stderr).not.toContain("usage:");
+});
