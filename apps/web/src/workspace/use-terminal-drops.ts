@@ -1,19 +1,20 @@
 import { freshId } from "@doriface/protocol/layout";
 import { useCallback } from "react";
 import type { Zone } from "../layout/drop-zone.ts";
-import { type LayoutTab, localOf } from "./layout-model.ts";
+import { tabKey } from "../layout/view.ts";
+import { landingPane, type LayoutTab, localOf } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
-import { terminalDropWrite } from "./terminal-drop.ts";
+import { paneToTabWrite, terminalDropWrite } from "./terminal-drop.ts";
 import type { MachineLayout } from "./use-layout-docs.ts";
 
-/** Where a terminal dragged from the sidebar lands: pane `pane` of the tab keyed `tab`, in the zone the pointer is in. */
+/** Where a terminal dragged from the sidebar or tab strip lands: pane `pane` of the tab keyed `tab`, in `zone`. */
 export interface TerminalDropTarget {
   readonly tab: string;
   readonly pane: string;
   readonly zone: Zone;
 }
 
-/** What makes a terminal dragged from the sidebar a pane. */
+/** What turns a dragged terminal into a pane, or detaches a split pane back into a tab of its own. */
 export interface TerminalDrops {
   /**
    * Whether the tab keyed `tab` takes the terminal as a pane: a tab of a document that takes edits, on the terminal's own
@@ -22,15 +23,20 @@ export interface TerminalDrops {
   readonly takesTerminal: (address: string, tab: string) => boolean;
   /** Makes the terminal a pane at `target` (terminal-drop.ts) and focuses it; true once the write landed. */
   readonly dropTerminal: (address: string, target: TerminalDropTarget) => Promise<boolean>;
+  /** Moves pane `pane` out of split tab `tab` into a new tab in its space, and focuses it; true once the write landed. */
+  readonly detachPane?: (tab: string, pane: string) => Promise<boolean>;
+  /** The terminal address of the focused pane of tab `key`, or null when that pane shows no terminal. */
+  readonly focusedTerminalOf?: (key: string) => string | null;
 }
 
 export interface TerminalDropsContext {
   readonly tabs: readonly LayoutTab[];
+  readonly focused: Readonly<Record<string, string>>;
   readonly layoutOf: (machine: string | null) => MachineLayout | undefined;
   readonly show: (key: string, pane: string | null) => void;
 }
 
-export function useTerminalDrops({ tabs, layoutOf, show }: TerminalDropsContext): TerminalDrops {
+export function useTerminalDrops({ tabs, focused, layoutOf, show }: TerminalDropsContext): TerminalDrops {
   const writable = useCallback(
     (address: string, key: string): { readonly tab: LayoutTab; readonly layout: MachineLayout } | null => {
       const tab = tabs.find((each) => each.key === key);
@@ -66,5 +72,38 @@ export function useTerminalDrops({ tabs, layoutOf, show }: TerminalDropsContext)
     [show, writable],
   );
 
-  return { takesTerminal, dropTerminal };
+  const detachPane = useCallback(
+    async (key: string, pane: string): Promise<boolean> => {
+      const tab = tabs.find((each) => each.key === key);
+      if (tab === undefined || tab.transient || tab.readOnly !== null || tab.panes.length < 2) return false;
+      const layout = layoutOf(tab.machine);
+      if (layout === undefined || layout.readOnly !== null) return false;
+      const newTab = freshId("tb");
+      let createdTab: string | null = null;
+      let createdPane: string | null = null;
+      const written = await layout.edit((doc) => {
+        const write = paneToTabWrite(doc, tab.id, pane, newTab, layout.pins);
+        createdTab = write?.tab ?? null;
+        createdPane = write?.pane ?? null;
+        return write?.doc ?? null;
+      });
+      if (written && createdTab !== null && createdPane !== null) {
+        show(tabKey(layout.machineId, createdTab), createdPane);
+      }
+      return written;
+    },
+    [layoutOf, show, tabs],
+  );
+
+  const focusedTerminalOf = useCallback(
+    (key: string): string | null => {
+      const tab = tabs.find((each) => each.key === key);
+      if (tab === undefined) return null;
+      const paneId = landingPane(tabs, focused, key);
+      return (tab.panes.find((pane) => pane.id === paneId) ?? tab.panes[0])?.address ?? null;
+    },
+    [focused, tabs],
+  );
+
+  return { takesTerminal, dropTerminal, detachPane, focusedTerminalOf };
 }
