@@ -29,6 +29,7 @@ export function DeviceSection() {
   const [background] = useState(() => desktopBackgroundSetting());
   const [updates] = useState(() => desktopUpdateSetting());
   const keeping = useStorageKeeping();
+  const [askedAgain, setAskedAgain] = useState(false);
   const rows = [
     // Where the browser may clear this app's storage (iOS can for a Home Screen app), its key and pairings go with it,
     // and the app starts unpaired; saying so here is what tells a person it was the phone, not a crash.
@@ -44,11 +45,24 @@ export function DeviceSection() {
         key="storage"
         inline
         title="Storage"
-        description="May be cleared: the browser can remove this app's key and pairings, and it would then need pairing again."
+        description={
+          askedAgain
+            ? "Still may be cleared: the browser decides this itself and kept its answer. If it clears this app's key and pairings, the app needs pairing again."
+            : "May be cleared: the browser can remove this app's key and pairings, and it would then need pairing again."
+        }
         control={
-          <Button size="sm" onClick={() => void keepStorage().catch(() => undefined)}>
-            Ask to keep
-          </Button>
+          askedAgain ? null : (
+            <Button
+              size="sm"
+              onClick={() =>
+                void keepStorage()
+                  .finally(() => setAskedAgain(true))
+                  .catch(() => undefined)
+              }
+            >
+              Ask to keep
+            </Button>
+          )
         }
       />
     ) : null,
