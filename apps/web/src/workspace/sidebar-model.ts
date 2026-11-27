@@ -105,18 +105,21 @@ export function agentGroups(
   const all = branches(terminals, nowMs, places).toSorted(
     (a, b) => rankOf(a) - rankOf(b) || (order.get(a.head.address) ?? 0) - (order.get(b.head.address) ?? 0),
   );
-  /** What `own` lists, counting the rows whose own place is `section`, or every row without one. */
+  /**
+   * What `own` lists, counting every row without a `section`. With one, a branch counts its rows whose own place is
+   * `section`, and its top row when none is: a branch a done sub-agent brings to Idle (a done reads as idle there) still
+   * counts the agent it is placed by, so a listed section never says 0.
+   */
   const listed = (
     own: readonly Branch[],
     section?: AgentStatus,
   ): { readonly agents: readonly Agent[]; readonly count: number; readonly counted: ReadonlySet<string> } => {
     const agents = own.flatMap((branch) => withShape(branch.rows));
     const counted = new Set(
-      own.flatMap((branch) =>
-        branch.rows
-          .filter((_, index) => section === undefined || branch.places[index] === section)
-          .map((row) => row.id),
-      ),
+      own.flatMap((branch) => {
+        const rows = branch.rows.filter((_, index) => section === undefined || branch.places[index] === section);
+        return (rows.length === 0 ? branch.rows.slice(0, 1) : rows).map((row) => row.id);
+      }),
     );
     return { agents, count: counted.size, counted };
   };

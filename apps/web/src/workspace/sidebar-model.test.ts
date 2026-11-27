@@ -139,6 +139,13 @@ describe("agentGroups: sub-agents (#2746)", () => {
     expect(groups[0]?.count).toBe(needsYouCount(fleet));
   });
 
+  test("a branch a done sub-agent brings to Idle counts the agent it is placed by, so a listed section never says 0 (#2881)", () => {
+    const done = agentGroups([terminal("t1", "done"), child("t2", "t1", "done")], 0, "status");
+    expect(drawn(done)).toEqual([["Idle", 1, ["t1@0", "t2@1"]]]);
+    const unreported = agentGroups([terminal("t1", undefined), child("t2", "t1", "done")], 0, "status");
+    expect(drawn(unreported)).toEqual([["Idle", 1, ["t1@0", "t2@1"]]]);
+  });
+
   test("every live terminal is listed once, and folding changes no count", () => {
     const fleet = [
       terminal("t1", "working"),
