@@ -87,7 +87,7 @@ export function SettingsNav({
   return (
     <nav
       aria-label="Settings"
-      className="hidden w-(--settings-nav-width) shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2.5 pb-2 md:flex"
+      className="hidden w-[max(var(--settings-nav-width),calc(var(--titlebar-inset-start,0px)+8.5rem))] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2.5 pb-2 md:flex"
     >
       <div
         {...titlebar}
