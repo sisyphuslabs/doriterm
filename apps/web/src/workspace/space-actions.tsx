@@ -11,13 +11,15 @@ import type { SpaceReorder } from "./space-list.tsx";
 export function SpaceActions({
   space,
   reorder,
+  onRename,
 }: {
   readonly space: Space;
   readonly reorder: SpaceReorder | undefined;
+  readonly onRename?: () => void;
 }) {
   return (
     <Menu align="end" trigger={<IconButton label={`More for ${space.name}`} icon={<Ellipsis />} className="size-6" />}>
-      <SpaceMenuItems space={space} reorder={reorder} />
+      <SpaceMenuItems space={space} reorder={reorder} {...(onRename === undefined ? {} : { onRename })} />
     </Menu>
   );
 }
@@ -29,15 +31,22 @@ export function SpaceActions({
 export function SpaceMenuItems({
   space,
   reorder,
+  onRename,
 }: {
   readonly space: Pick<Space, "id">;
   readonly reorder: SpaceReorder | undefined;
+  /** When given (full desktop sidebar), renames the space inline right on the row instead of opening a modal dialog. */
+  readonly onRename?: () => void;
 }) {
   const renaming = useSpaceRenaming();
   const closing = useSpaceClosing();
   return (
     <>
-      <MenuItem icon={<Pencil />} disabled={renaming.refusal(space.id) !== null} onClick={() => renaming.ask(space.id)}>
+      <MenuItem
+        icon={<Pencil />}
+        disabled={renaming.refusal(space.id) !== null}
+        onClick={() => (onRename === undefined ? renaming.ask(space.id) : queueMicrotask(onRename))}
+      >
         Rename space…
       </MenuItem>
       {reorder === undefined ? null : (

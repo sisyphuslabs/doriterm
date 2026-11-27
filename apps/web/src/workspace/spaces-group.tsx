@@ -133,6 +133,7 @@ function SpacesLists({
         />
       </div>
     );
+    const inlineRename = !rail && !phone ? () => setEditing(space.id) : undefined;
     return (
       <RowWithActions
         row={button}
@@ -142,11 +143,21 @@ function SpacesLists({
         actions={
           rail ? null : (
             <span data-drag-ignore className="flex items-center">
-              <SpaceActions space={space} reorder={reorder} />
+              <SpaceActions
+                space={space}
+                reorder={reorder}
+                {...(inlineRename === undefined ? {} : { onRename: inlineRename })}
+              />
             </span>
           )
         }
-        menu={<SpaceMenuItems space={space} reorder={reorder} />}
+        menu={
+          <SpaceMenuItems
+            space={space}
+            reorder={reorder}
+            {...(inlineRename === undefined ? {} : { onRename: inlineRename })}
+          />
+        }
       />
     );
   };

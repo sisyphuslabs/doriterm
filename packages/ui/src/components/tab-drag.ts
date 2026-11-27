@@ -132,7 +132,7 @@ export function useTabDrag(
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>, id: string, index: number) => {
       if (event.button !== 0 || press.current !== null || latestMove.current === undefined) return;
-      if (event.target instanceof Element && event.target.closest("[data-tab-close]") !== null) return;
+      if (event.target instanceof Element && event.target.closest("[data-tab-close], [data-tab-edit]") !== null) return;
       const touch = event.pointerType === "touch";
       const current: Press = {
         id,

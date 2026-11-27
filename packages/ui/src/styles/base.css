@@ -161,3 +161,12 @@
     opacity: 0.65;
   }
 }
+
+/*
+ * While a menu (e.g. the tab bar's + menu) or an inline rename input is open, temporarily yield Electron's native
+ * titlebar drag region so clicking anywhere along the tab bar row delivers pointerdown to dismiss or commit cleanly.
+ */
+body:has([role="menu"], [data-holds-keyboard]) [data-titlebar],
+html:has([role="menu"], [data-holds-keyboard])::before {
+  -webkit-app-region: no-drag;
+}

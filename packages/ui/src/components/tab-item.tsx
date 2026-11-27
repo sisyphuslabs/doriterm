@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, ArrowRightToLine, CopyX, Pencil, Pin, PinOff, Plus, X } from "lucide-react";
-import { memo, type PointerEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { memo, type PointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
 import { ContextMenu, MenuItem, MenuSeparator, skipMenuHandler } from "./menu.tsx";
@@ -61,6 +61,12 @@ export interface TabItemProps {
   readonly closesOthers: boolean;
   readonly dragging: boolean;
   readonly lifted: boolean;
+  /** Inline rename input active inside this tab pill. */
+  readonly editing: boolean;
+  /** Stored custom name for this tab (empty when auto-named), used when inline editing starts. */
+  readonly editingValue?: string;
+  readonly onRenameCommit?: (name: string) => void;
+  readonly onRenameCancel?: () => void;
   /** Drawn before the strip's last change of tabs, so a reorder does not replay its arrival. */
   readonly arrived: boolean;
   readonly offset: number;
@@ -73,7 +79,7 @@ export interface TabItemProps {
 }
 
 /**
- * A tab's title, cut at 170 px with an ellipsis; only a title cut short carries a tooltip with the whole of it (an agent's
+ * A tab's title, cut at 220 px with an ellipsis; only a title cut short carries a tooltip with the whole of it (an agent's
  * long name, #1541), so a title that fits has none (#478).
  */
 function TabLabel({ text }: { readonly text: string }) {
@@ -91,9 +97,88 @@ function TabLabel({ text }: { readonly text: string }) {
   }, [text]);
   return (
     // Positioned above the tab button's hit layer (its ::after), so a pointer over the label reaches this title (#1530).
-    <span ref={label} title={clipped ? text : undefined} className="relative z-[1] max-w-[170px] truncate">
+    <span ref={label} title={clipped ? text : undefined} className="relative z-[1] max-w-[220px] truncate">
       {text}
     </span>
+  );
+}
+
+function TabNameEdit({
+  initial,
+  stored,
+  onCommit,
+  onCancel,
+}: {
+  readonly initial: string;
+  readonly stored: string;
+  readonly onCommit: (name: string) => void;
+  readonly onCancel: () => void;
+}) {
+  const [value, setValue] = useState(stored !== "" ? stored : initial);
+  const done = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const finish = (save: boolean): void => {
+    if (done.current) return;
+    done.current = true;
+    if (!save) {
+      onCancel();
+      return;
+    }
+    const trimmed = value.trim();
+    // Leaving an auto-named tab untouched keeps automatic naming rather than pinning its current label.
+    if (stored === "" && trimmed === initial) {
+      onCancel();
+      return;
+    }
+    if (trimmed === stored) {
+      onCancel();
+      return;
+    }
+    onCommit(trimmed);
+  };
+  const finishLatest = useRef(finish);
+  finishLatest.current = finish;
+
+  // Clicking the terminal canvas or chrome outside the input may not trigger blur; commit on outside pointerdown too.
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent | globalThis.PointerEvent): void => {
+      if (inputRef.current !== null && event.target instanceof Node && !inputRef.current.contains(event.target)) {
+        finishLatest.current(true);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
+  }, []);
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      autoFocus
+      data-tab-edit
+      data-holds-keyboard
+      aria-label={`Rename ${initial}`}
+      value={value}
+      maxLength={80}
+      placeholder={initial}
+      className="relative z-[2] h-5 min-w-0 flex-1 rounded-xs bg-surface/80 px-1 text-[0.8rem] text-foreground ring-1 ring-ring/70 outline-none"
+      onFocus={(event) => event.currentTarget.select()}
+      onChange={(event) => setValue(event.currentTarget.value)}
+      onBlur={() => finish(true)}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(true);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(false);
+        }
+      }}
+    />
   );
 }
 
@@ -125,6 +210,8 @@ function sameItem(a: TabItemProps, b: TabItemProps): boolean {
     a.closesOthers === b.closesOthers &&
     a.dragging === b.dragging &&
     a.lifted === b.lifted &&
+    a.editing === b.editing &&
+    a.editingValue === b.editingValue &&
     a.arrived === b.arrived &&
     a.offset === b.offset &&
     a.placeClass === b.placeClass &&
@@ -146,6 +233,15 @@ export const TabItem = memo(function TabItem(props: TabItemProps) {
       {...(props.lifted ? { "data-lifted": "" } : {})}
       {...(props.arrived ? { "data-arrived": "" } : {})}
       onPointerDown={(event) => actions.pointerDown(event, tab.id, local, pinned)}
+      onMouseDown={(event) => {
+        if (event.button === 1 && !pinned && offers.close) event.preventDefault();
+      }}
+      onAuxClick={(event) => {
+        if (event.button === 1 && !pinned && offers.close) {
+          event.preventDefault();
+          actions.close(tab.id);
+        }
+      }}
       onTouchStart={skipMenuHandler}
       onContextMenu={(event) => {
         if (!actions.touching()) return;
@@ -155,47 +251,66 @@ export const TabItem = memo(function TabItem(props: TabItemProps) {
       style={props.offset === 0 ? undefined : { translate: `${props.offset}px 0` }}
       className={cn(
         "group relative motion-arrive flex h-[29px] shrink-0 items-center gap-[7px] rounded-[7px] border pl-2.5 text-[0.8rem] select-none [--arrive-duration:var(--duration-micro)]",
-        // A pinned tab has no close button, so it keeps one padding selected or not: selecting it never resizes it.
+        !pinned && "min-w-[180px]",
+        // A pinned tab has no close button; unpinned tabs always reserve the close slot so switching never shifts width.
+        pinned ? "pr-2.5" : "pr-1",
         active
-          ? cn("border-border bg-raised text-foreground", pinned ? "pr-2.5" : "pr-1")
-          : "border-transparent pr-2.5 text-muted-foreground hover:bg-hover",
+          ? "border-border bg-raised text-foreground"
+          : "border-transparent text-muted-foreground hover:bg-hover hover:text-foreground/90",
         props.lifted && "border-border bg-raised shadow-overlay hover:bg-raised",
         props.placeClass,
       )}
     >
-      <button
-        ref={(element) => actions.button(tab.id, element)}
-        type="button"
-        role="tab"
-        aria-selected={active}
-        aria-controls={tab.controls}
-        onClick={() => actions.select(tab.id)}
-        onDoubleClick={() => actions.rename(tab.id)}
-        {...(pinned ? { title: tab.title, "data-pinned": "" } : {})}
-        // The hit area spans the whole tab and half the 3 px gap to the next, past the wrapper's 1 px border:
-        // no dead column beside its Close button or between two tabs. Close comes later, so it stays on top.
-        className="flex min-w-0 items-center gap-[7px] rounded-xs outline-none after:absolute after:inset-y-0 after:-inset-x-[2.5px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
-      >
-        {pinned && tab.icon === undefined ? <Pin aria-hidden className="size-3.5 shrink-0" /> : tab.icon}
-        {pinned ? <span className="sr-only">{tab.title}</span> : <TabLabel text={tab.title} />}
-        {/* herdr-app draws nothing for an idle tab: a spinner while working, a dot when blocked or done. */}
-        {tab.status === undefined || tab.status === "idle" || tab.status === "unknown" ? null : (
-          <StatusIndicator status={tab.status} className="size-3" />
-        )}
-      </button>
-      {active && !pinned ? (
+      {props.editing && !pinned && props.onRenameCommit !== undefined && props.onRenameCancel !== undefined ? (
+        <div className="flex min-w-0 flex-1 items-center gap-[7px]">
+          {tab.icon}
+          <TabNameEdit
+            initial={tab.title}
+            stored={props.editingValue ?? ""}
+            onCommit={props.onRenameCommit}
+            onCancel={props.onRenameCancel}
+          />
+        </div>
+      ) : (
+        <button
+          ref={(element) => actions.button(tab.id, element)}
+          type="button"
+          role="tab"
+          aria-selected={active}
+          aria-controls={tab.controls}
+          onClick={() => actions.select(tab.id)}
+          onDoubleClick={() => actions.rename(tab.id)}
+          {...(pinned ? { title: tab.title, "data-pinned": "" } : {})}
+          // The hit area spans the whole tab and half the 3 px gap to the next, past the wrapper's 1 px border:
+          // no dead column beside its Close button or between two tabs. Close comes later, so it stays on top.
+          className={cn(
+            "flex min-w-0 items-center gap-[7px] rounded-xs outline-none after:absolute after:inset-y-0 after:-inset-x-[2.5px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
+            !pinned && "flex-1",
+          )}
+        >
+          {pinned && tab.icon === undefined ? <Pin aria-hidden className="size-3.5 shrink-0" /> : tab.icon}
+          {pinned ? <span className="sr-only">{tab.title}</span> : <TabLabel text={tab.title} />}
+          {/* herdr-app draws nothing for an idle tab: a spinner while working, a dot when blocked or done. */}
+          {tab.status === undefined || tab.status === "idle" || tab.status === "unknown" ? null : (
+            <StatusIndicator status={tab.status} className="size-3" />
+          )}
+        </button>
+      )}
+      {!pinned && (active || offers.close) ? (
         <IconButton
           label={`Close ${tab.title}`}
           icon={<X />}
           data-tab-close
           loading={tab.closing === true}
           onClick={(event) => {
-            // Selecting a tab moves the strip (only the selected tab has this button), so the second click of a
-            // double-click on the tab can land here: that is a rename of the tab, never its close.
             if (event.detail > 1) actions.rename(tab.id);
             else actions.close(tab.id);
           }}
-          className="size-5 [&_svg:not([data-slot=spinner])]:size-3"
+          className={cn(
+            "relative z-[1] size-5 [&_svg:not([data-slot=spinner])]:size-3",
+            !active &&
+              "opacity-0 transition-opacity duration-(--duration-micro) group-hover:opacity-100 focus-visible:opacity-100 coarse:pointer-events-none coarse:opacity-0",
+          )}
         />
       ) : null}
     </div>
