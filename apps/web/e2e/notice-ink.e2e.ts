@@ -1,9 +1,16 @@
 // The words under an error notice's title sit on its red wash, so they are the foreground at reduced alpha, which
 // takes on the wash, never a neutral gray painted over it, and they keep 4.5:1 in both themes (#1496).
 import { PAIRING_SETTINGS } from "./capture-relay.ts";
-import { SHOTS } from "./capture-shots.ts";
+import { SHOTS, type Shot } from "./capture-shots.ts";
 import { expect, test } from "./fixtures.ts";
 import { measure } from "./painted-contrast.ts";
+
+/** The shot a test ran: its cleanup runs after the test whatever the outcome, so a later spec starts as the host did. */
+let ran: Shot | undefined;
+test.afterEach(() => {
+  ran?.cleanup?.();
+  ran = undefined;
+});
 
 const BROKEN_STORAGE = `IDBFactory.prototype.open = () => { throw new DOMException("IndexedDB is not available here", "InvalidStateError"); };`;
 
@@ -27,6 +34,7 @@ for (const theme of ["day", "night"] as const) {
         else await page.addInitScript({ content: BROKEN_STORAGE });
         const shot = SHOTS.find((entry) => entry.name === name);
         if (shot === undefined) throw new Error(`capture ${name} is missing`);
+        ran = shot;
         await shot.run(page, "1440");
         const notice = page.getByRole("alert").first();
         const body = notice.locator("p + div");

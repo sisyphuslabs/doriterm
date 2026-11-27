@@ -1,7 +1,14 @@
 import type { Locator, Page } from "@playwright/test";
 import { endAgent, startShell } from "./agents.ts";
-import { SHOTS } from "./capture-shots.ts";
+import { SHOTS, type Shot } from "./capture-shots.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+
+/** The shot a test ran: its cleanup runs after the test whatever the outcome, so a later spec starts as the host did. */
+let ran: Shot | undefined;
+test.afterEach(() => {
+  ran?.cleanup?.();
+  ran = undefined;
+});
 
 test.use({ serviceWorkers: "block" });
 
@@ -105,6 +112,7 @@ for (const { name, width, pairs } of cases) {
     test(`${name}: neighbouring bar controls leave no dead pixel column between them`, async ({ page }) => {
       const shot = SHOTS.find((entry) => entry.name === name);
       if (shot === undefined) throw new Error(`capture ${name} is missing`);
+      ran = shot;
       if (name !== "workspace") await shot.run(page, width === 390 ? "390" : "1440");
       await page.mouse.move(0, 0);
       const found = await pairs(page);
