@@ -86,12 +86,12 @@ test.describe("phone", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use(phone);
 
-  test("the phone's section tabs narrow to the sections that hold the words (#1460)", async ({ page }) => {
+  test("the phone's list of sections narrows to the sections that hold the words (#1460)", async ({ page }) => {
     await page.goto("/settings");
     await field(page).fill("relay");
-    const tabs = settings(page).getByRole("tablist");
-    await expect(tabs.getByRole("tab", { name: "This device" })).toBeVisible();
-    await expect(tabs.getByRole("tab")).toHaveCount(1);
+    const list = settings(page).locator("[data-settings-list]");
+    await expect(list.getByRole("button", { name: "This device" })).toBeVisible();
+    await expect(list.getByRole("button")).toHaveCount(1);
   });
 
   test("a tapped match opens its section with that row in view (#1528)", async ({ page }) => {

@@ -1,5 +1,4 @@
-import { Button, Notice, cn } from "@doriface/ui";
-import { ChevronRight } from "lucide-react";
+import { Button, Notice } from "@doriface/ui";
 import { useState } from "react";
 import { useConnection, useConnectionSettings } from "../connection/store.ts";
 import { packName, specialEntries } from "../keybar/entries.ts";
@@ -11,7 +10,7 @@ import { KeyBarHero } from "./key-bar-hero.tsx";
 import { KeyboardEdit } from "./keyboard-edit.tsx";
 import { KeyPickerSheet } from "./key-picker-sheet.tsx";
 import { PacksSheet } from "./packs-sheet.tsx";
-import { SectionHeader, listRowClass, rowValueClass, sectionStackClass } from "./settings-layout.tsx";
+import { LinkRow, SectionHeader, SettingsCard, sectionStackClass } from "./settings-layout.tsx";
 
 type SheetId = "keys" | "packs" | "custom" | null;
 
@@ -34,34 +33,6 @@ function useBarHost() {
     live,
     live === null && settings.hostName !== "" ? settings.hostName : undefined,
     state.phase !== "open",
-  );
-}
-
-function LinkRow({
-  title,
-  value,
-  onClick,
-}: {
-  readonly title: string;
-  readonly value: string;
-  readonly onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      data-list-row
-      onClick={onClick}
-      className={cn(
-        listRowClass,
-        "w-full text-left outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
-      )}
-    >
-      <span className="flex-1 text-base text-foreground">{title}</span>
-      <span data-row-value className={rowValueClass}>
-        {value}
-      </span>
-      <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
-    </button>
   );
 }
 
@@ -102,11 +73,11 @@ export function KeyboardSection() {
         {editing ? (
           <KeyboardEdit settings={settings} host={host} readOnly={readOnly} />
         ) : (
-          <div className="flex flex-col">
+          <SettingsCard>
             <LinkRow title="Keys" value={`${shown} shown`} onClick={() => setSheet("keys")} />
             <LinkRow title="Packs" value={packsValue} onClick={() => setSheet("packs")} />
             <LinkRow title="Your keys" value={own === 0 ? "None" : `${own}`} onClick={() => setSheet("custom")} />
-          </div>
+          </SettingsCard>
         )}
       </div>
       <KeyPickerSheet

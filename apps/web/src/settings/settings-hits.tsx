@@ -1,7 +1,7 @@
 import { Button, cn } from "@doriface/ui";
 import { type KeyboardEvent, useEffect } from "react";
 import type { SettingHit } from "./setting-rows.ts";
-import { SectionHeader, rowValueClass } from "./settings-layout.tsx";
+import { SectionHeader, SettingsCard, rowDetailClass, rowValueClass } from "./settings-layout.tsx";
 import { SECTIONS } from "./settings-sections.tsx";
 
 const sectionLabel = (hit: SettingHit): string => SECTIONS.find((each) => each.id === hit.section)?.label ?? "";
@@ -28,29 +28,36 @@ export function SettingHits(props: {
   return (
     <section aria-label="Matching settings" data-setting-hits className="flex flex-col">
       <SectionHeader title="Matching settings" />
-      <ul className="flex flex-col">
-        {props.hits.map((hit) => (
-          <li key={`${hit.section}:${hit.title}`} className="border-b border-border last:border-b-0">
-            <Button
-              variant="ghost"
-              onClick={() => props.onOpen(hit)}
-              onKeyDown={(event) => stepHits(event, props.onLeave)}
-              data-list-row
-              className="h-auto min-h-12 w-full flex-col items-start justify-center gap-0.5 px-2 py-2.5 text-left"
+      <SettingsCard>
+        <ul className="flex flex-col">
+          {props.hits.map((hit) => (
+            <li
+              key={`${hit.section}:${hit.title}`}
+              className="mr-[calc(var(--settings-row-reach,0px)*-1)] border-b border-border last:border-b-0"
             >
-              <span className="flex w-full items-baseline justify-between gap-3">
-                <span className="text-base text-foreground">{hit.title}</span>
-                <span data-row-value className={cn("shrink-0", rowValueClass)}>
-                  {sectionLabel(hit)}
+              <Button
+                variant="ghost"
+                onClick={() => props.onOpen(hit)}
+                onKeyDown={(event) => stepHits(event, props.onLeave)}
+                data-list-row
+                className="h-auto min-h-(--settings-row-min) w-full flex-col items-start justify-center gap-0.5 rounded-none py-(--settings-row-y) pr-[var(--settings-row-reach,0px)] pl-0 text-left"
+              >
+                <span className="flex w-full items-baseline justify-between gap-3">
+                  <span className="text-(length:--settings-row-title) leading-[1.375rem] text-foreground">
+                    {hit.title}
+                  </span>
+                  <span data-row-value className={cn("shrink-0", rowValueClass)}>
+                    {sectionLabel(hit)}
+                  </span>
                 </span>
-              </span>
-              <span data-row-value className={cn("line-clamp-1 font-normal", rowValueClass)}>
-                {hit.detail}
-              </span>
-            </Button>
-          </li>
-        ))}
-      </ul>
+                <span data-row-detail className={cn("line-clamp-1 font-normal", rowDetailClass)}>
+                  {hit.detail}
+                </span>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </SettingsCard>
     </section>
   );
 }

@@ -1,12 +1,13 @@
 import { devices } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 test.use({ ...phone, serviceWorkers: "block" });
 
 test("the phone Gateway requests URL entry without text corrections (#1444)", async ({ page }) => {
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "This device" }).click();
+  await openSettingsSection(page, "This device");
   const gateway = page.getByRole("textbox", { name: "Gateway", exact: true });
   await expect(gateway).toBeVisible();
   await expect(gateway).toHaveAttribute("inputmode", "url");

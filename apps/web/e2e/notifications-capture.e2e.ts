@@ -57,7 +57,7 @@ async function openSection(
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   await page.goto("/settings");
   await settingsSection(page, "Notifications").click();
-  await expect(page.getByRole("heading", { name: "Notifications", level: 2, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Notifications", exact: true })).toBeVisible();
   return { page, close: () => context.close() };
 }
 

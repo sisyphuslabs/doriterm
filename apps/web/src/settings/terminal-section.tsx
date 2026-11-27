@@ -131,7 +131,7 @@ export function TerminalSection() {
       </div>
       <SettingsToolbar
         name="terminal settings"
-        placeholder="Search keys, e.g. cursor"
+        placeholder="keys, e.g. cursor"
         query={query}
         onQuery={setQuery}
         actions={<ImportExport readOnly={storageError !== null} />}
