@@ -1,0 +1,102 @@
+name: Mirror a herdr-core release
+
+# Vouches for one herdr-core release (#2945). herdr's release server publishes no signature, so hosts install only a
+# herdr-core whose manifest the Doriterm release key signed. A maintainer dispatches this for a version after
+# reading its release notes: it downloads herdr's manifest and archives, checks each archive against herdr's sha256 and
+# the macOS ones against herdr's codesign requirement, then mirrors them into the release bucket behind
+# get.doriterm.com and signs core/<version>/manifest.json; core/latest moves only forward
+# (.github/scripts/core-mirror.ts). Nothing downloaded is ever run. It starts only from dev, in the target's environment,
+# the only place holding the bucket-scoped R2 key pair and the release signing key; only the mirror step sees them.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The herdr-core release to vouch for, such as 0.1.22
+        required: true
+        type: string
+      target:
+        description: Which bucket and origin
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-mirror-${{ inputs.target }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.4.4
+
+jobs:
+  mirror:
+    name: Mirror herdr-core ${{ inputs.version }} to ${{ inputs.target }}
+    if: github.ref == 'refs/heads/dev'
+    # macOS: the codesign check of herdr's macOS builds needs Apple's codesign.
+    runs-on: macos-15
+    timeout-minutes: 30
+    environment: ${{ inputs.target == 'production' && 'release-mirror' || 'release-mirror-staging' }}
+    env:
+      VERSION: ${{ inputs.version }}
+      TARGET: ${{ inputs.target }}
+      BUCKET: ${{ inputs.target == 'production' && 'doriterm-releases' || 'doriterm-releases-staging' }}
+      ORIGIN: ${{ inputs.target == 'production' && 'https://get.doriterm.com' || 'https://staging.get.doriterm.com' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: The version and the target
+        run: |
+          if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error title=Core mirror::$VERSION is not a herdr-core release such as 0.1.22"
+            exit 1
+          fi
+          case "$TARGET" in staging | production) ;; *) echo "::error title=Core mirror::unknown target $TARGET"; exit 1 ;; esac
+      - name: Download herdr's manifest and archives
+        run: bun .github/scripts/release-r2.ts core-fetch --version "$VERSION" --dir "$RUNNER_TEMP/core"
+      # The same requirement apps/host/src/hc-install.ts checks on a Mac: the app bundle and the bare binary, both
+      # signed by herdr's Apple team. Both macOS archives by the only names the mirror accepts for them
+      # (core-mirror.ts `coreArchiveName`), so a manifest cannot name one this step skips; a missing one fails.
+      - name: herdr's macOS builds carry herdr's signature
+        run: |
+          requirement='=identifier "dev.herdr.core" and anchor apple generic and certificate leaf[subject.OU] = "2W9652Q7QR"'
+          for name in herdr-core-macos-aarch64.tar.gz herdr-core-macos-x86_64.tar.gz; do
+            archive="$RUNNER_TEMP/core/$name"
+            test -f "$archive" || { echo "::error title=Core mirror::$name was not downloaded"; exit 1; }
+            unpacked="$(mktemp -d)"
+            tar -xzf "$archive" -C "$unpacked"
+            test -d "$unpacked/Herdr Core.app" || { echo "::error title=Core mirror::$name holds no Herdr Core.app"; exit 1; }
+            codesign --verify --strict -R "$requirement" "$unpacked/Herdr Core.app"
+            codesign --verify --strict -R "$requirement" "$unpacked/herdr-core"
+            echo "$name: signed by herdr"
+          done
+      - name: Mirror into the bucket, sign, and move core/latest
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: >-
+          bun .github/scripts/release-r2.ts core-mirror --bucket "$BUCKET" --origin "$ORIGIN"
+          --version "$VERSION" --dir "$RUNNER_TEMP/core"
+      - name: The origin serves the signed manifest
+        run: |
+          curl -fsS "$ORIGIN/core/$VERSION/manifest.json" -o /dev/null
+          curl -fsS "$ORIGIN/core/$VERSION/manifest.json.sig" -o /dev/null
+          curl -fsS "$ORIGIN/core/latest.json" -o /dev/null
+          echo "$ORIGIN/core/$VERSION/manifest.json is served"
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## herdr-core $VERSION to $ORIGIN"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Job status | ${{ job.status }} |"
+            echo "| Manifest | $ORIGIN/core/$VERSION/manifest.json |"
+          } >> "$GITHUB_STEP_SUMMARY"

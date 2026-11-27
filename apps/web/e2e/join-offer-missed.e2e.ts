@@ -12,8 +12,10 @@ for (const width of [1440, 390]) {
     const socket = await routeHcSocket(page);
     await page.goto(width === 390 ? "/settings" : "/");
     if (width === 390) await openSettingsSection(page, "Machines");
-    await page.getByRole("button", { name: width === 390 ? "Add a machine" : "Add machine" }).click();
-    const dialog = page.getByRole("dialog", { name: "Add a machine" });
+    await page.getByRole("button", { name: "Connect a device" }).click();
+    const dialog = page.getByRole("dialog", { name: "Connect a device" });
+    // A computer joins from the Computer tab; the sheet opens on a phone or browser.
+    await dialog.getByRole("button", { name: "Computer", exact: true }).click();
     await expect(dialog.getByLabel("Join command")).toBeVisible({ timeout: 30_000 });
 
     // Keep the actual doc event off the page. A missed notification is the only signal it receives for the join.

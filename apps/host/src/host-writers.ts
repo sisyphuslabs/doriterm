@@ -126,11 +126,17 @@ export function coreWriters({ core, options, e2ee, meshStatus, refreshMeshLines,
       skill?.answer,
     );
   };
+  /** Starts them when this host is in a mesh: its reconciler has its core up already. */
+  const startIfInMesh = (): void => {
+    if (e2ee?.mesh.read() !== undefined) start();
+  };
   return {
     start,
-    /** Starts them when this host is in a mesh: its reconciler has its core up already. */
-    startIfInMesh: (): void => {
-      if (e2ee?.mesh.read() !== undefined) start();
+    startIfInMesh,
+    /** A state file changed on disk: the host's own reaction, then the writers, should mesh.json now name a mesh. */
+    stateChanged: (): void => {
+      e2ee?.stateChanged();
+      startIfInMesh();
     },
     started: (): boolean => info !== undefined,
     skillChanged: skill?.changed,

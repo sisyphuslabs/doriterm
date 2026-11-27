@@ -2,6 +2,7 @@ import type { WTerm } from "@wterm/react";
 import { useEffect } from "react";
 import type { TerminalConfig } from "../ghostty/config.ts";
 import { wideGlyphScaler } from "./face-scales.ts";
+import { fitGrid } from "./host-size.ts";
 import { applyFontMetrics } from "./font-metrics.ts";
 
 /**
@@ -15,7 +16,7 @@ export function useTerminalFont(wt: WTerm | null, config: TerminalConfig): void 
     let measured = false;
     const apply = (): void => {
       measured = applyFontMetrics(wt.element);
-      wt.fit();
+      fitGrid(wt);
       wt.setWideGlyphScale(wideGlyphScaler(wt.element));
     };
     const shown = new ResizeObserver(() => {

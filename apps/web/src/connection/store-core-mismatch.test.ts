@@ -58,5 +58,5 @@ test("a core this client cannot use fails for good: no retry is armed and nothin
 });
 
 test("the words the person reads come from the same error, so the row and the reason agree", () => {
-  expect(hostFailure(MISMATCH)).toContain("hc update");
+  expect(hostFailure(MISMATCH)).toContain("doriface-host --install-hc");
 });

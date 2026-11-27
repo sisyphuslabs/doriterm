@@ -69,6 +69,21 @@ async function reply(
 export function servePushStream(link: PushLink, owner: string, service: PushService): void {
   const presence = service.presence(owner);
   link.onClose(() => presence.leave());
+  servePushLines(link, (line) => reply(line, owner, service, presence.focus));
+}
+
+/**
+ * A push stream that answers every line with `reason`: a host that sends no notifications (`--local-only`) says why,
+ * so Settings shows it, and holds no subscription, posts nothing and follows no core.
+ */
+export function servePushRefusal(link: PushLink, reason: string): void {
+  servePushLines(link, () => Promise.resolve(error(reason)));
+}
+
+function servePushLines(
+  link: PushLink,
+  answerLine: (line: PushClientLine | { readonly t: "unknown" }) => Promise<PushHostLine>,
+): void {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const encoder = new TextEncoder();
   let buffer = "";
@@ -91,7 +106,7 @@ export function servePushStream(link: PushLink, owner: string, service: PushServ
   /** A failing reply (a state file that cannot be written) is answered as an error; later lines still get theirs. */
   const answer = async (line: PushClientLine | { readonly t: "unknown" }): Promise<PushHostLine> => {
     try {
-      return await reply(line, owner, service, presence.focus);
+      return await answerLine(line);
     } catch (failure) {
       return error(failure instanceof Error ? failure.message : String(failure));
     }

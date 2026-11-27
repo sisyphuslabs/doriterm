@@ -1,3 +1,4 @@
+import { signRelease } from "@doriface/crypto";
 import { hcTarget } from "@doriface/host/hc-install";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
@@ -19,6 +20,7 @@ import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { scratchHcSession } from "./hc-session.ts";
 import { launchOptions, pressNewTab } from "./launch.ts";
+import { E2E_RELEASE_SECRET } from "./release-secret.ts";
 
 /** The real hc the fixture release serves: CI's HC_BIN, else the one installed on this machine. */
 const realHc = process.env["HC_BIN"] || join(homedir(), ".local", "bin", "herdr-core");
@@ -38,16 +40,22 @@ const pathWithoutHc = (): string[] =>
     .split(delimiter)
     .filter((dir) => dir !== "" && !runnable(join(dir, "hc")) && !runnable(join(dir, "herdr-core")));
 
-/** A release server serving latest.json and one archive holding the real hc; `sha256` is what the manifest claims. */
+/**
+ * A release server serving latest.json, its signature and one archive holding the real hc; `sha256` is what the
+ * manifest claims. The signature is by the e2e build's key (scripts/build.ts with DORITERM_E2E_RELEASE_KEYS=1).
+ */
 async function releaseServer(archive: Buffer, version: string, target: string) {
   const state = { sha256: "0".repeat(64) };
   const server: Server = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://x").pathname;
     const origin = `http://127.0.0.1:${String((server.address() as { port: number }).port)}`;
+    const build = { url: `${origin}/core/${version}/herdr-core-${target}.tar.gz`, sha256: state.sha256 };
+    const manifest = JSON.stringify({ version, generation: 1, notes: "fixture", targets: { [target]: build } });
     if (path === "/core/latest.json") {
-      const build = { url: `${origin}/core/${version}/herdr-core-${target}.tar.gz`, sha256: state.sha256 };
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ version, generation: 1, notes: "fixture", targets: { [target]: build } }));
+      response.end(manifest);
+    } else if (path === `/core/${version}/manifest.json.sig`) {
+      response.end(signRelease(new TextEncoder().encode(manifest), E2E_RELEASE_SECRET));
     } else if (path === `/core/${version}/herdr-core-${target}.tar.gz`) {
       response.end(archive);
     } else {

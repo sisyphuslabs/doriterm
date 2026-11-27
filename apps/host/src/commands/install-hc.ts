@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { delimiter, dirname } from "node:path";
 import { HcInstallError, installHc } from "../hc-install.ts";
 
-/** `doriface-host --install-hc`: installs (or updates) herdr-core from its checksummed release, then says where. */
+/** `doriface-host --install-hc`: installs (or updates) herdr-core from a release a Doriterm key signed (signature-verified), then says where. */
 export async function installHerdrCore(out: (text: string) => void, log: (line: string) => void): Promise<void> {
   const env = process.env;
   const installing = installHc({ home: homedir(), env, onPhase: (phase) => log(`installing herdr-core: ${phase}`) });

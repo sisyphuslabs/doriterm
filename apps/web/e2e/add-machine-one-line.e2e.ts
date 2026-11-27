@@ -1,4 +1,4 @@
-// #668: Add a machine is one command. The dialog asks this host for a single-use mesh offer and shows the line to run on
+// #668: connecting a computer is one command. The dialog asks this host for a single-use mesh offer and shows the line to run on
 // the machine to add; running what that line runs (doriface-host mesh join with its link) on a second machine admits it
 // to this host's mesh, which the host writes back and the dialog reports with no second step. Each host keeps its own
 // uplink on the fake relay, so clients can reach the joiner directly.
@@ -23,8 +23,10 @@ test("the dialog's one line, run on a second machine, joins it to this host's me
   const host = await startFakeRelayHost();
   try {
     await pair(page, host);
-    await page.getByRole("button", { name: "Add machine" }).click({ timeout: 60_000 });
-    const dialog = page.getByRole("dialog", { name: "Add a machine" });
+    await page.getByRole("button", { name: "Connect a device" }).click({ timeout: 60_000 });
+    const dialog = page.getByRole("dialog", { name: "Connect a device" });
+    // A computer joins from the Computer tab; the sheet opens on a phone or browser.
+    await dialog.getByRole("button", { name: "Computer", exact: true }).click();
     const command = dialog.getByLabel("Join command");
     await expect(command).toBeVisible({ timeout: 30_000 });
     const text = (await command.innerText()).trim();

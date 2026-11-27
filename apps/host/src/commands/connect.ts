@@ -30,7 +30,7 @@ export const CONNECT_USAGE = `usage: doriface-host connect <hostId | pairing lin
   --replace          let a link or code replace a saved host whose key or relay changed (refused otherwise)
   --mcp              speak the Model Context Protocol to the host instead of hc's own: stdin and stdout carry MCP's
                      stdio transport, so an assistant's MCP config is {"command":"doriface-host","args":["connect","--mcp","<hostId>"]}.
-                     MCP is on by default; a host where \`doriface-host mcp off\` was run refuses until \`mcp on\`.
+                     MCP is off until the host's owner runs \`doriface-host mcp on\` there (or switches it on in Settings).
                      A 4401 refusal (MCP is off or the device is unknown) exits 1 on this stream
   --tools <which>    with --mcp, the tools the assistant is shown up front. Default: two, doriterm_tools (find a
                      tool) and doriterm_call (call it), which keeps its context small. \`all\` shows every tool;

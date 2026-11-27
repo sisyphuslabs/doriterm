@@ -1,33 +1,27 @@
-import { DEFAULT_RELAY_URL, fingerprintOf } from "@doriface/crypto";
+import { fingerprintOf } from "@doriface/crypto";
 import { controlIsLive } from "./control.ts";
 import { lanUrlsFor } from "./lan-urls.ts";
 import { coreWatches } from "./core-watches.ts";
 import { createGateway } from "./gateway.ts";
-import { homedir } from "node:os";
-import { HC_VERSION_FLOOR, hcInstallDir, meetsHcFloor } from "./hc-install.ts";
-import { keepHcCurrent, runOnSession } from "./hc-keep-current.ts";
+import { HC_VERSION_FLOOR, meetsHcFloor } from "./hc-install.ts";
+import { keepHostCoreCurrent } from "./hc-keep-current.ts";
 import { watchRevocations } from "./e2ee/revocation-watch.ts";
 import { SpeculativeHello } from "./e2ee/speculative-hello.ts";
 import { HcPipe, readHcVersion } from "./hc-pipe.ts";
 import { openHostControl } from "./host-control.ts";
 import { e2eeDeps } from "./host-e2ee.ts";
-import { PairOffers } from "./pair-surface.ts";
-import { DeviceSurface } from "./device-surface.ts";
 import { coreWriters } from "./host-writers.ts";
 import { retireLock } from "./host-lock.ts";
 import { type Host, HOST_VERSION, type HostOptions } from "./host-types.ts";
 import { listenError, StartupError } from "./startup-error.ts";
 import { type StartedPart, stopStarted } from "./stop-started.ts";
 import { assertListenAllowed, formatHost } from "./listen.ts";
-import { openOnCore, spawnHcLink } from "./mesh/hc-machines.ts";
-import { McpSurface } from "./mcp-surface.ts";
-import { meshToolDeps } from "./mcp/mesh-deps.ts";
-import { serveMcpLines } from "./mcp/serve.ts";
 import { HostUplink } from "./relay/host-uplink.ts";
 import { openRelayPasses } from "./relay/relay-passes.ts";
 import { RelaySessionWire } from "./relay/session-wire.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
-import { startHostPush } from "./push/host-push.ts";
+import { hostPushOf } from "./push/host-push.ts";
+import { ownerSurfaces } from "./host-surfaces.ts";
 
 export { HOST_VERSION, type E2eeEndpoint, type Host, type HostOptions } from "./host-types.ts";
 
@@ -52,14 +46,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
       parts.push(kill === undefined ? { name, stop } : { name, stop, kill }),
     );
     // In the background, so a slow download never holds up the host; terminals keep running through the core restart.
-    void keepHcCurrent({
-      hc: options.hc,
-      version: hcVersion,
-      installDir: hcInstallDir(process.platform, homedir(), options.env ?? process.env),
-      env: options.env ?? process.env,
-      run: (argv) => runOnSession(argv, options.session, options.env),
-      log: options.log,
-    });
+    keepHostCoreCurrent(options, hcVersion);
     return host;
   } catch (error) {
     await stopStarted(parts, options.log);
@@ -101,23 +88,7 @@ async function serve(
       "revocation watch",
       watchRevocations(stateDir, () => e2ee.sessions.closeRevoked(), options.log),
     );
-  const push =
-    stateDir === undefined || e2ee === undefined
-      ? undefined
-      : await startHostPush({
-          stateDir,
-          hostId: e2ee.identity.hostId,
-          devices: e2ee.devices,
-          mesh: e2ee.mesh,
-          hc: {
-            hc: options.hc,
-            session: options.session,
-            env: options.env,
-            handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
-          },
-          extraOrigins: options.pushTestOrigins,
-          log: options.log,
-        });
+  const push = await hostPushOf(options, e2ee);
   if (push !== undefined) {
     started(
       "push feed",
@@ -147,77 +118,12 @@ async function serve(
         : new HcPipe({ hc: options.hc, session: options.session, env: options.env, log: options.log }),
   });
   started("speculative hello", () => speculative.stop());
-  // A revoke from the app or an MCP client is the same act as `devices revoke` on the control socket: the file loses
-  // the device, the sessions of its key close, and its push subscription goes.
-  const deviceSurface =
-    e2ee === undefined
-      ? undefined
-      : new DeviceSurface({
-          devices: e2ee.devices,
-          changed: async () => {
-            e2ee.hostMesh.sweepRoster();
-            await e2ee.sessions.closeRevoked();
-            push?.prune();
-          },
-        });
+  const surfaces = ownerSurfaces({ options, e2ee, push, meshStatus, refreshMeshLines });
   const gateway = createGateway({
     e2ee,
     speculative,
     push: push?.serve,
-    mcp: (link) =>
-      serveMcpLines(link, {
-        hostVersion: HOST_VERSION,
-        mesh:
-          e2ee === undefined || deviceSurface === undefined
-            ? undefined
-            : meshToolDeps({
-                e2ee,
-                devices: deviceSurface,
-                status: async () => {
-                  await refreshMeshLines();
-                  return meshStatus?.();
-                },
-                relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
-              }),
-        // Each MCP session gets its own connection to this host's core, as an hc session gets its own pipe.
-        openHc: async () => {
-          const target = {
-            hc: options.hc,
-            session: options.session,
-            env: options.env,
-            handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
-          };
-          const child = spawnHcLink(target);
-          try {
-            return await openOnCore(child, target);
-          } catch (error) {
-            child.close();
-            throw error;
-          }
-        },
-      }),
-    pair:
-      e2ee === undefined
-        ? undefined
-        : new PairOffers({
-            identity: e2ee.identity,
-            pairing: e2ee.pairing,
-            devices: e2ee.devices,
-            open: () => e2ee.hostMesh.pairDevice(),
-            relayUrl: options.relay?.url ?? DEFAULT_RELAY_URL,
-          }),
-    devices: deviceSurface,
-    mcpSurface:
-      e2ee === undefined
-        ? undefined
-        : new McpSurface({
-            mcp: e2ee.mcp,
-            devices: e2ee.devices,
-            sessions: () => e2ee.sessions.mcpSessions(),
-            changed: async () => {
-              await e2ee.sessions.closeRevoked();
-            },
-          }),
+    ...surfaces,
     token: options.token,
     hostVersion: HOST_VERSION,
     hcVersion,
@@ -278,6 +184,8 @@ async function serve(
   const control = openHostControl(options.stateDir, e2ee, meshStatus, refreshMeshLines, push, writers);
   e2ee?.slots.start();
   writers.startIfInMesh();
+  const stopWatch = stateDir === undefined ? undefined : watchRevocations(stateDir, writers.stateChanged, options.log);
+  if (stopWatch !== undefined) started("state watch", stopWatch);
   const boundPort = server.port ?? port;
   const base = `ws://${formatHost(hostname)}:${boundPort}`;
   let stopping: Promise<void> | undefined;
@@ -299,6 +207,8 @@ async function serve(
     gitFactsSettled: writers.gitFactsSettled,
     meshStatusSettled: writers.meshStatusSettled,
     stop() {
+      // First: a state change from now on must start nothing (a writer's hc connect would bring the core back).
+      stopWatch?.();
       const pushStopped = push?.stop();
       e2ee?.slots.stop();
       control?.stop();

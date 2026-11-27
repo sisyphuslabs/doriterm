@@ -25,6 +25,11 @@ export const pointerKey = (channel: Channel): string => `channels/${channel}.jso
 /** The host's signed manifest for a channel, written by the release's mirror and re-signed by every channel move. */
 export const hostManifestKey = (channel: Channel): string => `channels/${channel}.host-manifest.json`;
 
+/** A herdr-core release Doriterm vouched for (#2945): its archives, manifest and signature, written once by core-mirror. */
+export const coreObjectKey = (version: string, file: string): string => `core/v${version}/${file}`;
+/** `{"version": ...}`: the mirrored herdr-core release `/core/latest.json` serves. */
+export const CORE_POINTER_KEY = "core/latest";
+
 export const githubAssetUrl = (version: string, file: string): string =>
   `https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/${file}`;
 /** GitHub's own "latest release" redirect, which only works for a file whose name carries no version. */

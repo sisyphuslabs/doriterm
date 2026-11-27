@@ -6,9 +6,9 @@ import { type MeshLine, type MeshLines, MeshProtocolError } from "./lines.ts";
 import { byDeadline, JoinRefused } from "./refused.ts";
 
 export const JOIN_NO_TERMINAL =
-  "this invite asks for a code: run `doriface-host mesh join <link>` in a terminal, or use Add a machine's one-line command";
+  "this invite asks for a code: run `doriface-host mesh join <link>` in a terminal, or use the one-line command on the Computer tab of Connect a device";
 export const JOIN_NO_COMMIT =
-  "this invite does not ask for a code: either the inviting machine needs an update, or it is a one-line Add a machine invite (run that command as given). Or ask for an invite with `doriface-host mesh pair` on an updated machine";
+  "this invite does not ask for a code: either the inviting machine needs an update, or it is a computer's one-line invite (run that command as given). Or ask for an invite with `doriface-host mesh pair` on an updated machine";
 
 /** Persisted before the first card; this is an unfinished join, never a membership bundle. */
 export interface JoinAnchor {

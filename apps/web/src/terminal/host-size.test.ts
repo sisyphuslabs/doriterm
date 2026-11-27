@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type GridSize, HostSize, type SizedStream } from "./host-size.ts";
+import { fitGrid, fitOwnBox, type GridSize, HostSize, type SizedStream, type ViewGrid } from "./host-size.ts";
 
 function recorder(): SizedStream & { readonly frames: string[] } {
   const frames: string[] = [];
@@ -8,6 +8,26 @@ function recorder(): SizedStream & { readonly frames: string[] } {
     resize: (cols, rows) => (frames.push(`resize ${cols}x${rows}`), true),
     focus: (gained) => (frames.push(`focus ${gained}`), true),
   };
+}
+
+/** A grid whose box fits `box`, as wterm's does: a fit, or wterm's own refit while `autoResize` is on, takes the box. */
+function grid(box: GridSize): ViewGrid & { readonly resizes: string[] } {
+  const resizes: string[] = [];
+  const view = {
+    resizes,
+    autoResize: true,
+    cols: 80,
+    rows: 24,
+    resize(cols: number, rows: number) {
+      view.cols = cols;
+      view.rows = rows;
+      resizes.push(`${cols}x${rows}`);
+    },
+    fit() {
+      if (view.cols !== box.cols || view.rows !== box.rows) view.resize(box.cols, box.rows);
+    },
+  };
+  return view;
 }
 
 test("a desk viewer sends every resize and focus at once", () => {
@@ -35,10 +55,10 @@ test("its first input sends the latest size, then focus, before the input goes",
   size.resize(stream, 40, 30);
   size.resize(stream, 44, 31);
   size.focus(stream, true);
-  size.inputStarts(stream, { cols: 44, rows: 31 });
+  size.inputStarts(stream, grid({ cols: 44, rows: 31 }));
   expect(stream.frames).toEqual(["resize 44x31", "focus true"]);
   expect(size.attachDeferred()).toBe(false);
-  size.inputStarts(stream, { cols: 44, rows: 31 });
+  size.inputStarts(stream, grid({ cols: 44, rows: 31 }));
   size.resize(stream, 50, 31);
   expect(stream.frames).toEqual(["resize 44x31", "focus true", "resize 50x31"]);
 });
@@ -65,8 +85,32 @@ test("a blur reaches the host even while watching, and an input with no stream y
   const stream = recorder();
   size.focus(stream, false);
   expect(stream.frames).toEqual(["focus false"]);
-  size.inputStarts(null, { cols: 40, rows: 30 });
+  size.inputStarts(null, grid({ cols: 40, rows: 30 }));
   expect(size.attachDeferred()).toBe(false);
+});
+
+test("a watching view draws at the pty's size, follows it, and its first input fits its own box again (#2974)", () => {
+  const size = new HostSize(true);
+  const stream = recorder();
+  const view = grid({ cols: 48, rows: 43 });
+  fitGrid(view);
+  size.ptySized(view, { cols: 123, rows: 36 });
+  // Held at the pty's grid: no fit takes the box's back while it watches.
+  fitGrid(view);
+  size.ptySized(view, { cols: 100, rows: 30 });
+  expect(view.resizes).toEqual(["48x43", "123x36", "100x30"]);
+  // A reattach asks for its own box, then draws at the size the core answers with.
+  fitOwnBox(view);
+  size.ptySized(view, { cols: 100, rows: 30 });
+  expect(view.resizes.slice(3)).toEqual(["48x43", "100x30"]);
+  expect(stream.frames).toEqual([]);
+  size.inputStarts(stream, view);
+  expect(view.autoResize).toBe(true);
+  expect(view.resizes.at(-1)).toBe("48x43");
+  expect(stream.frames).toEqual(["resize 48x43"]);
+  // In use, the view's grid is its own: the pty's size the core reports no longer moves it.
+  size.ptySized(view, { cols: 123, rows: 36 });
+  expect(view.resizes.at(-1)).toBe("48x43");
 });
 
 /**
@@ -121,7 +165,7 @@ test("a phone that starts typing keeps its size against a desk that stays focuse
   phoneSize.focus(phone, true);
   // Only watching, the phone leaves the desk its size.
   expect(host.pty()).toEqual({ cols: 120, rows: 30 });
-  phoneSize.inputStarts(phone, { cols: 40, rows: 30 });
+  phoneSize.inputStarts(phone, grid({ cols: 40, rows: 30 }));
   expect(host.pty()).toEqual({ cols: 40, rows: 30 });
   // The desk keeps its focus and sends nothing more, so the typing phone keeps the size until the desk is used again.
   expect(host.frames.filter((frame) => frame.startsWith("desk"))).toEqual(["desk resize 120x30", "desk focus true"]);

@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { requestControl } from "../control.ts";
 import { confirmOnTerminal, leaveMesh, renameMember, revokeMember } from "./mesh-change.ts";
 import { formatMeshStatus } from "../mesh/status-text.ts";
-import { defaultStateDir } from "../state/files.ts";
+import { defaultStateDir, isRecord } from "../state/files.ts";
 import { printable } from "./devices.ts";
 
 export const MESH_USAGE = `usage: doriface-host mesh status [--json] [--state-dir <dir>]
@@ -57,6 +57,11 @@ export async function meshCommand(
   if (reply === undefined) throw new Error(`no doriface-host is running on ${stateDir}`);
   if (reply === null) {
     out("this host is in no mesh\n");
+    return 1;
+  }
+  const unreadable = isRecord(reply) ? reply["unreadable"] : undefined;
+  if (typeof unreadable === "string") {
+    out(`${printable(unreadable)}\n`);
     return 1;
   }
   const status = parseMeshStatus(reply);

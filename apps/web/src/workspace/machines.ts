@@ -16,7 +16,7 @@ export interface MachineEntry {
 
 export { stateLabel } from "./machine-state.ts";
 
-/** Only this machine is listed: the section ends in an Add a machine row instead of a header action. */
+/** Only this machine is listed: the section ends in a Connect a device row instead of a header action. */
 export const onlyThisMachine = (entries: readonly MachineEntry[]): boolean => entries.every((machine) => machine.local);
 
 function entry(core: string, name: string, local: boolean, state: string, terminals: readonly Session[]): MachineEntry {

@@ -107,18 +107,13 @@ test("a machine member's key cannot open MCP even with the switch on", async () 
   });
 });
 
-test("a paired device's MCP session answers discovery when no switch file exists: MCP is on by default", async () => {
-  const { connect } = fixture("unset");
-  const connection = await connect();
-  connection.send(DISCOVER);
-  await connection.answered;
-  expect(JSON.parse(new TextDecoder().decode(connection.received[0]))).toMatchObject({ id: 1, result: {} });
-});
-
-test("a paired key cannot finish the MCP handshake once MCP was turned off", async () => {
-  const { connect } = fixture("off");
-  await expect(connect()).rejects.toMatchObject({
-    code: CloseCode.UnknownDevice,
-    cause: { message: "MCP is off on this host" },
-  });
-});
+test.each(["unset", "off"] as const)(
+  "a paired key cannot finish the MCP handshake with the switch %s",
+  async (setting) => {
+    const { connect } = fixture(setting);
+    await expect(connect()).rejects.toMatchObject({
+      code: CloseCode.UnknownDevice,
+      cause: { message: "MCP is off on this host" },
+    });
+  },
+);

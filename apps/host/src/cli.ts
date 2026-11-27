@@ -4,6 +4,7 @@ import { PrivateStateRefused } from "./state/private-state-refused.ts";
 import { parseArgs } from "node:util";
 import { DEFAULT_RELAY_URL } from "@doriface/crypto";
 import { assertValidToken, generateToken } from "./auth.ts";
+import { HostRefused } from "./control.ts";
 import { CONNECT_USAGE, connectCommand } from "./commands/connect.ts";
 import { DEVICES_USAGE, devicesCommand } from "./commands/devices.ts";
 import { FINGERPRINT_USAGE, fingerprintCommand } from "./commands/fingerprint.ts";
@@ -32,40 +33,7 @@ import { defaultStateDir } from "./state/files.ts";
 import { RESUME_EXEC, resumeExecCommand } from "./resume/resume-exec.ts";
 import { TOKEN_VAR } from "./resume/run-tokens.ts";
 import { hostProfile, serveDefaults } from "./state/profile.ts";
-
-const USAGE = `usage: doriface-host [options]
-       doriface-host pair [options]
-       doriface-host devices list|revoke <id>
-       doriface-host mcp on|off|status [--state-dir <dir>]
-       doriface-host fingerprint
-       doriface-host connect <hostId | pairing link | code>
-       doriface-host mesh pair | mesh join <mesh link | code> | mesh join --from-file <file>
-       doriface-host mesh status [--json] | mesh revoke [--compromised] <member> | mesh rename <member> <name> | mesh leave
-       doriface-host update [--channel stable|beta] | verify-release <SHA256SUMS.txt> <SHA256SUMS.txt.sig>
-       doriface-host skill install [--dir <dir>]... | skill status [--json] | skill uninstall
-       doriface-host resume-exec <launch file>   (typed into a terminal by the host to resume a program)
-
-  --listen <host:port>  where to listen (default 127.0.0.1:7766, or any free port for a profile; loopback only)
-  --hc <path>           the herdr-core binary (default hc)
-  --install-hc          install (or update) herdr-core into ~/.local/bin from its checksummed release, then exit
-  --session <name>      the hc session to reach (hc connect --session; a profile's default is doriterm-<profile>)
-  --token <token>       the client token (default $DORIFACE_HOST_TOKEN, else 32 random bytes)
-  --print-token         print the token on stdout once listening
-  --unsafe-listen       allow a non-loopback --listen (plaintext: anyone who can reach it gets a shell)
-  --lan-listen <h:p>    for tests: also serve the end-to-end encrypted /v1/e2ee (only) here; no shipped client dials it (#2070)
-  --state-dir <dir>     host keys and paired devices (default $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host,
-                        or $XDG_STATE_HOME/doriface-host-profiles/<profile>)
-  --relay <url>         the relay this host keeps an encrypted-only uplink to (default ${DEFAULT_RELAY_URL})
-  --no-relay            for tests: keep no relay uplink, so only this computer and a --lan-listen test reach the host
-  --auto-update <ch>    stable or beta: update this binary from get.doriterm.com's signed manifest and exit for the
-                        service manager to restart it; off (the default) leaves updates to you
-  --push-test-origin <origin>  for tests: also post web push notices to this push service origin (port 0: any port)
-  --no-resume           bring no program back after a restart, and give terminals no OSC 7577 token
-  --version             print this host's version
-  -h, --help            show this help
-
-  $DORITERM_PROFILE     run a separate host, in its own mesh, beside the default one: its own state dir, hc session and
-                        port, for every command (1-32 lowercase letters, digits and inner dashes)`;
+import { USAGE } from "./cli-usage.ts";
 
 const log = (line: string): void => {
   process.stderr.write(`${new Date().toISOString()} ${line}\n`);
@@ -136,8 +104,9 @@ async function serve(args: readonly string[]): Promise<void> {
       "unsafe-listen": { type: "boolean", default: false },
       "lan-listen": { type: "string" },
       "state-dir": { type: "string" },
-      relay: { type: "string", default: DEFAULT_RELAY_URL },
+      relay: { type: "string" },
       "no-relay": { type: "boolean", default: false },
+      "local-only": { type: "boolean", default: false },
       "push-test-origin": { type: "string", multiple: true },
       "install-hc": { type: "boolean", default: false },
       "auto-update": { type: "string", default: "off" },
@@ -155,7 +124,16 @@ async function serve(args: readonly string[]): Promise<void> {
     return;
   }
   if (values["install-hc"]) return installHerdrCore(out, log);
-  if (!URL.canParse(values.relay)) throw new Error(`--relay wants a URL, got ${JSON.stringify(values.relay)}`);
+  const localOnly = values["local-only"];
+  for (const [flag, given] of [
+    ["--relay", values.relay],
+    ["--lan-listen", values["lan-listen"]],
+    ["--auto-update", values["auto-update"] === "off" ? undefined : values["auto-update"]],
+  ] as const) {
+    if (localOnly && given !== undefined) throw new Error(`--local-only cannot be combined with ${flag}`);
+  }
+  const relayUrl = values.relay ?? DEFAULT_RELAY_URL;
+  if (!URL.canParse(relayUrl)) throw new Error(`--relay wants a URL, got ${JSON.stringify(relayUrl)}`);
   const autoUpdate = values["auto-update"] === "off" ? undefined : parseChannel(values["auto-update"], "--auto-update");
   const origin = updateOrigin(process.env);
   const given = values.token ?? process.env["DORIFACE_HOST_TOKEN"] ?? "";
@@ -174,7 +152,8 @@ async function serve(args: readonly string[]): Promise<void> {
     unsafeListen: values["unsafe-listen"],
     lanListen: values["lan-listen"] === undefined ? undefined : parseListen(values["lan-listen"], "--lan-listen"),
     stateDir: values["state-dir"] ?? defaultStateDir(),
-    relay: values["no-relay"] ? undefined : { url: values.relay },
+    relay: values["no-relay"] || localOnly ? undefined : { url: relayUrl },
+    localOnly,
     pushTestOrigins: values["push-test-origin"]?.map(pushOrigin),
     skill: hostAgentSkill(),
     resume: !values["no-resume"],
@@ -190,6 +169,7 @@ async function serve(args: readonly string[]): Promise<void> {
     log(`end-to-end encrypted at ${e2ee.url}${lan}; host ${e2ee.hostId}, fingerprint ${e2ee.fingerprint}`);
   }
   if (host.relayUrl !== undefined) log(`reachable through the relay ${host.relayUrl}`);
+  if (localOnly) log("local-only: no relay; only this computer reaches this host");
   if (values["print-token"]) process.stdout.write(`${token}\n`);
   else if (given === "") log("generated a token; pass --print-token to see it");
 
@@ -230,10 +210,14 @@ main(Bun.argv.slice(2)).catch((error: unknown) => {
   if (error instanceof StartupError) {
     const hint =
       error.code === "hc-binary-missing" || error.code === "hc-version-failed"
-        ? "doriface-host: `doriface-host --install-hc` installs herdr-core from its checksummed release\n"
+        ? "doriface-host: `doriface-host --install-hc` installs herdr-core from a signature-verified release\n"
         : "";
     process.stderr.write(`doriface-host: ${error.message}\n${hint}${startupErrorLine(error)}\n`);
     process.exit(STARTUP_EXIT_CODES[error.code]);
+  }
+  if (error instanceof HostRefused) {
+    process.stderr.write(`doriface-host: ${error.message}\n`);
+    process.exit(1);
   }
   if (error instanceof PrivateStateRefused) {
     // The command line was fine; the state it names is not private. The fix is in the message, not the usage.
