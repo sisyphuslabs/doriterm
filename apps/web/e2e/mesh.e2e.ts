@@ -1,7 +1,10 @@
-import { MESH_APPROVAL_DOC } from "@doriface/protocol";
+import { MESH_APPROVAL_DOC, MESH_STATUS_DOC, parseMeshStatus } from "@doriface/protocol";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { getCoreDoc, setCoreDoc } from "./core-doc.ts";
 import { expect, test } from "./fixtures.ts";
+import { MACHINE_NAME } from "./machine.ts";
 import { machineRow, STATE_BOUND_MS } from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
 
@@ -10,10 +13,56 @@ const OLD_RUNNER_NONCE = "ZXhwaXJlZCBqb2lu";
 /** ci-runner's open join (the host fixture's pending join). */
 const RUNNER_NONCE = "dGhlIGpvaW5lcidzIG5vbmNl";
 const REFUSAL = "the approval code does not match this join";
+/** A join the added machine holds, not this core. */
+const HELD_NONCE = "aGVsZCBlbHNld2hlcmU";
+/** Prints the fixture status document as of now; the fixture is Bun-only and specs run under Node (mesh-reset.ts). */
+const MESH_DOC_SCRIPT = join(import.meta.dirname, "mesh-doc.ts");
 
 const group = (page: Page, id: string) => page.locator(`[data-mesh-group="${id}"]`);
 
 test.beforeEach(() => resetMeshDocs());
+test.afterEach(() => resetMeshDocs({ open: false }));
+
+// The trust step wherever the owner is looking (#2939): the waiting join's card over the workspace, answered in place.
+for (const [width, size] of [
+  ["1440", { width: 1440, height: 900 }],
+  ["390", { width: 390, height: 844 }],
+] as const) {
+  test(`the waiting join's card rises over the workspace at ${width} and answers there (#2939)`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await page.goto("/");
+    const card = page.locator(`[data-join-request="${RUNNER_NONCE}"]`);
+    await expect(card.getByRole("heading", { name: "ci-runner wants to join" })).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByLabel("Join code")).toHaveText("123 456");
+    await card.locator('[data-mesh-answer="open"] [data-mesh-verdict="approve"]').click();
+    await expect
+      .poll(() => getCoreDoc(MESH_APPROVAL_DOC), { timeout: 15_000 })
+      .toMatchObject({ approve: RUNNER_NONCE });
+    // The e2e host holds no such join, so it says so, and the card says what it said.
+    await expect(card.locator('[data-mesh-answer="gone"]')).toHaveCount(1, { timeout: 15_000 });
+  });
+}
+
+test("the card gives focus back to where it came from when it leaves (#2944 review)", async ({ page }) => {
+  await page.goto("/");
+  const card = page.locator(`[data-join-request="${RUNNER_NONCE}"]`);
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  const before = page.getByRole("button", { name: "New terminal" }).first();
+  await before.focus();
+  await card.getByRole("button", { name: "Not now" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(before).toBeFocused();
+});
+
+test("Not now hides the card here while the join keeps waiting in Settings (#2939)", async ({ page }) => {
+  await page.goto("/");
+  const card = page.locator(`[data-join-request="${RUNNER_NONCE}"]`);
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByRole("button", { name: "Not now" }).click();
+  await expect(card).toHaveCount(0);
+  await openMesh(page);
+  await expect(group(page, "pending").locator('[data-mesh-answer="open"]')).toHaveCount(1);
+});
 
 async function openMesh(page: Page): Promise<void> {
   await page.goto("/");
@@ -104,6 +153,34 @@ for (const [verdict, doc, shown] of [
     }
   });
 }
+
+// A join invited on another machine is held and published only there (#2939): the app attached to this core lists it
+// through that machine and answers it in that machine's approval document, where its host reads it.
+test("a join waiting on another machine is listed through it and answered there (#2939)", async ({ page }) => {
+  const status = parseMeshStatus(JSON.parse(execFileSync("bun", [MESH_DOC_SCRIPT, "open"], { encoding: "utf8" })));
+  const open = status?.pending[0];
+  if (status === undefined || open === undefined) throw new Error("the mesh fixture has no pending join");
+  const held = { ...open, nonce: HELD_NONCE, name: "qa-phone", kind: "client" };
+  setCoreDoc(MESH_STATUS_DOC, { ...status, pending: [held] }, MACHINE_NAME);
+  setCoreDoc(MESH_APPROVAL_DOC, {}, MACHINE_NAME);
+  try {
+    await openMesh(page);
+    const pending = group(page, "pending");
+    const row = pending.locator("[data-setting-row]").filter({ hasText: "qa-phone" });
+    await expect(row).toContainText(`through ${MACHINE_NAME}`, { timeout: 20_000 });
+    await row.locator('[data-mesh-answer="open"] [data-mesh-verdict="approve"]').click();
+    await expect
+      .poll(() => getCoreDoc(MESH_APPROVAL_DOC, MACHINE_NAME), { timeout: 15_000 })
+      .toMatchObject({
+        approve: HELD_NONCE,
+        code: "123 456",
+      });
+    expect(getCoreDoc(MESH_APPROVAL_DOC)).not.toMatchObject({ approve: HELD_NONCE });
+  } finally {
+    setCoreDoc(MESH_STATUS_DOC, null, MACHINE_NAME);
+    setCoreDoc(MESH_APPROVAL_DOC, null, MACHINE_NAME);
+  }
+});
 
 test("a join whose answer another writer replaced takes an answer again", async ({ page }) => {
   setCoreDoc(MESH_APPROVAL_DOC, { deny: OLD_RUNNER_NONCE });

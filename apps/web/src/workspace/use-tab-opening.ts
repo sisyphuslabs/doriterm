@@ -31,9 +31,10 @@ export interface TabOpening {
     newSpace?: boolean,
     into?: string,
     placed?: (doc: JsonObject | null, makeId: (prefix: "spc") => string) => NewSpace,
-  ) => void;
-  readonly openTerminal: (address: string, newSpace?: boolean, space?: string) => void;
-  readonly placeTerminal: (address: string) => void;
+  ) => Promise<unknown>;
+  /** Settles once its tab's write has been saved or refused (at once when nothing is written). */
+  readonly openTerminal: (address: string, newSpace?: boolean, space?: string) => Promise<unknown>;
+  readonly placeTerminal: (address: string) => Promise<unknown>;
 }
 
 /** Opening a terminal in a tab: a new tab beside the one in view, in a named space, or where its labels place it. */
@@ -68,7 +69,7 @@ export function useTabOpening({
       newSpace = false,
       into?: string,
       placed?: (doc: JsonObject | null, makeId: (prefix: "spc") => string) => NewSpace,
-    ): void => {
+    ): Promise<unknown> => {
       const machine = machineOf(address) ?? null;
       const layout = layoutOf(machine);
       const writable = layout !== undefined && layout.readOnly === null;
@@ -76,7 +77,10 @@ export function useTabOpening({
       const transient = keepTransient(active, address, writable);
       const fate = placed !== undefined && transient !== null ? "apart" : transient;
       if (fate === "apart" && active !== null) keepApart(active);
-      if (layout === undefined || layout.readOnly !== null) return keepHere(address);
+      if (layout === undefined || layout.readOnly !== null) {
+        keepHere(address);
+        return Promise.resolve();
+      }
       const id = freshId("tb");
       const pane = freshId("p");
       const tab: JsonObject = { id, name: "", root: terminalRow(id, pane, localOf(address)) };
@@ -112,7 +116,7 @@ export function useTabOpening({
       // Where the document already shows the terminal: another device adopted it while this write waited (#2122). A
       // second tab for it is never written; the view asked to show the new tab shows that one instead.
       let adopted: PaneAt | null = null;
-      void layout
+      const saving = layout
         .edit((doc) => {
           // A placed tab's space is decided on the document this write lands on, as adoption decides it (#2467).
           const where = placed === undefined ? space : placed(doc, freshId);
@@ -134,22 +138,27 @@ export function useTabOpening({
           return saved;
         });
       show(asked, pane);
+      return saving;
     },
     [active, goInstead, keepApart, keepHere, layoutOf, setLoose, show],
   );
 
   const openTerminal = useCallback(
-    (address: string, newSpace = false, space?: string): void => {
+    (address: string, newSpace = false, space?: string): Promise<unknown> => {
       const found = findTerminal(tabs, address);
-      if (found === null) addTab(address, newSpace, space);
-      else show(found.tab.key, found.pane.id);
+      if (found === null) return addTab(address, newSpace, space);
+      show(found.tab.key, found.pane.id);
+      return Promise.resolve();
     },
     [addTab, show, tabs],
   );
   const placeTerminal = useCallback(
-    (address: string): void => {
+    (address: string): Promise<unknown> => {
       const found = findTerminal(tabs, address);
-      if (found !== null) return show(found.tab.key, found.pane.id);
+      if (found !== null) {
+        show(found.tab.key, found.pane.id);
+        return Promise.resolve();
+      }
       const terminal = terminals.find((each) => each.address === address);
       const layout = layoutOf(machineOf(address) ?? null);
       if (terminal === undefined || layout === undefined) return addTab(address);

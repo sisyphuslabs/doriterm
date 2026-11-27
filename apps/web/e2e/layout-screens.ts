@@ -7,6 +7,7 @@ import { expect } from "./fixtures.ts";
 import { setCoreDoc } from "./core-doc.ts";
 import { LAYOUT_DOC, treeNode } from "./layout-doc.ts";
 import { LAYOUT_MACHINE, LAYOUT_TERMINALS, UNBROKEN } from "./layout-seed.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 /** A title as a regular expression that matches it literally. */
 const literal = (text: string): string => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -60,10 +61,10 @@ async function workspace(page: Page, narrow: boolean): Promise<void> {
   await expect(row(page, "remote-terraform-plan-runner-001")).toBeVisible({ timeout: 20_000 });
 }
 
-async function section(page: Page, narrow: boolean, label: string): Promise<void> {
+async function section(page: Page, label: string): Promise<void> {
   await page.goto("/settings");
-  if (narrow) await page.getByRole("tab", { name: label }).click();
-  else await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: label }).click();
+  // A phone opens on the list of sections (#2914); wide, the section is a button in the navigation.
+  await openSettingsSection(page, label);
 }
 
 async function choose(page: Page, button: string, text: string): Promise<void> {
@@ -109,7 +110,7 @@ export const SCREENS: readonly Screen[] = [
   {
     name: "unreachable-settings",
     start: "unreachable",
-    open: (page, narrow) => section(page, narrow, "This device"),
+    open: (page) => section(page, "This device"),
   },
   { name: "workspace", start: "layout", open: workspace },
   {
@@ -175,23 +176,23 @@ export const SCREENS: readonly Screen[] = [
     (label): Screen => ({
       name: `settings-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
       start: "layout",
-      open: (page, narrow) => section(page, narrow, label),
+      open: (page) => section(page, label),
     }),
   ),
   {
     name: "settings-storage-error",
     start: "layout",
     storageFails: true,
-    open: async (page, narrow) => {
-      await section(page, narrow, "Keybindings");
+    open: async (page) => {
+      await section(page, "Keybindings");
       await expect(page.getByRole("alert").first()).toBeVisible();
     },
   },
   {
     name: "dialog-import-config",
     start: "layout",
-    open: async (page, narrow) => {
-      await section(page, narrow, "Terminal");
+    open: async (page) => {
+      await section(page, "Terminal");
       await choose(
         page,
         "Import Ghostty config…",
@@ -202,8 +203,8 @@ export const SCREENS: readonly Screen[] = [
   {
     name: "dialog-import-keybinds",
     start: "layout",
-    open: async (page, narrow) => {
-      await section(page, narrow, "Keybindings");
+    open: async (page) => {
+      await section(page, "Keybindings");
       await choose(page, "Import keybinds…", `keybind = ctrl+shift+t=new_tab\nkeybind = ${LONG_VALUE}\n`);
     },
   },

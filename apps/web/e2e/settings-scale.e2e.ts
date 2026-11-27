@@ -1,8 +1,10 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
-// Settings draws one scale in every section (#2878): one header size, one size for row titles and one for their second
-// lines, rows at least 48 px, and one height for the buttons in rows, so moving between sections never resizes the screen.
+// Settings draws one scale in every section (#2878, #2914): one title size, one caption size, one size for row titles
+// and one for their second lines, rows at least --settings-row-min, and one height for the buttons in rows, so moving
+// between sections never resizes the screen.
 test.use({ serviceWorkers: "block" });
 
 const SECTIONS = [
@@ -16,21 +18,22 @@ const SECTIONS = [
   "Voice input",
 ] as const;
 
-const ROW_FLOOR = 48;
+/** A `--settings-*` length as this page resolves it, in px (#2914: one token, a fine and a coarse value). */
+const token = (page: Page, name: string): Promise<number> =>
+  page.evaluate((property) => {
+    const root = getComputedStyle(document.documentElement);
+    return Number.parseFloat(root.getPropertyValue(property)) * Number.parseFloat(root.fontSize);
+  }, name);
 
 /** What Settings used before #2878 (`py-3.5`), which the scale may not grow past: Q asked for compact, as herdr-app is. */
 const ROW_PADDING_CEILING = 14;
 
-/**
- * The other spacing Settings used before #2878, which the scale may not grow past either: 4 px under a section title
- * (`pb-1`) and 20 px between a section's blocks (`gap-5`, the widest of Terminal's and Keybindings'). With rows padded
- * no more than before, a phone shows at least as many rows as it did, whatever the font wraps (#2882 review).
- */
-const TITLE_GAP_CEILING = 4;
-const BLOCK_GAP_CEILING = 20;
+/** What a caption's own line may hold under it before its card: Settings' 8 px, never the 16 px of a block gap. */
+const CAPTION_GAP_CEILING = 8;
 
 interface Scale {
-  readonly headers: readonly number[];
+  readonly titles1: readonly number[];
+  readonly captions: readonly number[];
   readonly titles: readonly number[];
   readonly details: readonly number[];
   readonly controls: readonly number[];
@@ -39,9 +42,9 @@ interface Scale {
 }
 
 /** The sizes each role is drawn in, as the eye reads them: the font size of the text itself, not of its wrapper. */
-async function measure(scope: Locator): Promise<Scale> {
+async function measure(scope: Locator, floor: number): Promise<Scale> {
   return scope.evaluate(
-    (root, [floor, ceiling]) => {
+    (root, [rowFloor, ceiling]) => {
       // oxlint-disable-next-line unicorn/consistent-function-scoping -- page.evaluate sends this function as source, so its helpers live inside it
       const shown = (el: Element): boolean => {
         const box = el.getBoundingClientRect();
@@ -69,8 +72,10 @@ async function measure(scope: Locator): Promise<Scale> {
       // Badges (Not applied) are chips, and the code in a description (ids, commands) is a caption: a step below on purpose.
       const BADGES = "[data-slot=badge]";
       const CAPTIONS = "[data-slot=badge], code, .font-mono";
-      const headers = new Set<number>();
-      for (const heading of root.querySelectorAll("h1, h2")) if (shown(heading)) drawnIn(heading, headers, BADGES);
+      const titles1 = new Set<number>();
+      for (const heading of root.querySelectorAll("h1")) if (shown(heading)) drawnIn(heading, titles1, BADGES);
+      const captions = new Set<number>();
+      for (const heading of root.querySelectorAll("h2, h3")) if (shown(heading)) drawnIn(heading, captions, BADGES);
       const titles = new Set<number>();
       const details = new Set<number>();
       const controls = new Set<number>();
@@ -82,7 +87,7 @@ async function measure(scope: Locator): Promise<Scale> {
         if (title !== undefined) drawnIn(title, titles, BADGES);
         for (const line of lines) drawnIn(line, details, CAPTIONS);
         const height = row.getBoundingClientRect().height;
-        if (height < floor) short.push(`${title?.textContent?.trim() ?? "?"}: ${height}px`);
+        if (height < rowFloor) short.push(`${title?.textContent?.trim() ?? "?"}: ${height}px`);
         const padding = Number.parseFloat(getComputedStyle(row).paddingTop);
         if (padding > ceiling) padded.push(`${title?.textContent?.trim() ?? "?"}: ${padding}px`);
         const slot = row.children.length > 1 ? row.lastElementChild : null;
@@ -93,7 +98,8 @@ async function measure(scope: Locator): Promise<Scale> {
         }
       }
       return {
-        headers: [...headers],
+        titles1: [...titles1],
+        captions: [...captions],
         titles: [...titles],
         details: [...details],
         controls: [...controls],
@@ -101,7 +107,7 @@ async function measure(scope: Locator): Promise<Scale> {
         padded,
       };
     },
-    [ROW_FLOOR, ROW_PADDING_CEILING] as const,
+    [floor, ROW_PADDING_CEILING] as const,
   );
 }
 
@@ -116,18 +122,20 @@ for (const width of [390, 1440] as const) {
       test(`Settings > ${section} draws one scale`, async ({ page }) => {
         await page.goto("/settings");
         const settings = settingsView(page);
-        await settings
-          .getByRole(width === 390 ? "tab" : "button", { name: section, exact: true })
-          .first()
-          .click();
+        await openSettingsSection(page, section);
         await expect(settings.locator('[data-slot="settings-body"]')).toBeVisible();
-        const scale = await measure(settings);
+        const floor = await token(page, "--settings-row-min");
+        const scale = await measure(settings, floor);
         const said = JSON.stringify(scale);
-        expect(scale.headers, `the screen title and the section titles are one size: ${said}`).toHaveLength(1);
+        expect(scale.titles1, `the screen's title is one size: ${said}`).toHaveLength(1);
+        // A phone page whose one group is named as the section draws no caption (its title says it, #2914).
+        expect(scale.captions.length, `every caption (group and sub-group) is one size: ${said}`).toBeLessThanOrEqual(
+          1,
+        );
         expect(scale.titles.length, `row titles are one size: ${said}`).toBeLessThanOrEqual(1);
         expect(scale.details.length, `row descriptions are one size: ${said}`).toBeLessThanOrEqual(1);
         expect(scale.controls.length, `buttons in rows are one height: ${said}`).toBeLessThanOrEqual(1);
-        expect(scale.short, `every row is at least ${ROW_FLOOR} px`).toEqual([]);
+        expect(scale.short, `every row is at least ${floor} px`).toEqual([]);
         expect(scale.padded, `no row pads more than ${ROW_PADDING_CEILING} px`).toEqual([]);
       });
     }
@@ -160,8 +168,8 @@ for (const width of [390, 320] as const) {
       test(`Settings > ${section} leaves no toolbar control alone on a line`, async ({ page }) => {
         await page.goto(`/settings`);
         const settings = settingsView(page);
-        await settings.getByRole("tab", { name: section, exact: true }).click();
-        await expect(settings.getByRole("heading", { name: section, level: 2 })).toBeVisible();
+        await openSettingsSection(page, section);
+        await expect(settings.getByRole("heading", { name: section, level: 1 })).toBeVisible();
         const lines = await toolbarLines(settings);
         expect(lines.length, "the toolbar is drawn").toBeGreaterThan(0);
         expect(Math.min(...lines), `controls per toolbar line: ${lines.join(", ")}`).toBeGreaterThan(1);
@@ -175,21 +183,21 @@ test.describe("390x844 phone", () => {
   test.use({ ...phone, viewport: { width: 390, height: 844 } });
 
   for (const section of ["Terminal", "Keybindings"] as const) {
-    test(`Settings > ${section} spaces its title and blocks no wider than before the scale`, async ({ page }) => {
+    test(`Settings > ${section} spaces its captions and blocks by the scale's tokens`, async ({ page }) => {
       await page.goto("/settings");
       const settings = settingsView(page);
-      await settings.getByRole("tab", { name: section, exact: true }).click();
-      const title = settings.getByRole("heading", { name: section, level: 2 });
-      await expect(title).toBeVisible();
-      const titleGap = await title.evaluate((heading) =>
-        Number.parseFloat(getComputedStyle(heading.parentElement ?? heading).paddingBottom),
-      );
+      await openSettingsSection(page, section);
+      await expect(settings.getByRole("heading", { name: section, level: 1 })).toBeVisible();
+      const caption = settings.locator('[data-slot="settings-body"] h3').first();
+      await expect(caption).toBeVisible();
+      const titleGap = await caption.evaluate((heading) => Number.parseFloat(getComputedStyle(heading).paddingBottom));
+      const groupGap = await token(page, "--settings-group-gap");
       const blockGap = await settings.locator('[data-slot="settings-body"] input[type=search]').evaluate((field) => {
         const stack = field.parentElement?.parentElement?.parentElement;
         return stack === null || stack === undefined ? Number.NaN : Number.parseFloat(getComputedStyle(stack).rowGap);
       });
-      expect(titleGap, "space under the section title").toBeLessThanOrEqual(TITLE_GAP_CEILING);
-      expect(blockGap, "space between the section's blocks").toBeLessThanOrEqual(BLOCK_GAP_CEILING);
+      expect(titleGap, "space under a caption").toBeLessThanOrEqual(CAPTION_GAP_CEILING);
+      expect(blockGap, "space between the section's blocks").toBe(groupGap);
     });
   }
 });

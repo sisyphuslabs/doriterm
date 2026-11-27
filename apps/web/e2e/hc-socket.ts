@@ -1,4 +1,5 @@
 import type { Page, WebSocketRoute } from "@playwright/test";
+import { type HostHold, holdOf, type Needle } from "./host-holds.ts";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { MACHINE_NAME } from "./machine.ts";
 
@@ -57,11 +58,11 @@ export interface HcSocket {
    */
   readonly messages: () => number;
   /**
-   * Holds hc frames from the host that contain any of these texts (others pass, even from the same message) until the
-   * returned release delivers them, in order; holds are independent. Hold a channel's whole stream, not one event in
-   * it: the feed drops an event older than one it has seen.
+   * Holds hc frames from the host that contain any of these texts, or that a test function picks (one answer by its
+   * id), until the returned release delivers them, in order; others pass, even from the same message, and holds are
+   * independent. Hold a channel's whole stream, not one event in it: the feed drops an event older than one it has seen.
    */
-  readonly holdFromHost: (...needles: string[]) => () => void;
+  readonly holdFromHost: (...needles: Needle[]) => () => void;
   /** Delivers a frame to the page as if the host had sent it, on every open connection. */
   readonly sendFromHost: (frame: Buffer) => void;
   /**
@@ -69,11 +70,6 @@ export interface HcSocket {
    * each one as a conflict, as when another device keeps changing the layout: the page's retries run out.
    */
   readonly staleWrites: (on: boolean) => void;
-}
-
-interface HostHold {
-  readonly needles: readonly string[];
-  readonly parked: (() => void)[];
 }
 
 /** hc's wire frame header: channel (u32), kind (u8), payload length (u32), little-endian. */
@@ -197,7 +193,7 @@ export async function routeHcSocket(
       };
       for (const frame of typeof message === "string" ? [message] : hcFrames(message)) {
         const text = typeof frame === "string" ? frame : frame.toString("latin1");
-        const hold = [...hostHolds].find((entry) => entry.needles.some((needle) => text.includes(needle)));
+        const hold = holdOf(hostHolds, text);
         if (hold !== undefined) {
           pass();
           hold.parked.push(() => deliverOne(frame, text));

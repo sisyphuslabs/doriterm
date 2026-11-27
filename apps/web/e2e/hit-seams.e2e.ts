@@ -1,7 +1,14 @@
 import type { Locator, Page } from "@playwright/test";
 import { endAgent, startShell } from "./agents.ts";
-import { SHOTS } from "./capture-shots.ts";
+import { SHOTS, type Shot } from "./capture-shots.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+
+/** The shot a test ran: its cleanup runs after the test whatever the outcome, so a later spec starts as the host did. */
+let ran: Shot | undefined;
+test.afterEach(() => {
+  ran?.cleanup?.();
+  ran = undefined;
+});
 
 test.use({ serviceWorkers: "block" });
 
@@ -14,29 +21,34 @@ test.afterEach(() => {
 });
 
 /**
- * Every column between two neighbouring controls, on the line through both centres, that a pointer there would reach
- * neither of. Sampled every quarter of a CSS pixel: a high-density screen has three device pixels in one of these, so a
- * sliver narrower than a pixel is still a place a pointer lands on neither control. A pair one of whose controls is not
- * reachable at its own centre (scrolled under the paging cue) is not on screen to tap, so it has no seam.
+ * Every column (or, for controls stacked one over the other, every row) between two neighbouring controls, on the line
+ * through both centres, that a pointer there would reach neither of. Sampled every quarter of a CSS pixel: a
+ * high-density screen has three device pixels in one of these, so a sliver narrower than a pixel is still a place a
+ * pointer lands on neither control. A pair one of whose controls is not reachable at its own centre (scrolled under the
+ * paging cue) is not on screen to tap, so it has no seam.
  */
 const unowned = async (left: Locator, right: Locator) =>
   left.evaluate(
     (a, b) => {
       const ra = a.getBoundingClientRect();
       const rb = b.getBoundingClientRect();
+      const stacked = ra.bottom <= rb.top + 1;
+      const x = (Math.max(ra.left, rb.left) + Math.min(ra.right, rb.right)) / 2;
       const y = (Math.max(ra.top, rb.top) + Math.min(ra.bottom, rb.bottom)) / 2;
       const reached = (el: Element, box: DOMRect) =>
-        el.contains(document.elementFromPoint(box.left + box.width / 2, y));
+        el.contains(
+          document.elementFromPoint(stacked ? x : box.left + box.width / 2, stacked ? box.top + box.height / 2 : y),
+        );
       if (!reached(a, ra) || !reached(b, rb)) return [];
       const step = 0.25;
-      const from = ra.right - 1;
-      const to = rb.left + 1;
-      const columns: number[] = [];
-      for (let x = from; x <= to; x += step) {
-        const hit = document.elementFromPoint(x, y);
-        if (hit === null || !(a.contains(hit) || b.contains(hit))) columns.push(Math.round(x * 100) / 100);
+      const from = (stacked ? ra.bottom : ra.right) - 1;
+      const to = (stacked ? rb.top : rb.left) + 1;
+      const seams: number[] = [];
+      for (let at = from; at <= to; at += step) {
+        const hit = stacked ? document.elementFromPoint(x, at) : document.elementFromPoint(at, y);
+        if (hit === null || !(a.contains(hit) || b.contains(hit))) seams.push(Math.round(at * 100) / 100);
       }
-      return columns;
+      return seams;
     },
     await right.elementHandle(),
   );
@@ -80,7 +92,15 @@ const cases: readonly {
   {
     name: "settings",
     width: 390,
-    pairs: (page) => neighbours(page.getByRole("dialog").getByRole("tab").filter({ visible: true })),
+    // The phone's list of sections (#2914): neighbouring rows of one card, whose gaps between cards are on purpose.
+    pairs: async (page) =>
+      (
+        await Promise.all(
+          (await page.locator("[data-settings-list] [data-settings-card]").all()).map((card) =>
+            neighbours(card.getByRole("button")),
+          ),
+        )
+      ).flat(),
   },
   {
     name: "settings-voice-input",
@@ -105,6 +125,7 @@ for (const { name, width, pairs } of cases) {
     test(`${name}: neighbouring bar controls leave no dead pixel column between them`, async ({ page }) => {
       const shot = SHOTS.find((entry) => entry.name === name);
       if (shot === undefined) throw new Error(`capture ${name} is missing`);
+      ran = shot;
       if (name !== "workspace") await shot.run(page, width === 390 ? "390" : "1440");
       await page.mouse.move(0, 0);
       const found = await pairs(page);
