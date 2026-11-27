@@ -108,11 +108,14 @@ export async function prepareMembership(
   storage: KeyValueStore = deviceStore,
 ): Promise<MembershipStore> {
   const pending = loading.get(slot);
-  if (pending !== undefined) {
-    const loaded = await pending;
-    if (loading.get(slot) !== pending || (await storeIsCurrent(loaded, storage))) return loading.get(slot) ?? loaded;
-    dropSlot(slot);
-  }
+  if (pending === undefined) return loadStore(slot, storage);
+  const loaded = await pending;
+  const current = loading.get(slot) === pending && (await storeIsCurrent(loaded, storage));
+  // Re-read after every await: a concurrent caller may have dropped and reloaded the slot meanwhile, and this caller
+  // then takes that newer load instead of dropping it again and returning a store the page does not hold (review of #2890).
+  if (loading.get(slot) !== pending) return prepareMembership(slot, storage);
+  if (current) return loaded;
+  dropSlot(slot);
   return loadStore(slot, storage);
 }
 

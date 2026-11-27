@@ -5,7 +5,7 @@ import { beginRetire, finishRetire } from "./enrollment.ts";
 import { resetBrowserIdentity } from "./identity.ts";
 import { DEFAULT_SLOT, slotKeys } from "./identity-slots.ts";
 import { joinedStore, meshFixture } from "./mesh-fixture.test-support.ts";
-import { dropAll, prepareMembership } from "./membership-state.ts";
+import { dropAll, membershipBundle, prepareMembership } from "./membership-state.ts";
 
 afterEach(dropAll);
 
@@ -37,6 +37,25 @@ describe("a kept empty default store follows a default-key reset made in another
     expect(await bundle.adopt(mesh.membership)).toBe(true);
     expect(bundle.snapshot().phase).toBe("joined");
     expect(bundle.keys).toEqual(mesh.keys);
+  });
+
+  test("two callers at once after the reset get the same store the page holds, and a commit through it shows there", async () => {
+    const { here, other } = twoTabs();
+    await prepareMembership(DEFAULT_SLOT, here);
+    await resetBrowserIdentity(slotKeys(other, DEFAULT_SLOT));
+    const fresh = generateHostIdentity();
+    await other.put("mesh-sign-key", { kind: "raw", privateKey: fresh.sign.secretKey });
+    await other.put("device-key", { kind: "raw", privateKey: fresh.noise.secretKey });
+
+    const [first, second] = await Promise.all([
+      prepareMembership(DEFAULT_SLOT, here),
+      prepareMembership(DEFAULT_SLOT, here),
+    ]);
+    expect(second).toBe(first);
+    expect(membershipBundle(DEFAULT_SLOT)).toBe(first);
+    await first.enroll();
+    expect(await first.adopt(meshFixture(["studio"], "my-browser", fresh).membership)).toBe(true);
+    expect(membershipBundle(DEFAULT_SLOT)?.snapshot().phase).toBe("joined");
   });
 
   test("while the default keys are unchanged, the same store is handed out again, refresh bound and all", async () => {
