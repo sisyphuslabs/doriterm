@@ -22,6 +22,8 @@ export {
 export { SYNCHRONIZED_HOLD_CAP_MS, SYNCHRONIZED_UNPACED_MS } from "./held-update.ts";
 
 export { LATE_TIMER_MS } from "./late-timer.ts";
+/** The least a shell's answer to a resize may be: a themed prompt redrawn twice, whatever the terminal's width (#2922). */
+export const RESIZE_ANSWER_MIN_BYTES = 2 * 1024;
 
 /** Milliseconds from some fixed point, for how long an update has been open. */
 export type Clock = () => number;
@@ -225,13 +227,15 @@ export class OutputPacer {
 
   /**
    * The view resized to `cols` columns. A shell answers a resize by redrawing its prompt line (bash and zsh on
-   * SIGWINCH: a return, the line blanked, the prompt; about two rows' bytes): within a round trip, up to three rows of
-   * the new width are that answer, not an update being drawn, so a drag does not keep an update left open held
-   * (#2922). A program redrawing in answer to the resize sends screens, past that, and keeps its hold (#757, #2040).
+   * SIGWINCH: a return, the line blanked, the prompt; about two rows' bytes, a themed prompt a few hundred at any
+   * width): within a round trip, up to three rows of the new width or {@link RESIZE_ANSWER_MIN_BYTES}, whichever is
+   * more, are that answer, not an update being drawn, so a drag does not keep an update left open held (#2922). A
+   * program redrawing in answer to the resize sends screens, past that, and keeps its hold (#757, #2040); one sent in
+   * pieces smaller than that falls back to its quiet window.
    */
   resized(cols: number): void {
     this.#resizedAt = this.#clock();
-    this.#answerLeft = 3 * cols;
+    this.#answerLeft = Math.max(3 * cols, RESIZE_ANSWER_MIN_BYTES);
   }
 
   /**

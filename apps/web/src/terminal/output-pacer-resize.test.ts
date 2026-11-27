@@ -8,6 +8,8 @@ import { bytes, KIB, manualFrames, manualTimers, OPEN, text } from "./output-pac
 
 /** The view's width in columns: three rows of it, 240 bytes, may answer a resize. */
 const COLS = 80;
+/** A screen of a program's redraw: more than a shell's answer to a resize. */
+const SCREEN = 4 * KIB;
 
 /** A pacer with a program's update held, over a 100 ms round trip: 1.5 x SRTT + 50 = 200 ms for a resize's answer. */
 function holding() {
@@ -104,14 +106,14 @@ test("a slow redraw opened during a drag stays held while it keeps coming, and i
   const { frames, timers, holds, pacer } = drag();
   pacer.resized(COLS);
   timers.advance(10);
-  pacer.push(new Uint8Array([...text(OPEN), ...bytes(KIB)]));
+  pacer.push(new Uint8Array([...text(OPEN), ...bytes(SCREEN)]));
   frames.nextFrame();
-  // A resize every 100 ms for 3 s, a chunk of the redraw every 300 ms, the update not yet closed.
+  // A resize every 100 ms for 3 s, a screen of the redraw every 300 ms, the update not yet closed.
   for (let at = 100; at <= 3000; at += 100) {
     timers.advance(100);
     pacer.resized(COLS);
     if (at % 300 === 0) {
-      pacer.push(bytes(KIB));
+      pacer.push(bytes(SCREEN));
       frames.nextFrame();
     }
   }
@@ -132,6 +134,23 @@ test("an update opened just after a drag began, with only prompt redraws after i
     pacer.resized(COLS);
     timers.advance(20);
     pacer.push(prompt());
+    frames.nextFrame();
+  }
+  expect(holds).toEqual(["held"]);
+  timers.advance(200);
+  expect(holds).toEqual(["held", "let go"]);
+});
+
+test("on a narrow terminal a themed prompt redrawn after every resize still does not keep an open update held", () => {
+  const { frames, timers, holds, pacer } = holding();
+  // 40 columns (a phone, a narrow split): three rows are 120 bytes, a themed prompt is about 200.
+  const themed = text(`\r${" ".repeat(39)}\r${"\u001b[38;5;39m".repeat(12)}~/work main ❯ `);
+  expect(themed.byteLength).toBeGreaterThan(3 * 40);
+  for (let step = 0; step < 4; step += 1) {
+    timers.advance(180);
+    pacer.resized(40);
+    timers.advance(20);
+    pacer.push(themed);
     frames.nextFrame();
   }
   expect(holds).toEqual(["held"]);
