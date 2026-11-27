@@ -257,6 +257,9 @@ describe("tabTitle", () => {
     expect(tabTitle("", 1, undefined, terminal({ title: "build watcher", argv: ["node", "watch.js"] }))).toBe("2");
     // `env` with its variables only wraps the shell: still a bare shell.
     expect(tabTitle("", 0, undefined, terminal({ name: "parity-a1", argv: ["env", "PS1=$ ", "sh"] }))).toBe("1");
+    // `exec` wraps a shell the same way, and `env` with only assignments runs no command: neither is a lane.
+    expect(tabTitle("", 0, undefined, terminal({ name: "wrapped", argv: ["exec", "zsh", "-l"] }))).toBe("1");
+    expect(tabTitle("", 0, undefined, terminal({ name: "vars-only", argv: ["env", "A=1", "B=2"] }))).toBe("1");
     // A lane: a name given to a command that is not a bare shell.
     expect(tabTitle("", 0, undefined, terminal({ name: "lane-x", argv: ["bash", "-c", "exec sleep 600"] }))).toBe(
       "lane-x",

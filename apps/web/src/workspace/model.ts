@@ -11,7 +11,7 @@ import { docSpaces, panesOf, tabsOf } from "@doriface/protocol/layout";
 import { hasAgentMark, type Agent, type AgentStatus, type Space } from "@doriface/ui";
 import { spaceKey } from "../layout/view.ts";
 import { isOpeningName } from "../terminal/opening-attach.ts";
-import { agentKind } from "./agent-kind.ts";
+import { agentKind, commandWords } from "./agent-kind.ts";
 import { agentStatus } from "./attention.ts";
 import type { Session } from "./attention.ts";
 import { type GitFactsOf, shownGit } from "./git-facts.ts";
@@ -112,14 +112,12 @@ export function tabTitleKey(terminal: Session): string {
   return laneName(terminal) ?? "";
 }
 
-/** `env` and the variables it sets, which only wrap what the pane runs: `env PS1='$ ' sh` is a bare shell. */
-const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/u;
-
 /** The name a pane started with a command was given (`hc run --name X -- cmd`, a lane's); none for a bare shell. */
 function laneName(terminal: Terminal): string | undefined {
-  const argv = programName(terminal.argv[0] ?? "") === "env" ? terminal.argv.slice(1) : terminal.argv;
-  const [program = "", ...args] = argv.slice(argv.findIndex((arg) => !ENV_ASSIGNMENT.test(arg)));
-  if (SHELLS.has(programName(program)) && args.every((arg) => arg.startsWith("-"))) return undefined;
+  // `env`, `exec` and the variables they set only wrap what runs: `env PS1='$ ' sh` is a bare shell, and so is no command.
+  const [program, ...args] = commandWords(terminal.argv);
+  if (program === undefined || (SHELLS.has(programName(program)) && args.every((arg) => arg.startsWith("-"))))
+    return undefined;
   const renamed = terminal.labels[TITLE_LABEL];
   if (renamed !== undefined && renamed !== "") return renamed;
   const given = isOpeningName(terminal.name) ? undefined : terminal.name;
