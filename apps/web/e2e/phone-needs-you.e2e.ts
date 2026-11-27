@@ -3,6 +3,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { agentRow, endAgent, startAgent, startShell } from "./agents.ts";
 import { expect, laidOutBox, test } from "./fixtures.ts";
+import { routeHcSocket } from "./hc-socket.ts";
 import { PHONE } from "./phone-key-bar.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -31,6 +32,31 @@ async function openShellBesideBlocked(page: Page, suffix: string): Promise<numbe
   await agentRow(page, `${TAG}-${suffix}-shell`, false).click();
   await expect(page.locator("[data-terminal]")).toContainText("$", { timeout: 15_000 });
   return totalBlocked;
+}
+
+// The header's second line also says Reconnecting while the host link is down (#2887): with the pill beside a long title,
+// that line takes the place of the machine and space, and the header still never grows.
+for (const width of [390, 320]) {
+  test(`at ${width} px a dropped link reads Reconnecting in the header beside the pill, and the header stays 48 px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const socket = await routeHcSocket(page);
+    const totalBlocked = await openShellBesideBlocked(page, `${width}-relink`);
+    const bar = header(page);
+    await expect(
+      bar.getByRole("button", { name: `${totalBlocked} needs you, open the next`, exact: true }),
+    ).toBeVisible();
+    await expectHeaderNoTaller(bar);
+
+    await socket.drop(true);
+    await expect(bar.locator("[data-header-reconnecting]")).toBeVisible({ timeout: 5_000 });
+    await expectHeaderNoTaller(bar);
+    expect(await bar.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
+    socket.restore();
+    await expect(bar.locator("[data-header-reconnecting]")).toHaveCount(0, { timeout: 20_000 });
+  });
 }
 
 /**
