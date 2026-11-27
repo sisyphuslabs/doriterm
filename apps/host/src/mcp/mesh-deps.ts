@@ -2,7 +2,7 @@ import type { MeshStatus } from "@doriface/protocol";
 import type { DeviceSurface } from "../device-surface.ts";
 import type { e2eeDeps } from "../host-e2ee.ts";
 import { pairingOfferView } from "../pair-offer.ts";
-import type { MeshToolDeps } from "./mesh-tools.ts";
+import { type MeshToolDeps, MeshToolRefused } from "./mesh-tools.ts";
 
 export interface MeshToolParts {
   readonly e2ee: ReturnType<typeof e2eeDeps>;
@@ -16,7 +16,13 @@ export interface MeshToolParts {
 export function meshToolDeps({ e2ee, devices, status, relayUrl }: MeshToolParts): MeshToolDeps {
   const { hostMesh, meshCommands, identity } = e2ee;
   return {
-    status,
+    // A host whose mesh.json cannot be read says so instead of "in no mesh" (#2951).
+    status: async () => {
+      const current = await status();
+      const unreadable = current === undefined ? e2ee.mesh.unreadable() : undefined;
+      if (unreadable !== undefined) throw new MeshToolRefused(unreadable);
+      return current;
+    },
     pending: () => hostMesh.pending.list(),
     devices: () => devices.list(),
     invite: async (mesh) => {
