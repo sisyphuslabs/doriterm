@@ -142,6 +142,7 @@ export function meshSourcesOf(
           : [],
       ),
     ),
+    clients: new Set(index.members.flatMap((member) => (member.kind === "client" ? [member.signPub] : []))),
     view: {
       members: new Set(index.members.map((member) => member.signPub)),
       revoked: view.revoked,

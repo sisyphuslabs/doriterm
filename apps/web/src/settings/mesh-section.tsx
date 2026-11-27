@@ -6,7 +6,7 @@ import type { ConnectionSettings } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
 import { disagreement, meshGroups } from "../mesh/groups.ts";
-import { MemberRow } from "../mesh/mesh-rows.tsx";
+import { ClientRow, MemberRow } from "../mesh/mesh-rows.tsx";
 import type { JoinRequest } from "../mesh/mesh-reader.ts";
 import { useMesh } from "../mesh/use-mesh.ts";
 import { MeshPicker } from "./mesh-picker.tsx";
@@ -152,6 +152,11 @@ export function MeshBody({
           <MeshGroup id="offline" title="Offline" count={groups.offline.length}>
             {groups.offline.map((member) => (
               <MemberRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
+            ))}
+          </MeshGroup>
+          <MeshGroup id="clients" title="Browsers and phones" count={groups.clients.length}>
+            {groups.clients.map((member) => (
+              <ClientRow key={member.hostId} member={member} nameOf={nameOf} now={now} />
             ))}
           </MeshGroup>
           {groups.revokedCount === 0 ? null : (

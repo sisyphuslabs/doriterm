@@ -2,7 +2,7 @@ import { MESH_APPROVAL_DOC, MESH_STATUS_DOC, parseMeshStatus } from "@doriface/p
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { getCoreDoc, setCoreDoc } from "./core-doc.ts";
+import { getCoreDoc, setCoreDoc, updateCoreDoc } from "./core-doc.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { machineRow, STATE_BOUND_MS } from "./machine-switch.ts";
@@ -82,6 +82,23 @@ test("the mesh panel groups every machine of the host's status document", async 
   await expect(page.locator('[data-mesh-banner="notice"]')).toContainText("tablet");
   // build-box is connected both in the document and in this core's machine.list, so nothing disagrees.
   await expect(page.locator('[data-mesh-banner="disagreement"]')).toHaveCount(0);
+});
+
+test("a member that joined as a client is listed under Browsers and phones, never as an offline machine (#2939)", async ({
+  page,
+}) => {
+  updateCoreDoc(MESH_STATUS_DOC, (current) => {
+    const status = parseMeshStatus(current);
+    if (status === undefined) throw new Error("the e2e core has no mesh status");
+    return {
+      ...status,
+      members: status.members.map((m) => (m.name === "tablet" ? Object.assign({}, m, { kind: "client" }) : m)),
+    };
+  });
+  await openMesh(page);
+  const clients = group(page, "clients");
+  await expect(clients).toContainText("tablet");
+  await expect(group(page, "offline")).not.toContainText("tablet");
 });
 
 test("a copy the clipboard refuses says so beside the command", async ({ page }) => {

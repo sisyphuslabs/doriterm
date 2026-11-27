@@ -1,6 +1,6 @@
 import { type MeshMemberStatus, meshRevokeCommand, replacedMachineText } from "@doriface/protocol";
 import { IconButton, SettingRow, cn } from "@doriface/ui";
-import { Check, Copy, Monitor, Server } from "lucide-react";
+import { Check, Copy, Monitor, Server, Smartphone } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { formatAge } from "../workspace/model.ts";
 import { REACH_LABEL, reachOf } from "./reach.ts";
@@ -92,6 +92,52 @@ export interface MemberRowProps {
   readonly now: number;
 }
 
+/**
+ * Where a revoke of this member could be decided, kept behind a disclosure: it matters only when a key is lost, and in
+ * a small mesh it is true of every new member, so in the open it reads as an alarm on each device that just joined.
+ */
+function RevokeCaveat({ name, ask }: { readonly name: string; readonly ask: string | null }) {
+  return (
+    <details className="mt-1">
+      <summary>If its key is lost</summary>
+      {`A revoke of ${name} written here could not be decided`}
+      {ask === null ? "; re-found the mesh." : `; revoke it from ${ask}.`}
+    </details>
+  );
+}
+
+/** A browser or phone in the mesh: never dialed, so it has no line; it says when it last opened a session here. */
+export function ClientRow({ member, nameOf, now }: MemberRowProps) {
+  const name = member.name ?? member.hostId;
+  const facts = [
+    member.admittedBy === null ? "joined" : `joined · admitted by ${nameOf(member.admittedBy)}`,
+    member.lastSessionAt === undefined
+      ? "no session here yet"
+      : `last session here ${formatAge(member.lastSessionAt, now)} ago`,
+  ];
+  return (
+    <SettingRow
+      inline
+      title={
+        <span className="flex items-center gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
+          <Smartphone aria-hidden />
+          {name}
+        </span>
+      }
+      description={
+        <>
+          <span className="block">{facts.join(" · ")}</span>
+          <Key fingerprint={member.fingerprint} hostId={member.hostId} />
+          {member.witnessPool.length === 0 ? (
+            <RevokeCaveat name={name} ask={member.witnessAsk === null ? null : nameOf(member.witnessAsk)} />
+          ) : null}
+        </>
+      }
+      control={null}
+    />
+  );
+}
+
 export function MemberRow({ member, nameOf, now }: MemberRowProps) {
   const Icon = member.line === "self" ? Monitor : Server;
   const undecidable = member.line !== "self" && member.witnessPool.length === 0;
@@ -121,12 +167,7 @@ export function MemberRow({ member, nameOf, now }: MemberRowProps) {
               .join("")}
           </span>
           <Key fingerprint={member.fingerprint} hostId={member.hostId} />
-          {undecidable ? (
-            <span className="mt-1 block">
-              {`A revoke of ${name} written here could not be decided`}
-              {ask === null ? "; if its key is compromised, re-found the mesh." : `; revoke it from ${nameOf(ask)}.`}
-            </span>
-          ) : null}
+          {undecidable ? <RevokeCaveat name={name} ask={ask === null ? null : nameOf(ask)} /> : null}
           {member.replacedMachine === null ? null : (
             <span className="mt-1 block">{`R${replacedMachineText(member.replacedMachine).slice(1)}.`}</span>
           )}

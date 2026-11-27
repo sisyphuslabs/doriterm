@@ -75,6 +75,18 @@ describe("meshGroups", () => {
   });
 });
 
+test("a member that joined as a client is a browser or phone, never an offline machine (#2939)", () => {
+  const tabletClient: MeshStatus = {
+    ...status,
+    members: status.members.map((member) =>
+      member.name === "tablet" ? Object.assign({}, member, { kind: "client" as const }) : member,
+    ),
+  };
+  const groups = meshGroups(tabletClient, own, NOW.getTime());
+  expect(names(groups.clients)).toEqual(["tablet"]);
+  expect([...names(groups.online), ...names(groups.offline)]).not.toContain("tablet");
+});
+
 describe("joins held on another machine (#2939)", () => {
   const join = status.pending[0];
   if (join === undefined) throw new Error("the fixture has a pending join");
