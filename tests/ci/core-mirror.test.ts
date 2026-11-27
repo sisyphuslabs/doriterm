@@ -167,3 +167,13 @@ test("a version's mirrored files are never replaced with different bytes", async
   writeFileSync(join(rebuilt.dir, coreArchiveName("linux-x86_64")), "rebuilt");
   await expect(mirrorCore(bucket, plan("0.1.22", rebuilt), quiet)).rejects.toThrow("a mirrored file is never replaced");
 });
+
+test("a version's manifest and archives are cached as immutable, and its signature only briefly, since a rotation re-signs it", async () => {
+  const bucket = new MemoryBucket();
+  await mirrorCore(bucket, plan("0.1.22"), quiet);
+  const cache = async (path: string) => (await bucket.worker(path)).headers.get("cache-control");
+  expect(await cache("/core/0.1.22/manifest.json")).toBe("public, max-age=31536000, immutable");
+  expect(await cache("/core/0.1.22/herdr-core-linux-x86_64.tar.gz")).toBe("public, max-age=31536000, immutable");
+  expect(await cache("/core/0.1.22/manifest.json.sig")).toBe("public, max-age=60");
+  expect(await cache("/core/latest.json")).toBe("public, max-age=60");
+});

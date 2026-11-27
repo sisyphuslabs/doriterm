@@ -19,8 +19,9 @@ async function serveObject(request: Request, ctx: RequestContext, key: string, f
 
 /**
  * The herdr-core releases Doriterm vouched for (#2945), at the paths herdr's own release server uses: a host reads
- * `/core/latest.json` (or `/core/<version>/manifest.json`), then checks it against the immutable
- * `/core/<version>/manifest.json.sig` of the version it names, then fetches the archive the signed manifest names.
+ * `/core/latest.json` (or `/core/<version>/manifest.json`), then checks it against `/core/<version>/manifest.json.sig`
+ * of the version it names (cached for a minute, as a rotation re-signs it), then fetches the archive the signed
+ * manifest names. A version's manifest and archives never change and are cached as immutable.
  * `latest.json` is byte for byte the manifest of the version core/latest names, and has no signature route of its own:
  * one that resolved core/latest separately could pair a new manifest with an old signature while either is cached.
  */
@@ -32,7 +33,8 @@ export async function serveCore(
 ): Promise<Response> {
   if (version !== undefined) {
     if (!isVersion(version) || !isReleaseFile(file)) return text(404, "not a herdr-core file");
-    return serveObject(request, ctx, coreObjectKey(version, file), file, IMMUTABLE);
+    // A signature is re-signed at a key rotation (docs/releasing.md), so it is cached briefly; the bytes it covers never change.
+    return serveObject(request, ctx, coreObjectKey(version, file), file, file.endsWith(".sig") ? FEED_TTL : IMMUTABLE);
   }
   if (file !== "latest.json") return text(404, "not a herdr-core file");
   const pointer = await ctx.env.RELEASES.get(CORE_POINTER_KEY);
