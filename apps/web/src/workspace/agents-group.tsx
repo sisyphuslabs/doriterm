@@ -120,7 +120,7 @@ export function AgentsGroup({
   const tree = !rail && narrowed.some((group) => group.agents.some((agent) => (agent.descendants ?? 0) > 0));
   const depthCap = heading ? 3 : 2;
   const list = (
-    <div className="flex flex-col gap-6 pt-3">
+    <div className="flex flex-col gap-4 pt-1">
       {groups.map((group, groupIndex) => {
         const unfoldedAgents = narrowed[groupIndex]?.agents ?? group.agents;
         const unfoldedIndexById = new Map(unfoldedAgents.map((agent, idx) => [agent.id, idx]));
@@ -130,8 +130,6 @@ export function AgentsGroup({
             key={group.key}
             title={group.title}
             count={group.count}
-            indent={tree}
-            marked
             {...(group.tone === undefined ? {} : { tone: group.tone })}
             {...(rail ? { className: "[&>header]:sr-only" } : {})}
           >
@@ -177,10 +175,7 @@ export function AgentsGroup({
       </section>
     );
   return (
-    <SidebarSection
-      title="Agents"
-      {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu, indent: tree, marked: true })}
-    >
+    <SidebarSection title="Agents" {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu })}>
       {list}
     </SidebarSection>
   );

@@ -119,28 +119,29 @@ test.describe("on a phone", () => {
   test.use({ ...PHONE });
 
   /**
-   * The phone says the note in the line under the terminal's header, where it says "Reconnecting": the line hands over
-   * from one to the other at the same height, so the terminal is not fitted again while the repaint lands (#2257). The
-   * line sits outside the terminal, and Dismiss takes it away.
+   * The phone says Reconnecting in its header's own line, so the terminal keeps its rows while the link is down and a
+   * blip that recovers moves nothing (#2853). Only a reconnect that could not carry the session on says the note, in
+   * the line under the header, outside the terminal (#2257), and Dismiss takes it away.
    */
-  test("the note takes over the reconnecting line at its height, outside the terminal (#2257)", async ({ page }) => {
+  test("Reconnecting is said in the header, the terminal keeps its rows, and the note after sits outside it (#2257, #2853)", async ({
+    page,
+  }) => {
     test.slow();
     const link = await routeHcSocket(page);
     const terminal = await openPhoneTerminal(page);
     opened.push((await terminal.getAttribute("data-terminal")) ?? "");
+    const before = (await terminal.boundingBox())?.height;
     await reconnectPastAScreen(page, link, terminal, async () => {
-      await expect(page.getByRole("status").filter({ hasText: /Reconnecting/ })).toBeVisible();
-      // From here, every height the terminal is laid out at.
-      await terminal.evaluate((element) => {
-        const heights = [element.getBoundingClientRect().height];
-        Object.assign(window, { terminalHeights: heights });
-        new ResizeObserver(() => heights.push(element.getBoundingClientRect().height)).observe(element);
-      });
+      await expect(
+        page
+          .locator("header")
+          .getByRole("status")
+          .filter({ hasText: /Reconnecting/ }),
+      ).toBeVisible();
+      expect((await terminal.boundingBox())?.height).toBe(before);
     });
     const note = page.locator("[data-history-gap-status]");
     await expect(note).toBeVisible();
-    const heights = await page.evaluate(() => Reflect.get(window, "terminalHeights") as number[]);
-    expect(new Set(heights).size, `terminal heights through the reconnect: ${heights.join(", ")}`).toBe(1);
 
     const box = await terminal.boundingBox();
     const line = await note.boundingBox();
