@@ -13,6 +13,7 @@ import {
   spaceOfAddress,
   type SpacesSource,
 } from "./model.ts";
+import { adoptLoose } from "./layout-model.ts";
 
 const terminal = (fields: Partial<Terminal>): Terminal => ({
   address: "t1",
@@ -114,6 +115,17 @@ describe("spaces from the layout documents (#404)", () => {
       [],
     );
     expect(spaces.map((space) => space.name)).toEqual(["yeongyu · Users", "yeongyu · data", "api"]);
+  });
+
+  test("spaces made for loose terminals in two folders ending the same way are told apart by their parent (#2670)", () => {
+    let next = 0;
+    const adopted = adoptLoose(
+      null,
+      [terminal({ address: "t1", cwd: "/a/work" }), terminal({ address: "t2", cwd: "/b/work" })],
+      (prefix) => `${prefix}${(next += 1)}`,
+    );
+    if (adopted === null) throw new Error("nothing adopted");
+    expect(layoutSpaces([here(adopted)], []).map((space) => space.name)).toEqual(["work · a", "work · b"]);
   });
 
   test("a space counts its tabs, is named after its first live terminal when it saves no name or folder, and lists its terminals in tab order", () => {
@@ -232,7 +244,30 @@ describe("tabTitle", () => {
     expect(tabTitle("", 2, terminal({ name: "worker", labels: { "herdr.name": "deploy" } }))).toBe("deploy");
   });
 
-  test("an unnamed tab with no agent (a shell, another program, panes not known yet) reads its place counted from 1", () => {
+  test("an unnamed tab whose pane carries a name reads it, a lane's, never a bare number (#2670)", () => {
+    expect(
+      tabTitle("", 4, undefined, terminal({ name: "lane doriterm-2670", argv: ["bash", "-c", "sleep 600"] })),
+    ).toBe("lane doriterm-2670");
+  });
+
+  test("a bare shell keeps its number even when renamed, and a program's window title alone names no tab (#2670, #466)", () => {
+    expect(
+      tabTitle("", 1, undefined, terminal({ argv: ["zsh", "-l"], labels: { "herdr.name": "deploy-check" } })),
+    ).toBe("2");
+    expect(tabTitle("", 1, undefined, terminal({ title: "build watcher", argv: ["node", "watch.js"] }))).toBe("2");
+    // `env` with its variables only wraps the shell: still a bare shell.
+    expect(tabTitle("", 0, undefined, terminal({ name: "parity-a1", argv: ["env", "PS1=$ ", "sh"] }))).toBe("1");
+    // `exec` wraps a shell the same way, and `env` with only assignments runs no command: neither is a lane.
+    expect(tabTitle("", 0, undefined, terminal({ name: "wrapped", argv: ["exec", "zsh", "-l"] }))).toBe("1");
+    expect(tabTitle("", 0, undefined, terminal({ name: "vars-only", argv: ["env", "A=1", "B=2"] }))).toBe("1");
+    // A lane: a name given to a command that is not a bare shell.
+    expect(tabTitle("", 0, undefined, terminal({ name: "lane-x", argv: ["bash", "-c", "exec sleep 600"] }))).toBe(
+      "lane-x",
+    );
+  });
+
+  test("an unnamed shell pane at a prompt keeps its place counted from 1 (#466)", () => {
+    expect(tabTitle("", 3, undefined, terminal({ title: "lo@box: ~/w", argv: ["zsh"] }))).toBe("4");
     expect(tabTitle("", 0)).toBe("1");
     expect(tabTitle("", 8)).toBe("9");
   });

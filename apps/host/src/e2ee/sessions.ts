@@ -1,4 +1,4 @@
-import { base64urlEncode, CloseCode, type SecureLink, SessionKind } from "@doriface/crypto";
+import { base64urlEncode, CloseCode, type SecureLink, type SecureSession, SessionKind } from "@doriface/crypto";
 import { type PlanPolicy, requireWithin } from "@doriface/policy";
 import type { Link } from "../link.ts";
 import type { PushLink } from "../push/push-stream.ts";
@@ -14,6 +14,9 @@ export class LiveSessions {
   readonly #mesh: MeshStore | undefined;
   readonly #mcp: McpSwitch | undefined;
   readonly #byKey = new Map<string, Set<SecureLink>>();
+  /** When each resumable session last detached, in order, so the one that has waited longest is replaced first. */
+  readonly #detachedAt = new WeakMap<SecureLink, number>();
+  #detaches = 0;
   readonly #log: (line: string) => void;
   #mcpFailure: string | undefined;
 
@@ -29,10 +32,16 @@ export class LiveSessions {
     return this.#byKey.has(key);
   }
 
-  /** How many sessions this host serves now, for a plan's concurrent-session limit. */
-  count(): number {
+  /**
+   * How many sessions this host serves now, for a plan's concurrent-session limit. `replacing` names the key asking for
+   * a new workspace session: its own sessions that wait for a resume (detached) are not counted, since its admission
+   * may replace as many of them as it needs (#2853). A device that dropped in the background and comes back to a new
+   * session is not refused for the one it left behind; any other key still counts every session, waiting or not.
+   */
+  count(replacing?: string): number {
     let total = 0;
-    for (const sessions of this.#byKey.values()) total += sessions.size;
+    for (const [key, sessions] of this.#byKey)
+      for (const session of sessions) if (key !== replacing || !isWaiting(session)) total += 1;
     return total;
   }
 
@@ -44,22 +53,45 @@ export class LiveSessions {
     return live;
   }
 
-  /** Re-checks session room and revocation before hc admission. */
+  /**
+   * Re-checks session room and revocation before a workspace (hc) session is admitted. A device whose new workspace
+   * session finds the plan full ends as many of its own waiting sessions as that needs, oldest first, and no more: its
+   * other views stay resumable (#2853).
+   */
   admitHc(session: SecureLink, policy: PlanPolicy): boolean {
-    return this.admitLimited(session, policy);
+    return this.#admit(session, policy, true);
   }
 
-  /** A second plan check after the handshake: another session may have opened in the meantime. */
+  /** A second plan check after the handshake: another session may have opened in the meantime. Replaces nothing. */
   admitLimited(session: SecureLink, policy: PlanPolicy): boolean {
+    return this.#admit(session, policy, false);
+  }
+
+  #admit(session: SecureLink, policy: PlanPolicy, workspace: boolean): boolean {
     if (session.kind === SessionKind.Session) {
-      const room = requireWithin(policy, "sessions", this.count());
+      const key = base64urlEncode(session.remoteStatic);
+      const room = requireWithin(policy, "sessions", this.count(workspace ? key : undefined));
       if (!room.allowed) {
         this.#log(`plan: refused a session at admission: ${room.message}`);
         session.close(CloseCode.RateLimited, room.message);
         return false;
       }
+      if (workspace) this.#makeRoom(key, policy);
     }
     return this.add(session);
+  }
+
+  /** Ends `key`'s waiting sessions, oldest first, only until the plan has room for one more. */
+  #makeRoom(key: string, policy: PlanPolicy): void {
+    let open = this.count();
+    const byWait = (a: SecureLink, b: SecureLink): number =>
+      (this.#detachedAt.get(a) ?? 0) - (this.#detachedAt.get(b) ?? 0);
+    for (const waiting of [...(this.#byKey.get(key) ?? [])].filter(isWaiting).toSorted(byWait)) {
+      if (requireWithin(policy, "sessions", open).allowed) return;
+      this.#log("plan: a session waiting for its client was replaced by a new session from the same device");
+      waiting.close(CloseCode.IdleTimeout, "replaced by a new session from the same device");
+      open -= 1;
+    }
   }
 
   /**
@@ -75,6 +107,7 @@ export class LiveSessions {
       sessions.delete(session);
       if (sessions.size === 0 && this.#byKey.get(key) === sessions) this.#byKey.delete(key);
     });
+    if (isResumable(session)) session.onDetached(() => this.#detachedAt.set(session, (this.#detaches += 1)));
     return !this.#closeRevoked().has(session);
   }
 
@@ -201,6 +234,12 @@ export class LiveSessions {
     return closed;
   }
 }
+
+/** A session that can outlive its link (contract v1.11); the others never wait for a resume. */
+const isResumable = (session: SecureLink): session is SecureSession => "onDetached" in session;
+
+/** A session whose link dropped and that waits for its client's resume (contract v1.11). */
+const isWaiting = (session: SecureLink): boolean => "detached" in session && session.detached === true;
 
 /**
  * A machine or client member's key, or a paired device's that the mesh does not refuse. A client is a member of the

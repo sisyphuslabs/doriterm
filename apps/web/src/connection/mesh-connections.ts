@@ -4,6 +4,7 @@ import type { HostStartFailure } from "../desktop/bridge.ts";
 import type { LocalHostStarter } from "./store.ts";
 import type { ConnectionSettings, MemberTarget, Saver } from "./settings.ts";
 import { normalizeSettings, saveSettings } from "./settings.ts";
+import { sameTarget, scopedSettings, shownSettings } from "./member-scope.ts";
 
 /**
  * What the mesh needs from one member's connection. `ConnectionStore` satisfies it structurally; declaring it here keeps this
@@ -35,18 +36,6 @@ export interface MemberEntry {
 
 /** The one object `state` answers with when there is no connection to show: a fresh one per read would loop any rendering store. */
 const UNSET: ConnectionState = { phase: "unconfigured" };
-
-/** Whether a member's dial settings are unchanged, so an edit elsewhere does not tear down a connection it does not concern. */
-const sameTarget = (held: ConnectionSettings, want: ConnectionSettings): boolean =>
-  held.mode === want.mode &&
-  held.relayUrl === want.relayUrl &&
-  held.hostId === want.hostId &&
-  held.hostName === want.hostName &&
-  held.hostKey === want.hostKey &&
-  held.viewMember === want.viewMember &&
-  held.directUrl === want.directUrl &&
-  held.loopbackUrl === want.loopbackUrl &&
-  held.token === want.token;
 
 /**
  * One connection per member, so a machine going away removes that machine and nothing else.
@@ -324,15 +313,7 @@ export class MeshConnections {
   /** One member's settings: the shared ones, with that member's own address and a roster of just itself. */
   #scoped(member: MemberTarget): ConnectionSettings {
     const learned = !this.#pairedRoster().some((paired) => paired.hostId === member.hostId);
-    return {
-      ...this.#settings,
-      ...(learned ? { mode: "relay", viewMember: true } : {}),
-      hostId: member.hostId,
-      hostName: member.hostName,
-      hostKey: member.hostKey,
-      directUrl: member.directUrl,
-      members: [member],
-    };
+    return scopedSettings(this.#settings, member, learned);
   }
 
   /** `adopting`: the store is about to take a proved session, so it is not started. */
@@ -410,11 +391,7 @@ export class MeshConnections {
     this.#visibleSettings =
       selected === undefined || selected.hostId === this.#settings.hostId
         ? this.#settings
-        : {
-            ...this.#settings,
-            ...selected,
-            ...(learned ? { mode: "relay", viewMember: true } : {}),
-          };
+        : shownSettings(this.#settings, selected, learned);
     this.#snapshot = [...this.#targets.values()].map((target) =>
       Object.assign(
         {

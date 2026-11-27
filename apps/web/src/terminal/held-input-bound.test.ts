@@ -26,7 +26,7 @@ function droppedConnection(links = new UnprovenLinks(), open = false) {
   /** The view reattached: the new stream takes what waited, oldest first, as use-terminal-attach drains it. */
   const reattach = (): void => {
     sink = { write: (data) => (took.push(data), true) };
-    for (const data of held.pending.splice(0)) took.push(data);
+    for (const { data } of held.pending.splice(0)) took.push(data);
   };
   const drop = (): void => {
     sink = null;
@@ -140,7 +140,7 @@ test("a key refused by a stream that closes during its own write waits HOLD_MS l
   jest.useFakeTimers();
   const { held, dropped } = closingDuringWrite();
   held.send("rm -rf build\r");
-  expect(held.pending).toEqual(["rm -rf build\r"]);
+  expect(held.pending.map(({ data }) => data)).toEqual(["rm -rf build\r"]);
   jest.advanceTimersByTime(HOLD_MS);
   expect([held.pending, dropped]).toEqual([[], [["expired", undefined]]]);
 });

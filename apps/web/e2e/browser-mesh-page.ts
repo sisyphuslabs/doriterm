@@ -10,6 +10,7 @@ export async function routeOnlyRelay(page: Page, host: FakeRelayHost): Promise<v
   await host.route(page);
 }
 
+/** The default identity's membership: the one a first join stores (#2861 keeps every mesh in one record). */
 export async function savedMembership(page: Page): Promise<unknown> {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -19,8 +20,12 @@ export async function savedMembership(page: Page): Promise<unknown> {
     });
     try {
       return await new Promise<unknown>((resolve, reject) => {
-        const request = db.transaction("device").objectStore("device").get("mesh-membership");
-        request.addEventListener("success", () => resolve(request.result ?? null));
+        const request = db.transaction("device").objectStore("device").get("mesh-memberships");
+        request.addEventListener("success", () => {
+          const list: unknown = Reflect.get(Object(request.result), "memberships");
+          const held = Array.isArray(list) ? list.find((entry) => Reflect.get(Object(entry), "keySlot") === "") : null;
+          resolve(held ?? null);
+        });
         request.addEventListener("error", () => reject(request.error));
       });
     } finally {

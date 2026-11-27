@@ -1,4 +1,4 @@
-import { SynchronizedUpdate } from "./synchronized-update.ts";
+import { opensUpdate, SynchronizedUpdate } from "./synchronized-update.ts";
 
 /** At most this much output is written to a terminal per paint: a flood costs each frame a bounded slice (#560). */
 export const FRAME_BYTES = 16 * 1024;
@@ -35,6 +35,13 @@ export const SYNCHRONIZED_UNPACED_MS = 1000;
  * never closes is drawn after this. A whole transcript's redraw on a page starved 6x took up to 13.4 s to come in.
  */
 export const SYNCHRONIZED_HOLD_CAP_MS = 20_000;
+
+/**
+ * A pacer timer that runs later than this was held up by a page busy with other work, longer than any delay a page doing
+ * nothing else adds to a timer (clamping, frame alignment). The output that arrived meanwhile is queued behind it, unseen,
+ * so its window starts again rather than being read as quiet (#2895).
+ */
+export const LATE_TIMER_MS = 50;
 
 /** Milliseconds from some fixed point, for how long an update has been open. */
 export type Clock = () => number;
@@ -78,6 +85,15 @@ interface Replay {
   lastSpan: number | null;
   quiet: () => void;
   cap: () => void;
+}
+
+/** A synchronized update whose paint is held; `paint`: the core's own paint, which the update's close ends (#2794). */
+interface Held {
+  quiet: () => void;
+  cap: () => void;
+  readonly paint: boolean;
+  /** What the core's paint has written while held. */
+  written: number;
 }
 
 /** Coming back to the app or attaching: how much its catch-up frames may write, and have written. */
@@ -132,10 +148,12 @@ export class OutputPacer {
   /** Holds the terminal's paint (true) and lets it go (false) for a synchronized update. */
   #holdSynchronized: (held: boolean) => void = () => undefined;
   /** The open update whose paint is held while its bytes still arrive; null when none is. */
-  #held: { quiet: () => void; cap: () => void } | null = null;
+  #held: Held | null = null;
   /** The link's smoothed round trip, from the last attach's replay options; an attach without one leaves it unknown. */
   #srtt: () => number | undefined = () => undefined;
   #replay: Replay | null = null;
+  /** When output last arrived, by {@link Clock}: a late timer is read as it is once none has come for the hold's cap. */
+  #lastBytes = 0;
   #catchUp: CatchUp | null = null;
   readonly #written = new Set<() => void>();
 
@@ -154,6 +172,7 @@ export class OutputPacer {
   push(bytes: Uint8Array, credit: (bytes: number) => void = () => undefined): void {
     if (bytes.byteLength === 0) return;
     this.#queue.push({ bytes, credit });
+    this.#lastBytes = this.#clock();
     if (this.#replay !== null) this.#quietFrom(this.#replay);
     if (this.#held !== null) this.#heldQuietFrom(this.#held);
     if (this.#visible && this.#unpaced()) {
@@ -228,9 +247,11 @@ export class OutputPacer {
    * arrivals is a round trip plus the write, #2011), and whose SRTT is sampled on this connection (the attach answer
    * itself is one sample), and every two spans of {@link REPLAY_CAP_MS} (a round trip or more) write a window or more:
    * on a page slow to take each window in, a window can take about a span, and a span's ends can cut it anywhere, so
-   * one span alone can catch part of one (#2271). A quiet window or span whose timer runs more than its own length late
-   * is started again rather than read: the page was not running, so it could not see the next window, already queued
-   * behind the timer. A fixed deadline could not hold it: over a 300 ms relay, or on a page slow to write it, a replay
+   * one span alone can catch part of one (#2271). A quiet window or span whose timer runs more than
+   * {@link LATE_TIMER_MS} late is started again rather than read: the page was busy, so it could not see the next window,
+   * already queued behind the timer (#2895); once no bytes have arrived for {@link SYNCHRONIZED_HOLD_CAP_MS} by the
+   * page's clock, a late timer is read as it is, so a page that stays busy still lets the replay go. A fixed deadline
+   * could not hold it: over a 300 ms relay, or on a page slow to write it, a replay
    * of a few hundred KiB to 2 MiB takes longer than any one span.
    */
   replay(options: ReplayOptions): void {
@@ -256,6 +277,14 @@ export class OutputPacer {
     }
   }
 
+  /**
+   * The stream that brought the output closed (the program ended, or the link went down): a core paint it was bringing
+   * can no longer close, so it is drawn as it stands. Queued output is kept and written as before (#2794).
+   */
+  streamClosed(): void {
+    if (this.#held?.paint === true) this.#endHeld();
+  }
+
   /** Forgets queued output (the stream it came from is gone); its credit is not returned. A replay held ends. */
   drop(): void {
     this.#cancel?.();
@@ -269,16 +298,23 @@ export class OutputPacer {
   }
 
   /** An update opened in the written output: its paint is held until it closes, goes quiet, or hits the cap. */
-  #startHeld(): void {
+  /**
+   * An update opened in the written output: its paint is held. The core's own paint (`paint`: the update opens the
+   * replay's first byte, herdr-core #232) marks its end, so it is held until it closes or has written
+   * {@link REPLAY_MAX_BYTES}, with no quiet window or cap: a starved link or page may take minutes to bring it (#2794).
+   */
+  #startHeld(paint: boolean): void {
     if (this.#held !== null) return;
-    const held: { quiet: () => void; cap: () => void } = { quiet: () => undefined, cap: () => undefined };
+    const held: Held = { quiet: () => undefined, cap: () => undefined, paint, written: 0 };
     this.#held = held;
     this.#holdSynchronized(true);
+    if (paint) return;
     this.#heldQuietFrom(held);
     held.cap = this.#timer(() => this.#endHeld(), SYNCHRONIZED_HOLD_CAP_MS);
   }
 
-  #heldQuietFrom(held: { quiet: () => void }): void {
+  #heldQuietFrom(held: Held): void {
+    if (held.paint) return;
     held.quiet();
     held.quiet = this.#onTime(
       Math.max(SYNCHRONIZED_UNPACED_MS, 1.5 * (this.#srtt() ?? 0) + 50),
@@ -322,12 +358,20 @@ export class OutputPacer {
   }
 
   /**
-   * Runs `then` `ms` from now, or `again` when the timer runs more than `ms` late: a page that ran nothing for that long
-   * (a starved tab, a phone waking) saw no output in it, which says nothing about whether the replay stopped coming.
+   * Runs `then` `ms` from now, or `again` when the timer runs more than {@link LATE_TIMER_MS} late: a page that ran
+   * nothing else for that long (busy writing a batch, a starved tab, a phone waking) did not see the output that came
+   * meanwhile, which is queued behind this timer, so its silence says nothing about whether the output stopped coming
+   * (#2895).
    */
   #onTime(ms: number, then: () => void, again: () => void): () => void {
     const due = this.#clock() + ms;
-    return this.#timer(() => (this.#clock() - due > ms ? again() : then()), ms);
+    return this.#timer(() => {
+      const now = this.#clock();
+      // However late each timer runs, a page that has had no bytes for the hold's cap reads the window as it is.
+      const late = now - due > LATE_TIMER_MS && now - this.#lastBytes < SYNCHRONIZED_HOLD_CAP_MS;
+      if (late) again();
+      else then();
+    }, ms);
   }
 
   /**
@@ -424,7 +468,7 @@ export class OutputPacer {
         synchronized = true;
         if (this.#openedAt === null) {
           this.#openedAt = this.#clock();
-          this.#startHeld();
+          this.#startHeld(this.#replay?.written === 0 && size === 0 && opensUpdate(head.bytes));
         }
       }
       parts.push(take === head.bytes.byteLength ? head.bytes : head.bytes.subarray(0, take));
@@ -439,7 +483,11 @@ export class OutputPacer {
     for (const [credit, bytes] of credits) credit(bytes);
     for (const listener of this.#written) listener();
     // The core sends the next window of an update once this one's credit is back, after the write (#2011).
-    if (this.#held !== null) this.#heldQuietFrom(this.#held);
+    const held = this.#held;
+    if (held?.paint === true) {
+      held.written += size;
+      if (held.written >= REPLAY_MAX_BYTES) this.#endHeld();
+    } else if (held !== null) this.#heldQuietFrom(held);
     const replay = this.#replay;
     if (replay === null) return size;
     replay.written += size;

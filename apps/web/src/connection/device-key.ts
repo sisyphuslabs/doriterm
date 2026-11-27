@@ -1,5 +1,6 @@
 import { x25519 } from "@noble/curves/ed25519.js";
 import { deviceStore, refusesToClone, type KeyValueStore } from "../storage/idb.ts";
+import { authorityOf, checkedStatic } from "../storage/key-authority.ts";
 
 /** The device's X25519 static key: its public half plus the DH the Noise handshake needs. */
 export interface DeviceKey {
@@ -96,6 +97,8 @@ export async function keepsStoredKeys(storage: KeyValueStore, subtle: SubtleCryp
       throw cause;
     }
     const back = await storage.get(PROBE);
+    // The probe is a real private key: it must not stay behind once the answer is known (review of #2890).
+    await storage.put(PROBE, null);
     return isStored(back) && back.kind === "webcrypto";
   })();
   keepsKeys.set(storage, probe);
@@ -135,16 +138,35 @@ export async function forgetDeviceKey(storage: KeyValueStore): Promise<void> {
   pending.delete(storage);
 }
 
+export function forgetCachedDeviceKey(storage: KeyValueStore): void {
+  pending.delete(storage);
+}
+
 /**
  * Loads the device key, generating it on first use. The private half is a non-extractable
  * CryptoKey when WebCrypto has X25519, else 32 raw bytes; either survives in IndexedDB by structured clone.
  * Concurrent first calls share one creation: per store in this page, and across tabs through the Web
  * Locks API where it exists, re-reading the store inside the lock so a second tab gets the first's key.
  */
-export function loadDeviceKey(
+export async function loadDeviceKey(
   storage: KeyValueStore = deviceStore,
   subtle: SubtleCrypto | null = globalThis.crypto?.subtle ?? null,
 ): Promise<DeviceKey> {
+  // A slot's keys (`slotKeys`) are checked against its live authority on every DH, as `loadBrowserIdentity` does.
+  const authority = authorityOf(storage);
+  if (authority === undefined) return loadCachedDeviceKey(storage, subtle);
+  const grant = await authority();
+  let key = await loadCachedDeviceKey(storage, subtle);
+  // A cached key is used only while it is still the slot's stored key (another context may have replaced it).
+  if (!(await grant.current({ "device-key": key.publicKey }))) {
+    pending.delete(storage);
+    key = await loadCachedDeviceKey(storage, subtle);
+  }
+  await grant.bind({ "device-key": key.publicKey });
+  return checkedStatic(key, grant);
+}
+
+function loadCachedDeviceKey(storage: KeyValueStore, subtle: SubtleCrypto | null): Promise<DeviceKey> {
   const inFlight = pending.get(storage);
   if (inFlight !== undefined) return inFlight;
   const loading = withIdentityLock(() => readOrCreateDeviceKey(storage, subtle));

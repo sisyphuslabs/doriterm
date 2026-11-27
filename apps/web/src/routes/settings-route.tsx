@@ -41,6 +41,7 @@ import { CONNECT_GROUP, SECTIONS, sectionFromLink, type SectionId } from "../set
 import { matchSections } from "../settings/settings-search.ts";
 import { matchSettings, type SettingHit } from "../settings/setting-rows.ts";
 import { SettingHits, useLandOn } from "../settings/settings-hits.tsx";
+import { SectionHeader } from "../settings/settings-layout.tsx";
 
 /**
  * What a link asked for (a hash, so it survives a reload): its section, and the group to land on when an older link named
@@ -64,9 +65,7 @@ function Group({
 }) {
   return (
     <section className="flex flex-col">
-      <h2 id={id} className="pb-1 text-xl font-semibold text-foreground">
-        {title}
-      </h2>
+      <SectionHeader title={title} {...(id === undefined ? {} : { id })} />
       {children}
     </section>
   );
@@ -202,7 +201,7 @@ export function SettingsRoute() {
           )}
         >
           {back}
-          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+          <h1 className="text-xl font-semibold text-foreground">Settings</h1>
           {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}
           <div className="ml-2 min-w-0 flex-1">
             <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} inline />
@@ -229,7 +228,7 @@ export function SettingsRoute() {
           )}
         >
           {back}
-          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+          <h1 className="text-xl font-semibold text-foreground">Settings</h1>
         </div>
         <div className="shrink-0">
           <SearchSettings query={query} onQuery={onQuery} onKeyDown={onSearchKey} inputRef={field} />

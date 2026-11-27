@@ -1,5 +1,4 @@
 import type { HcConnection } from "@doriface/client";
-import type { Terminal as TerminalEntry } from "@doriface/protocol";
 import {
   type AgentStatus,
   cn,
@@ -20,7 +19,7 @@ import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
 import { agentStatus, nextNeedingYou, waitingBesides } from "./attention.ts";
-import { machineOf, programKind, type Session, tabTitle, terminalTitle } from "./model.ts";
+import { machineOf, programKind, type Session, tabTitle, tabTitleKey } from "./model.ts";
 import { NewTabMenu } from "./new-tab-menu.tsx";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
@@ -32,6 +31,7 @@ import { useTabRename } from "./tab-rename.tsx";
 import { DesktopStatusBar } from "./desktop-status-bar.tsx";
 import { SessionMenu } from "./session-menu.tsx";
 import { Sidebar } from "./sidebar.tsx";
+import { SidebarDrawer } from "./sidebar-drawer.tsx";
 import { sidebarFilter } from "./sidebar-filter-field.tsx";
 import { SkipLinks } from "./skip-links.tsx";
 import { frontIcon, Titled } from "./tab-live.tsx";
@@ -71,7 +71,7 @@ function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<strin
   return {
     id: tab.key,
     arrivalKey: tab.mount ?? tab.key,
-    title: tabTitle(tab.name, position, agent),
+    title: tabTitle(tab.name, position, agent, first),
     controls: panelId(tab.key),
     pinned: tab.pinned,
     ...(icon === undefined ? {} : { icon }),
@@ -111,9 +111,6 @@ export interface DesktopShellProps {
   readonly onPalette: () => void;
   readonly onSession: SessionVerb;
 }
-
-const agentTitle = (terminal: TerminalEntry): string =>
-  programKind(terminal) === "agent" ? terminalTitle(terminal) : "";
 
 const viewKey = (address: string, pid: number | null): string => `${address}#${pid ?? ""}`;
 
@@ -195,9 +192,9 @@ export function DesktopShell(props: DesktopShellProps) {
   }, []);
   const showsEnded = (terminal: { readonly address: string; readonly pid?: number | null }): boolean =>
     endedViews.has(viewKey(terminal.address, terminal.pid ?? null));
-  // An agent's tab is named after it, so its title as it stands; every other terminal's title stays out of the shell
-  // (#2607).
-  const named = useShown(terminals, agentTitle);
+  // A tab is named after its agent or a lane's given name, so those as they stand; any other title, and a foreground
+  // change alone, stays out of the shell (#2607).
+  const named = useShown(terminals, tabTitleKey);
   const byAddress = new Map(named.map((terminal) => [terminal.address, terminal]));
   const tabList: WorkspaceTab[] = layout.shown.map((tab, position) => tabEntry(tab, position, byAddress));
   const tabRename = useTabRename(layout, tabList);
@@ -351,26 +348,13 @@ export function DesktopShell(props: DesktopShellProps) {
           </div>
         ) : null}
         {medium && drawer ? (
-          <>
-            <button
-              type="button"
-              aria-label="Close sidebar"
-              className="absolute inset-0 z-30 bg-black/30"
-              onClick={() => setDrawer(false)}
-            />
-            <div
-              data-sidebar-drawer
-              className="absolute top-(--safe-top) bottom-(--safe-bottom) left-(--safe-left) z-40 flex"
-            >
-              <Sidebar
-                drawer
-                terminals={terminals}
-                active={focusedAddress}
-                onOpen={openFromDrawer}
-                onPalette={onPalette}
-              />
-            </div>
-          </>
+          <SidebarDrawer
+            terminals={terminals}
+            active={focusedAddress}
+            onOpen={openFromDrawer}
+            onPalette={onPalette}
+            onClose={() => setDrawer(false)}
+          />
         ) : null}
         {/* The titlebar's leading strip, beside the toggle and, with the sidebar hidden, before it: it keeps the chrome and
           the window drag where the tab strip's own box used to reach (#643). It comes before the toggle so the toggle's

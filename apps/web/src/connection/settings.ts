@@ -10,11 +10,19 @@ export interface MemberTarget {
   readonly hostKey: string;
   /** The member's LAN origin for the direct /v1/e2ee race, when known. */
   readonly directUrl: string;
+  /** The mesh a machine learned from a membership belongs to; a paired machine has none. Never saved. */
+  readonly meshId?: string;
+  /** The key slot (`mesh/identity-slots.ts`) that mesh knows this browser by. Never saved. */
+  readonly keySlot?: string;
 }
 
 export interface ConnectionSettings {
   /** Derived from a verified bundle, never loaded as a saved pairing. */
   readonly viewMember?: boolean;
+  /** A view member's key slot: the identity its mesh knows this browser by (#2861). Unset is the default identity. */
+  readonly keySlot?: string | undefined;
+  /** A view member's mesh; unset for a paired machine. */
+  readonly meshId?: string | undefined;
   readonly mode: ConnectionMode;
   /** Base URL of the relay; the client path is appended. */
   readonly relayUrl: string;

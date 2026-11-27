@@ -3,7 +3,10 @@
 // tooltip is the whole title when the tab cuts it short.
 import { agentRow, endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { seedSpaces } from "./layout-doc.ts";
+import { hcOn } from "./machine-switch.ts";
 import { MACHINE_NAME } from "./machine.ts";
+import { rows } from "./sidebar-measure.ts";
 import { tabOf } from "./tab-strip.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
@@ -51,5 +54,71 @@ test("an agent's title that fits its tab has no tooltip (#478)", async ({ page }
     await expect(tab.locator("[title]")).toHaveCount(0);
   } finally {
     endAgent("machine", address);
+  }
+});
+
+const startOnHost = (args: readonly string[]): string => {
+  const out = hcOn("host", ["run", "--bg", ...args]);
+  const parsed: unknown = JSON.parse(out);
+  if (typeof parsed !== "object" || parsed === null || !("address" in parsed)) throw new Error(out);
+  return String((parsed as { readonly address: unknown }).address);
+};
+
+const startLane = (name: string): string =>
+  startOnHost(["--name", name, "--cwd", "/", "--", "bash", "-c", "exec sleep 600"]);
+
+test("a lane's tab follows the lane's name when it is renamed after the tab is drawn (#2672 review)", async ({
+  page,
+}) => {
+  const address = startLane("lane-before-rename");
+  try {
+    seedSpaces([
+      { id: "spc-rename", name: "renames", folder: "", tabs: [{ id: "tb-rename", name: "", terminal: address }] },
+    ]);
+    await page.goto("/");
+    const spacesRegion = page.getByRole("complementary", { name: "Workspace" }).getByRole("region", { name: "Spaces" });
+    await rows(spacesRegion).filter({ hasText: "renames" }).first().click();
+    const tab = await tabOf(page, address);
+    await expect(tab).toHaveText("lane-before-rename", { timeout: 15_000 });
+    await page.getByRole("button", { name: "Session actions" }).click();
+    await page.getByRole("menuitem", { name: "Rename…" }).click();
+    await page
+      .getByRole("dialog", { name: /^Rename / })
+      .getByRole("textbox", { name: "Name" })
+      .fill("lane-after-rename");
+    await page.keyboard.press("Enter");
+    await expect(tab).toHaveText("lane-after-rename", { timeout: 15_000 });
+  } finally {
+    endAgent("host", address);
+  }
+});
+
+test("a lane's tab reads the lane's name, from the first lane on, never its place as a bare number (#2670)", async ({
+  page,
+}) => {
+  const first = startLane("lane-doriterm-2670");
+  const second = startLane("lane-relay-followups");
+  try {
+    seedSpaces([
+      {
+        id: "spc-lanes",
+        name: "",
+        folder: "",
+        tabs: [
+          { id: "tb-lane1", name: "", terminal: first },
+          { id: "tb-lane2", name: "", terminal: second },
+        ],
+      },
+    ]);
+    await page.goto("/");
+    const spacesRegion = page.getByRole("complementary", { name: "Workspace" }).getByRole("region", { name: "Spaces" });
+    await rows(spacesRegion).filter({ hasText: "Bash" }).first().click();
+    const lane1 = await tabOf(page, first);
+    const lane2 = await tabOf(page, second);
+    await expect(lane1).toHaveText("lane-doriterm-2670", { timeout: 15_000 });
+    await expect(lane2).toHaveText("lane-relay-followups");
+  } finally {
+    endAgent("host", first);
+    endAgent("host", second);
   }
 });

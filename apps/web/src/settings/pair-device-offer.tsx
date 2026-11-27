@@ -30,11 +30,7 @@ export function PairDeviceOffer() {
           </span>
         }
         description="A phone or another computer that pairs with this computer can open its terminals, end to end encrypted."
-        control={
-          <Button size="sm" onClick={() => setPairing(true)}>
-            Pair a device
-          </Button>
-        }
+        control={<Button onClick={() => setPairing(true)}>Pair a device</Button>}
       />
       <PairDeviceDialog open={pairing} onClose={() => setPairing(false)} pair={pair} />
     </>

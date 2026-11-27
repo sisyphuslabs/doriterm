@@ -38,7 +38,7 @@ import { keepStorageOnceOpen } from "./storage/keep-storage.ts";
 import { reloadIntoWaitingWorker, resumeUpdate } from "./update/reload-into-waiting.ts";
 import { updateStore } from "./update/update-store.ts";
 import { stepTerminalFont, takesTextSizeKey } from "./workspace/use-app-actions.ts";
-import { restoreMembership } from "./mesh/membership-state.ts";
+import { restoreMembership } from "./mesh/membership-lifecycle.ts";
 import { followRoster } from "./mesh/roster-refresh.ts";
 
 // First: a browser below the baseline is told to update before the app starts or connects (#556).

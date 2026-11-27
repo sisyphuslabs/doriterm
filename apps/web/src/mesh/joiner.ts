@@ -86,6 +86,8 @@ export async function joinOnLink(
           name: deps.name,
           relayUrl: inviter.relayUrl,
           inviterName: deps.inviterName ?? "the inviting machine",
+          keySlot: deps.membership.slot,
+          ...(deps.membership.enrollment === undefined ? {} : { generation: deps.membership.enrollment.generation }),
         } satisfies BrowserJoinAnchor),
       clearAnchor: () => storage.put(JOIN_ANCHOR_KEY, null),
       ...(deps.resume === undefined ? {} : { resume: deps.resume }),

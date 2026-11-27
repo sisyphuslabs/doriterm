@@ -41,6 +41,28 @@ test("a key sent while Ctrl+V's ^V is not known yet is written after it", async 
   expect(written).toEqual(["\u0016", "x", "y", "z"]);
 });
 
+test("an answer the terminal gives keeps its mark when it waits behind a bound key's input (#2794)", async () => {
+  const marked: [TerminalInput, boolean][] = [];
+  const all = Promise.withResolvers<void>();
+  const order = inputOrder((data, person) => {
+    marked.push([data, person]);
+    if (marked.length === 4) all.resolve();
+  });
+  order.send("a");
+  const vee = Promise.withResolvers<TerminalInput | null>();
+  order.later(vee.promise);
+  order.send("\u001b[?62c", false);
+  order.send("b");
+  vee.resolve("\u0016");
+  await all.promise;
+  expect(marked).toEqual([
+    ["a", true],
+    ["\u0016", true],
+    ["\u001b[?62c", false],
+    ["b", true],
+  ]);
+});
+
 test("input that turns out to be none lets what waited behind it through, in order", async () => {
   const { order, written, wrote } = recorded();
   const first = Promise.withResolvers<TerminalInput | null>();

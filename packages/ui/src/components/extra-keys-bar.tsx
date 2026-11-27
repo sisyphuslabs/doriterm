@@ -133,10 +133,7 @@ export function ExtraKeysBar(props: ExtraKeysBarProps) {
       role="toolbar"
       aria-label="Terminal keys"
       style={props.style}
-      className={cn(
-        "flex items-center gap-2 px-1.5 py-1 transition-[bottom] duration-(--duration-standard) ease-out motion-reduce:transition-none motion-reduce:duration-0",
-        props.className,
-      )}
+      className={cn("flex items-center gap-2 px-1.5 py-1", props.className)}
     >
       <div ref={keysPill} role="group" aria-label="Keys" className={cn(pill, "min-w-0 flex-1 px-1")}>
         {place === null ? null : (

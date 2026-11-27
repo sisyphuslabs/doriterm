@@ -33,6 +33,7 @@ async function setup() {
     signPub: base64urlEncode(identity.card.publicKey),
     devicePub: base64urlEncode(identity.device.publicKey),
   });
+  await bundle.enroll();
   const join = new BrowserJoin(storage, identity, bundle);
   const context = {
     name: "phone",

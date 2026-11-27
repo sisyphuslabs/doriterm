@@ -1,12 +1,16 @@
 import { JOINER_EXPECTS, MeshLines, byDeadline } from "@doriface/mesh/join";
-import { loadBrowserIdentity } from "../mesh/identity.ts";
+import { type BrowserIdentity, loadBrowserIdentity } from "../mesh/identity.ts";
 import { connectionStore } from "../connection/store.ts";
+import type { MemberTarget } from "../connection/settings.ts";
 import { deviceStore } from "../storage/idb.ts";
 import { deviceName } from "../pair/device-name.ts";
+import { DEFAULT_SLOT, slotKeys } from "./identity-slots.ts";
 import { openRosterSession } from "./join.ts";
-import { membershipBundle, prepareMembership, forgetMembership } from "./membership-state.ts";
+import { enrollFor } from "./join-claim.ts";
+import { forgetMembership } from "./membership-lifecycle.ts";
+import { inViewSlot, membershipBundle, prepareMembership } from "./membership-state.ts";
 import type { MembershipStore } from "./membership.ts";
-import { exchangeRoster } from "./roster-client.ts";
+import { exchangeRoster, type RosterContext } from "./roster-client.ts";
 import { meshNameOf } from "./member-name.ts";
 
 const tried = new WeakSet<object>();
@@ -16,35 +20,74 @@ const asked = new Map<string, number>();
 const SETTLING_ASK_MS = 60_000;
 export const rosterFailure = (hostId: string) => failures.get(hostId);
 
-async function nameForBrowser(): Promise<string> {
-  const name = membershipBundle()?.snapshot().self?.name ?? (await deviceStore.get("mesh.browser-name"));
+async function nameForBrowser(bundle: MembershipStore): Promise<string> {
+  const name = bundle.snapshot().self?.name ?? (await deviceStore.get("mesh.browser-name"));
   return typeof name === "string" ? name : meshNameOf(deviceName());
 }
 
 type Entry = ReturnType<typeof connectionStore.entries>[number];
 
-async function refreshFrom(entry: Entry, claimed: (bundle: MembershipStore) => boolean): Promise<void> {
-  const bundle = await prepareMembership();
-  if (!claimed(bundle)) return;
-  const identity = await loadBrowserIdentity();
-  const secure = await openRosterSession({ ...entry.target, relayUrl: connectionStore.settings.relayUrl }, identity);
+/** What a roster conversation needs from the page; the tests replace it to see which identity each one runs as. */
+export interface RosterDeps {
+  readonly prepare: (slot: string) => Promise<MembershipStore>;
+  readonly identity: (slot: string) => Promise<BrowserIdentity>;
+  readonly talk: (member: MemberTarget, context: RosterContext) => Promise<void>;
+  readonly forget: (slot: string) => Promise<void>;
+  readonly bundle: (slot: string) => MembershipStore | undefined;
+  /** Enrolls a store that holds no mesh before a roster may take it in (`enrollFor`); undefined when it may not. */
+  readonly enroll: (bundle: MembershipStore) => Promise<(() => Promise<void>) | undefined>;
+}
+
+async function talkTo(member: MemberTarget, context: RosterContext): Promise<void> {
+  const relayUrl = connectionStore.settings.relayUrl;
+  const secure = await openRosterSession({ ...member, relayUrl }, context.identity);
   const lines = new MeshLines(secure, JOINER_EXPECTS);
   try {
-    await byDeadline(
-      exchangeRoster(lines, {
-        identity,
-        bundle,
-        source: entry.target,
-        relayUrl: connectionStore.settings.relayUrl,
-        name: await nameForBrowser(),
-        action: "refresh",
-      }),
-      Date.now() + 30_000,
-      "The roster did not arrive in time.",
-    );
-    failures.delete(entry.target.hostId);
+    const late =
+      context.action === "leave"
+        ? "The machine did not confirm leaving in time."
+        : "The roster did not arrive in time.";
+    await byDeadline(exchangeRoster(lines, context), Date.now() + 30_000, late);
   } finally {
     lines.close(1000, "roster complete");
+  }
+}
+
+const BROWSER: RosterDeps = {
+  prepare: prepareMembership,
+  // Through `slotKeys`: an enrolled identity is only read here, never created again (review of #2890).
+  identity: (slot) => loadBrowserIdentity(slotKeys(deviceStore, slot)),
+  talk: talkTo,
+  forget: (slot) => forgetMembership(slot),
+  bundle: membershipBundle,
+  enroll: enrollFor,
+};
+
+/** A machine learned from a mesh is asked as that mesh's member, with the keys that mesh knows; a paired one as before. */
+export async function refreshFrom(
+  entry: Entry,
+  claimed: (bundle: MembershipStore) => boolean,
+  deps: RosterDeps = BROWSER,
+): Promise<void> {
+  const slot = entry.target.keySlot ?? DEFAULT_SLOT;
+  const bundle = await deps.prepare(slot);
+  if (!claimed(bundle)) return;
+  // A roster that would take this browser in is an enrollment, made before the keys are loaded for it.
+  const finish = bundle.snapshot().phase === "empty" ? await deps.enroll(bundle) : async () => undefined;
+  if (finish === undefined) return;
+  try {
+    const identity = await deps.identity(slot);
+    await deps.talk(entry.target, {
+      identity,
+      bundle,
+      source: entry.target,
+      relayUrl: connectionStore.settings.relayUrl,
+      name: await nameForBrowser(bundle),
+      action: "refresh",
+    });
+    failures.delete(entry.target.hostId);
+  } finally {
+    await finish();
   }
 }
 
@@ -86,29 +129,29 @@ export function followRoster(): () => void {
   };
 }
 
-/** Leave reaches any online machine, and local custody is deleted only after the verified revoke arrives. */
-export async function leaveMembership(): Promise<void> {
-  const bundle = membershipBundle();
+/**
+ * Leaves one mesh (the one in view) through any of its online machines, as that mesh's own identity, and forgets that
+ * mesh only after the verified revoke arrives; every other mesh this browser holds stays.
+ */
+export async function leaveMembership(
+  slot: string = inViewSlot(),
+  entries: readonly Entry[] = connectionStore.entries(),
+  deps: RosterDeps = BROWSER,
+): Promise<void> {
+  const bundle = deps.bundle(slot);
   if (bundle === undefined || bundle.snapshot().phase !== "joined") throw new Error("This browser is not in a mesh.");
-  const target = connectionStore
-    .entries()
-    .find(
-      (entry) =>
-        entry.state.phase === "open" &&
-        bundle.snapshot().machines.some((member) => member.hostId === entry.target.hostId),
-    );
+  const target = entries.find(
+    (entry) =>
+      entry.state.phase === "open" &&
+      bundle.snapshot().machines.some((member) => member.hostId === entry.target.hostId),
+  );
   if (target === undefined) throw new Error("No machine is reachable. You can forget this mesh here.");
-  const identity = await loadBrowserIdentity();
-  const session = await openRosterSession({ ...target.target, relayUrl: connectionStore.settings.relayUrl }, identity);
-  const lines = new MeshLines(session, JOINER_EXPECTS);
-  try {
-    await byDeadline(
-      exchangeRoster(lines, { identity, bundle, source: target.target, name: await nameForBrowser(), action: "leave" }),
-      Date.now() + 30_000,
-      "The machine did not confirm leaving in time.",
-    );
-  } finally {
-    lines.close(1000, "leave complete");
-  }
-  await forgetMembership();
+  await deps.talk(target.target, {
+    identity: await deps.identity(slot),
+    bundle,
+    source: target.target,
+    name: await nameForBrowser(bundle),
+    action: "leave",
+  });
+  await deps.forget(slot);
 }

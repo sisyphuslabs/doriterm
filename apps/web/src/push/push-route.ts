@@ -25,6 +25,8 @@ export type PushRoute =
       readonly hostId: string;
       readonly hostKey: string;
       readonly directUrl?: string | undefined;
+      /** The identity this host's mesh knows the browser by (#2861); unset is the default identity. */
+      readonly keySlot?: string | undefined;
     }
   | { readonly mode: "loopback"; readonly pushUrl: string; readonly token: string };
 
@@ -39,6 +41,7 @@ export function routeOf(settings: ConnectionSettings, directPath: boolean = dire
       hostId: settings.hostId,
       hostKey: settings.hostKey,
       ...(directPath ? { directUrl: settings.directUrl } : {}),
+      ...(settings.keySlot === undefined ? {} : { keySlot: settings.keySlot }),
     };
   }
   const url = new URL(settings.loopbackUrl);
@@ -51,16 +54,24 @@ const isText = (value: unknown): value is string => typeof value === "string" &&
 function parseRoute(value: unknown): PushRoute | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const get = (key: string): unknown => Reflect.get(value, key);
-  const [relayUrl, hostId, hostKey, pushUrl, token, directUrl] = [
+  const [relayUrl, hostId, hostKey, pushUrl, token, directUrl, keySlot] = [
     "relayUrl",
     "hostId",
     "hostKey",
     "pushUrl",
     "token",
     "directUrl",
+    "keySlot",
   ].map(get);
   if (get("mode") === "relay" && isText(relayUrl) && isText(hostId) && isText(hostKey)) {
-    return { mode: "relay", relayUrl, hostId, hostKey, ...(typeof directUrl === "string" ? { directUrl } : {}) };
+    return {
+      mode: "relay",
+      relayUrl,
+      hostId,
+      hostKey,
+      ...(typeof directUrl === "string" ? { directUrl } : {}),
+      ...(isText(keySlot) ? { keySlot } : {}),
+    };
   }
   if (get("mode") === "loopback" && isText(pushUrl) && isText(token)) return { mode: "loopback", pushUrl, token };
   return undefined;
@@ -73,7 +84,13 @@ export async function loadPushRoute(store: KeyValueStore = deviceStore): Promise
 /** The route with no direct address: a page with no direct path never dials one, so its stored route never names one. */
 const relayOnly = (route: PushRoute): PushRoute =>
   route.mode === "relay" && route.directUrl !== undefined
-    ? { mode: "relay", relayUrl: route.relayUrl, hostId: route.hostId, hostKey: route.hostKey }
+    ? {
+        mode: "relay",
+        relayUrl: route.relayUrl,
+        hostId: route.hostId,
+        hostKey: route.hostKey,
+        ...(route.keySlot === undefined ? {} : { keySlot: route.keySlot }),
+      }
     : route;
 
 export const savePushRoute = (
@@ -131,7 +148,7 @@ export async function openPushLink(route: PushRoute, options: PushLinkOptions = 
     return await secureLink(link, {
       role: "initiator",
       hostId: route.hostId,
-      staticKey: await deps.loadDeviceKey(),
+      staticKey: await deps.loadDeviceKey(route.keySlot),
       remoteStatic: base64urlDecode(route.hostKey),
       stream: "push",
     });
@@ -166,7 +183,7 @@ async function openDirectPush(
         await secureLink(link, {
           role: "initiator",
           hostId: route.hostId,
-          staticKey: await deps.loadDeviceKey(),
+          staticKey: await deps.loadDeviceKey(route.keySlot),
           remoteStatic: base64urlDecode(route.hostKey),
           stream: "push",
         }),

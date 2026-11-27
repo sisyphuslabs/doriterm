@@ -137,7 +137,6 @@ export function KeybindingRow({
           >
             <Kbd keys={triggerKeys(pending, platform)} persistent /> is {conflictLabel}.
             <Button
-              size="sm"
               variant="primary"
               onClick={() => {
                 onBind(pending);
@@ -147,7 +146,7 @@ export function KeybindingRow({
             >
               Replace
             </Button>
-            <Button ref={keepButton} size="sm" variant="ghost" onClick={keep}>
+            <Button ref={keepButton} variant="ghost" onClick={keep}>
               Keep
             </Button>
           </span>

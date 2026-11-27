@@ -4,7 +4,7 @@ import type { TerminalHandle, WTerm } from "@wterm/react";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { unprovenLinks } from "../connection/wake.ts";
 import { machineOf } from "../workspace/model.ts";
-import { type Dropped, HeldInput, HOLD_MS } from "./held-input.ts";
+import { type Dropped, type HeldEntry, HeldInput, HOLD_MS, streamSink } from "./held-input.ts";
 import { inputOrder } from "./input-order.ts";
 import { machineLines } from "./machine-lines.ts";
 import { pasteInto } from "./terminal-port.ts";
@@ -17,7 +17,12 @@ export interface TerminalInputPath {
    * Input not written yet: typed while no stream was open (attaching, or the connection dropped), sent to the next stream
    * in order, or while a wake proved the link, sent to the same stream once it answers (#1370).
    */
-  readonly pending: RefObject<TerminalInput[]>;
+  readonly pending: RefObject<HeldEntry[]>;
+  /**
+   * The terminal's own answers to a program (query replies, focus reports), as the renderer marks them: sent in order
+   * with what is typed, as is, and never taken for the person typing (#2794).
+   */
+  readonly answered: (data: string) => void;
   /** Input typed into the renderer, rewritten as the host asks (latched phone modifiers). */
   readonly typedInto: (data: string) => void;
   /** Input from outside the renderer (the phone's keys, a bound key, a confirmed paste). */
@@ -79,7 +84,7 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
       new HeldInput(
         unprovenLinks,
         () => latestConnection.current,
-        () => stream.current,
+        () => (stream.current === null ? null : streamSink(stream.current)),
         {
           lines: machineLines,
           machine: () => machineOf(latestAddress.current),
@@ -94,10 +99,13 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
   const latestInputStarts = useRef(sources.inputStarts);
   latestInputStarts.current = sources.inputStarts;
   const [order] = useState(() =>
-    inputOrder((data) => {
-      latestInputStarts.current?.();
-      latestPredict.current?.current?.(data);
-      held.send(data);
+    inputOrder((data, person) => {
+      // The terminal's own answers neither size the host nor predict an echo: only the person's input does (D1, #1595).
+      if (person) {
+        latestInputStarts.current?.();
+        latestPredict.current?.current?.(data);
+      }
+      held.send(data, person);
     }),
   );
   const send = order.send;
@@ -163,5 +171,6 @@ export function useTerminalInput(sources: InputSources): TerminalInputPath {
     wt.element.addEventListener("input", onInput);
     return () => wt.element.removeEventListener("input", onInput);
   }, [wt, typesComposition]);
-  return { pending, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
+  const answered = useCallback((data: string): void => send(data, false), [send]);
+  return { pending, answered, typedInto, typed, typedLater, typedLate, pasteFiles, linkReady };
 }

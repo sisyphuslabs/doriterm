@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { NOTICE_EVENTS, type NoticeEvent, type PushPrefs, type Terminal } from "@doriface/protocol";
-import { Button, Notice, SettingRow, Switch, groupHeadingClass } from "@doriface/ui";
+import { Button, Notice, SettingRow, Switch } from "@doriface/ui";
 import { useEffect, useSyncExternalStore } from "react";
 import { useConnection } from "../connection/store.ts";
 import { type DesktopNotices, desktopNotices } from "../push/desktop-notices.ts";
@@ -8,6 +8,7 @@ import { pushSettings, type PushView } from "../push/push-settings.ts";
 import { idOfMachine } from "../workspace/model.ts";
 import { useMachines } from "../workspace/use-machines.ts";
 import { noticeControls } from "./notice-controls.ts";
+import { Subgroup, sectionStackClass } from "./settings-layout.tsx";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
@@ -146,7 +147,7 @@ export function NotificationsSection() {
   const setEvent = (event: NoticeEvent, on: boolean): void =>
     void settings.setPrefs({ ...view.prefs, events: { ...view.prefs.events, [event]: on } });
   return (
-    <div className="flex flex-col gap-6" data-push-state={blocked ? "blocked" : view.on ? "on" : "off"}>
+    <div className={sectionStackClass} data-push-state={blocked ? "blocked" : view.on ? "on" : "off"}>
       <div className="flex flex-col">
         <SettingRow
           title="Notifications on this device"
@@ -213,10 +214,7 @@ export function NotificationsSection() {
           {`Could not follow the agents: ${view.retry.reason}. Trying again in ${Math.ceil(view.retry.inMs / 1000)} s.`}
         </Notice>
       )}
-      <section aria-labelledby="push-events" className="flex flex-col">
-        <h3 id="push-events" className={groupHeadingClass}>
-          Notify me when
-        </h3>
+      <Subgroup id="push-events" title="Notify me when">
         {NOTICE_EVENTS.map((event) => (
           <SettingRow
             key={event}
@@ -234,14 +232,11 @@ export function NotificationsSection() {
             }
           />
         ))}
-      </section>
+      </Subgroup>
       {state.phase === "open" ? (
-        <section aria-labelledby="push-machines" className="flex flex-col">
-          <h3 id="push-machines" className={groupHeadingClass}>
-            From these machines
-          </h3>
+        <Subgroup id="push-machines" title="From these machines">
           <MachineMutes connection={state.connection} prefs={view.prefs} disabled={off} />
-        </section>
+        </Subgroup>
       ) : null}
       <p className="text-prose text-pretty text-muted-foreground">
         {desktop

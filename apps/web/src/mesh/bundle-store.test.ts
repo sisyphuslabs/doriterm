@@ -61,6 +61,7 @@ function fixture() {
 test("an anchored welcome derives every machine and no client as a relay target", async () => {
   const f = fixture();
   const store = new MembershipStore(memoryStore(), f.self);
+  await store.enroll();
   await store.accept(f.records, f.anchor);
   expect(store.snapshot().machines.map((m) => m.hostId)).toEqual([f.a.hostId, f.b.hostId]);
   expect(store.snapshot().machines.every((m) => m.directUrl === "")).toBe(true);
@@ -70,6 +71,7 @@ test("an anchored welcome derives every machine and no client as a relay target"
 test("one record failing the door keeps none of a welcome", async () => {
   const f = fixture();
   const store = new MembershipStore(memoryStore(), f.self);
+  await store.enroll();
   await expect(store.accept([...f.records, { body: "{}", sig: "invalid" }], f.anchor)).rejects.toThrow();
   expect(store.snapshot().records).toEqual([]);
 });
@@ -77,6 +79,7 @@ test("one record failing the door keeps none of a welcome", async () => {
 test("welcome must bind the mesh and the authenticated inviter key", async () => {
   const f = fixture();
   const store = new MembershipStore(memoryStore(), f.self);
+  await store.enroll();
   await expect(store.accept(f.records, { ...f.anchor, hostKey: f.self.devicePub })).rejects.toThrow();
   await expect(store.accept(f.records, { ...f.anchor, mesh: "another" })).rejects.toThrow();
   expect(store.snapshot().records).toEqual([]);
@@ -85,6 +88,7 @@ test("welcome must bind the mesh and the authenticated inviter key", async () =>
 test("refresh cannot erase a held revoke by omitting it", async () => {
   const f = fixture();
   const store = new MembershipStore(memoryStore(), f.self);
+  await store.enroll();
   const earlier = [...f.records];
   await store.accept(f.records, f.anchor);
   const revoke = f.revoke(f.b);
@@ -97,6 +101,7 @@ test("refresh cannot erase a held revoke by omitting it", async () => {
 test.each(["revoked", "orphaned"])("a %s browser drops all view targets but retains its bundle", async (reason) => {
   const f = fixture();
   const store = new MembershipStore(memoryStore(), f.self);
+  await store.enroll();
   await store.accept(f.records, f.anchor);
   const revoke = f.revoke(reason === "revoked" ? f.browser : f.a);
   await store.refresh([revoke], f.anchor);
@@ -108,6 +113,7 @@ test.each(["revoked", "orphaned"])("a %s browser drops all view targets but reta
 test("refresh refuses a source not already in the held view with its pinned key", async () => {
   const f = fixture();
   const store = new MembershipStore(memoryStore(), f.self);
+  await store.enroll();
   await store.accept(f.records, f.anchor);
   await expect(store.refresh([], { ...f.anchor, hostKey: f.self.devicePub })).rejects.toThrow();
   expect(store.snapshot().machines).toHaveLength(2);

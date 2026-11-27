@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
 import { stubSpeech } from "./speech-stub.ts";
 
@@ -25,6 +26,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     await openPhoneTerminal(page, 390);
     await page.screenshot({ path: testInfo.outputPath("row.png") });
 
+    await atRest(page);
     const [keys, actions] = [await box(keysPill(page)), await box(actionsPill(page))];
     // One row: the two pills share a top and a height, the keys first, the actions at the right edge.
     expect(Math.abs(keys.y - actions.y)).toBeLessThanOrEqual(1);

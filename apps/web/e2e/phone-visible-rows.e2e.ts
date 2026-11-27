@@ -1,6 +1,12 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, laidOutBox, test } from "./fixtures.ts";
+import { agentRow, endAgent, startAgent } from "./agents.ts";
+import { expect, laidOutBox, opened, test } from "./fixtures.ts";
 import { gridSize } from "./core-size.ts";
+import { seedSpaces } from "./layout-doc.ts";
+import { hcOn } from "./machine-switch.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, settledGrid } from "./phone-key-bar.ts";
 
 // A touch phone. The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -82,5 +88,84 @@ for (const width of [429, 430]) {
     await expect(page.getByRole("dialog")).toBeVisible();
     if (width < 430) await expect(row).toBeVisible();
     else await expect(row).toHaveCount(0);
+  });
+}
+
+/** A tab name wider than any phone's title column: 32 characters. */
+const LONG_TAB = "a-tab-whose-name-runs-32-chars-x";
+
+/**
+ * On a portrait phone the header is as it was before the tabs chip: one 48 px line, the title ending in an ellipsis
+ * beside the needs-you pill (#2865) and the mic, which keeps its place at every width. The chip is not drawn; the
+ * session sheet's Tabs row opens the same switch sheet (#2879).
+ */
+for (const width of [390, 320]) {
+  test(`at ${width}, a long tab name beside the needs-you pill keeps the header one 48 px line, and the tabs switch is a tap away`, async ({
+    page,
+  }) => {
+    const folder = mkdtempSync(join(tmpdir(), "rows-header-"));
+    const shells = [1, 2, 3].map((n) => {
+      const out = hcOn("host", [
+        "run",
+        "--bg",
+        "--name",
+        `rows-${width}-${n}`,
+        "--cwd",
+        folder,
+        "--",
+        "env",
+        "PS1=$ ",
+        "sh",
+      ]);
+      return String((JSON.parse(out) as { address: string }).address);
+    });
+    const blocked = startAgent("host", `rows-wait-${width}`, "blocked");
+    try {
+      seedSpaces([
+        {
+          id: `spc-rows-${width}`,
+          name: "rows",
+          folder,
+          tabs: shells.map((terminal, index) => ({
+            id: `tb-rows-${width}-${index}`,
+            name: index === 0 ? LONG_TAB : `rows-tab-${index + 1}`,
+            terminal,
+          })),
+        },
+      ]);
+      await page.setViewportSize({ width, height: 700 });
+      await page.goto("/");
+      await agentRow(page, `rows-${width}-1`, false).click({ timeout: 20_000 });
+      const bar = page.getByRole("banner");
+      await expect(bar.getByRole("heading", { level: 1, name: LONG_TAB, exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(bar.getByRole("button", { name: /needs you, open the next$/ })).toBeVisible({ timeout: 15_000 });
+      await expect(bar.getByRole("button", { name: /^Dictate into / })).toBeVisible();
+      await expect(bar.locator("[data-title-lines]")).toHaveText(/\u2026$/);
+      await expect.poll(async () => (await laidOutBox(bar)).height).toBe(48);
+      expect(await bar.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
+      await expect(bar.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toHaveCount(0);
+      await bar.getByRole("button", { name: /^Session actions for / }).click();
+      const actions = page.getByRole("dialog", { name: LONG_TAB });
+      const row = actions.getByRole("button", { name: `Switch tab, rows, ${LONG_TAB}, tab 1 of 3`, exact: true });
+      await expect(row).toHaveText("Tabs1/3");
+      expect((await laidOutBox(row)).height).toBeGreaterThanOrEqual(44);
+      await row.click();
+      await expect(actions).toHaveCount(0);
+      const sheet = page.getByRole("dialog", { name: "Switch" });
+      await opened(sheet);
+      await agentRow(sheet.getByRole("region", { name: "rows" }), "rows-tab-3", false).click();
+      await expect(sheet).toBeHidden();
+      await expect(bar.getByRole("heading", { level: 1, name: "rows-tab-3", exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
+    } finally {
+      seedSpaces([]);
+      endAgent("host", blocked);
+      for (const shell of shells) endAgent("host", shell);
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 }

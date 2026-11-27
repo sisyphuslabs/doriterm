@@ -1,8 +1,9 @@
 import type { CardBody } from "@doriface/mesh";
 import { meshRevokeCommand, type MeshMemberStatus } from "@doriface/protocol";
-import { SettingRow, groupHeadingClass } from "@doriface/ui";
+import { SettingRow } from "@doriface/ui";
 import { Command } from "../mesh/mesh-rows.tsx";
 import { formatAge } from "../workspace/model.ts";
+import { Subgroup } from "./settings-layout.tsx";
 
 export function RevokeCommand({ name }: { readonly name: string }) {
   const command = meshRevokeCommand(name);
@@ -24,10 +25,7 @@ export function BrowserMemberList({
   readonly now: number;
 }) {
   return (
-    <section aria-labelledby="browser-members">
-      <h3 id="browser-members" className={groupHeadingClass}>
-        Browsers and phones
-      </h3>
+    <Subgroup id="browser-members" title="Browsers and phones">
       {clients.map((client) => {
         const at = observations?.find((member) => member.hostId === client.hostId)?.lastSessionAt;
         const age = at === undefined ? undefined : formatAge(at, now);
@@ -50,6 +48,6 @@ export function BrowserMemberList({
           />
         );
       })}
-    </section>
+    </Subgroup>
   );
 }

@@ -157,6 +157,8 @@ export async function joinMesh(
   deps: JoinDeps = BROWSER_JOIN_DEPS,
 ): Promise<BrowserJoined> {
   const invite = await refuseEarly(offer, deps.membership);
+  // A join commits only through a claim it holds (review of #2890); one run here claims its store's own slot.
+  if (deps.membership.enrollment === undefined) await deps.membership.enroll();
   const name = meshNameOf(deviceName);
   const { secure, sign, device } = await dialInviter(offer, name, deps);
   try {

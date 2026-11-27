@@ -1,5 +1,5 @@
 diff --git a/dist/input.d.ts b/dist/input.d.ts
-index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02f1804d30 100644
+index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..f930e74307a2eb90ebfe7af68968eb5a10244ad8 100644
 --- a/dist/input.d.ts
 +++ b/dist/input.d.ts
 @@ -20,6 +20,7 @@ export declare class InputHandler {
@@ -10,6 +10,15 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private suppressNextTouchDeleteInput;
      private mouseButtons;
      private lastMouseMotion;
+@@ -43,7 +44,7 @@ export declare class InputHandler {
+     private _onMouseUp;
+     private _onMouseLeave;
+     private _onWheel;
+-    constructor(element: HTMLElement, onData: (data: string, preserveScroll?: boolean) => void, getBridge: () => TerminalCore | null, getCellSize?: () => {
++    constructor(element: HTMLElement, onData: (data: string, preserveScroll?: boolean, answer?: boolean) => void, getBridge: () => TerminalCore | null, getCellSize?: () => {
+         charWidth: number;
+         rowHeight: number;
+     } | null, prepareComposition?: () => void, onBinary?: (data: Uint8Array) => void, selectionActions?: {
 @@ -61,6 +62,11 @@ export declare class InputHandler {
      encodeKey(key: SyntheticKey): string | null;
      /** Send text the way a clipboard paste would. */
@@ -23,7 +32,7 @@ index 3bc52a7d1baf0c827e0effa4ad2388e63876f0ed..8b31842ac8259bbca5ca3baae7d9ab02
      private handleCompositionEnd;
      private hideComposition;
 diff --git a/dist/input.js b/dist/input.js
-index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a512035000 100644
+index 78a86ffd96eec03222777f40e9db6a0561684c3f..c842ffe91b8e436d58f2166a373662f8e1ec81fa 100644
 --- a/dist/input.js
 +++ b/dist/input.js
 @@ -67,9 +67,54 @@ const FIXED_KEYS = {
@@ -102,12 +111,13 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          // The first native deletion mirrors the Backspace already sent on keydown.
          this.suppressNextTouchDeleteInput = false;
          this.mouseButtons = 0;
-@@ -153,10 +212,13 @@ export class InputHandler {
+@@ -153,10 +212,14 @@ export class InputHandler {
              this.positionTextarea();
              this.element.classList.add("focused");
              if (this.getBridge()?.focusEvents?.())
 -                this.onData("\x1b[I");
-+                this.onData("\x1b[I", true);
++                // The renderer's own report, not typing: the third argument says so (doriterm #2794).
++                this.onData("\x1b[I", true, true);
          };
          this._onBlur = () => {
              this.tabExitArmed = false;
@@ -117,16 +127,16 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
              this.focused = false;
              this.composing = false;
              this.recentCompositionCommit = null;
-@@ -169,7 +231,7 @@ export class InputHandler {
+@@ -169,7 +232,7 @@ export class InputHandler {
              this.pressedModifiers.clear();
              this.deliveredKeys.clear();
              if (this.getBridge()?.focusEvents?.())
 -                this.onData("\x1b[O");
-+                this.onData("\x1b[O", true);
++                this.onData("\x1b[O", true, true);
          };
          this._onMouseDown = (event) => {
              this.tabExitArmed = false;
-@@ -224,10 +286,12 @@ export class InputHandler {
+@@ -224,10 +287,12 @@ export class InputHandler {
          this.textarea.focus({ preventScroll: true });
      }
      syncInputPosition() {
@@ -140,7 +150,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          this.accessibility.destroy();
          this.textarea.removeEventListener("keydown", this._onKeyDown);
          this.textarea.removeEventListener("keyup", this._onKeyUp);
-@@ -253,13 +317,46 @@ export class InputHandler {
+@@ -253,13 +318,46 @@ export class InputHandler {
          if (physicalModifier) {
              this.pressedModifiers.add(e.code);
          }
@@ -189,7 +199,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          const bridge = this.getBridge();
          const kittyFlags = bridge?.kittyKeyboardFlags?.() ?? 0;
          const kittyOwnsModifier = physicalModifier && Boolean(kittyFlags & KITTY_REPORT_ALL);
-@@ -320,8 +417,12 @@ export class InputHandler {
+@@ -320,8 +418,12 @@ export class InputHandler {
              this.selectionActions.clearSelection();
              return;
          }
@@ -203,7 +213,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
              !e.altKey &&
              e.key.toLowerCase() === "c") {
              const sel = window.getSelection();
-@@ -345,6 +446,9 @@ export class InputHandler {
+@@ -345,6 +447,9 @@ export class InputHandler {
              this.suppressedKeyUps.add(keyId);
              if (e.key === "Backspace") {
                  e.preventDefault();
@@ -213,7 +223,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
                  this.selectionActions?.clearSelection();
                  this.onData("\x15");
              }
-@@ -371,6 +475,8 @@ export class InputHandler {
+@@ -371,6 +476,8 @@ export class InputHandler {
          if (kittyFlags !== 0) {
              const seq = encodeKittyKey(e, kittyFlags, e.repeat ? "repeat" : "press", this.pressedModifiers, bridge?.cursorKeysApp?.() ?? false);
              if (seq) {
@@ -222,7 +232,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
                  if (!physicalModifier)
                      this.selectionActions?.clearSelection();
                  if (nativeTouchDelete)
-@@ -385,6 +491,7 @@ export class InputHandler {
+@@ -385,6 +492,7 @@ export class InputHandler {
          }
          const seq = this.keyToSequence(e);
          if (seq) {
@@ -230,7 +240,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
              this.selectionActions?.clearSelection();
              if (nativeTouchDelete)
                  this.suppressNextTouchDeleteInput = true;
-@@ -395,6 +502,9 @@ export class InputHandler {
+@@ -395,6 +503,9 @@ export class InputHandler {
          }
      }
      handleKeyUp(e) {
@@ -240,7 +250,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          const keyId = e.code || e.key;
          this.pressedModifiers.delete(e.code);
          const delivered = this.deliveredKeys.delete(keyId);
-@@ -421,6 +531,9 @@ export class InputHandler {
+@@ -421,6 +532,9 @@ export class InputHandler {
          this.recentCompositionCommit = null;
          this.suppressNextTouchDeleteInput = false;
          const text = e.clipboardData?.getData("text");
@@ -250,7 +260,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          // Some mobile browsers leave clipboardData empty but insert the paste
          // into the textarea. Let that input event carry the text instead.
          if (!text)
-@@ -462,6 +575,8 @@ export class InputHandler {
+@@ -462,6 +576,8 @@ export class InputHandler {
      }
      handleCompositionStart() {
          this.tabExitArmed = false;
@@ -259,7 +269,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          this.prepareComposition();
          this.composing = true;
          this.recentCompositionCommit = null;
-@@ -472,11 +587,22 @@ export class InputHandler {
+@@ -472,11 +588,22 @@ export class InputHandler {
          this.positionTextarea();
          const s = this.textarea.style;
          s.opacity = "1";
@@ -285,7 +295,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          this.composing = false;
          this.hideComposition();
          this.resetInputValue();
-@@ -485,6 +611,44 @@ export class InputHandler {
+@@ -485,6 +612,44 @@ export class InputHandler {
              this.onData(e.data);
          }
      }
@@ -330,7 +340,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
      hideComposition() {
          this.compositionWidth = 0;
          const s = this.textarea.style;
-@@ -502,7 +666,7 @@ export class InputHandler {
+@@ -502,7 +667,7 @@ export class InputHandler {
          if (!bridge || !cellSize || !firstRow || !bridge.getCursor) {
              this.textarea.style.left = "0px";
              this.textarea.style.top = "0px";
@@ -339,7 +349,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
                  this.textarea.style.width = `${Math.max(1, this.compositionWidth)}px`;
                  this.textarea.style.height = `${cellSize?.rowHeight ?? 17}px`;
              }
-@@ -519,7 +683,7 @@ export class InputHandler {
+@@ -519,7 +684,7 @@ export class InputHandler {
          const s = this.textarea.style;
          s.left = `${rowRect.left - hostRect.left - this.element.clientLeft + this.element.scrollLeft + col * charWidth}px`;
          s.top = `${rowRect.top - hostRect.top - this.element.clientTop + this.element.scrollTop + row * rowHeight}px`;
@@ -348,7 +358,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
              s.width = `${Math.min((bridge.getCols() - col) * charWidth, Math.max(charWidth, this.compositionWidth))}px`;
              s.height = `${rowHeight}px`;
          }
-@@ -528,13 +692,93 @@ export class InputHandler {
+@@ -528,13 +693,93 @@ export class InputHandler {
          const charWidth = this.getCellSize()?.charWidth;
          if (!charWidth || charWidth <= 0)
              return;
@@ -447,7 +457,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
      }
      resetInputValue() {
          this.textarea.value = this.touchPrimary ? TOUCH_INPUT_PLACEHOLDER : "";
-@@ -556,6 +800,18 @@ export class InputHandler {
+@@ -556,6 +801,18 @@ export class InputHandler {
      }
      handleInput(event) {
          this.tabExitArmed = false;
@@ -466,7 +476,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          if (this.composing) {
              this.sizeComposition();
              return;
-@@ -565,6 +821,36 @@ export class InputHandler {
+@@ -565,6 +822,36 @@ export class InputHandler {
          const value = this.touchPrimary && rawValue.startsWith(TOUCH_INPUT_PLACEHOLDER)
              ? rawValue.slice(TOUCH_INPUT_PLACEHOLDER.length)
              : rawValue;
@@ -503,7 +513,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
          this.resetInputValue();
          const recent = this.recentCompositionCommit;
          this.recentCompositionCommit = null;
-@@ -821,7 +1107,7 @@ export class InputHandler {
+@@ -821,7 +1108,7 @@ export class InputHandler {
                  return other;
          }
          if (e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -512,7 +522,7 @@ index 78a86ffd96eec03222777f40e9db6a0561684c3f..71b785a3bfc04535f298a71bf81e51a5
              if (control !== null)
                  return control;
              if (e.key === "Backspace")
-@@ -855,6 +1141,24 @@ export class InputHandler {
+@@ -855,6 +1142,24 @@ export class InputHandler {
          return null;
      }
  }
@@ -692,10 +702,27 @@ index 077910eeb3822f38089dd3ad6a9f345ef2a2a38a..7b0dbf34c37f51d6bc357688567a8957
      invalidateColors() {
          this.colorsChanged = true;
 diff --git a/dist/wterm.d.ts b/dist/wterm.d.ts
-index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f022c96f7 100644
+index a6746f499859ba9da2d7884dfd71694205c6d819..86169eb3b0745d55cec6efe33e1363b5f4484909 100644
 --- a/dist/wterm.d.ts
 +++ b/dist/wterm.d.ts
-@@ -131,6 +131,17 @@ export declare class WTerm {
+@@ -34,6 +34,8 @@ export interface WTermOptions {
+     webmcp?: boolean | WebMCPOptions;
+     debug?: boolean;
+     onData?: (data: string) => void;
++    /** The terminal's own answers (query replies, focus reports), apart from typed input; onData when unset. */
++    onAnswer?: (data: string) => void;
+     /** Raw input bytes, used by X10 mouse reports. */
+     onBinary?: (data: Uint8Array) => void;
+     onTitle?: (title: string) => void;
+@@ -109,6 +111,7 @@ export declare class WTerm {
+     private _workingDirectory;
+     private _shellIntegration;
+     onData: ((data: string) => void) | null;
++    onAnswer: ((data: string) => void) | null;
+     onBinary: ((data: Uint8Array) => void) | null;
+     onTitle: ((title: string) => void) | null;
+     onWorkingDirectory: ((uri: string) => void) | null;
+@@ -131,6 +134,17 @@ export declare class WTerm {
       * Pass `null` to drop them and answer color queries from the page's CSS again.
       */
      setThemeColors(colors: TerminalThemeColors | null): void;
@@ -713,7 +740,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      write(data: string | Uint8Array): void;
      /**
       * Hands the core the theme colors the page's CSS resolves to, unless the
-@@ -156,6 +167,12 @@ export declare class WTerm {
+@@ -156,6 +170,12 @@ export declare class WTerm {
      getSearchState(): SearchState;
      /** Scroll to the previous (-1) or next (1) shell prompt from the viewport top. */
      scrollToPrompt(direction: -1 | 1): boolean;
@@ -727,7 +754,7 @@ index a6746f499859ba9da2d7884dfd71694205c6d819..1a6cc13f68b3d84cc12d7c4a9b51f22f
      setOutputAnnouncements(enabled: boolean): void;
      /** Expose this terminal to in-page agents through WebMCP, or withdraw it. */
 diff --git a/dist/wterm.js b/dist/wterm.js
-index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874fbdf43c80 100644
+index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..9d9fdbb0d62a4dc946ff9c07993ff4b1c4698100 100644
 --- a/dist/wterm.js
 +++ b/dist/wterm.js
 @@ -120,6 +120,8 @@ export class WTerm {
@@ -759,7 +786,16 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._rowHeight = 0;
          this._charWidth = 0;
          this._windowSizeQueryState = 0;
-@@ -227,6 +239,7 @@ export class WTerm {
+@@ -213,6 +225,8 @@ export class WTerm {
+         this._renderingPaused = options.renderingPaused ?? false;
+         this._webmcp = webmcpOptions(options.webmcp);
+         this.onData = options.onData || null;
++        /** The terminal's own answers (query replies, focus reports), apart from typed input; onData when unset. */
++        this.onAnswer = options.onAnswer || null;
+         this.onBinary = options.onBinary || null;
+         this.onTitle = options.onTitle || null;
+         this.onWorkingDirectory = options.onWorkingDirectory || null;
+@@ -227,6 +241,7 @@ export class WTerm {
                  const match = this._search.matches[this.getSearchState().activeIndex];
                  if (match) {
                      this._shouldScrollToBottom = false;
@@ -767,7 +803,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
                      this._pendingResizeScrollTop = null;
                      this._setScrollTop((match.start.row + 0.5) * this._rowHeight -
                          this.element.clientHeight / 2);
-@@ -336,6 +349,16 @@ export class WTerm {
+@@ -336,6 +351,16 @@ export class WTerm {
          this._onScroll = () => {
              if (this._pendingResizeScrollTop !== null)
                  return;
@@ -784,7 +820,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
              const atBottom = this._isScrolledToBottom();
              if (this._shouldScrollToBottom && atBottom) {
                  this._programmaticScrollTop = null;
-@@ -349,6 +372,8 @@ export class WTerm {
+@@ -349,6 +374,8 @@ export class WTerm {
              }
              this._programmaticScrollTop = null;
              this._shouldScrollToBottom = false;
@@ -793,15 +829,18 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
              this._scheduleRender();
          };
          this.element.addEventListener("scroll", this._onScroll, { passive: true });
-@@ -418,6 +443,7 @@ export class WTerm {
+@@ -418,8 +445,9 @@ export class WTerm {
                  maxImageHeight: this.maxImageHeight,
                  renderer: this._rendererOption,
              });
 +            this.renderer.setWideGlyphScale(this._wideGlyphScale ?? null);
              this.renderer.setup(this.cols, this.rows);
-             this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
+-            this.input = new InputHandler(this.element, (data, preserveScroll = false) => this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
++            this.input = new InputHandler(this.element, (data, preserveScroll = false, answer = false) => answer ? this._deliverAnswer(data) : this._deliverInput(data, preserveScroll), () => this.bridge, () => this._charWidth > 0 && this._rowHeight > 0
                  ? { charWidth: this._charWidth, rowHeight: this._rowHeight }
-@@ -453,7 +479,6 @@ export class WTerm {
+                 : null, () => {
+                 this._rectangleDrag.cancel();
+@@ -453,7 +481,6 @@ export class WTerm {
              if (!this.autoResize) {
                  this._lockHeight();
              }
@@ -809,7 +848,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
              this._initialRender();
              this._registerWebMCP();
              if (this.cols !== initialCols || this.rows !== initialRows)
-@@ -465,12 +490,33 @@ export class WTerm {
+@@ -465,12 +492,33 @@ export class WTerm {
          }
          return this;
      }
@@ -843,7 +882,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._setScrollTop(this.element.scrollHeight);
      }
      _setScrollTop(value, frame) {
-@@ -508,6 +554,29 @@ export class WTerm {
+@@ -508,6 +556,29 @@ export class WTerm {
              throw new Error("This terminal core cannot change its scrollback");
          this.bridge.setScrollbackLines(this._scrollbackLines);
      }
@@ -873,7 +912,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
      /**
       * Apply host colors without writing terminal input or restarting the session.
       * Pass `null` to drop them and answer color queries from the page's CSS again.
-@@ -553,7 +622,7 @@ export class WTerm {
+@@ -553,7 +624,7 @@ export class WTerm {
          this.renderer?.beforeMutation(this.bridge);
          if (this.debug)
              this.debug.traceWrite(data);
@@ -882,7 +921,16 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          // Answer theme color queries with the colors the page shows right now.
          if (mayQueryThemeColors(data))
              this._syncCssThemeColors();
-@@ -732,9 +801,30 @@ export class WTerm {
+@@ -590,7 +661,7 @@ export class WTerm {
+             listener();
+         for (const query of windowSizeQueries) {
+             try {
+-                this.onData?.(this._windowSizeResponse(query));
++                this._deliverAnswer(this._windowSizeResponse(query));
+             }
+             catch (error) {
+                 recordDeliveryError(error);
+@@ -732,9 +803,30 @@ export class WTerm {
          this._rectangleDrag.cancel();
          this._historySelection.invalidate();
          this.renderer?.beforeMutation(this.bridge);
@@ -915,7 +963,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._outputAnnouncements.invalidate();
          this.cols = this.bridge.getCols();
          this.rows = this.bridge.getRows();
-@@ -751,6 +841,19 @@ export class WTerm {
+@@ -751,6 +843,19 @@ export class WTerm {
          if (this.onResize)
              this.onResize(this.cols, this.rows);
      }
@@ -935,7 +983,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
      /** Search retained history and the active screen, using plain text. */
      search(query, options = {}) {
          if (this._destroyed)
-@@ -798,6 +901,7 @@ export class WTerm {
+@@ -798,6 +903,7 @@ export class WTerm {
              return false;
          const before = this.element.scrollTop;
          this._shouldScrollToBottom = false;
@@ -943,7 +991,19 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._searchReveal = false;
          this._pendingResizeScrollTop = target * this._rowHeight;
          this._doRender();
-@@ -1127,14 +1231,20 @@ export class WTerm {
+@@ -869,6 +975,11 @@ export class WTerm {
+             },
+         };
+     }
++    /** Input the terminal gives on its own: to onAnswer, else to onData as before. */
++    _deliverAnswer(data) {
++        const deliver = this.onAnswer ?? this.onData;
++        deliver?.(data);
++    }
+     _deliverInput(data, preserveScroll = false) {
+         if (!preserveScroll) {
+             this._outputAnnouncements.input();
+@@ -1127,14 +1238,20 @@ export class WTerm {
              this._synchronizedOutputState = "idle";
              return false;
          }
@@ -966,7 +1026,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          }
          if (this._synchronizedOutputState !== "idle") {
              return this._synchronizedOutputState === "held";
-@@ -1144,9 +1254,10 @@ export class WTerm {
+@@ -1144,9 +1261,10 @@ export class WTerm {
          this._armSynchronizedOutputFallback(generation);
          return true;
      }
@@ -978,7 +1038,7 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
          this._synchronizedOutputTimer = setTimeout(() => {
              if (this._synchronizedOutputState !== "held" ||
                  this._synchronizedOutputGeneration !== generation) {
-@@ -1157,7 +1268,7 @@ export class WTerm {
+@@ -1157,7 +1275,7 @@ export class WTerm {
              this._setupRendererIfNeeded();
              this._cancelScheduledRender();
              this._doRender();
@@ -987,7 +1047,17 @@ index 6f31f07b5bed9eb2abf7bd3c157df387cd19b41d..4b40f1679f5652fa9cf6f51b03c5874f
      }
      _cancelSynchronizedOutputFallback() {
          if (this._synchronizedOutputTimer == null)
-@@ -1576,14 +1687,16 @@ export class WTerm {
+@@ -1343,8 +1461,7 @@ export class WTerm {
+         let hasError = false;
+         while ((response = this.bridge.getResponse()) !== null) {
+             try {
+-                if (this.onData)
+-                    this.onData(response);
++                this._deliverAnswer(response);
+             }
+             catch (error) {
+                 if (!hasError) {
+@@ -1576,14 +1693,16 @@ export class WTerm {
          const height = this._visibleContentHeight(contentHeight);
          const newCols = Math.max(1, Math.floor(containerRect.width / charWidth));
          const newRows = Math.max(1, Math.floor(height / rowHeight));

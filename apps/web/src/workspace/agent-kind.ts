@@ -80,10 +80,15 @@ function skipped(word: string): boolean {
   return word === "env" || word === "exec" || ASSIGNMENT.test(word);
 }
 
+/** A command line from its program on, past any `env`, `exec` and `NAME=value` before it; empty when none is left. */
+export function commandWords(argv: readonly string[]): readonly string[] {
+  const start = argv.findIndex((word) => !skipped(word));
+  return start === -1 ? [] : argv.slice(start);
+}
+
 /** The agent a command line runs, read past an `env`, a shell's `-c` and an interpreter, each at most once deep. */
 function commandKind(argv: readonly string[], depth = 0): AgentKind | null {
-  const start = argv.findIndex((word) => !skipped(word));
-  const [first, ...rest] = start === -1 ? [] : argv.slice(start);
+  const [first, ...rest] = commandWords(argv);
   if (first === undefined) return null;
   const name = programName(first).toLowerCase();
   const direct = kindOf(name);

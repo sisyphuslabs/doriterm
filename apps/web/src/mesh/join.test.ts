@@ -84,6 +84,7 @@ describe("what a browser may join (#1386, the shared guard)", () => {
 
   test("a browser that is a member already is refused before anything is dialed", async () => {
     const membership = new MembershipStore(memoryStore());
+    await membership.enroll();
     await membership.adopt({
       meshId: "mesh-1",
       records: [],
@@ -93,5 +94,24 @@ describe("what a browser may join (#1386, the shared guard)", () => {
       joinedAt: "2026-11-08T00:00:00.000Z",
     });
     await expect(refuseEarly(linkOffer("mesh"), membership)).rejects.toThrow("this browser is in mesh mesh-1 already");
+  });
+
+  test("a join by a browser that is a member already is refused before any claim, key load or dial", async () => {
+    const loaded: string[] = [];
+    const joining = deps(loaded);
+    await joining.membership.enroll();
+    await joining.membership.adopt({
+      meshId: "mesh-1",
+      records: [],
+      signPub: "x",
+      inviter: { hostId: "h", hostKey: "k" },
+      relayUrl: "wss://relay.example",
+      joinedAt: "2026-11-08T00:00:00.000Z",
+    });
+    await expect(joinMesh(linkOffer("mesh"), "Safari on iOS", joining)).rejects.toThrow(
+      "this browser is in mesh mesh-1 already",
+    );
+    expect(loaded).toEqual([]);
+    expect(joining.membership.enrollment).toBeUndefined();
   });
 });

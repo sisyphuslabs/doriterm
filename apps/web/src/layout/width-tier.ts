@@ -41,7 +41,8 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-const current = (): WidthTier =>
+/** The window's tier now, outside React (a picture deciding whether it leaves, leave-motion.ts). */
+export const currentWidthTier = (): WidthTier =>
   widthTier({
     width: window.innerWidth,
     screen: { width: window.screen.width, height: window.screen.height },
@@ -50,7 +51,7 @@ const current = (): WidthTier =>
 
 /** The window's tier, following resizes, rotation, folding and a pointer change. */
 export function useWidthTier(): WidthTier {
-  return useSyncExternalStore(subscribe, current);
+  return useSyncExternalStore(subscribe, currentWidthTier);
 }
 
 const portrait = (): boolean => window.innerHeight > window.innerWidth;

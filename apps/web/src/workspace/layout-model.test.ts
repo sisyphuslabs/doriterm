@@ -286,7 +286,7 @@ const where = (doc: JsonObject | null) =>
   doc === null ? null : tabsOf(doc).map((tab) => [tab.space, panesOf(tab.root).map((pane) => pane.terminal)]);
 
 describe("adoptLoose (#404)", () => {
-  test("a terminal no tab shows goes to the deepest space whose folder holds it, else to one Home space", () => {
+  test("a terminal no tab shows goes to the deepest space whose folder holds it, else to spaces named after its work", () => {
     const adopted = adoptLoose(
       saved,
       [loose("t1", "/w"), loose("t2", "/w/api/src"), loose("t3", "/w/web"), loose("t4", "/tmp"), loose("t5", "/srv")],
@@ -297,9 +297,20 @@ describe("adoptLoose (#404)", () => {
       ["spc-w", ["t3"]],
       ["spc-api", ["t2"]],
       ["spc7", ["t4"]],
-      ["spc7", ["t5"]],
+      ["spc10", ["t5"]],
     ]);
-    expect(adopted === null ? null : docSpaces(adopted).at(-1)?.name).toBe(HOME_SPACE);
+    // #2670: a space made for a loose terminal keeps its folder and saves no name, so it is named after its work, never a
+    // generic Home.
+    expect(
+      adopted === null
+        ? null
+        : docSpaces(adopted)
+            .slice(-2)
+            .map((space) => [space.id, space.name, space.folder]),
+    ).toEqual([
+      ["spc7", "", "/tmp"],
+      ["spc10", "", "/srv"],
+    ]);
   });
 
   test("nothing to adopt writes nothing: shown and finished terminals stay as they are", () => {
@@ -337,7 +348,7 @@ describe("adoptLoose (#404)", () => {
       ["", 1],
       ["", 0],
       ["api-x", 2],
-      [HOME_SPACE, 1],
+      ["", 1],
     ]);
   });
 
@@ -377,12 +388,17 @@ describe("adoptLoose (#404)", () => {
     ]);
   });
 
-  test("adopting again adopts nothing more, and an existing Home is reused", () => {
+  test("adopting again adopts nothing more, and a space made once is the one later siblings join", () => {
     const once = adoptLoose(null, [loose("t1", "/a")], ids());
     expect(once === null ? null : adoptLoose(once, [loose("t1", "/a")])).toBeNull();
-    const twice = once === null ? null : adoptLoose(once, [loose("t1", "/a"), loose("t2", "/b")], ids());
-    expect(twice === null ? null : docSpaces(twice).map((space) => [space.name, space.tabs.length])).toEqual([
-      [HOME_SPACE, 2],
+    const again = ids();
+    const twice =
+      once === null ? null : adoptLoose(once, [loose("t1", "/a"), loose("t2", "/a/src"), loose("t3", "/b")], again);
+    expect(
+      twice === null ? null : docSpaces(twice).map((space) => [space.name, space.folder, space.tabs.length]),
+    ).toEqual([
+      ["", "/a", 2],
+      ["", "/b", 1],
     ]);
   });
 });

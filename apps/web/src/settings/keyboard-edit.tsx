@@ -1,18 +1,11 @@
-import {
-  IconButton,
-  RowDropCaret,
-  RowDropIndicator,
-  rowPlacement,
-  useListDrag,
-  groupHeadingClass,
-  cn,
-} from "@doriface/ui";
+import { IconButton, RowDropCaret, RowDropIndicator, rowPlacement, useListDrag, cn } from "@doriface/ui";
 import { GripVertical, Minus, Plus } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { specialKeysOn } from "../keybar/catalog.ts";
 import { specialEntries } from "../keybar/entries.ts";
 import { removeKey, restoreKey } from "../keybar/operations.ts";
 import { inVisibleOrder } from "./key-order.ts";
+import { Subgroup, listRowClass, rowValueClass, sectionStackClass } from "./settings-layout.tsx";
 import type { KeyBarSettings } from "../keybar/settings.ts";
 import { keyBarStore } from "../keybar/store.ts";
 import type { HostPlatform } from "../terminal/keys.ts";
@@ -75,11 +68,10 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
     setSaid(`${name} moved to position ${to + 1} of ${shown.length}`);
   };
   return (
-    <div className="flex flex-col gap-4">
+    <div className={sectionStackClass}>
       {/* While a key is picked up this list owns Escape, so the screen's own close shortcut cannot fire under the move. */}
-      <section aria-label="In the bar" data-captures-keys={picked === null ? undefined : ""} className="flex flex-col">
-        <h3 className={cn("px-1 pb-1", groupHeadingClass)}>In the bar</h3>
-        <ul ref={list} className="relative overflow-hidden rounded-lg border border-border bg-card">
+      <Subgroup label="In the bar" title="In the bar" data-captures-keys={picked === null ? undefined : ""}>
+        <ul ref={list} className="relative overflow-hidden">
           {shown.map((entry, index) => {
             const place = rowPlacement(entry.id, index, drag, settle);
             return (
@@ -87,10 +79,11 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
                 key={entry.id}
                 data-drag-id={entry.id}
                 data-edit-key={entry.id}
+                data-list-row
                 style={place.offset === 0 ? undefined : { translate: `0 ${place.offset}px` }}
                 onPointerDown={(event) => onPointerDown(event, entry.id, index)}
                 onClickCapture={onClickCapture}
-                className={`flex min-h-12 items-center gap-3 border-b border-border px-3 last:border-b-0 ${place.className}`}
+                className={cn(listRowClass, "py-0", place.className)}
               >
                 <IconButton
                   data-drag-ignore
@@ -121,7 +114,7 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
             );
           })}
           {shown.length === 0 ? (
-            <li className="px-3 py-3 text-prose text-muted-foreground">The bar has no keys. Add one below.</li>
+            <li className={cn(listRowClass, rowValueClass)}>The bar has no keys. Add one below.</li>
           ) : null}
           {drag === null ? null : <RowDropIndicator drag={drag} />}
           {drag === null ? null : <RowDropCaret drag={drag} />}
@@ -129,16 +122,11 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
         <p aria-live="polite" className="sr-only">
           {said}
         </p>
-      </section>
-      <section aria-label="More keys" className="flex flex-col">
-        <h3 className={cn("px-1 pb-1", groupHeadingClass)}>More keys</h3>
-        <ul className="overflow-hidden rounded-lg border border-border bg-card">
+      </Subgroup>
+      <Subgroup label="More keys" title="More keys">
+        <ul className="flex flex-col">
           {removed.map((entry) => (
-            <li
-              key={entry.id}
-              data-restore-key={entry.id}
-              className="flex min-h-12 items-center gap-3 border-b border-border px-3 last:border-b-0"
-            >
+            <li key={entry.id} data-restore-key={entry.id} data-list-row className={listRowClass}>
               <IconButton
                 label={`Add ${entry.name}`}
                 icon={<Plus />}
@@ -149,11 +137,9 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
               <span className="min-w-0 flex-1 truncate text-base text-foreground">{entry.label}</span>
             </li>
           ))}
-          {removed.length === 0 ? (
-            <li className="px-3 py-3 text-prose text-muted-foreground">Every key is in the bar.</li>
-          ) : null}
+          {removed.length === 0 ? <li className={cn(listRowClass, rowValueClass)}>Every key is in the bar.</li> : null}
         </ul>
-      </section>
+      </Subgroup>
     </div>
   );
 }

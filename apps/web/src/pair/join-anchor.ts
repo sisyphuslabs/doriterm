@@ -5,6 +5,10 @@ export interface BrowserJoinAnchor extends JoinAnchor {
   readonly name: string;
   readonly relayUrl: string;
   readonly inviterName: string;
+  /** The key slot the join runs on (#2861), so a resume offers the same keys; an anchor without one is the default. */
+  readonly keySlot?: string;
+  /** The generation the join was claimed at: a resume continues that enrollment only, never a later one. */
+  readonly generation?: number;
 }
 
 export const JOIN_ANCHOR_KEY = "mesh.join-anchor";
@@ -27,6 +31,8 @@ export async function loadJoinAnchor(storage: KeyValueStore = deviceStore): Prom
   const name = field("name");
   const relayUrl = field("relayUrl");
   const inviterName = field("inviterName");
+  const keySlot = field("keySlot");
+  const generation = field("generation");
   if (
     offer === undefined ||
     offer === "unknown" ||
@@ -40,7 +46,9 @@ export async function loadJoinAnchor(storage: KeyValueStore = deviceStore): Prom
     typeof confirmed !== "boolean" ||
     typeof name !== "string" ||
     typeof relayUrl !== "string" ||
-    typeof inviterName !== "string"
+    typeof inviterName !== "string" ||
+    (keySlot !== undefined && typeof keySlot !== "string") ||
+    (generation !== undefined && typeof generation !== "number")
   )
     return unreadable();
   const hostId: unknown = Reflect.get(dialed, "hostId");
@@ -60,5 +68,7 @@ export async function loadJoinAnchor(storage: KeyValueStore = deviceStore): Prom
     name,
     relayUrl,
     inviterName,
+    ...(typeof keySlot === "string" ? { keySlot } : {}),
+    ...(typeof generation === "number" ? { generation } : {}),
   };
 }

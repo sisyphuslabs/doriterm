@@ -15,6 +15,13 @@ const SYNCHRONIZED_OUTPUT = 2026;
  */
 const MAX_CARRY = 256;
 
+const OPENING = new TextEncoder().encode("\u001b[?2026h");
+
+/** Whether `bytes` begin by opening a synchronized update, as a core's paint does (herdr-core #232). */
+export function opensUpdate(bytes: Uint8Array): boolean {
+  return bytes.length >= OPENING.length && OPENING.every((byte, at) => bytes[at] === byte);
+}
+
 /**
  * Follows a terminal's output and tells whether it is inside a synchronized update: after `ESC [ ? 2026 h` and before
  * `ESC [ ? 2026 l` (or a full reset, RIS `ESC c`, which ends it too). A sequence split across chunks is joined.

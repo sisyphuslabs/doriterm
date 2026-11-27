@@ -176,6 +176,8 @@ scenario("a browser joins the mesh as its own member (#1386, stage 2)", ["join",
     const hosts = running();
     const a = hosts.host("a");
     const web = await browser();
+    // A membership is committed through the claim a join holds (#2890), as a real first join made it.
+    await web.membership.enroll();
     await web.membership.adopt({
       meshId: meshIdOf(a),
       records: [],

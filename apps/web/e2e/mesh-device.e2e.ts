@@ -82,8 +82,10 @@ for (const phone of [false, true]) {
             });
             try {
               return await new Promise<unknown>((resolve, reject) => {
-                const request = db.transaction("device").objectStore("device").get("mesh-membership");
-                request.addEventListener("success", () => resolve(request.result ?? null));
+                const request = db.transaction("device").objectStore("device").get("mesh-memberships");
+                request.addEventListener("success", () =>
+                  resolve(Reflect.get(Object(request.result), "memberships") ?? null),
+                );
                 request.addEventListener("error", () => reject(request.error));
               });
             } finally {
@@ -91,7 +93,7 @@ for (const phone of [false, true]) {
             }
           }),
         )
-        .toBeNull();
+        .toEqual([]);
       await expect(page.getByRole("heading", { name: "Join a mesh", exact: true })).toBeVisible();
       await expect(page.getByText("This browser was removed from the mesh", { exact: true })).toHaveCount(0);
     } finally {

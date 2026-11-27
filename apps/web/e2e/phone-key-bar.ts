@@ -1,4 +1,5 @@
 import { devices, type Locator, type Page } from "@playwright/test";
+import { atRest } from "./at-rest.ts";
 import { coreSize, gridSize } from "./core-size.ts";
 import { expect, opened } from "./fixtures.ts";
 
@@ -87,6 +88,43 @@ export async function scrollDocument(page: Page, px: number): Promise<void> {
   await page.evaluate((offset) => (Reflect.get(window, "scrollDocument") as (px: number) => void)(offset), px);
 }
 
+/**
+ * Resizes the page as a phone does for its keyboard, split screen or a rotation, and returns once the page has handled
+ * that size: its next window resize, listened for before the size changes, after the app's own listener. Sizes set back
+ * to back otherwise reach the page as one resize, which a phone never sends: the keyboard logic then sees a rotation and
+ * the keyboard closing as one change (#2553). `size` must differ from the page's size now, or no resize comes.
+ */
+export async function resizeSeen(page: Page, size: { readonly width: number; readonly height: number }): Promise<void> {
+  await page.evaluate(() => {
+    Reflect.set(
+      window,
+      "__resizeSeen",
+      new Promise<void>((resolve) => window.addEventListener("resize", () => resolve(), { once: true })),
+    );
+  });
+  await page.setViewportSize(size);
+  await page.evaluate(() => Reflect.get(window, "__resizeSeen") as Promise<void>);
+}
+
+/**
+ * Taps `tap` and resizes the page for the keyboard it raises, at one moment on the page's clock: a phone's keyboard
+ * comes up right after the tap, and the page counts a shrink as the keyboard only within KEYBOARD_REQUEST_MS of it. A
+ * loaded runner can spend longer than that between the two steps (4.5 s measured, #2553); with the clock paused, that
+ * time never reaches the page. Needs `page.clock.install()` before the page loads. The pause lands ten seconds ahead of
+ * the page's time as last read, past any delay between that read and the pause, so it never asks the clock to go back;
+ * the jump fires each timer due by then once, as ten seconds passing would.
+ */
+export async function keyboardFromTap(
+  page: Page,
+  tap: Locator,
+  size: { readonly width: number; readonly height: number },
+): Promise<void> {
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10_000);
+  await tap.click();
+  await resizeSeen(page, size);
+  await page.clock.resume();
+}
+
 export async function showKeyboard(page: Page, px: number): Promise<void> {
   await page.evaluate((height) => (Reflect.get(window, "softKeyboard") as (px: number) => void)(height), px);
 }
@@ -123,6 +161,8 @@ export async function openPhoneTerminal(
   // A keyboard that rises for the focus is up once the keys' toggle says so: the keys are on screen either way (#2499).
   const raises = keyboard === "overlay" || (keyboard !== "resize" && keyboard.raiseOnFocus);
   if (raises) await expect(key(page, "Hide keyboard")).toBeVisible();
+  // The screen pushed in and the keys riding up to the keyboard have settled: a spec reads the phone at rest (#2875).
+  await atRest(page);
   return terminal;
 }
 
@@ -199,6 +239,7 @@ export const key = (page: Page, name: string) => page.getByRole("button", { name
  * (KeyButton's hold), and the lift that follows sends nothing. Resolves once the sheet is on screen.
  */
 export async function openShortcutPacks(page: Page): Promise<void> {
+  await atRest(page);
   const ctrl = keysBar(page).getByRole("button", { name: "Control", exact: true });
   const box = await ctrl.boundingBox();
   if (box === null) throw new Error("the keys bar's Ctrl is not laid out");
@@ -210,6 +251,7 @@ export async function openShortcutPacks(page: Page): Promise<void> {
 }
 
 export async function expectTouchTargets(scope: Locator): Promise<void> {
+  await atRest(scope.page());
   const small = await scope.getByRole("button").evaluateAll((buttons) =>
     buttons
       .map((button) => ({ name: button.getAttribute("aria-label") ?? "", box: button.getBoundingClientRect() }))

@@ -1,4 +1,4 @@
-import { type JsonObject, SPACE_LABEL, type Terminal } from "@doriface/protocol";
+import { folderSpaceName, type JsonObject, programSpaceName, SPACE_LABEL, type Terminal } from "@doriface/protocol";
 import { docSpaces, type NewSpace } from "@doriface/protocol/layout";
 
 /** The label herdr-app places a terminal by: the id of a space in its machine's layout document. */
@@ -14,8 +14,12 @@ const holds = (folder: string, dir: string): boolean =>
 /**
  * The space a terminal no tab shows goes to, in its machine's document (#404): the space its `herdr.space` label names
  * when the document has it, as herdr-app adopts; else the space its `space` label names (made when there is none);
- * else the space whose folder holds its working directory (the deepest such folder); else the Home space, made when
- * there is none. `makeId` is called only when a new space is made, so callers that number ids keep their order.
+ * else the space whose folder holds its working directory (the deepest such folder); else a space named after the work
+ * the terminal does (#2670) — its directory when that names a task, the space keeping that folder, so the terminal's
+ * later siblings join it, and saving no name, so the sidebar names it after the folder and tells two folders ending the
+ * same way apart by their parent (#397); else, from a system directory, a folderless space named after the program it started — never
+ * a generic Home, which only an existing Home space (herdr-app's own fallback) still adopts. `makeId` is called only
+ * when a new space is made, so callers that number ids keep their order.
  */
 export function placeOf(doc: JsonObject | null, terminal: Terminal, makeId: (prefix: "spc") => string): NewSpace {
   const spaces = doc === null ? [] : docSpaces(doc);
@@ -33,7 +37,12 @@ export function placeOf(doc: JsonObject | null, terminal: Terminal, makeId: (pre
     .toSorted((a, b) => b.folder.length - a.folder.length)[0];
   if (owner !== undefined) return { id: owner.id, folder: owner.folder };
   const home = spaces.find((space) => space.name === HOME_SPACE && space.folder === "");
-  return { id: home?.id ?? makeId("spc"), folder: "", name: HOME_SPACE };
+  if (home !== undefined) return { id: home.id, folder: "" };
+  const task = folderSpaceName(dir);
+  if (task !== undefined) return { id: makeId("spc"), folder: dir };
+  const program = programSpaceName(terminal.argv[0]);
+  const named = spaces.find((space) => space.folder === "" && space.name === program);
+  return { id: named?.id ?? makeId("spc"), folder: "", name: program };
 }
 
 /**

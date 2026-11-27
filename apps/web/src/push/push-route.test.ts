@@ -9,6 +9,11 @@ import { installShellForwarder } from "../connection/direct-forward.test-support
 import { type ConnectionSettings, DEFAULT_SETTINGS } from "../connection/settings.ts";
 import { type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
 import { pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
+import { loadDeviceKey } from "../connection/device-key.ts";
+import { relayDepsFor } from "../connection/relay-deps.ts";
+import { beginRetire, finishRetire } from "../mesh/enrollment.ts";
+import { SlotNotEnrolled, slotKeys } from "../mesh/identity-slots.ts";
+import { joinedStore, meshFixture, withDevice } from "../mesh/mesh-fixture.test-support.ts";
 import type { KeyValueStore } from "../storage/idb.ts";
 import { loadPushRoute, openPushLink, type PushRoute, routeOf, savePushRoute } from "./push-route.ts";
 
@@ -19,7 +24,8 @@ import { loadPushRoute, openPushLink, type PushRoute, routeOf, savePushRoute } f
 const CLI = join(import.meta.dir, "..", "..", "..", "host", "src", "cli.ts");
 const DIRECT = "ws://192.0.2.10:7767/v1/e2ee";
 const stateDir = mkdtempSync(join(tmpdir(), "dw-push-route-"));
-const device = rawStaticKey(generateX25519());
+const devicePair = generateX25519();
+const device = rawStaticKey(devicePair);
 const deps = { loadDeviceKey: () => Promise.resolve(device) };
 let relay: FakeRelay;
 let bridge: RelayClientBridge;
@@ -185,6 +191,57 @@ describe("a browser's push stream is the relay's (#1381 §8)", () => {
     } finally {
       shell.restore();
     }
+  });
+
+  test("a machine of another mesh keeps that mesh's key slot through save and load, and its push session uses that key (#2861)", async () => {
+    const route = routeOf({ ...settingsWith(DIRECT), keySlot: "second" });
+    expect(route).toMatchObject({ keySlot: "second" });
+    const store = memoryStore();
+    await savePushRoute({ ...relayRoute(DIRECT), keySlot: "second" }, store);
+    expect(await loadPushRoute(store)).toEqual(route);
+    const asked: (string | undefined)[] = [];
+    const link = await openPushLink(route, {
+      deps: {
+        loadDeviceKey: (keySlot) => {
+          asked.push(keySlot);
+          return deps.loadDeviceKey();
+        },
+      },
+    });
+    expect(asked).toEqual(["second"]);
+    link.close();
+  });
+
+  test("a push key held from before its mesh was left is refused over the relay, not just in the page that left (review of #2890)", async () => {
+    const storage = memoryStore();
+    await joinedStore(storage, withDevice(meshFixture(), devicePair), "second");
+    const held = await loadDeviceKey(slotKeys(storage, "second"), null);
+    const route = { ...relayRoute(DIRECT), keySlot: "second" };
+    const open = await openPushLink(route, { deps: { loadDeviceKey: async () => held } });
+    open.close();
+    await beginRetire(storage, "second");
+    const refused = openPushLink(route, { deps: { loadDeviceKey: async () => held } });
+    // The handshake reports why it stopped as its cause: here, the retired identity's key refused its DH.
+    await expect(refused).rejects.toMatchObject({ cause: expect.any(SlotNotEnrolled) });
+  });
+
+  test("the service worker's own key cache cannot dial as an identity left in a page: it reloads the key the slot holds now (review of #2890)", async () => {
+    const backing = memoryStore();
+    const viewOf = (): KeyValueStore => ({
+      get: (key) => backing.get(key),
+      put: (key, value) => backing.put(key, value),
+    });
+    const page = viewOf();
+    const worker = relayDepsFor(viewOf());
+    await joinedStore(page, meshFixture(), "");
+    const stale = await worker.loadDeviceKey();
+    const left = await beginRetire(page, "");
+    if (left === undefined) throw new Error("nothing was retired");
+    await finishRetire(page, left, async () => undefined);
+    await joinedStore(page, withDevice(meshFixture(), devicePair), "");
+    const link = await openPushLink(relayRoute(DIRECT), { deps: worker });
+    link.close();
+    await expect(stale.dh(new Uint8Array(32).fill(9))).rejects.toBeInstanceOf(SlotNotEnrolled);
   });
 });
 
