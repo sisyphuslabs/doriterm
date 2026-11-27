@@ -1,3 +1,4 @@
+import { atRest } from "./at-rest.ts";
 import { expect, laidOutBox, test } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
@@ -94,6 +95,8 @@ test("the sidebar toggle takes a press with the sidebar open, hidden or a rail, 
   await page.getByRole("separator", { name: "Resize sidebar" }).focus();
   await page.keyboard.press("Enter");
   await expect(sidebar(page)).toHaveAttribute("data-rail", "true");
+  // The sidebar narrows into the rail on the motion tokens: measure the strip where it stays, not mid-slide (#2910).
+  await atRest(page);
   await expectToggleTakesPresses(page, "rail");
   await expectStripStillDrags(page, "rail");
 
