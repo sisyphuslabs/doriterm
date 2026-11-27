@@ -40,12 +40,23 @@ test("the workflows a dev push starts are the ones this policy covers", () => {
   ]);
 });
 
-// #2361, #1783: a group keeps one pending run by default, so each dev push replaced the dev run still waiting for a
-// runner, and a merge could end with no finished run. queue: max keeps every waiting dev run, in order.
-test("every dev push run waits its turn in its group: none is cancelled, running or waiting", () => {
-  for (const { file, workflow } of onDevPush) {
-    if (workflow.concurrency === undefined) throw new Error(`${file} has no concurrency group`);
-    expect({ file, ...policy(workflow.concurrency, push) }).toEqual({ file, cancels: false, queue: "max" });
+// A deploy must not be lost: each waiting dev deploy is kept, in order (#2361, #1783, #868).
+test("every dev deploy waits its turn: none is cancelled, running or waiting", () => {
+  for (const file of ["deploy-get.yml", "deploy-landing.yml", "deploy-web.yml"]) {
+    const concurrency = onDevPush.find((entry) => entry.file === file)?.workflow.concurrency;
+    if (concurrency === undefined) throw new Error(`${file} has no concurrency group`);
+    expect({ file, ...policy(concurrency, push) }).toEqual({ file, cancels: false, queue: "max" });
+  }
+});
+
+// CI on dev never cancels a running run, and a newer push replaces only the run still WAITING: the tip always gets a
+// run, and a green run on a commit covers every merge up to it. Queueing every push would run them one after another
+// for hours and take the runner slots pull requests need (LEAD ruling, 2026-11-27).
+test("dev CI never cancels a running run and keeps one waiting run, so the tip always runs", () => {
+  for (const file of ["ci.yml", "from-zero.yml"]) {
+    const concurrency = onDevPush.find((entry) => entry.file === file)?.workflow.concurrency;
+    if (concurrency === undefined) throw new Error(`${file} has no concurrency group`);
+    expect({ file, ...policy(concurrency, push) }).toEqual({ file, cancels: false, queue: "single" });
   }
 });
 
@@ -57,9 +68,35 @@ test("a pull request run that cancels its older run keeps the single pending slo
     const { cancels, queue } = policy(workflow.concurrency, pullRequest);
     if (cancels === true) expect({ file, queue }).toEqual({ file, queue: "single" });
   }
-  for (const file of ["ci.yml", "deploy-web.yml", "from-zero.yml"]) {
-    const concurrency = onDevPush.find((entry) => entry.file === file)?.workflow.concurrency;
-    if (concurrency === undefined) throw new Error(`${file} has no concurrency group`);
-    expect({ file, ...policy(concurrency, pullRequest) }).toEqual({ file, cancels: true, queue: "single" });
+});
+
+type Job = { if?: string; steps?: { if?: string; run?: string }[] };
+const ci = Bun.YAML.parse(readFileSync(join(DIR, "ci.yml"), "utf8")) as {
+  on: { pull_request?: { types?: string[] } };
+  jobs: Record<string, Job>;
+};
+const prEvent = (draft: boolean): Event => ({
+  github: {
+    event_name: "pull_request",
+    ref: "refs/pull/7/merge",
+    repository: "sisyphuslabs/doriterm",
+    event: { pull_request: { number: 7, draft, head: { repo: { full_name: "sisyphuslabs/doriterm" } } } },
+  },
+});
+const runs = (job: Job | undefined, event: Event): Value =>
+  job?.if === undefined ? true : evaluate(job.if, { contexts: event });
+
+// A draft pull request skips the e2e suites, and leaving draft starts them; the required reporters fail for a draft so
+// it never shows those checks green (LEAD ruling, 2026-11-27).
+test("a draft pull request skips the e2e suites, reports them failed, and runs them once it is ready for review", () => {
+  expect(ci.on.pull_request?.types).toContain("ready_for_review");
+  for (const name of ["relay-e2e-part", "web-e2e-shard"]) {
+    expect({ name, draft: runs(ci.jobs[name], prEvent(true)) }).toEqual({ name, draft: false });
+    expect({ name, ready: runs(ci.jobs[name], prEvent(false)) }).toEqual({ name, ready: true });
+    expect({ name, push: runs(ci.jobs[name], push) }).toEqual({ name, push: true });
+  }
+  for (const name of ["relay-e2e", "web-e2e"]) {
+    const draftStep = ci.jobs[name]?.steps?.find((step) => step.run?.includes("draft: e2e not run"));
+    expect({ name, failsForDraft: draftStep?.run?.includes("exit 1") === true }).toEqual({ name, failsForDraft: true });
   }
 });
