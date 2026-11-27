@@ -155,6 +155,9 @@ jobs:
           bun run build:web
           bun run build
           bun run build:host "${{ matrix.os }}-${{ matrix.arch }}"
+      - name: The shipped main bundle holds no e2e release key
+        working-directory: apps/desktop
+        run: bun scripts/check-release-keys.ts dist/app/main.js
       # Every runner builds its own platform, so the host it ships can be asked which version it reports (#1039).
       - name: The host reports this release's version
         working-directory: apps/desktop/dist/host/${{ matrix.os }}-${{ matrix.arch }}
