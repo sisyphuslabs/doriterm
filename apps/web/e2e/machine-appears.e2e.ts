@@ -14,20 +14,23 @@ test("a machine added while this page is open appears without an interaction, an
   await page.goto("/");
   await expect(newOn(page)).toHaveCount(0, { timeout: 20_000 });
 
-  // The page stamps the moment the row's button shows. Timing the expect below instead would measure its retry schedule
-  // (re-checks about 0.35 s and 0.85 s in), which reads a row that came at 0.4 s as about 0.85 s. The row can already be
-  // in the page but hidden, so every attribute change is checked, and only a shown button counts.
+  // The page stamps the frame the row's button first shows in. Timing the expect below instead would measure its retry
+  // schedule (re-checks about 0.35 s and 0.85 s in), which reads a row that came at 0.4 s as about 0.85 s. The row can
+  // already be in the page but hidden, and it can become visible with no change to the page's elements (a style that
+  // settles after the last one): every painted frame is checked, so none is missed (#2365).
   await page.evaluate((label) => {
     const probe = { appeared: 0 };
     Object.assign(window, { machineProbe: probe });
-    const seen = new MutationObserver(() => {
+    const check = (): void => {
       const button = document.querySelector(`button[aria-label="${label}"]`);
-      if (button === null || !button.checkVisibility({ visibilityProperty: true })) return;
-      if (button.closest('[aria-hidden="true"],[inert]') !== null) return;
-      seen.disconnect();
-      probe.appeared = Date.now();
-    });
-    seen.observe(document.body, { childList: true, subtree: true, attributes: true });
+      const shown =
+        button !== null &&
+        button.checkVisibility({ visibilityProperty: true }) &&
+        button.closest('[aria-hidden="true"],[inert]') === null;
+      if (shown) probe.appeared = Date.now();
+      else requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
   }, `New space on ${MACHINE_NAME}`);
 
   const opened = Date.now();
