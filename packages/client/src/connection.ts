@@ -70,7 +70,8 @@ export interface RawFrames {
   send(channel: number, kind: number, payload?: Uint8Array): void;
 }
 
-const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
+/** How long a connection waits for the core's hello reply unless its caller gives a deadline of its own. */
+export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
 
 /**
  * How long a call hc answers at once may go unanswered before it fails with HcTimeoutError: well past an End's

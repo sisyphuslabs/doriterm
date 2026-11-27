@@ -1,3 +1,4 @@
+import { DEFAULT_HANDSHAKE_TIMEOUT_MS } from "@doriface/client";
 import { generateX25519, rawStaticKey } from "@doriface/crypto";
 import { startHost, type Host } from "@doriface/host";
 import { createHcSession, FakeRelay, type HcSession, RelayClientBridge } from "@doriface/host/testing";
@@ -110,9 +111,12 @@ test("the desktop shell's host that proves its key and then stalls the hello is 
   // The client dials the relay only once it has given up on the direct session. The core is let go at that dial, so
   // the relay session can open, and whether the hello was still stalled then says whether the client waited for it.
   let stalledAtRelayDial: boolean | undefined;
+  let relayDialedAfter: number | undefined;
+  const started = performance.now();
   const dial = bridge.dialed.push.bind(bridge.dialed);
   bridge.dialed.push = (...urls: URL[]): number => {
     stalledAtRelayDial ??= existsSync(stalled);
+    relayDialedAfter ??= performance.now() - started;
     rmSync(stalled, { force: true });
     return dial(...urls);
   };
@@ -121,5 +125,9 @@ test("the desktop shell's host that proves its key and then stalls the hello is 
   expect(opened.path).toBe("relay");
   expect(opened.directReason).toBe("no-answer");
   expect(stalledAtRelayDial).toBe(true);
+  // The client gave up on the direct session on its own 300 ms budget: one that waited for the hello would dial the relay
+  // only once the connection's default hello deadline ran out. Only this direct part is bounded, not the relay connect
+  // a loaded machine slows (#2614).
+  expect(relayDialedAfter).toBeLessThan(DEFAULT_HANDSHAKE_TIMEOUT_MS / 2);
   opened.connection.close();
 }, 60_000);
