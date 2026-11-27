@@ -27,7 +27,7 @@ import { HostUplink } from "./relay/host-uplink.ts";
 import { openRelayPasses } from "./relay/relay-passes.ts";
 import { RelaySessionWire } from "./relay/session-wire.ts";
 import { loadHostIdentity } from "./state/host-keys.ts";
-import { startHostPush } from "./push/host-push.ts";
+import { hostPushOf } from "./push/host-push.ts";
 
 export { HOST_VERSION, type E2eeEndpoint, type Host, type HostOptions } from "./host-types.ts";
 
@@ -101,23 +101,7 @@ async function serve(
       "revocation watch",
       watchRevocations(stateDir, () => e2ee.sessions.closeRevoked(), options.log),
     );
-  const push =
-    stateDir === undefined || e2ee === undefined
-      ? undefined
-      : await startHostPush({
-          stateDir,
-          hostId: e2ee.identity.hostId,
-          devices: e2ee.devices,
-          mesh: e2ee.mesh,
-          hc: {
-            hc: options.hc,
-            session: options.session,
-            env: options.env,
-            handshakeTimeoutMs: options.hcHandshakeTimeoutMs,
-          },
-          extraOrigins: options.pushTestOrigins,
-          log: options.log,
-        });
+  const push = await hostPushOf(options, e2ee);
   if (push !== undefined) {
     started(
       "push feed",

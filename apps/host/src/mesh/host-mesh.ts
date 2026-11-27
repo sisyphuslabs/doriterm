@@ -2,7 +2,6 @@ import type { Signed, View } from "@doriface/mesh";
 import {
   base64urlEncode,
   CloseCode,
-  DEFAULT_RELAY_URL,
   type HostIdentity,
   PAIRING_TTL_MS,
   type SecureLink,
@@ -229,7 +228,8 @@ export class HostMesh {
       ask: request.ask === true,
       confirm: confirm ?? (async () => false),
       relayUrl: request.relay,
-      defaultRelayUrl: relay.url ?? DEFAULT_RELAY_URL,
+      // A host with no uplink (--no-relay) names none: a code is then looked up only on a relay the request names.
+      defaultRelayUrl: relay.url,
       createSocket: relay.createSocket,
       proofs: relay.proofs,
       offerWithdrawn: () => this.offerWithdrawn(),

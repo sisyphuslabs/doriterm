@@ -142,12 +142,12 @@ export function listenControl(stateDir: string, handle: ControlHandler): Control
   };
 }
 
-/** Sends one request to the running host; resolves undefined when no host listens on this state dir. */
 /** The running host answered a control request with a refusal: the command line was fine, and the reason is the fix. */
 export class HostRefused extends Error {
   override readonly name = "HostRefused";
 }
 
+/** Sends one request to the running host; resolves undefined when no host listens on this state dir. */
 export async function requestControl(
   stateDir: string,
   request: ControlRequest,

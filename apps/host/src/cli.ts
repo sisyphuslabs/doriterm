@@ -128,6 +128,7 @@ async function serve(args: readonly string[]): Promise<void> {
   for (const [flag, given] of [
     ["--relay", values.relay],
     ["--lan-listen", values["lan-listen"]],
+    ["--auto-update", values["auto-update"] === "off" ? undefined : values["auto-update"]],
   ] as const) {
     if (localOnly && given !== undefined) throw new Error(`--local-only cannot be combined with ${flag}`);
   }
