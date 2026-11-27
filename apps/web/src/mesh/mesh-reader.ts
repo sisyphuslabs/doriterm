@@ -10,6 +10,23 @@ import {
 
 export type Verdict = "approve" | "deny";
 
+/**
+ * What the host made of the last answer, which it writes back beside it (`apps/host/src/mesh/approval-doc.ts`): not
+ * read yet, taken (`decided: true`), no such join held there any more (`decided: false`: it expired, or was answered
+ * elsewhere), or refused with a reason (`error`).
+ */
+export type HostOutcome =
+  | { readonly kind: "sent" }
+  | { readonly kind: "taken" }
+  | { readonly kind: "gone" }
+  | { readonly kind: "refused"; readonly reason: string };
+
+export interface Answered {
+  readonly nonce: string;
+  readonly verdict: Verdict;
+  readonly outcome: HostOutcome;
+}
+
 export type MeshRead =
   | { readonly phase: "loading" }
   | { readonly phase: "none" }
@@ -19,8 +36,8 @@ export type MeshRead =
       readonly phase: "ready";
       readonly status: MeshStatus;
       readonly machines: readonly MachineView[];
-      /** This host's answer document: which pending join was approved or denied last. */
-      readonly answered: { readonly nonce: string; readonly verdict: Verdict } | undefined;
+      /** This host's answer document: which pending join was approved or denied last, and what the host made of it. */
+      readonly answered: Answered | undefined;
     };
 
 export interface MeshCalls {
@@ -29,12 +46,21 @@ export interface MeshCalls {
   readonly machines: () => Promise<readonly MachineView[]>;
 }
 
-function answeredIn(value: JsonValue): { nonce: string; verdict: Verdict } | undefined {
+function outcomeIn(value: { readonly [key: string]: JsonValue }): HostOutcome {
+  const error = value["error"];
+  if (typeof error === "string") return { kind: "refused", reason: error };
+  const decided = value["decided"];
+  if (decided === true) return { kind: "taken" };
+  if (decided === false) return { kind: "gone" };
+  return { kind: "sent" };
+}
+
+function answeredIn(value: JsonValue): Answered | undefined {
   if (!isJsonObject(value)) return undefined;
   const approve = value["approve"];
   const deny = value["deny"];
-  if (typeof approve === "string") return { nonce: approve, verdict: "approve" };
-  if (typeof deny === "string") return { nonce: deny, verdict: "deny" };
+  if (typeof approve === "string") return { nonce: approve, verdict: "approve", outcome: outcomeIn(value) };
+  if (typeof deny === "string") return { nonce: deny, verdict: "deny", outcome: outcomeIn(value) };
   return undefined;
 }
 

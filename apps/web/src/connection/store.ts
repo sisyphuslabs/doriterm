@@ -60,7 +60,12 @@ export type ConnectionState =
       readonly stale: HcConnection | null;
     };
 
-const BACKOFF_MS = [500, 1_000, 2_000, 5_000, 10_000] as const;
+/**
+ * The first second is retried every 250 ms, whether the ladder starts over (a link that had been up) or goes on from its
+ * second step (a link that had just opened), so a link back from a sub-second blip reconnects before anything is said
+ * (#2904).
+ */
+const BACKOFF_MS = [250, 250, 250, 500, 1_000, 2_000, 5_000, 10_000] as const;
 
 /**
  * How long a live connection has to stay up before its next drop starts the ladder over. A link that opens and drops must

@@ -335,7 +335,7 @@ jobs:
       # nothing.
       - name: Browser spec through the mesh
         if: ${{ !cancelled() && matrix.shard == 1 }}
-        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts --workers=1
+        run: bun run test:e2e e2e/mesh-attach.e2e.ts e2e/mesh-input-hold.e2e.ts e2e/mesh-join-browser.e2e.ts e2e/predictive-echo-relay.e2e.ts e2e/terminal-resume-relay.e2e.ts e2e/relay-two-devices.e2e.ts e2e/phone-resume-cap-relay.e2e.ts --workers=1
         working-directory: apps/web
         env:
           CI: "1"
