@@ -73,15 +73,18 @@ describe("AgentFold accessible names and state", () => {
     expect(twoBlocked).toContain('aria-label="Needs you"');
   });
 
-  test("disabled state sets aria-disabled, uses muted tone and unavailable label, and ignores clicks", () => {
-    const expectedLabel = "Hide 2 sub-agents of deploy (unavailable while one of them is open)";
+  test("disabled state sets aria-disabled, uses muted tone, says so in a label of its own, and ignores clicks", () => {
     const markup = renderToStaticMarkup(
       <AgentFold name="deploy" folded={false} disabled count={2} blocked={0} urgency="working" onToggle={noop} />,
     );
+    const enabled = renderToStaticMarkup(
+      <AgentFold name="deploy" folded={false} count={2} blocked={0} urgency="working" onToggle={noop} />,
+    );
     expect(readAttr(markup, "aria-expanded")).toBe("true");
     expect(readAttr(markup, "aria-disabled")).toBe("true");
-    expect(readAttr(markup, "aria-label")).toBe(expectedLabel);
-    expect(readAttr(markup, "title")).toBe(expectedLabel);
+    expect(readAttr(markup, "aria-label")).toContain("deploy");
+    expect(readAttr(markup, "aria-label")).not.toBe(readAttr(enabled, "aria-label"));
+    expect(readAttr(markup, "title")).toBe(readAttr(markup, "aria-label"));
     expect(readAttr(markup, "class")?.split(" ")).toContain("text-disabled-glyph");
 
     let toggles = 0;

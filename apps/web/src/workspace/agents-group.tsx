@@ -108,7 +108,8 @@ export function AgentsGroup({
     () => new Set(listed.filter((terminal) => terminal.state === "live").map((terminal) => terminal.address)),
     [listed],
   );
-  const [folded, toggleFold] = useFolded(listedAddresses, terminalsLoaded, addedMachines);
+  const fedAddresses = useMemo(() => new Set(listed.map((terminal) => terminal.address)), [listed]);
+  const [folded, toggleFold] = useFolded(listedAddresses, fedAddresses, terminalsLoaded, addedMachines);
   const foldToggler = useRef(toggleFold);
   foldToggler.current = toggleFold;
   const onToggleFold = useCallback((address: string) => foldToggler.current(address), []);
