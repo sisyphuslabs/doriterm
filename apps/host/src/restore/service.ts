@@ -133,9 +133,11 @@ export class RestoreService {
     const capable = clients.every(
       (client) => client.signPub === proof.old || this.#compatibleClients.has(client.signPub),
     );
-    if (!this.#deps.sync.formatReady(file.records, undefined, RESTORE_FORMAT)) return { json: { t: "invite" } };
+    // M12: a member that cannot read or approve a readmit means the status quo, a new invite. Checked before the approval
+    // state, so an older client the R2 rule waits on never leaves the restore waiting for an approval it cannot give.
+    if (!this.#deps.sync.formatReady(file.records, undefined, RESTORE_FORMAT) || !capable)
+      return { json: { t: "invite" } };
     if (result.kind !== "approved") return { json: { t: result.kind } };
-    if (!capable) return { json: { t: "invite" } };
     return this.#publish(file.meshId, lookup, result.proof);
   }
 
