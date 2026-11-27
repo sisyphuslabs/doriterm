@@ -27,9 +27,9 @@ const MAX_HEIGHT_PX = 112;
 /**
  * The phone's line into the terminal (#666): a text field takes what is typed, so the phone's own keyboard does the
  * input method, autocorrect and Hangul composition in a real field, and Send writes the line and presses Return. The
- * field sends nothing before Send, which is the difference from typing in the terminal itself; Enter only starts a new line. It wraps and grows, so
- * the whole line is in view while it is written (#949). On the phone it lives in the input card over the keys row, which
- * its toggle opens (#2778).
+ * field sends nothing before Send, which is the difference from typing in the terminal itself; Enter only starts a new
+ * line (#2766). It wraps and grows, so the whole draft is in view while it is written (#949). On the phone it lives in
+ * the input card over the keys row, which its toggle opens (#2778).
  */
 export function InputBox({ onSend, draftKey, fieldRef, accessory, className, style }: InputBoxProps) {
   const [text, setTextState] = useState(() => drafts.get(draftKey) ?? "");
@@ -61,7 +61,9 @@ export function InputBox({ onSend, draftKey, fieldRef, accessory, className, sty
       element.blur();
       element.focus();
     }
-    const line = element?.value ?? text;
+    // Send ends the line once: line breaks left at the end of the field are not sent as Returns of their own, which would
+    // answer the next prompt (#2870).
+    const line = (element?.value ?? text).replace(/[\r\n]+$/, "");
     // With nothing written Enter is still Enter: it presses Return alone, as the Herdr app's card does. A line of spaces is
     // sent as written; a pager or a prompt reads them.
     onSend(line);

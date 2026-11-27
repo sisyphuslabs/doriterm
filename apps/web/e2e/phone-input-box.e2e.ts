@@ -71,6 +71,7 @@ test("Enter starts a new line in the field and sends nothing; Send sends the who
   expect(await value(page)).not.toContain("first");
   await key(page, "Send").click();
   await expect(terminal).toContainText("second", { timeout: 15_000 });
+  await expect(terminal).toContainText("first");
   await expect(field(page)).toHaveValue("");
   await expect(field(page)).toBeFocused();
 });

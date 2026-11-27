@@ -1,25 +1,14 @@
-import {
-  Badge,
-  Button,
-  IconButton,
-  Input,
-  Notice,
-  SettingRow,
-  TerminalPreview,
-  type TerminalLine,
-  cn,
-  fieldLabelClass,
-  groupHeadingClass,
-} from "@doriface/ui";
+import { Badge, Button, IconButton, Notice, SettingRow, TerminalPreview, type TerminalLine } from "@doriface/ui";
 import { asSentence } from "../storage/sentence.ts";
 import { RotateCcw } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { EMPTY_CONFIG, effective, isDefault, withValues, withoutKey, type TerminalConfig } from "../ghostty/config.ts";
 import { terminalConfigStore, useTerminalConfig, useTerminalConfigError } from "../ghostty/config-store.ts";
 import { KEYS } from "../ghostty/keys.ts";
 import { GROUP_LABEL, type Group, type KeyDef } from "../ghostty/schema.ts";
 import { KeyControl } from "./terminal-control.tsx";
 import { ImportExport } from "./terminal-import.tsx";
+import { SettingsToolbar, Subgroup, sectionStackClass } from "./settings-layout.tsx";
 
 const GROUPS: readonly Group[] = ["font", "cursor", "colors", "spacing", "behavior"];
 
@@ -80,7 +69,7 @@ function KeyRow({
       className="items-start"
       {...(def.label === undefined ? {} : { configKey: def.key })}
       title={
-        <span className="flex flex-wrap items-center gap-2 font-mono text-sm">
+        <span className="flex flex-wrap items-center gap-2 font-mono">
           {def.label ?? def.key}
           {unsupported ? <Badge>Not applied</Badge> : null}
           {def.support.level === "new-terminals" ? <Badge>New terminals</Badge> : null}
@@ -123,10 +112,9 @@ export function TerminalSection() {
   const config = useTerminalConfig();
   const storageError = useTerminalConfigError();
   const [query, setQuery] = useState("");
-  const searchId = useId();
   const shown = KEYS.filter((def) => matches(def, query));
   return (
-    <div className="flex flex-col gap-5">
+    <div className={sectionStackClass}>
       {storageError === null ? null : (
         <Notice tone="error" title="Terminal settings could not be read from this browser's storage">
           Changes are not saved, so the stored terminal settings stay as they are. Reload the page to try again.{" "}
@@ -141,43 +129,32 @@ export function TerminalSection() {
           className="font-(family-name:--term-font-family) text-(length:--term-font-pixels) leading-(--term-row-height)"
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {/* The label beside the field, so the row keeps the field's height and the rows below do not move. */}
-        <div className="flex w-full items-center gap-2 sm:w-72">
-          <label htmlFor={searchId} className={cn("shrink-0", fieldLabelClass)}>
-            Search<span className="sr-only"> terminal settings</span>
-          </label>
-          <Input
-            id={searchId}
-            type="search"
-            className="min-w-0 flex-1"
-            placeholder="Search keys, e.g. cursor"
-            value={query}
-            onValueChange={(next: string) => setQuery(next)}
-          />
-        </div>
-        <ImportExport readOnly={storageError !== null} />
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={config.size === 0 || storageError !== null}
-          onClick={() => void terminalConfigStore.update(() => EMPTY_CONFIG)}
-        >
-          Reset all
-        </Button>
-      </div>
+      <SettingsToolbar
+        name="terminal settings"
+        placeholder="Search keys, e.g. cursor"
+        query={query}
+        onQuery={setQuery}
+        actions={<ImportExport readOnly={storageError !== null} />}
+        reset={
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={config.size === 0 || storageError !== null}
+            onClick={() => void terminalConfigStore.update(() => EMPTY_CONFIG)}
+          >
+            Reset all
+          </Button>
+        }
+      />
       {GROUPS.map((group) => {
         const defs = shown.filter((def) => def.group === group);
         if (defs.length === 0) return null;
         return (
-          <section key={group} aria-labelledby={`terminal-group-${group}`} className="flex flex-col">
-            <h3 id={`terminal-group-${group}`} className={cn("pb-1", groupHeadingClass)}>
-              {GROUP_LABEL[group]}
-            </h3>
+          <Subgroup key={group} id={`terminal-group-${group}`} title={GROUP_LABEL[group]}>
             {defs.map((def) => (
               <KeyRow key={def.key} def={def} config={config} readOnly={storageError !== null} />
             ))}
-          </section>
+          </Subgroup>
         );
       })}
       {shown.length === 0 ? <p className="text-prose text-muted-foreground">No setting matches “{query}”.</p> : null}

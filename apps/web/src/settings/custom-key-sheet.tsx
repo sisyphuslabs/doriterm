@@ -5,6 +5,7 @@ import { MAX_TEXT_BYTES, parseKeyInput } from "../keybar/custom.ts";
 import { addFavorite, removeFavorite } from "../keybar/operations.ts";
 import type { KeyBarSettings } from "../keybar/settings.ts";
 import { keyBarStore } from "../keybar/store.ts";
+import { listRowClass } from "./settings-layout.tsx";
 
 export interface CustomKeySheetProps {
   readonly open: boolean;
@@ -68,11 +69,7 @@ export function CustomKeySheet({ open, onOpenChange, settings, readOnly }: Custo
         ) : (
           <ul className="flex flex-col">
             {settings.favorites.map((entry) => (
-              <li
-                key={entry.id}
-                data-custom-key={entry.id}
-                className="flex min-h-12 items-center gap-2 border-b border-border last:border-b-0"
-              >
+              <li key={entry.id} data-custom-key={entry.id} className={listRowClass}>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-base text-foreground">{entry.label}</p>
                   <p className="truncate font-mono text-xs text-muted-foreground">
@@ -80,7 +77,6 @@ export function CustomKeySheet({ open, onOpenChange, settings, readOnly }: Custo
                   </p>
                 </div>
                 <Button
-                  size="sm"
                   variant="ghost"
                   aria-label={`Remove ${entry.label}`}
                   disabled={readOnly}
@@ -120,7 +116,7 @@ export function CustomKeySheet({ open, onOpenChange, settings, readOnly }: Custo
               {error}
             </Notice>
           )}
-          <Button size="sm" className="self-start" disabled={readOnly} onClick={add}>
+          <Button className="self-start" disabled={readOnly} onClick={add}>
             Add key
           </Button>
         </div>

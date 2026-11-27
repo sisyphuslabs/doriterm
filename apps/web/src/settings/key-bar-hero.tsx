@@ -25,8 +25,8 @@ export function KeyBarHero({ settings, host }: KeyBarHeroProps) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card" data-key-bar-hero>
       <div className="flex items-center justify-between px-3 pt-3">
-        <p className="font-mono text-[0.6875rem] text-muted-foreground">$ doriterm</p>
-        {pack === null ? null : <p className="text-[0.6875rem] text-muted-foreground">{pack}</p>}
+        <p className="font-mono text-xs text-muted-foreground">$ doriterm</p>
+        {pack === null ? null : <p className="text-xs text-muted-foreground">{pack}</p>}
       </div>
       <div className="px-1 pt-2 pb-1">
         <ExtraKeysBar
@@ -38,7 +38,7 @@ export function KeyBarHero({ settings, host }: KeyBarHeroProps) {
           }}
         />
       </div>
-      <p className="px-3 pb-2 text-[0.6875rem] text-muted-foreground">
+      <p className="px-3 pb-2 text-xs text-muted-foreground">
         {latched.length === 0 ? "This is the bar in every terminal." : "Latched for the next key."}
       </p>
     </div>

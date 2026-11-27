@@ -20,8 +20,10 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
           {isIos()
             ? " An app added to the Home Screen keeps separate storage from the Safari tab you installed it from, which is why it asks again."
             : " An installed app keeps separate storage from the tab you installed it from, which is why it asks again."}{" "}
-          If this app was paired before, the phone cleared its data, so it needs pairing once more. Opening or pasting
-          an invite below pairs it in place.
+          {isIos()
+            ? "If this app was paired before, iOS cleared its data (it can do that to a Home Screen app's storage), so it needs pairing once more; your machines and their terminals are untouched."
+            : "If this app was paired before, the browser cleared its data, so it needs pairing once more."}{" "}
+          Opening or pasting an invite below pairs it in place.
         </p>
       ) : null}
       {connection.phase === "open" ? (

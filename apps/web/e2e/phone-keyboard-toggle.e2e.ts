@@ -99,7 +99,10 @@ test("Show keyboard on a field focused for typing outside a tap still asks for t
   page,
 }) => {
   // A program that asks for focus reports (mode 1004) and shows what it is sent: `cat -v` writes a focus-out as ^[[O.
-  const report = "printf 'reporting\\n\\033[?1004h'; exec cat -v";
+  // The terminal's own echo is off, so the grid holds only what the program heard: with it on, the line discipline draws
+  // each typed line (focus reports included, as ^[[O) before cat writes it, and a count taken between the two reads the
+  // echo's copy alone and the later one twice (#2891).
+  const report = "stty -echo; printf 'reporting\\n\\033[?1004h'; exec cat -v";
   const out = hcOn("host", ["run", "--bg", "--name", "keysfocus", "--label", "space=api", "--", "sh", "-c", report]);
   const address = String((JSON.parse(out) as { address: string }).address);
   try {

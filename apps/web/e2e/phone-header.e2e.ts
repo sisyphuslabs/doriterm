@@ -3,6 +3,7 @@ import { AGENT_SHELL, agentRow, endAgent } from "./agents.ts";
 import { expect, laidOutBox, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
+import { expectTabSwitch, openTabSwitch, tabSwitch } from "./phone-key-bar.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -53,11 +54,11 @@ test("on a phone the terminal header names the session and where it is, follows 
 
     // Where: the space, and this tab's place among the space's tabs.
     await expect(header(page).getByText(new RegExp(` · ${space}$`))).toBeVisible();
-    // The tab's place is the bottom tabs bar's, not the header's (#466).
-    await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toContainText("1/2");
-    await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toHaveAccessibleName(
-      /tab 1 of 2$/,
-    );
+    // The tab's place is the tabs switch's: on a portrait phone the session sheet's Tabs row (#2879).
+    await expectTabSwitch(page, async (tabs) => {
+      await expect(tabs).toContainText("1/2");
+      await expect(tabs).toHaveAccessibleName(/tab 1 of 2$/);
+    });
 
     // The header follows the open session's own state as hc reports it, without a reload.
     const shown = started[0];
@@ -71,18 +72,17 @@ test("on a phone the terminal header names the session and where it is, follows 
         .first(),
     ).toBeAttached({ timeout: 15_000 });
 
-    // The bottom tabs bar's switch opens the spaces and their tabs (the header has none: one strip, #466); picking another
-    // tab opens it and moves the position.
-    // By the switch's name pattern: a switch in the header whose name starts with "Switch" fails here (#2356).
+    // On a portrait phone the header keeps no switch: the session sheet's Tabs row opens the spaces and their tabs
+    // (#2879); picking another tab opens it and moves the position.
     await expect(header(page).getByRole("button", { name: /^Switch/ })).toHaveCount(0);
-    const switcher = page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
+    const switcher = await tabSwitch(page);
     const box = await laidOutBox(switcher);
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
     await switcher.click();
     const sheet = page.getByRole("dialog", { name: "Switch" });
     await opened(sheet);
-    // A visible Done closes the sheet and hands focus back to the switch.
+    // A visible Done closes the sheet and hands focus back to the "..." its Tabs row was in.
     // Exact: an agent row's name also carries its state, "Done" among them.
     const done = sheet.getByRole("button", { name: "Done", exact: true });
     const doneBox = await laidOutBox(done);
@@ -90,8 +90,8 @@ test("on a phone the terminal header names the session and where it is, follows 
     expect(doneBox.height).toBeGreaterThanOrEqual(44);
     await done.click();
     await expect(sheet).toBeHidden();
-    await expect(switcher).toBeFocused();
-    await switcher.click();
+    await expect(header(page).getByRole("button", { name: /^Session actions for / })).toBeFocused();
+    await openTabSwitch(page);
     await expect(sheet).toBeVisible();
     const section = sheet.getByRole("region", { name: space });
     // The rows name the tabs by their terminals, as the header does: these tabs have no name of their own.
@@ -101,15 +101,12 @@ test("on a phone the terminal header names the session and where it is, follows 
     await tabRow(second).click();
     await expect(sheet).toBeHidden();
     await expect(header(page).getByRole("heading", { name: second, exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toContainText("2/2");
+    await expectTabSwitch(page, (tabs) => expect(tabs).toContainText("2/2"));
 
     // A new tab in the same space, saved by another device, is counted at once.
     started.push(startShellIn(space, `hdr-c-${run}`));
     saveSpace();
-    await expect(page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / })).toContainText(
-      "2/3",
-      { timeout: 15_000 },
-    );
+    await expectTabSwitch(page, (tabs) => expect(tabs).toContainText("2/3", { timeout: 15_000 }));
   } finally {
     for (const address of started) endAgent("host", address);
   }

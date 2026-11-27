@@ -1,6 +1,6 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { coreSize, gridSize } from "./core-size.ts";
-import { expect } from "./fixtures.ts";
+import { expect, opened } from "./fixtures.ts";
 
 const { defaultBrowserType: _browser, ...iphone } = devices["iPhone 14"];
 export const PHONE = { ...iphone, viewport: { width: 390, height: 844 } };
@@ -148,6 +148,47 @@ export async function settledGrid(page: Page, terminal: Locator): Promise<void> 
       { timeout: 10_000 },
     )
     .toBeNull();
+}
+
+/** The round Read-only button: shown, pressed, only while the terminal is browsed read-only; a tap ends browsing. */
+export const readOnlyButton = (page: Page) => page.locator('button[aria-label="Read-only"]');
+
+/** Turns read-only browsing on as a person does: the header's session sheet, then its Read-only row (#2879). */
+export async function startBrowsing(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /^Session actions for / }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("button", { name: "Read-only", exact: true }).click();
+  await expect(readOnlyButton(page)).toHaveAttribute("aria-pressed", "true");
+  // A gesture is the terminal's once the sheet and its backdrop have left the screen.
+  await expect(sheet).toHaveCount(0);
+}
+
+const portrait = (page: Page): boolean => (page.viewportSize()?.width ?? 0) < 430;
+
+/**
+ * The tabs switch (#2879): the header's chip from 430 px, else the "..." session sheet's Tabs row, which this opens. Its
+ * accessible name is "Switch tab, <space>, <title>, tab n of m"; its text ends in "n/m".
+ */
+export async function tabSwitch(page: Page): Promise<Locator> {
+  const header = page.getByRole("banner");
+  if (!portrait(page)) return header.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
+  await header.getByRole("button", { name: /^Session actions for / }).click();
+  // Measured at rest: a frame of the sheet's open transition reads a row a hair under 44 (#583).
+  await opened(page.getByRole("dialog"));
+  return page.getByRole("dialog").getByRole("button", { name: /^Switch tab, / });
+}
+
+/** Checks the tabs switch without using it; on a portrait phone the session sheet opens for the check and closes after. */
+export async function expectTabSwitch(page: Page, check: (tabs: Locator) => Promise<void>): Promise<void> {
+  await check(await tabSwitch(page));
+  if (!portrait(page)) return;
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
+/** Opens the switch sheet as a person does: the chip, or the session sheet's Tabs row. */
+export async function openTabSwitch(page: Page): Promise<void> {
+  await (await tabSwitch(page)).click();
 }
 
 export const keysBar = (page: Page) => page.getByRole("toolbar", { name: "Terminal keys" });

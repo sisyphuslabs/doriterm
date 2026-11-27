@@ -94,7 +94,7 @@ export function AgentLists({
   return (
     <div className="flex flex-col gap-4 px-2 pb-3">
       {spaces}
-      <SidebarSection title="Needs you" count={AGENTS_NEEDS_YOU.length + 3} tone="text-status-blocked-text" indent>
+      <SidebarSection title="Needs you" count={AGENTS_NEEDS_YOU.length + 3} tone="text-status-blocked-text">
         {AGENTS_NEEDS_YOU.map((agent) => (
           <AgentRow key={agent.id} agent={agent} selected={agent.id === selected} compactBlocked disclosure />
         ))}
@@ -108,17 +108,17 @@ export function AgentLists({
           />
         ))}
       </SidebarSection>
-      <SidebarSection title="Done" count={AGENTS_DONE.length} tone="text-status-done-text" indent>
+      <SidebarSection title="Done" count={AGENTS_DONE.length} tone="text-status-done-text">
         {AGENTS_DONE.map((agent) => (
           <AgentRow key={agent.id} agent={agent} selected={agent.id === selected} disclosure />
         ))}
       </SidebarSection>
-      <SidebarSection title="Working" count={7} tone="text-status-working-text" indent>
+      <SidebarSection title="Working" count={7} tone="text-status-working-text">
         {AGENTS_TREE_WORKING.map((entry) => (
           <TreeRowItem key={entry.agent.id} entry={entry} depthCap={depthCap} />
         ))}
       </SidebarSection>
-      <SidebarSection title="Idle" count={AGENTS_IDLE.length} indent>
+      <SidebarSection title="Idle" count={AGENTS_IDLE.length}>
         {AGENTS_IDLE.map((agent) => (
           <AgentRow key={agent.id} agent={agent} disclosure />
         ))}

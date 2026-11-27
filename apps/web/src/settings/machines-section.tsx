@@ -82,8 +82,8 @@ export function AddedMachine({ view, now, onRetry, onRemove, skill }: AddedMachi
           retry || remove || skill?.action ? (
             <span className="flex flex-wrap justify-end gap-2">
               {skill?.action}
-              {retry ? <RetryButton size="sm" onRetry={onRetry} /> : null}
-              {remove ? <RemoveMachineButton size="sm" name={view.name} onRemove={onRemove} /> : null}
+              {retry ? <RetryButton onRetry={onRetry} /> : null}
+              {remove ? <RemoveMachineButton name={view.name} onRemove={onRemove} /> : null}
             </span>
           ) : null
         }

@@ -143,6 +143,8 @@ const urgency = (terminals: readonly Session[], address: string, statusOf?: (t: 
 
 const held = (one: Session): AgentStatus => (one.address === "t2" ? "working" : "idle");
 
+const apartT2T4 = (one: Session): boolean => one.address === "t2" || one.address === "t4";
+
 describe("agentTree: urgency", () => {
   test("a leaf's urgency is its own status, done included", () => {
     expect(urgency([terminal("t1", null, "done")], "t1")).toBe("done");
@@ -173,6 +175,22 @@ describe("agentTree: urgency", () => {
   test("the status read is the caller's: a held place counts, not the live state", () => {
     const fleet = [terminal("t1", null, "idle"), terminal("t2", "t1", "idle")];
     expect(urgency(fleet, "t1", held)).toBe("working");
+  });
+
+  test("a row listed apart from its parent keeps its urgency and lends none upward; one inside a row already apart still does", () => {
+    const fleet = [
+      terminal("t1", null, "idle"),
+      terminal("t2", "t1", "blocked"),
+      terminal("t3", "t2", "working"),
+      terminal("t4", "t3", "blocked"),
+    ];
+    const rows = agentTree(fleet, undefined, apartT2T4);
+    expect(rows.map((row) => [row.address, row.urgency])).toEqual([
+      ["t1", "idle"],
+      ["t2", "blocked"],
+      ["t3", "blocked"],
+      ["t4", "blocked"],
+    ]);
   });
 });
 

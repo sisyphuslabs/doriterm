@@ -1,6 +1,7 @@
 import type { AvatarColor } from "@doriface/ui";
 import { AVATAR_COLORS } from "@doriface/ui";
 import { useEffect, useSyncExternalStore } from "react";
+import { machineOf } from "./model.ts";
 import { assignColors, type AgentSort } from "./sidebar-model.ts";
 import { guardedLocalStorage } from "../storage/guarded.ts";
 
@@ -91,33 +92,44 @@ export function useCollapsed(): readonly [readonly string[], (id: string) => voi
 }
 
 /**
- * The folds that are still of a listed agent, so the saved list cannot grow without bound. Nothing is dropped before
- * the terminal list has loaded: a reload would otherwise wipe every fold before the feed arrives. Gives back `folded`
- * itself when nothing goes.
+ * The folds that are still of a listed agent (`listed`, the live ones), so the saved list cannot grow without bound.
+ * Nothing is dropped before the terminal list has loaded: a reload would otherwise wipe every fold before the feed
+ * arrives. An added machine's folds wait the same way until its feed lists a terminal in any state (`fed`, every address
+ * the feed lists), so one whose terminals arrive later keeps them and one whose agents have all finished does not, but
+ * only while it is still in the machine list (`added`, its names; null before machine.list has answered). Gives back
+ * `folded` itself when nothing goes.
  */
 export function pruneFolded(
   folded: readonly string[],
   listed: ReadonlySet<string>,
+  fed: ReadonlySet<string>,
   terminalsLoaded: boolean,
+  added: ReadonlySet<string> | null,
 ): readonly string[] {
   if (!terminalsLoaded) return folded;
-  const kept = folded.filter((address) => listed.has(address));
+  const feeding = new Set([...fed].map(machineOf));
+  const waiting = (machine: string | undefined): boolean =>
+    machine !== undefined && !feeding.has(machine) && (added === null || added.has(machine));
+  const kept = folded.filter((address) => listed.has(address) || waiting(machineOf(address)));
   return kept.length === folded.length ? folded : kept;
 }
 
 /**
  * The agents whose sub-agents are folded, and the toggle; the choice outlives a reload, on this device. `listed` is the
- * addresses the Agents list draws: a fold of one that is gone is dropped once the terminals have loaded.
+ * addresses the Agents list draws and `fed` every address the feed lists: a fold of one that is gone is dropped once
+ * the terminals have loaded (`pruneFolded`).
  */
 export function useFolded(
   listed: ReadonlySet<string>,
+  fed: ReadonlySet<string>,
   terminalsLoaded: boolean,
+  added: ReadonlySet<string> | null,
 ): readonly [readonly string[], (address: string) => void] {
   const folded = useSyncExternalStore(sidebarPrefs.subscribe, () => sidebarPrefs.value.folded);
   useEffect(() => {
-    const kept = pruneFolded(sidebarPrefs.value.folded, listed, terminalsLoaded);
+    const kept = pruneFolded(sidebarPrefs.value.folded, listed, fed, terminalsLoaded, added);
     if (kept !== sidebarPrefs.value.folded) sidebarPrefs.update({ folded: kept });
-  }, [folded, listed, terminalsLoaded]);
+  }, [folded, listed, fed, terminalsLoaded, added]);
   const toggle = (address: string): void => {
     const now = sidebarPrefs.value.folded;
     sidebarPrefs.update({ folded: now.includes(address) ? now.filter((one) => one !== address) : [...now, address] });

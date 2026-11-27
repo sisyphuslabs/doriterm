@@ -15,6 +15,16 @@ export function inviteIn(text: string): string {
   return end === -1 ? rest : rest.slice(0, end);
 }
 
+/**
+ * Added to "used already" on an iPhone or iPad Home Screen app: tapping an invite there opens it in Safari, whose storage is
+ * separate, so Safari pairs and spends it and pasting the same invite here is refused (Q, 2026-11-27).
+ */
+export function usedInSafariHint(installedOnIos: boolean): string {
+  return installedOnIos
+    ? " On iPhone and iPad, tapping an invite opens it in Safari and uses it there: ask for a new code and type it into this app."
+    : "";
+}
+
 /** What the field says when the pasted invite is this app's own offer for another machine (#2795). */
 export const OWN_INVITE =
   "This is this app's invite for adding another machine. Run the whole line in that machine's terminal; pasting it here would use up the invite.";

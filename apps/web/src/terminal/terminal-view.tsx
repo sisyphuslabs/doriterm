@@ -151,7 +151,18 @@ export function TerminalView(props: TerminalViewProps) {
     predict,
     inputStarts,
   });
-  const { pending, typedInto, typed, pasteFiles, linkReady } = input;
+  const { pending, answered, typedInto, typed, pasteFiles, linkReady } = input;
+  // The renderer's own answers (query replies, focus reports) go to the program as they are, never as the person typing
+  // (#2794). The port's pass at the field's focus is unseen here too, as on onData.
+  useEffect(() => {
+    if (wt === null) return undefined;
+    wt.onAnswer = (data) => {
+      if (!isRegainingReport(handle, data)) answered(data);
+    };
+    return () => {
+      wt.onAnswer = null;
+    };
+  }, [wt, handle, answered]);
   const scroll = useTerminalScroll(wt);
   const outputShown = useRef(scroll.changed);
   outputShown.current = scroll.changed;

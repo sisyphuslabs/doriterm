@@ -92,7 +92,7 @@ export function StatusSpecimens() {
               <TabBar tabs={TABS} activeId="t1" newTabKeys={["⌘", "T"]} />
             </div>
             <div className="flex min-w-0 flex-col rounded-lg bg-sidebar p-2">
-              <SidebarSection title="Agent tree" count={10} indent marked>
+              <SidebarSection title="Agent tree" count={10}>
                 {AGENTS_TREE.map(({ agent, parentName, fold }) => {
                   const row = (
                     <AgentRow agent={agent} disclosure {...(parentName === undefined ? {} : { parentName })} />

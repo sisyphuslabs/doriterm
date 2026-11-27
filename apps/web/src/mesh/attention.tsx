@@ -1,6 +1,7 @@
 import type { MeshPendingJoin, MeshRemovedStatus, MeshStatus, MeshStuckReason } from "@doriface/protocol";
-import { Button, Fingerprint, Notice, SettingRow } from "@doriface/ui";
+import { Button, Fingerprint, Notice, SettingRow, cn } from "@doriface/ui";
 import { useState } from "react";
+import { rowValueClass } from "../settings/settings-layout.tsx";
 import { formatAge } from "../workspace/model.ts";
 import { type Disagreement, approvalConsequence, pendingAnswer } from "./groups.ts";
 import { Command, type NameOf } from "./mesh-rows.tsx";
@@ -22,7 +23,7 @@ export function ExpiredJoinRow({ join, self, now }: ExpiredJoinRowProps) {
       title={`${join.name} asked to join`}
       description={`through ${self}; its offer ended ${formatAge(Date.parse(join.expiresAt), now)} ago`}
       control={
-        <span className="text-sm text-muted-foreground" data-mesh-answer="expired">
+        <span data-row-value className={rowValueClass} data-mesh-answer="expired">
           Expired
         </span>
       }
@@ -69,7 +70,7 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
             <span className="block">Update the inviting machine to compare a join code.</span>
           ) : (
             <>
-              <span aria-label="Join code" className="my-3 block text-3xl font-semibold tracking-widest tabular-nums">
+              <span aria-label="Join code" className="my-3 block font-mono text-2xl tracking-widest tabular-nums">
                 {join.code}
               </span>
               <span className="block">
@@ -90,7 +91,6 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
         state === "open" ? (
           <div className="flex gap-2" data-mesh-answer={state}>
             <Button
-              size="sm"
               data-mesh-verdict="deny"
               loading={busy === "deny"}
               disabled={busy !== undefined}
@@ -99,7 +99,6 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
               The codes differ
             </Button>
             <Button
-              size="sm"
               variant="primary"
               data-mesh-verdict="approve"
               loading={busy === "approve"}
@@ -112,7 +111,8 @@ export function PendingRow({ join, self, now, answered, onAnswer }: PendingRowPr
         ) : (
           // As tall as the buttons it replaces, so the rows below stay where they were.
           <span
-            className="inline-flex min-h-(--control-sm) items-center text-sm text-muted-foreground"
+            data-row-value
+            className={cn("inline-flex min-h-(--control) items-center", rowValueClass)}
             data-mesh-answer={state}
           >
             {state === "approve"

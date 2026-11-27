@@ -2,13 +2,13 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
 import { reportedRows, reportRowOf, startMouseTracking, stopMouseTracking } from "./mouse-tracking.ts";
-import { key, keysBar, openPhoneTerminal, PHONE, settledGrid } from "./phone-key-bar.ts";
+import { key, keysBar, openPhoneTerminal, PHONE, readOnlyButton, settledGrid, startBrowsing } from "./phone-key-bar.ts";
 import { pointOnRowStart, rowEnd } from "./terminal-points.ts";
 import { Touch } from "./touch.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "clipboard-write"] });
 
-const browse = (page: Page) => key(page, "Read-only");
+const browse = readOnlyButton;
 const painted = (page: Page) => page.locator(".term-selection-cells > div");
 const input = (page: Page) => page.locator("[data-terminal] textarea");
 
@@ -81,10 +81,9 @@ test("browsing read-only, a tap reaches neither the program nor the keyboard; le
   await tapReaches(touch, terminal, "alpha beta gamma");
   await expect(input(page)).toBeFocused();
 
-  // The round buttons show once the keyboard is down.
+  // Read-only is the session sheet's, with the keyboard down (#2879).
   await input(page).blur();
-  await browse(page).click();
-  await expect(browse(page)).toHaveAttribute("aria-pressed", "true");
+  await startBrowsing(page);
   await expect(page.getByRole("status").filter({ hasText: "Read-only" })).toBeVisible();
   await expect(terminal).toHaveAttribute("data-browsing", "true");
   await expect(input(page)).not.toBeFocused();
@@ -96,7 +95,7 @@ test("browsing read-only, a tap reaches neither the program nor the keyboard; le
   await expect(keysBar(page)).toHaveCount(0);
 
   await browse(page).click();
-  await expect(browse(page)).toHaveAttribute("aria-pressed", "false");
+  await expect(browse(page)).toHaveCount(0);
   await expect(key(page, "Show keyboard")).toBeVisible();
   await expect(terminal).not.toHaveAttribute("data-browsing", "true");
   await tapReaches(touch, terminal, "alpha beta gamma");
@@ -112,8 +111,7 @@ test("browsing read-only, a held finger and a drag select, and the menu offers C
   await startMouseTracking(page, terminal);
   await page.evaluate(() => navigator.clipboard.writeText("nothing"));
   await input(page).blur();
-  await browse(page).click();
-  await expect(browse(page)).toHaveAttribute("aria-pressed", "true");
+  await startBrowsing(page);
 
   const touch = await Touch.on(page);
   const at = await pointOnRowStart(terminal, "delta epsilon zeta");
@@ -143,8 +141,7 @@ test("browsing read-only, a swipe scrolls the scrollback and the program hears n
   const viewport = page.locator("[data-slot=terminal-viewport]");
   await expect.poll(() => viewport.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
   await input(page).blur();
-  await browse(page).click();
-  await expect(browse(page)).toHaveAttribute("aria-pressed", "true");
+  await startBrowsing(page);
 
   const touch = await Touch.on(page);
   const before = await viewport.evaluate((el) => el.scrollTop);
@@ -194,7 +191,7 @@ test("entering browse mode in history keeps its position and a held touch select
     const scrolled = await settled();
     await input(page).blur();
     await expect.poll(() => terminal.evaluate((element) => element.scrollTop)).toBe(scrolled);
-    await browse(page).click();
+    await startBrowsing(page);
     await expect(terminal).toHaveAttribute("data-browsing", "true");
     const text = await terminal.evaluate((element) => {
       const top = element.getBoundingClientRect().top;

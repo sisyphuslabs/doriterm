@@ -94,14 +94,12 @@ export function MemberConnections({
               control={
                 action === "retry" ? (
                   <RetryButton
-                    size="sm"
                     onRetry={async () => {
                       connectionStore.retry(entry.target.hostId);
                     }}
                   />
                 ) : action === null ? null : (
                   <Button
-                    size="sm"
                     variant="secondary"
                     onClick={() => {
                       void showMachine(entry.target.hostId);

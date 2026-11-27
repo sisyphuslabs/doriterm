@@ -90,11 +90,13 @@ export function treeShape(depths: readonly number[]): {
  * hc says started it (`parent`), children in start order. A child whose parent is not listed, a self-parent and a cycle
  * are top-level rows. `statusOf` is the status a row is placed by, its own and before bubbling; a child's `done` reads as
  * idle for its parent, so a helper finishing does not pull a working parent out of Working, and an offline descendant
- * never bubbles.
+ * never bubbles. A row `apart` (one listed in another section than its parent, such as a pinned one) lends its urgency
+ * to nobody above it; one inside a row already apart is listed with it and bubbles as usual.
  */
 export function agentTree(
   terminals: readonly Session[],
   statusOf: (terminal: Session) => AgentStatus = agentStatus,
+  apart: (terminal: Session) => boolean = () => false,
 ): readonly TreeRow[] {
   const live = terminals.filter((terminal) => terminal.state === "live");
   const parents = parentsOf(live);
@@ -106,18 +108,19 @@ export function agentTree(
   for (const list of children.values())
     list.sort((a, b) => a.created_ms - b.created_ms || BY_ADDRESS.compare(a.address, b.address));
   const roots = live.filter((terminal) => !parents.has(terminal.address));
-  const flat: { readonly terminal: Session; readonly depth: number }[] = [];
-  const visit = (terminal: Session, depth: number): void => {
+  const flat: { readonly terminal: Session; readonly depth: number; readonly cut: boolean }[] = [];
+  const visit = (terminal: Session, depth: number, inside: boolean): void => {
     if (depth > MAX_TREE_DEPTH) {
       roots.push(terminal);
       return;
     }
-    flat.push({ terminal, depth });
-    for (const child of children.get(terminal.address) ?? []) visit(child, depth + 1);
+    const own = apart(terminal);
+    flat.push({ terminal, depth, cut: depth > 0 && own && !inside });
+    for (const child of children.get(terminal.address) ?? []) visit(child, depth + 1, inside || own);
   };
   for (let index = 0; index < roots.length; index += 1) {
     const root = roots[index];
-    if (root !== undefined) visit(root, 0);
+    if (root !== undefined) visit(root, 0, false);
   }
   const { guides, descendants } = treeShape(flat.map((row) => row.depth));
   const urgency: AgentStatus[] = [];
@@ -128,7 +131,7 @@ export function agentTree(
     const last = index + (descendants[index] ?? 0);
     for (let below = index + 1; below <= last; below += 1) {
       const row = flat[below];
-      if (row === undefined || row.depth !== depth + 1) continue;
+      if (row === undefined || row.depth !== depth + 1 || row.cut) continue;
       const kid = urgency[below] ?? "unknown";
       const read = kid === "done" ? "idle" : kid;
       if (read !== "unknown" && (best === "unknown" || STATUS_RANK[read] < STATUS_RANK[best])) best = read;

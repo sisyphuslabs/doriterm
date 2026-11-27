@@ -1,4 +1,4 @@
-import { Button, Notice } from "@doriface/ui";
+import { Button, Notice, cn } from "@doriface/ui";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useConnection, useConnectionSettings } from "../connection/store.ts";
@@ -11,6 +11,7 @@ import { KeyBarHero } from "./key-bar-hero.tsx";
 import { KeyboardEdit } from "./keyboard-edit.tsx";
 import { KeyPickerSheet } from "./key-picker-sheet.tsx";
 import { PacksSheet } from "./packs-sheet.tsx";
+import { SectionHeader, listRowClass, rowValueClass, sectionStackClass } from "./settings-layout.tsx";
 
 type SheetId = "keys" | "packs" | "custom" | null;
 
@@ -40,23 +41,25 @@ function LinkRow({
   title,
   value,
   onClick,
-  last = false,
 }: {
   readonly title: string;
   readonly value: string;
   readonly onClick: () => void;
-  readonly last?: boolean;
 }) {
   return (
     <button
       type="button"
+      data-list-row
       onClick={onClick}
-      className={`flex min-h-12 w-full items-center gap-3 px-4 text-left outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring ${
-        last ? "" : "border-b border-border"
-      }`}
+      className={cn(
+        listRowClass,
+        "w-full text-left outline-none active:bg-selected focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring",
+      )}
     >
       <span className="flex-1 text-base text-foreground">{title}</span>
-      <span className="text-sm text-muted-foreground">{value}</span>
+      <span data-row-value className={rowValueClass}>
+        {value}
+      </span>
       <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
     </button>
   );
@@ -79,29 +82,33 @@ export function KeyboardSection() {
   const packsValue =
     packs === 0 ? "None" : settings.activePack === null ? `${packs} on` : packName(settings.activePack);
   return (
-    <section aria-label="Keyboard" className="flex flex-col gap-4">
-      <header className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-foreground">Keyboard</h2>
-        <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => setEditing(!editing)}>
-          {editing ? "Done" : "Edit"}
-        </Button>
-      </header>
-      {error === null ? null : (
-        <Notice tone="error" title="Key settings could not be read from this browser's storage">
-          Changes are not saved, so the stored keys stay as they are. Reload the page to try again.{" "}
-          {asSentence(error.message)}
-        </Notice>
-      )}
-      <KeyBarHero settings={settings} host={host} />
-      {editing ? (
-        <KeyboardEdit settings={settings} host={host} readOnly={readOnly} />
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <LinkRow title="Keys" value={`${shown} shown`} onClick={() => setSheet("keys")} />
-          <LinkRow title="Packs" value={packsValue} onClick={() => setSheet("packs")} />
-          <LinkRow title="Your keys" value={own === 0 ? "None" : `${own}`} onClick={() => setSheet("custom")} last />
-        </div>
-      )}
+    <section aria-label="Keyboard" className="flex flex-col">
+      <SectionHeader
+        title="Keyboard"
+        actions={
+          <Button variant="ghost" disabled={readOnly} onClick={() => setEditing(!editing)}>
+            {editing ? "Done" : "Edit"}
+          </Button>
+        }
+      />
+      <div className={sectionStackClass}>
+        {error === null ? null : (
+          <Notice tone="error" title="Key settings could not be read from this browser's storage">
+            Changes are not saved, so the stored keys stay as they are. Reload the page to try again.{" "}
+            {asSentence(error.message)}
+          </Notice>
+        )}
+        <KeyBarHero settings={settings} host={host} />
+        {editing ? (
+          <KeyboardEdit settings={settings} host={host} readOnly={readOnly} />
+        ) : (
+          <div className="flex flex-col">
+            <LinkRow title="Keys" value={`${shown} shown`} onClick={() => setSheet("keys")} />
+            <LinkRow title="Packs" value={packsValue} onClick={() => setSheet("packs")} />
+            <LinkRow title="Your keys" value={own === 0 ? "None" : `${own}`} onClick={() => setSheet("custom")} />
+          </div>
+        )}
+      </div>
       <KeyPickerSheet
         open={sheet === "keys"}
         onOpenChange={(open) => setSheet(open ? "keys" : null)}

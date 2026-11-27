@@ -78,11 +78,12 @@ for (const [script, title] of Object.entries(TITLES)) {
       expect(await shownCharacters(page)).toBeGreaterThanOrEqual(12);
       // Nothing of the title sits under the controls beside it.
       const headingRight = await heading.evaluate((el) => el.getBoundingClientRect().right);
-      // The first control right of the title: the action slot's, else the session menu.
+      // The first control drawn right of the title: the action slot's, else the session menu. A control the width keeps
+      // out of the header (the tabs chip on a portrait phone, #2879) has no box.
       const firstControl = await bar.evaluate((el) =>
         Math.min(
           ...[...el.querySelectorAll("button")]
-            .filter((button) => button.getAttribute("aria-label") !== "Back to agents")
+            .filter((button) => button.getAttribute("aria-label") !== "Back to agents" && button.checkVisibility())
             .map((button) => button.getBoundingClientRect().left),
         ),
       );

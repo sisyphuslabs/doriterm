@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
+import { expectTabSwitch, openTabSwitch } from "./phone-key-bar.ts";
 
 interface Seeded {
   readonly deploy: string;
@@ -53,7 +54,6 @@ const end = (seeded: Seeded): void => Object.values(seeded).forEach((address) =>
 const param = (page: Page, name: string): string | null => new URL(page.url()).searchParams.get(name);
 const header = (page: Page) => page.getByRole("banner");
 const title = (page: Page) => header(page).getByRole("heading", { level: 1 });
-const switcher = (page: Page) => page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
 const sheetOf = (page: Page) => page.getByRole("dialog", { name: "Switch" });
 const segment = (page: Page, name: RegExp) =>
   sheetOf(page).getByRole("group", { name: "Show" }).getByRole("button", { name });
@@ -79,7 +79,7 @@ async function openDeploy(page: Page, seeded: Seeded): Promise<string> {
 }
 
 async function openSheet(page: Page): Promise<void> {
-  await switcher(page).click();
+  await openTabSwitch(page);
   await opened(sheetOf(page));
   await expect.poll(() => param(page, "sheet")).toBe("switch");
 }
@@ -155,7 +155,7 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         await sheetOf(page).getByRole("button", { name: "New tab in website" }).click();
         await expect(sheetOf(page)).toBeHidden();
         // A new tab lands beside the one in view, so it is the second of three.
-        await expect(switcher(page)).toHaveAccessibleName(/, tab 2 of 3$/, { timeout: 20_000 });
+        await expectTabSwitch(page, (tabs) => expect(tabs).toHaveAccessibleName(/, tab 2 of 3$/, { timeout: 20_000 }));
         made = await page.locator("[data-terminal]").first().getAttribute("data-terminal");
         expect(Object.values(seeded)).not.toContain(made);
         await expect.poll(() => param(page, "sheet")).toBeNull();

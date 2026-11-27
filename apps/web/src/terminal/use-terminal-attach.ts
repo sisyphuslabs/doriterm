@@ -9,6 +9,7 @@ import { readDisplay } from "./display.ts";
 import { reattachClear, useRepaintingCore } from "./reattach-clear.ts";
 import { clearHistoryGap, noteHistoryGap } from "./history-gap-notice.ts";
 import { type EndHolder, fromEndOf, holdFromEnd, readerInputOn } from "./hold-view-from-end.ts";
+import { type HeldEntry, streamSink } from "./held-input.ts";
 import type { KittyPngTranscoder } from "./kitty-png.ts";
 import { openFailure } from "./open-failure.ts";
 import { afterLeaving, leaveUnopened, noteLeaving } from "./leaving-attach.ts";
@@ -23,7 +24,6 @@ import {
   type Unsent,
   unsentReason,
 } from "./terminal-settle.ts";
-import type { TerminalInput } from "./terminal-view-props.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
 import type { HostSize } from "./host-size.ts";
 
@@ -41,7 +41,7 @@ interface AttachSources {
   readonly wt: WTerm | null;
   readonly setWt: (wt: WTerm | null) => void;
   readonly stream: RefObject<TerminalStream | null>;
-  readonly pending: RefObject<TerminalInput[]>;
+  readonly pending: RefObject<HeldEntry[]>;
   readonly pacer: OutputPacer;
   readonly output: KittyPngTranscoder;
   readonly isFocused: RefObject<boolean>;
@@ -74,6 +74,12 @@ interface AttachSources {
 export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions, fresh = false): void {
   if (fresh) return;
   pacer.replay(options);
+}
+
+/** What was typed while no stream was open goes to the new one, in order, each input as typed or as an answer. */
+export function writeQueued(pending: HeldEntry[], stream: Pick<TerminalStream, "write" | "writeAutomatic">): void {
+  const sink = streamSink(stream);
+  for (const { data, person } of pending.splice(0)) sink.write(data, person);
 }
 
 export interface Attachment {
@@ -312,7 +318,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
         });
-        for (const data of pending.current.splice(0)) attached.write(data);
+        writeQueued(pending.current, attached);
         focusWhenFree(ready);
         return attached;
       },
