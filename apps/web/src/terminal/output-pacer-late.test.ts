@@ -109,6 +109,28 @@ test("a held update is let go a quiet window after its last bytes while a drag m
   expect(at - lastBytes).toBeLessThan(SYNCHRONIZED_HOLD_CAP_MS);
 });
 
+// The same drag on a Mac: the shell answers each resize by redrawing its prompt, queued behind each late timer. The hold
+// ignores those answers on time (#2922), and a late timer's reading must ignore them too, or it holds to the cap (#2941).
+test("a held update is let go a quiet window after its last bytes while a loaded drag brings a prompt redraw per resize", () => {
+  const { timers, late, holds, pacer, clock } = stalling();
+  pacer.replay({ srtt: () => 100, hold: () => undefined });
+  pacer.push(bytes(KIB));
+  pacer.push(new Uint8Array([...text(OPEN), ...bytes(KIB)]));
+  const lastBytes = clock();
+  late.each = 600;
+  const prompt = text(`\r${" ".repeat(60)}\rbash-3.2$ `);
+  // A resize and its answer every 10 ms for 4 s, each posted before any timer due with it runs: a late quiet timer
+  // finds an answer queued behind it, as a page does whose drag outpaces its timers.
+  for (let ms = 10; ms <= 4000; ms += 10)
+    timers.timer(() => {
+      pacer.resized(80);
+      pacer.push(prompt);
+    }, ms);
+  const at = releaseTime(timers, clock, () => holds.length > 1);
+  expect(holds).toEqual(["update held", "update let go"]);
+  expect(at - lastBytes).toBeLessThanOrEqual(SYNCHRONIZED_UNPACED_MS + 2 * 600 + 100);
+});
+
 test("a timer run no later than a page doing nothing else runs it is on time: the window is read", () => {
   const { timers, late, holds, pacer } = stalling();
   pacer.replay({ srtt: () => 100, hold: () => undefined });
