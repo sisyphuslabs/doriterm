@@ -139,7 +139,8 @@ async function openOnPath(
   return {
     connection,
     path: "relay",
-    session: { secure: relayed, redial: (again) => dialRelay(settings, again) },
+    // A resume carries a session on, so it needs no race for the nearest socket: one socket, one upgrade of the budget.
+    session: { secure: relayed, redial: (again) => dialRelay(settings, again, 1) },
     ...(direct.reason === undefined ? {} : { directReason: direct.reason }),
   };
 }
@@ -229,12 +230,16 @@ function directFailureReason(error: unknown): DirectReason {
   return error instanceof DirectFailure ? error.reason : "could-not-connect";
 }
 
-/** One relay socket to the host: the session's first, and each one a resume carries it on over. */
-const dialRelay = (settings: ConnectionSettings, signal: AbortSignal | undefined): Promise<ByteLink> =>
+/**
+ * A relay socket to the host: the session's first (the nearest of up to 3), and each one a resume carries it on over
+ * (`bestOf` 1: one socket, since the relay charges every socket of an unproven dial to the page's source, #2928 review).
+ */
+const dialRelay = (settings: ConnectionSettings, signal: AbortSignal | undefined, bestOf?: number): Promise<ByteLink> =>
   connectRelayClient({
     relayUrl: settings.relayUrl,
     hostId: settings.hostId,
     ...(signal === undefined ? {} : { signal }),
+    ...(bestOf === undefined ? {} : { bestOf }),
   });
 
 async function openRelaySession(
