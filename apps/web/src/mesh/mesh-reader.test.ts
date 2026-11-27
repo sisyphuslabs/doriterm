@@ -228,10 +228,16 @@ describe("MeshReader", () => {
     const elsewhere = shown.requests.find((request) => request.machine !== null);
     if (elsewhere === undefined) throw new Error("the held join is listed");
     docs.set(key(MESH_STATUS_DOC, "build-box"), {
-      value: { ...status, meshId: "R".repeat(26), pending: [held] },
+      value: { ...status, meshId: FOREIGN_MESH, pending: [held] },
       version: 2,
     });
-    await expect(reader.answer(elsewhere, "approve")).rejects.toThrow("not in this mesh");
+    const outcome = reader.answer(elsewhere, "approve").then(
+      () => "wrote",
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+    // An answer that wrote reads the documents again; reply to that read, so a missing refusal fails here, not by hanging.
+    void nextRequest().then((reply) => reply([machineView("build-box", "connected")]));
+    expect(await outcome).toContain("not in this mesh");
     expect(docs.get(key(MESH_APPROVAL_DOC, "build-box"))).toBeUndefined();
   });
 

@@ -86,6 +86,8 @@ const refusedWith = (closeCode: number) => async (page: Page) => {
 };
 const SETTINGS = ["Appearance", "This device", "Terminal", "Keybindings"] as const;
 /** The mesh panel once its document and the added machine it is checked against have both arrived. */
+/** The open join the mesh shots draw raises the approval card over every later screen: put the start state back. */
+const quietMesh = (): void => resetMeshDocs({ open: false });
 const meshLoaded = async (page: Page) => {
   resetMeshDocs();
   await page.goto("/");
@@ -304,11 +306,12 @@ export const SHOTS: readonly Shot[] = [
       await expect(page.getByText("Go to space 1").first()).toBeVisible();
     },
   },
-  { name: "settings-mesh", start: "connected", run: meshLoaded },
+  { name: "settings-mesh", start: "connected", run: meshLoaded, cleanup: quietMesh },
   {
     // The fail-closed removal and its re-found command, which neither the top nor the end frame shows at 390.
     name: "settings-mesh-removed",
     start: "connected",
+    cleanup: quietMesh,
     run: async (page) => {
       await meshLoaded(page);
       await page.locator('[data-mesh-group^="removed-"]').first().scrollIntoViewIfNeeded();
@@ -317,6 +320,7 @@ export const SHOTS: readonly Shot[] = [
   {
     name: "settings-mesh-end",
     start: "connected",
+    cleanup: quietMesh,
     run: async (page) => {
       await meshLoaded(page);
       await scrollToEnd(page);
