@@ -1,24 +1,19 @@
 import { expect, test } from "bun:test";
-import { AGENTS, agentPrompt, agentSnippet } from "./agent-snippets.ts";
+import { AGENTS, OMO_MCP_FILE, agentPrompt, agentSnippet } from "./agent-snippets.ts";
 
-test("AGENTS lists supported agents with OmO first", () => {
-  expect(AGENTS).toEqual(["omo", "claude-code", "codex", "cursor", "other"]);
+const hostId = "h4xq9k2m";
+const link = "doriface://pair#p=abc123";
+
+test("the agents set up by hand, in order: Claude Code, Codex, Cursor, then any other", () => {
+  expect(AGENTS).toEqual(["claude-code", "codex", "cursor", "other"]);
 });
 
-test("agentSnippet returns exact titles, locations and texts for each agent", () => {
-  const hostId = "h4xq9k2m";
+test("each by-hand snippet is what that agent reads", () => {
   const config = { mcpServers: { doriterm: { command: "doriface-host", args: ["connect", "--mcp", hostId] } } };
   // The JSON agents read it as an object: its layout is free, what it parses to is not.
-  for (const agent of ["omo", "cursor", "other"] as const) {
+  for (const agent of ["cursor", "other"] as const) {
     expect(JSON.parse(agentSnippet(agent, hostId).text)).toEqual(config);
   }
-  const expectedJson = agentSnippet("other", hostId).text;
-
-  expect(agentSnippet("omo", hostId)).toEqual({
-    title: "OmO",
-    where: "~/.omo/agent/mcp.json",
-    text: expectedJson,
-  });
   expect(agentSnippet("claude-code", hostId)).toEqual({
     title: "Claude Code",
     where: null,
@@ -29,21 +24,13 @@ test("agentSnippet returns exact titles, locations and texts for each agent", ()
     where: "~/.codex/config.toml",
     text: `[mcp_servers.doriterm]\ncommand = "doriface-host"\nargs = ["connect", "--mcp", "${hostId}"]`,
   });
-  expect(agentSnippet("cursor", hostId)).toEqual({
-    title: "Cursor",
-    where: ".cursor/mcp.json",
-    text: expectedJson,
-  });
-  expect(agentSnippet("other", hostId)).toEqual({
-    title: "Other",
-    where: "its MCP settings",
-    text: expectedJson,
-  });
+  expect([agentSnippet("cursor", hostId).where, agentSnippet("other", hostId).where]).toEqual([
+    ".cursor/mcp.json",
+    "its MCP settings",
+  ]);
 });
 
-test("agentPrompt produces the exact natural-language prompt with link and hostId", () => {
-  const link = "doriface://pair#p=abc123";
-  const hostId = "h4xq9k2m";
+test("the prompt installs without a service, pairs once with the link and adds the server by host id", () => {
   expect(agentPrompt(link, hostId)).toBe(
     "Connect yourself to my Doriterm. Run these in a terminal on this computer:\n" +
       "1. If doriface-host is not installed: curl -fsSL https://get.doriterm.com | sh -s -- --no-service --no-pair\n" +
@@ -51,4 +38,10 @@ test("agentPrompt produces the exact natural-language prompt with link and hostI
       `3. Add an MCP server named doriterm to your own MCP settings that runs: doriface-host connect --mcp ${hostId}\n` +
       "Then tell me it is connected.",
   );
+});
+
+test("OmO's prompt names OmO's own MCP settings file, and says the rest as any agent's does", () => {
+  const omo = agentPrompt(link, hostId, "omo");
+  expect(omo).toContain(`3. Add an MCP server named doriterm to ${OMO_MCP_FILE} that runs:`);
+  expect(omo.replace(OMO_MCP_FILE, "your own MCP settings")).toBe(agentPrompt(link, hostId));
 });

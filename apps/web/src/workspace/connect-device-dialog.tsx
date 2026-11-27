@@ -11,6 +11,7 @@ import { JoinCommandBlock } from "./join-command-block.tsx";
 import { useJoinOffer, webInviteLink } from "./join-command.ts";
 import type { MachineEntry } from "./machines.ts";
 import { useMachines } from "./use-machines.ts";
+import { useWidthTier } from "../layout/width-tier.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
 
@@ -22,6 +23,13 @@ export interface ConnectDeviceDialogProps {
   readonly connection: HcConnection;
   readonly machines: readonly MachineEntry[];
 }
+
+/**
+ * On a phone the sheet rises from the bottom edge and covers down to the safe area, scrolling inside itself, so no line
+ * of the page under it shows below its edge (#2949 review, the agent tab's 390 review).
+ */
+const SHEET_CLASS =
+  "top-auto bottom-0 left-0 w-full max-w-none translate-x-0 translate-y-0 rounded-b-none border-x-0 border-b-0 max-h-[calc(100dvh-var(--safe-top,0px)-1rem)] pb-[calc(var(--safe-bottom,0px)+1.25rem)]";
 
 const KINDS = [
   { value: "phone", label: "Phone or browser" },
@@ -93,6 +101,7 @@ function PhoneInvite({ connection, open }: { readonly connection: HcConnection; 
  */
 export function ConnectDeviceDialog({ open, onClose, connection, machines }: ConnectDeviceDialogProps) {
   const [shown, setShown] = useState<ConnectDeviceTab>("phone");
+  const compact = useWidthTier() === "compact";
   const settings = useConnectionSettings();
   const pair = useMemo(() => desktopPairOffer(), []);
   return (
@@ -103,7 +112,7 @@ export function ConnectDeviceDialog({ open, onClose, connection, machines }: Con
       }}
       title="Connect a device"
       description="One invite for a phone, a browser, a computer or an AI agent. A phone or browser waits for your approval."
-      className="w-[min(36rem,calc(100%-2rem))]"
+      className={compact ? SHEET_CLASS : "w-[min(36rem,calc(100%-2rem))]"}
       actions={<Button onClick={onClose}>Done</Button>}
     >
       <div className="flex flex-col gap-5">

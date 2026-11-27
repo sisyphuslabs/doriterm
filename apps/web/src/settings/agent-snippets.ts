@@ -1,5 +1,5 @@
-/** Supported AI agents in the order they appear in the connect dialog and docs (OmO first). */
-export const AGENTS = ["omo", "claude-code", "codex", "cursor", "other"] as const;
+/** The agents set up by hand, in the order the tab and the docs list them; OmO leads the tab with its own prompt. */
+export const AGENTS = ["claude-code", "codex", "cursor", "other"] as const;
 
 export type AgentId = (typeof AGENTS)[number];
 
@@ -33,8 +33,6 @@ export const connectCommand = (link: string): string => `doriface-host connect '
 /** The manual MCP config or CLI command for one agent targeting `hostId`. */
 export function agentSnippet(agent: AgentId, hostId: string): AgentSnippet {
   switch (agent) {
-    case "omo":
-      return { title: "OmO", where: "~/.omo/agent/mcp.json", text: mcpConfig(hostId) };
     case "claude-code":
       return {
         title: "Claude Code",
@@ -54,13 +52,20 @@ export function agentSnippet(agent: AgentId, hostId: string): AgentSnippet {
   }
 }
 
-/** The one natural-language prompt a person can paste into any agent that can run a command. */
-export function agentPrompt(link: string, hostId: string): string {
+/** Where OmO keeps its MCP servers: its prompt names the file, so OmO edits that one. */
+export const OMO_MCP_FILE = "~/.omo/agent/mcp.json";
+
+/**
+ * The one natural-language prompt a person pastes into an agent that can run a command: OmO's names its own MCP
+ * settings file; any other agent's says "your own MCP settings".
+ */
+export function agentPrompt(link: string, hostId: string, agent: "omo" | "any" = "any"): string {
+  const where = agent === "omo" ? OMO_MCP_FILE : "your own MCP settings";
   return [
     "Connect yourself to my Doriterm. Run these in a terminal on this computer:",
     "1. If doriface-host is not installed: curl -fsSL https://get.doriterm.com | sh -s -- --no-service --no-pair",
     `2. Pair this computer once: ${connectCommand(link)} < /dev/null`,
-    `3. Add an MCP server named doriterm to your own MCP settings that runs: doriface-host connect --mcp ${hostId}`,
+    `3. Add an MCP server named doriterm to ${where} that runs: doriface-host connect --mcp ${hostId}`,
     "Then tell me it is connected.",
   ].join("\n");
 }

@@ -94,13 +94,34 @@ function AgentInviteBody({ offer, inlineRetry }: { readonly offer: PairOfferStat
   }
 
   if (view.kind === "offer") {
+    const omoPrompt = agentPrompt(view.offer.link, view.offer.hostId, "omo");
     const promptText = agentPrompt(view.offer.link, view.offer.hostId);
     const note = slotNote(view.offer);
     const pairing = connectCommand(view.offer.link);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <p className="text-prose text-foreground">Copy this prompt into your agent</p>
+        <section aria-labelledby="agent-omo" className="flex flex-col gap-1.5">
+          <h3 id="agent-omo" className="text-base font-semibold text-foreground">
+            OmO
+          </h3>
+          <p className="text-prose text-pretty text-muted-foreground">
+            Paste this into OmO. It pairs this computer and adds Doriterm to OmO's MCP settings.
+          </p>
+          <CopyBlock
+            label="OmO prompt"
+            copyLabel="Copy prompt"
+            text={omoPrompt}
+            copied={isCopied("omo", omoPrompt)}
+            onCopy={() => void copy("omo", omoPrompt)}
+          />
+        </section>
+        <section aria-labelledby="agent-any" className="flex flex-col gap-1.5">
+          <h3 id="agent-any" className="text-base font-semibold text-foreground">
+            Any other agent
+          </h3>
+          <p className="text-prose text-pretty text-muted-foreground">
+            Copy this prompt into any agent that can run a command.
+          </p>
           <CopyBlock
             label="Agent prompt"
             copyLabel="Copy prompt"
@@ -108,10 +129,12 @@ function AgentInviteBody({ offer, inlineRetry }: { readonly offer: PairOfferStat
             copied={isCopied("prompt", promptText)}
             onCopy={() => void copy("prompt", promptText)}
           />
-        </div>
+        </section>
         <p className="text-prose text-pretty text-muted-foreground">
-          It works in any agent that can run a command. Or set it up by hand:
+          Each prompt carries a one-time pairing secret: it works once, for 10 minutes, and the agent then asks to join,
+          as a phone does.
         </p>
+        <h3 className="text-base font-semibold text-foreground">Or set it up by hand</h3>
         <div className="flex flex-col gap-1.5">
           <p className="text-prose text-foreground">On the agent's computer, pair once:</p>
           <CopyBlock
