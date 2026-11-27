@@ -56,11 +56,22 @@ jobs:
             exit 1
           fi
           case "$TARGET" in staging | production) ;; *) echo "::error title=Core mirror::unknown target $TARGET"; exit 1 ;; esac
+      # Staging first: production takes only a version staging already serves, so a release's first run is never production.
+      - name: Production takes only a version staging serves
+        if: inputs.target == 'production'
+        run: |
+          staged="https://staging.get.doriterm.com/core/$VERSION/manifest.json"
+          curl -fsS "$staged" -o /dev/null || {
+            echo "::error title=Core mirror::$VERSION is not on staging ($staged); mirror it to staging and read it back first"
+            exit 1
+          }
       - name: Download herdr's manifest and archives
         run: bun .github/scripts/release-r2.ts core-fetch --version "$VERSION" --dir "$RUNNER_TEMP/core"
-      # The same requirement apps/host/src/hc-install.ts checks on a Mac: the app bundle and the bare binary, both
-      # signed by herdr's Apple team. Both macOS archives by the only names the mirror accepts for them
-      # (core-mirror.ts `coreArchiveName`), so a manifest cannot name one this step skips; a missing one fails.
+      # The same requirement apps/host/src/hc-install.ts checks on a Mac, against what herdr ships: every release holds
+      # the bare herdr-core, signed by herdr's Apple team; releases since herdr bundled the core (0.1.22) also hold
+      # Herdr Core.app, which hc-install.ts installs from, so it is checked whenever it is there. Both macOS archives by
+      # the only names the mirror accepts for them (core-mirror.ts `coreArchiveName`), so a manifest cannot name one this
+      # step skips; a missing archive or binary fails.
       - name: herdr's macOS builds carry herdr's signature
         run: |
           requirement='=identifier "dev.herdr.core" and anchor apple generic and certificate leaf[subject.OU] = "2W9652Q7QR"'
@@ -69,10 +80,14 @@ jobs:
             test -f "$archive" || { echo "::error title=Core mirror::$name was not downloaded"; exit 1; }
             unpacked="$(mktemp -d)"
             tar -xzf "$archive" -C "$unpacked"
-            test -d "$unpacked/Herdr Core.app" || { echo "::error title=Core mirror::$name holds no Herdr Core.app"; exit 1; }
-            codesign --verify --strict -R "$requirement" "$unpacked/Herdr Core.app"
+            test -f "$unpacked/herdr-core" || { echo "::error title=Core mirror::$name holds no herdr-core"; exit 1; }
             codesign --verify --strict -R "$requirement" "$unpacked/herdr-core"
-            echo "$name: signed by herdr"
+            if [ -e "$unpacked/Herdr Core.app" ]; then
+              codesign --verify --strict -R "$requirement" "$unpacked/Herdr Core.app"
+              echo "$name: herdr-core and Herdr Core.app signed by herdr"
+            else
+              echo "$name: herdr-core signed by herdr (no Herdr Core.app in this release)"
+            fi
           done
       - name: Mirror into the bucket, sign, and move core/latest
         env:
