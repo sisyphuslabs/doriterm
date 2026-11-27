@@ -78,7 +78,12 @@ function findRow(body: Element, hit: SettingHit): HTMLElement | undefined {
 function land(row: HTMLElement): void {
   row.scrollIntoView({ block: "center" });
   row.setAttribute("data-setting-landed", "");
-  const control = row.matches(FOCUSABLE) ? row : row.querySelector<HTMLElement>(FOCUSABLE);
+  // The first control a person could reach: one hidden until it applies (a key's Reset) or disabled is passed over.
+  const control = row.matches(FOCUSABLE)
+    ? row
+    : ([...row.querySelectorAll<HTMLElement>(FOCUSABLE)].find(
+        (candidate) => getComputedStyle(candidate).visibility !== "hidden" && !candidate.matches(":disabled"),
+      ) ?? null);
   (control ?? row).focus({ preventScroll: true });
 }
 

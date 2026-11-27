@@ -182,6 +182,27 @@ test.describe("390 phone rows reach their card's edge", () => {
   });
 });
 
+test.describe("390 phone Terminal choices", () => {
+  const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
+  test.use(phone);
+
+  test("every segmented control on Settings > Terminal keeps its choices on one line (#2920 review)", async ({
+    page,
+  }) => {
+    const settings = await openSection(page, "Terminal");
+    const groups = settings.locator('[data-slot="settings-body"] [data-setting-row] [role="group"]');
+    await expect(groups.first()).toBeVisible();
+    const wrapped = await groups.evaluateAll((all) =>
+      all.flatMap((group) => {
+        const tops = new Set([...group.children].map((choice) => Math.round(choice.getBoundingClientRect().top)));
+        return tops.size > 1 ? [`${group.getAttribute("aria-label") ?? "?"}: ${tops.size} lines`] : [];
+      }),
+    );
+    expect(await groups.count()).toBeGreaterThan(0);
+    expect(wrapped).toEqual([]);
+  });
+});
+
 test.describe("390 phone toolbar", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
   test.use(phone);
