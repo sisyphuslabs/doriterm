@@ -1,13 +1,13 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { reportedRows, reportRowOf, startMouseTracking, stopMouseTracking } from "./mouse-tracking.ts";
-import { key, openPhoneTerminal, PHONE, settledGrid } from "./phone-key-bar.ts";
+import { openPhoneTerminal, PHONE, readOnlyButton, settledGrid, startBrowsing } from "./phone-key-bar.ts";
 import { pointOnRowStart } from "./terminal-points.ts";
 import { Touch } from "./touch.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE });
 
-const browse = (page: Page) => key(page, "Read-only");
+const browse = readOnlyButton;
 const input = (page: Page) => page.locator("[data-terminal] textarea");
 
 const touchAction = (locator: Locator) => locator.evaluate((el) => getComputedStyle(el).touchAction);
@@ -31,8 +31,7 @@ test("browsing read-only, a wheel over the rows reaches nothing the program read
   const terminal = await openPhoneTerminal(page);
   await startMouseTracking(page, terminal);
   await input(page).blur();
-  await browse(page).click();
-  await expect(browse(page)).toHaveAttribute("aria-pressed", "true");
+  await startBrowsing(page);
 
   const at = await pointOnRowStart(terminal, "delta epsilon zeta");
   await page.mouse.move(at.x, at.y);
@@ -40,7 +39,7 @@ test("browsing read-only, a wheel over the rows reaches nothing the program read
   await page.mouse.wheel(0, 120);
 
   await browse(page).click();
-  await expect(browse(page)).toHaveAttribute("aria-pressed", "false");
+  await expect(browse(page)).toHaveCount(0);
   // A tap after browsing is reported; anything the wheel sent would have been echoed before it. It is aimed once the
   // grid fits again: leaving browse mode brings the keys panel back under the terminal (#2499).
   await settledGrid(page, terminal);
@@ -55,7 +54,7 @@ test("browsing read-only, a wheel over the rows reaches nothing the program read
 test("browsing read-only ends when another terminal is opened", async ({ page }) => {
   const terminal = await openPhoneTerminal(page);
   await input(page).blur();
-  await browse(page).click();
+  await startBrowsing(page);
   await expect(terminal).toHaveAttribute("data-browsing", "true");
 
   await page.getByRole("button", { name: "Back to agents" }).click();
@@ -65,6 +64,6 @@ test("browsing read-only ends when another terminal is opened", async ({ page })
   await expect(next).toContainText("$", { timeout: 15_000 });
   await expect(next).not.toHaveAttribute("data-browsing", "true");
   await input(page).blur();
-  await expect(browse(page)).toHaveAttribute("aria-pressed", "false");
+  await expect(browse(page)).toHaveCount(0);
   await expect(page.getByRole("status").filter({ hasText: "Read-only" })).toHaveCount(0);
 });

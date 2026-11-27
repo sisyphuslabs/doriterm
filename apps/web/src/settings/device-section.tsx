@@ -7,6 +7,7 @@ import { install, useInstallOffer } from "../device/install.ts";
 import { keepAwakeStore, screenWakeLock, useKeepAwake } from "../device/keep-awake.ts";
 import { useBrowserMembership } from "../mesh/membership-state.ts";
 import { BackgroundRow } from "./background-row.tsx";
+import { keepStorage, useStorageKeeping } from "../storage/keep-storage.ts";
 import { desktopUpdateSetting } from "../desktop/update-setting.ts";
 import { UpdateChannelRow } from "./update-channel-row.tsx";
 import type { DisplayMode } from "../terminal/prediction-display.ts";
@@ -27,7 +28,44 @@ export function DeviceSection() {
   const mesh = useBrowserMembership();
   const [background] = useState(() => desktopBackgroundSetting());
   const [updates] = useState(() => desktopUpdateSetting());
+  const keeping = useStorageKeeping();
+  const [askedAgain, setAskedAgain] = useState(false);
   const rows = [
+    // Where the browser may clear this app's storage (iOS can for a Home Screen app), its key and pairings go with it,
+    // and the app starts unpaired; saying so here is what tells a person it was the phone, not a crash.
+    keeping === "kept" ? (
+      <SettingRow
+        key="storage"
+        title="Storage"
+        description="Kept: the browser keeps this app's key and pairings."
+        control={null}
+      />
+    ) : keeping === "best-effort" ? (
+      <SettingRow
+        key="storage"
+        inline
+        title="Storage"
+        description={
+          askedAgain
+            ? "Still may be cleared: the browser decides this itself and kept its answer. If it clears this app's key and pairings, the app needs pairing again."
+            : "May be cleared: the browser can remove this app's key and pairings, and it would then need pairing again."
+        }
+        control={
+          askedAgain ? null : (
+            <Button
+              size="sm"
+              onClick={() =>
+                void keepStorage()
+                  .finally(() => setAskedAgain(true))
+                  .catch(() => undefined)
+              }
+            >
+              Ask to keep
+            </Button>
+          )
+        }
+      />
+    ) : null,
     background === null ? null : <BackgroundRow key="background" setting={background} />,
     updates === null ? null : <UpdateChannelRow key="update-channel" setting={updates} />,
     screenWakeLock() === null ? null : (

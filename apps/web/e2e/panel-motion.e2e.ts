@@ -242,9 +242,11 @@ test.describe("a touch phone", () => {
     await showKeyboard(page, 0);
     await expect(page.getByRole("button", { name: "Show keyboard" })).toBeVisible();
     // Shorter by less than any keyboard, as a browser's toolbar or a rotation makes it: the panel moves without a ride.
+    const tall = await restingBottom(page);
     await page.setViewportSize({ width: 390, height: 724 });
-    await expect.poll(() => restingBottom(page)).toBeLessThan(724);
+    await expect.poll(() => restingBottom(page)).toBeLessThan(tall);
     const before = await restingBottom(page);
+    expect(before).toBeLessThanOrEqual(724);
 
     const ride = await rideMotion(page);
     await page.getByRole("button", { name: "Show keyboard" }).click();

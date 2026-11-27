@@ -5,6 +5,7 @@ import { seedSpaces } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
 import { stateOn } from "./ended-terminal.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { expectTabSwitch, openTabSwitch } from "./phone-key-bar.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
@@ -14,7 +15,6 @@ test.use({ ...phone, serviceWorkers: "block" });
 endOwnTerminals();
 
 const header = (page: Page) => page.getByRole("banner");
-const switcher = (page: Page) => page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
 const sheet = (page: Page) => page.getByRole("dialog", { name: "Switch" });
 
 function startShellIn(space: string, name: string): string {
@@ -43,9 +43,9 @@ test("the switch sheet closes a tab as the strip's close does and starts a new t
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
   await agentRow(page, first, false).click();
   await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(switcher(page)).toContainText("1/2");
+  await expectTabSwitch(page, (tabs) => expect(tabs).toContainText("1/2"));
 
-  await switcher(page).click();
+  await openTabSwitch(page);
   await opened(sheet(page));
   // It opens on the session's own space (mobile nav phase 4): its rows, and New tab in it at the sheet's foot.
   const section = sheet(page).getByRole("region", { name: space });
@@ -68,13 +68,13 @@ test("the switch sheet closes a tab as the strip's close does and starts a new t
   await expect(question).toBeHidden();
   await expect(section.getByRole("button", { name: "Close t1", exact: true })).toBeVisible();
   await sheet(page).getByRole("button", { name: "Done", exact: true }).click();
-  await expect(switcher(page)).toContainText("1/1");
+  await expectTabSwitch(page, (tabs) => expect(tabs).toContainText("1/1"));
 
-  await switcher(page).click();
+  await openTabSwitch(page);
   await opened(sheet(page));
   await newTab.click();
   await expect(sheet(page)).toBeHidden();
-  await expect(switcher(page)).toContainText("2/2", { timeout: 15_000 });
+  await expectTabSwitch(page, (tabs) => expect(tabs).toContainText("2/2", { timeout: 15_000 }));
 });
 
 test("closing the tab the phone is showing moves it to the tab in its place (#1478)", async ({ page }) => {
@@ -95,7 +95,7 @@ test("closing the tab the phone is showing moves it to the tab in its place (#14
   await agentRow(page, first, false).click();
   await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toBeVisible({ timeout: 15_000 });
 
-  await switcher(page).click();
+  await openTabSwitch(page);
   await opened(sheet(page));
   // The open tab's own row: closing it leaves the phone on a tab that no longer exists unless it is moved on (#1478).
   await sheet(page).getByRole("region", { name: space }).getByRole("button", { name: "Close t1", exact: true }).click();
@@ -104,7 +104,7 @@ test("closing the tab the phone is showing moves it to the tab in its place (#14
   await expect(header(page).getByRole("heading", { name: "t2", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(`[data-terminal="${started[0]}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-terminal="${started[1]}"]`)).toBeVisible();
-  await expect(switcher(page)).toContainText("1/1");
+  await expectTabSwitch(page, (tabs) => expect(tabs).toContainText("1/1"));
 });
 
 test("closing the phone's only tab from the sheet leaves the screen for the list (#1478)", async ({ page }) => {
@@ -118,7 +118,7 @@ test("closing the phone's only tab from the sheet leaves the screen for the list
   await agentRow(page, only, false).click();
   await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toBeVisible({ timeout: 15_000 });
 
-  await switcher(page).click();
+  await openTabSwitch(page);
   await opened(sheet(page));
   // A space's last tab takes the space with it, so this close asks first.
   await sheet(page).getByRole("region", { name: space }).getByRole("button", { name: "Close t1", exact: true }).click();
@@ -153,7 +153,7 @@ test("the shown pane ending under the sheet takes the phone up to the list, not 
   await agentRow(page, shown, false).click();
   await expect(header(page).getByRole("heading", { name: "t1", exact: true })).toBeVisible({ timeout: 15_000 });
 
-  await switcher(page).click();
+  await openTabSwitch(page);
   await opened(sheet(page));
   // The shown pane ends while the sheet is over it. Without the sheet this End takes the phone up to the list; with it, one
   // Back only closes the sheet and leaves the phone on the ended pane.

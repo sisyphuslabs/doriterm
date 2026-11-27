@@ -20,6 +20,8 @@ import type { CardKey } from "../connection/card-key.ts";
 import type { BrowserIdentity } from "./identity.ts";
 import type { BrowserJoinAnchor } from "../pair/join-anchor.ts";
 import type { KeyValueStore } from "../storage/idb.ts";
+import { isIos, runsInstalled } from "../device/install.ts";
+import { usedInSafariHint } from "../pair/invite-text.ts";
 
 export interface JoinDeps extends RelayDeps {
   readonly loadSignKey: () => Promise<CardKey | KeyPair>;
@@ -56,7 +58,11 @@ const UNREACHABLE = "The relay cannot be reached. Check the network and try agai
 
 function refusalOf(mode: OfferSecret["mode"], error: unknown): JoinRefused | undefined {
   const code = error instanceof Error ? closeCodeOf(error) : undefined;
-  const reason = code === undefined ? undefined : REASONS[mode][code];
+  const base = code === undefined ? undefined : REASONS[mode][code];
+  const reason =
+    base !== undefined && mode === "link" && code === CloseCode.UnknownDevice
+      ? base + usedInSafariHint(isIos() && runsInstalled())
+      : base;
   return reason === undefined ? undefined : new JoinRefused(reason, { cause: error });
 }
 

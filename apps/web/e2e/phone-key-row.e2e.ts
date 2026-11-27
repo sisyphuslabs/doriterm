@@ -2,7 +2,15 @@ import type { Page } from "@playwright/test";
 import { agentRow, endAgent, startShell } from "./agents.ts";
 import { seedSpaces } from "./layout-doc.ts";
 import { expect, test } from "./fixtures.ts";
-import { expectTouchTargets, fakeSoftKeyboard, key, keysBar, PHONE } from "./phone-key-bar.ts";
+import {
+  expectTouchTargets,
+  fakeSoftKeyboard,
+  key,
+  keysBar,
+  PHONE,
+  readOnlyButton,
+  startBrowsing,
+} from "./phone-key-bar.ts";
 
 // A touch phone with its soft keyboard down: the keys panel (the one that rides on the keyboard, #2499) sits under the
 // terminal, and a press on one of its keys sends it without raising the keyboard (#1526).
@@ -61,23 +69,19 @@ for (const width of [390, 320]) {
   });
 }
 
-type Box = { x: number; y: number; width: number; height: number };
-const overlaps = (a: Box, b: Box): boolean =>
-  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-
-const LOOSE = [
+const INSETS = [
   { width: 390, bottom: 0, right: 0 },
   { width: 320, bottom: 0, right: 0 },
   { width: 390, bottom: 34, right: 0 },
   { width: 390, bottom: 21, right: 47 },
 ] as const;
 
-for (const { width, bottom, right } of LOOSE) {
-  test(`at ${width} with a ${bottom}px bottom and ${right}px right inset and no tabs bar, no key the panel shows sits under Read-only (#1546 review)`, async ({
+for (const { width, bottom, right } of INSETS) {
+  test(`at ${width} with a ${bottom}px bottom and ${right}px right inset and no tab, the panel sits on the home inset with nothing round over it (#1546 review, #2879)`, async ({
     page,
   }) => {
     // A shell started after the page loaded is in no tab (loose terminals are adopted on load), so its screen has no
-    // tabs bar and Read-only takes a row of its own under the panel.
+    // tabs chip; with the keys docked no round button shows, so the panel's keys are all a tap.
     const name = `row-loose-${width}-${bottom}-${right}`;
     await fakeSoftKeyboard(page);
     await page.setViewportSize({ width, height: 844 });
@@ -90,36 +94,13 @@ for (const { width, bottom, right } of LOOSE) {
       await expect(row(page)).toBeVisible({ timeout: 15_000 });
       // An empty layout leaves the open terminal in no tab, whatever adopted it on load.
       seedSpaces([]);
-      await expect(page.getByLabel("Tabs in this space")).toHaveCount(0, { timeout: 10_000 });
-      const rounds = await Promise.all(
-        ["Read-only"].map(async (label) => {
-          const box = await key(page, label).boundingBox();
-          expect(box, label).not.toBeNull();
-          return box as Box;
-        }),
-      );
-      // What a key shows is its box cut to the scrolling row it is in, if any.
-      const shown = await row(page).evaluate((bar) => {
-        return [...bar.querySelectorAll("button")].flatMap((button) => {
-          const edge = (button.closest("[data-slot=terminal-keys-scroll]") ?? bar).getBoundingClientRect();
-          const box = button.getBoundingClientRect();
-          const x = Math.max(box.left, edge.left);
-          const end = Math.min(box.right, edge.right);
-          return end - x > 0.5
-            ? [{ label: button.getAttribute("aria-label") ?? "", x, y: box.top, width: end - x, height: box.height }]
-            : [];
-        });
-      });
-      expect(shown.length).toBeGreaterThan(0);
-      expect(shown.filter((each) => rounds.some((round) => overlaps(each, round))).map((each) => each.label)).toEqual(
-        [],
-      );
-      // Read-only sits under the panel: the terminal above keeps its last line clear.
+      await expect(page.locator("[data-phone-tabs]")).toHaveCount(0, { timeout: 10_000 });
+      await expect(readOnlyButton(page)).toHaveCount(0);
+      await expect(key(page, "Show keyboard")).toHaveCount(1);
+      await expectTouchTargets(row(page));
       const [bar, screen] = await Promise.all([row(page).boundingBox(), page.locator("[data-terminal]").boundingBox()]);
-      expect(bar).not.toBeNull();
-      expect(screen).not.toBeNull();
-      if (bar === null || screen === null) return;
-      for (const round of rounds) expect(round.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+      if (bar === null || screen === null) throw new Error("a box is missing");
+      expect(Math.abs(bar.y + bar.height - (844 - bottom))).toBeLessThanOrEqual(1);
       expect(screen.y + screen.height).toBeLessThanOrEqual(bar.y + 1);
     } finally {
       endAgent("host", shell);
@@ -127,7 +108,7 @@ for (const { width, bottom, right } of LOOSE) {
   });
 }
 
-test("the keyboard comes and goes under the same panel, and Read-only hides it", async ({ page }) => {
+test("the keyboard comes and goes under the same panel, and browsing read-only hides it", async ({ page }) => {
   await openDown(page, 390);
   await key(page, "Show keyboard").click();
   await expect(key(page, "Hide keyboard")).toBeVisible();
@@ -136,8 +117,9 @@ test("the keyboard comes and goes under the same panel, and Read-only hides it",
   await expect(key(page, "Show keyboard")).toBeVisible();
   await expect(row(page)).toBeVisible();
 
-  await key(page, "Read-only").click();
+  await startBrowsing(page);
   await expect(row(page)).toHaveCount(0);
-  await key(page, "Read-only").click();
+  await readOnlyButton(page).click();
+  await expect(readOnlyButton(page)).toHaveCount(0);
   await expect(row(page)).toBeVisible();
 });

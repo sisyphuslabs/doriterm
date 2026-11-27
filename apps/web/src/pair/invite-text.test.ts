@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { linkTarget } from "./fragment.ts";
+import { CloseCode } from "@doriface/relay-client";
+import { pairingFailureReason } from "./handshake.ts";
 import { inviteIn, isOwnInvite } from "./invite-text.ts";
 
 const LINK = "doriface://pair#h=host&k=key&s=sig&p=secret&r=wss://relay.example&m=1";
@@ -26,4 +28,15 @@ test.each([
   ["an app with no host yet", { hostId: "", members: [] }, false],
 ])("an invite from %s is this app's own: %p", (_name, known, own) => {
   expect(isOwnInvite("host", known)).toBe(own);
+});
+
+// Q, 2026-11-27: on an iPhone Home Screen app, a tapped invite opens in Safari, which pairs and spends it.
+test("a link refused as used names the Safari cause only in an installed iPhone app", () => {
+  const onPhone = pairingFailureReason("link", CloseCode.UnknownDevice, true) ?? "";
+  const elsewhere = pairingFailureReason("link", CloseCode.UnknownDevice, false) ?? "";
+  expect(onPhone.startsWith(elsewhere)).toBe(true);
+  expect(onPhone.length).toBeGreaterThan(elsewhere.length);
+  expect(pairingFailureReason("code", CloseCode.UnknownDevice, true)).toBe(
+    pairingFailureReason("code", CloseCode.UnknownDevice, false),
+  );
 });

@@ -19,8 +19,9 @@ import { PhoneHeader } from "./phone-header.tsx";
 import { PaneSwitcher } from "./phone-pane-switcher.tsx";
 import { focusPair } from "./split-focus.ts";
 import { SplitFocusView } from "./split-focus-view.tsx";
-import { PhoneTabSwitcher, useSpaceTabs } from "./phone-tab-switcher.tsx";
-import { KEYS_BAR_HEIGHT, keysBottom, PhoneKeys, ROUND_BUTTON_CLEARANCE } from "./phone-keys.tsx";
+import { PhoneSessionExtrasContext } from "./phone-session-extras.ts";
+import { PhoneTabsChip, useTabsPlace } from "./phone-tab-switcher.tsx";
+import { KEYS_BAR_HEIGHT, keysBottom, PhoneKeys } from "./phone-keys.tsx";
 import { keysPlacement } from "./phone-keys-placement.ts";
 import { ConnectionLine } from "./reconnect-status.tsx";
 import { afterEnd } from "./session-actions.ts";
@@ -145,11 +146,17 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
   const hold = (open: boolean): void => {
     if (open) setHeldUp(riding);
   };
-  const tabs = useSpaceTabs(terminals, terminal.address);
-  const inTab = tabs.some((tab) => tab.includes(terminal.address));
   const held = (menu || packs) && heldUp;
-  const placed = keysPlacement({ riding, held, mouseOnly, ended, dictating, browsing, offline, inTab, pad });
-  const { keysOpen, tabsBar, docked, jumpClearance: keysControls } = placed;
+  const placed = keysPlacement({ riding, held, mouseOnly, ended, dictating, browsing, offline, pad });
+  const { keysOpen, docked, jumpClearance: keysControls } = placed;
+  // The session sheet's rows from this screen: Read-only for a touch terminal that takes typing (browse-mode.ts), and
+  // the tabs switch for a terminal in a tab, which the sheet offers on a portrait phone, where the header keeps no room
+  // for its chip.
+  const place = useTabsPlace(terminals, terminal.address, tabTitle ?? title);
+  const extras = {
+    browse: mouseOnly || offline || ended ? null : { browsing, setBrowsing },
+    tabs: place === null ? null : { ...place, openSwitch: () => onSheet(true) },
+  };
   // The card is on screen only with its keys bar (not while dictation holds that place, nor with the bar put away): only
   // then does the header give it the mic, so one mic is always within reach.
   const cardShown = card && !dictating && !offline && !ended && (keysOpen || docked !== null);
@@ -218,16 +225,35 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
         {...(arrive ? {} : { "data-arrived": "" })}
         className="motion-arrive relative isolate flex h-dvh min-h-0 flex-col bg-card pr-(--safe-right) pl-(--safe-left) [--arrive-from:translateX(100%)] [--arrive-duration:var(--duration-push)] [--arrive-ease:var(--ease-standard)]"
       >
-        <PhoneHeader
-          terminal={terminal}
-          terminals={terminals}
-          host={connection.hello.core.name}
-          tabTitle={tabTitle}
-          backTo={full && panes.length > 1 ? "Split" : backTo}
-          onBack={back}
-          onOpen={onOpen}
-          action={untyped || cardShown ? null : <DictateButton voice={voice} target={title} ref={mic} />}
-        />
+        {/* The header's session sheet carries the Read-only and Tabs rows (phone-session-extras.ts). */}
+        <PhoneSessionExtrasContext value={extras}>
+          <PhoneHeader
+            terminal={terminal}
+            terminals={terminals}
+            host={connection.hello.core.name}
+            tabTitle={tabTitle}
+            backTo={full && panes.length > 1 ? "Split" : backTo}
+            onBack={back}
+            onOpen={onOpen}
+            action={
+              <>
+                {place === null ? null : (
+                  <PhoneTabsChip
+                    terminals={terminals}
+                    place={place}
+                    active={terminal.address}
+                    onOpen={onOpen}
+                    sheet={sheet}
+                    onSheet={onSheet}
+                    onNewInSpace={onNewInSpace}
+                    onCloseTab={onCloseTab}
+                  />
+                )}
+                {untyped || cardShown ? null : <DictateButton voice={voice} target={title} ref={mic} />}
+              </>
+            }
+          />
+        </PhoneSessionExtrasContext>
         <ConnectionLine address={terminal.address} reconnectingInHeader {...(offline ? {} : { connection })} />
         {pair === null || panes.length > 2 ? (
           <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
@@ -284,7 +310,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             {...(keyboard.inset > 0 ? { style: { marginBottom: `${keyboard.inset}px` } } : {})}
           />
         ) : offline || ended ? null : (
-          // Before the tabs bar: docked, the keys sit under the terminal and over the bar (#2499).
+          // Docked, the keys sit under the terminal on the home inset (#2499, #2879).
           <PhoneKeys
             port={port}
             open={keysOpen}
@@ -313,20 +339,6 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
             {...(mouseOnly ? { onKeys: setKeysShown } : { onBrowse: setBrowsing })}
           />
         )}
-        {tabsBar ? (
-          <PhoneTabSwitcher
-            terminals={terminals}
-            tabs={tabs}
-            active={terminal.address}
-            title={tabTitle ?? title}
-            onOpen={onOpen}
-            clearance={ROUND_BUTTON_CLEARANCE}
-            onCloseTab={onCloseTab}
-            onNewInSpace={onNewInSpace}
-            sheet={sheet}
-            onSheet={onSheet}
-          />
-        ) : null}
         {offline || ended ? null : (
           <PackSheet
             open={packs}

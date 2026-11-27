@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, opened, test } from "./fixtures.ts";
 import { seedSpaces } from "./layout-doc.ts";
+import { expectTabSwitch, openTabSwitch } from "./phone-key-bar.ts";
 
 interface Seeded {
   readonly deploy: string;
@@ -36,7 +37,6 @@ function seed(): Seeded {
 const end = (seeded: Seeded): void => Object.values(seeded).forEach((address) => endAgent("host", address));
 const header = (page: Page) => page.getByRole("banner");
 const title = (page: Page) => header(page).getByRole("heading", { level: 1 });
-const switcher = (page: Page) => page.locator("[data-phone-tabs]").getByRole("button", { name: /^Switch tab, / });
 
 const PHONES = { "iPhone 14": devices["iPhone 14"], "Pixel 7": devices["Pixel 7"] };
 
@@ -64,17 +64,14 @@ for (const [phoneName, device] of Object.entries(PHONES)) {
         const back = header(page).getByRole("button", { name: "Back to website" });
         await expect(back).toBeVisible();
         await expect(back).toContainText("website");
-        await expect(switcher(page)).toHaveAccessibleName("Switch tab, website, deploy, tab 1 of 2");
-        await expect(switcher(page).getByText("deploy", { exact: true })).toBeVisible();
-        await expect(switcher(page).getByText("1/2", { exact: true })).toBeVisible();
-        // Beside the round button the bar is too narrow for the space too: the header names it, so the tab's own name
-        // keeps the room and is never cut.
-        await expect(switcher(page).getByText("website ·", { exact: true })).toBeHidden();
-        const name = switcher(page).getByText("deploy", { exact: true });
-        await expect.poll(() => name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+        await expectTabSwitch(page, async (tabs) => {
+          await expect(tabs).toHaveAccessibleName("Switch tab, website, deploy, tab 1 of 2");
+          // The switch shows the tab's place alone: the heading names the tab (#2879).
+          await expect(tabs).toContainText("1/2");
+        });
 
         // The switch sheet names its rows the same way: no "1 \u00b7" before them.
-        await switcher(page).click();
+        await openTabSwitch(page);
         const sheet = page.getByRole("dialog", { name: "Switch" });
         await opened(sheet);
         // Each tab's row, not its Close or the space's New tab (#1464).

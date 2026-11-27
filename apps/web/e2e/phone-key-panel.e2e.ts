@@ -91,20 +91,15 @@ test("at 390 the keys are one panel with the keyboard down and up: the same stru
   const terminal = page.locator("[data-terminal]");
   await expect(terminal).toContainText("$", { timeout: 15_000 });
 
-  // Down: the panel sits under the terminal, over the tabs bar, its toggle raising the keyboard.
+  // Down: the panel sits under the terminal, on the screen's bottom (no tabs bar, #2879), its toggle raising the keyboard.
   await expect(keysBar(page).getByRole("button", { name: "Show keyboard", exact: true })).toBeVisible();
   await expect(key(page, "Hide keyboard")).toHaveCount(0);
   const down = await panel(page);
-  const tabs = page.getByRole("navigation", { name: "Tabs in this space" });
-  await expect(tabs).toBeVisible();
-  const [screen, bar, below] = await Promise.all([
-    terminal.boundingBox(),
-    keysBar(page).boundingBox(),
-    tabs.boundingBox(),
-  ]);
-  if (screen === null || bar === null || below === null) throw new Error("a box is missing");
+  await expect(page.getByRole("navigation", { name: "Tabs in this space" })).toHaveCount(0);
+  const [screen, bar] = await Promise.all([terminal.boundingBox(), keysBar(page).boundingBox()]);
+  if (screen === null || bar === null) throw new Error("a box is missing");
   expect(screen.y + screen.height).toBeLessThanOrEqual(bar.y + 1);
-  expect(bar.y + bar.height).toBeLessThanOrEqual(below.y + 1);
+  expect(Math.abs(bar.y + bar.height - 844)).toBeLessThanOrEqual(1);
 
   // Up: the same panel rides on the keyboard.
   await keysBar(page).getByRole("button", { name: "Show keyboard", exact: true }).click();

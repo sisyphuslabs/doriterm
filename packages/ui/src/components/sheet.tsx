@@ -1,5 +1,5 @@
 import { Dialog as BaseDialog } from "@base-ui/react/dialog";
-import type { ReactElement, ReactNode } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { Button } from "./button.tsx";
 import { modalLayer, sheetBackdropClass, wrapAnywhere } from "./overlay.ts";
@@ -22,6 +22,8 @@ export interface SheetProps {
   readonly trigger?: ReactElement;
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
+  /** Where the focus goes as the sheet closes; its trigger by default. */
+  readonly finalFocus?: ComponentProps<typeof BaseDialog.Popup>["finalFocus"];
 }
 
 /** A panel that slides in from an edge; on phones the bottom sheet replaces popovers. */
@@ -48,7 +50,7 @@ export function SheetPanel({ title, side = "bottom", children }: Pick<SheetProps
   );
 }
 
-export function Sheet({ title, side = "right", children, trigger, open, onOpenChange }: SheetProps) {
+export function Sheet({ title, side = "right", children, trigger, open, onOpenChange, finalFocus }: SheetProps) {
   return (
     <BaseDialog.Root
       {...(open === undefined ? {} : { open })}
@@ -58,6 +60,7 @@ export function Sheet({ title, side = "right", children, trigger, open, onOpenCh
       <BaseDialog.Portal>
         <BaseDialog.Backdrop className={sheetBackdropClass} />
         <BaseDialog.Popup
+          {...(finalFocus === undefined ? {} : { finalFocus })}
           className={cn(
             modalLayer,
             "fixed flex flex-col border-border bg-popover text-popover-foreground shadow-overlay outline-none",
