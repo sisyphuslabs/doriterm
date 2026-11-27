@@ -40,7 +40,9 @@ for (const size of [
     const header = page.locator("header[data-phone-top]");
     const line = header.locator("[data-host-down]");
     await expect(line).toBeVisible({ timeout: 30_000 });
-    await expect(line.getByRole("status")).toHaveText(/^Can't reach /);
+    await expect(line.getByRole("status")).toHaveText("Can't connect");
+    // The words fit the line whole: none of them is cut behind an ellipsis.
+    expect(await line.getByRole("status").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await expect(line.getByRole("button", { name: "Try again" })).toBeVisible();
     // The line is in the header, above the terminal: nothing is drawn over the terminal's rows.
     const lineBox = await line.boundingBox();

@@ -40,7 +40,6 @@ const GAP_DETAIL: Record<HistoryGapCause, string> = {
 };
 
 const tryNow = (): void => connectionStore.retryNow();
-const hostName = (): string => connectionStore.settings.hostName || "the host";
 
 /** The workspace's own link, as the page says it: offline, why the host cannot be reached past the grace, or redialing. */
 function linkLine(notice: ConnectionNotice, hostDown: string | null): Line {
@@ -49,7 +48,7 @@ function linkLine(notice: ConnectionNotice, hostDown: string | null): Line {
   if (hostDown !== null)
     return {
       kind: "host-down",
-      label: `Can't reach ${hostName()}`,
+      label: "Can't connect",
       detail: hostDown,
       action: { label: "Try again", run: tryNow },
     };
