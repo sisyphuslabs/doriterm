@@ -19,6 +19,7 @@
     "../../.github/scripts/r2-store.ts",
     "../../.github/scripts/release-records.ts",
     "../../.github/scripts/release-mirror.ts",
+    "../../.github/scripts/core-mirror.ts",
     "../../.github/scripts/release-channel.ts",
     "../../.github/scripts/release-r2.ts"
   ],

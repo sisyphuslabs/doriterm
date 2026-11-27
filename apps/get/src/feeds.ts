@@ -16,7 +16,7 @@ export const DESKTOP_FEEDS: Readonly<Record<string, string>> = {
 
 export const isDesktopFeed = (file: string): boolean => Object.hasOwn(DESKTOP_FEEDS, file);
 
-const FEED_TTL = "public, max-age=60";
+export const FEED_TTL = "public, max-age=60";
 
 /**
  * A stored `latest*.yml` as a channel serves it: each relative `url` and `path` becomes `<version>/<file>`, so the

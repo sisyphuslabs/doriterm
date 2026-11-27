@@ -62,6 +62,28 @@ Within a minute of a rollback or a yank the desktop feeds, the host manifest and
 before, so no further install receives the bad one. Installs that already updated stay on it: neither the desktop app nor
 the host downgrades, so the remedy for them is the next release.
 
+## Vouching for a herdr-core release
+
+herdr's release server publishes no signature, so Doriterm signs the herdr-core releases it trusts, and a host installs a
+herdr-core only through a manifest signed with the release key (#2945). `core-mirror.yml` (Actions, Run workflow, on
+`dev`) takes a herdr-core version and a target. Dispatch it after reading that version's release notes:
+
+1. It downloads herdr's `core/<version>/manifest.json` and every archive it names (each must sit under that release's
+   own directory).
+2. It checks the macOS archives' `Herdr Core.app` and `herdr-core` against herdr's codesign requirement. Nothing
+   downloaded is ever run.
+3. It checks every archive against herdr's sha256.
+4. It uploads them to `core/v<version>/`, created once.
+5. It writes and signs `core/v<version>/manifest.json`, whose URLs name the origin.
+6. It moves `core/latest` forward only.
+
+The origin serves `/core/latest.json` (the manifest `core/latest` names), `/core/<version>/manifest.json`, their `.sig`
+and the archives, at the same paths herdr's server uses.
+
+An older version can be mirrored for pinned installs (`HC_VERSION`) and leaves `core/latest` alone. A new herdr-core
+reaches hosts only after this run; raising the host's herdr-core floor is mirror first, then the pull request. Mirror to
+`staging` first and read `https://staging.get.doriterm.com/core/latest.json` back before `production`.
+
 ## Staged rollout
 
 The pointer's `rollout` is the percentage of installs offered the version. The desktop app reads it as
@@ -70,7 +92,8 @@ host compares it with the id in `<state dir>/updater-id`. Neither id ever leaves
 
 ## Secrets
 
-The `release-mirror` and `release-mirror-staging` environments hold `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`
+The `release-mirror` and `release-mirror-staging` environments (used by `release-mirror.yml`, `release-channel.yml` and
+`core-mirror.yml`) hold `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`
 (an R2 token scoped to the one bucket), `CLOUDFLARE_ACCOUNT_ID` and `RELEASE_SIGNING_KEY` (base64 of the 32-byte
 Ed25519 seed). Both environments hold the real signing key (the mirror refuses a key the builds do not trust), so both
 must allow deployments from `dev` and release tags only, in the environment's deployment branch rules; `release.yml`'s
