@@ -1,5 +1,5 @@
-import { mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeSync, closeSync } from "node:fs";
-import { homedir } from "node:os";
+import { linkSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, hostname, uptime } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -8,83 +8,148 @@ import { join } from "node:path";
  */
 export const CLAIMS_DIR = join(homedir(), ".cache", "doriface-e2e", "port-claims");
 
-/** Who holds a claim: the run, and the process whose life the claim lasts (the Playwright runner). */
+/**
+ * Who holds a claim: the run, and the process whose life the claim lasts (the Playwright runner), on which computer and
+ * since which boot, so a pid reused after a reboot is not taken for the runner, and another computer's is never judged.
+ */
 export interface ClaimOwner {
   readonly run: string;
   readonly pid: number;
+  readonly host: string;
+  readonly boot: number;
 }
 
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM: the process exists but is another user's.
-    return error instanceof Error && "code" in error && error.code === "EPERM";
-  }
+/** When this computer booted, in whole seconds, read once: two readings can round a second apart. */
+const BOOT = Math.round(Date.now() / 1000 - uptime());
+const bootTime = (): number => Math.round(Date.now() / 1000 - uptime());
+
+/** This process as a claim's owner, for `run`. */
+export function ownerFor(run: string): ClaimOwner {
+  return { run, pid: process.pid, host: hostname(), boot: BOOT };
 }
 
-function ownerOf(file: string): ClaimOwner | undefined {
+/** What a claim may be refused for: the owner that holds its port, when the claim file names one. */
+export type Claimed = { readonly ok: true } | { readonly ok: false; readonly holder: ClaimOwner | undefined };
+
+function readOwner(file: string): ClaimOwner | undefined {
   try {
     const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
     if (typeof parsed !== "object" || parsed === null) return undefined;
-    const run = Reflect.get(parsed, "run");
-    const pid = Reflect.get(parsed, "pid");
-    return typeof run === "string" && typeof pid === "number" ? { run, pid } : undefined;
+    const [run, pid, host, boot] = ["run", "pid", "host", "boot"].map((key) => Reflect.get(parsed, key));
+    return typeof run === "string" && typeof pid === "number" && typeof host === "string" && typeof boot === "number"
+      ? { run, pid, host, boot }
+      : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** Claims one port: true when this owner now holds it. A claim whose owner is gone is taken over. */
-function claimPort(dir: string, port: number, owner: ClaimOwner): boolean {
-  const file = join(dir, `port-${port}`);
-  for (const takeOver of [false, true]) {
-    try {
-      // "wx" creates the file only if it does not exist: of two runs claiming the same port, exactly one succeeds.
-      const fd = openSync(file, "wx");
-      writeSync(fd, JSON.stringify(owner));
-      closeSync(fd);
-      return true;
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
-      const held = ownerOf(file);
-      // A claim still being written reads as no owner: it is live, never taken over.
-      if (takeOver || held === undefined || alive(held.pid)) return false;
-      rmSync(file, { force: true });
-    }
+const sameOwner = (a: ClaimOwner | undefined, b: ClaimOwner): boolean =>
+  a !== undefined && a.run === b.run && a.pid === b.pid && a.host === b.host && a.boot === b.boot;
+
+/** Whether `owner`'s runner is gone: on this computer, from an earlier boot or no longer running. Another's is live. */
+function gone(owner: ClaimOwner): boolean {
+  if (owner.host !== hostname()) return false;
+  if (Math.abs(owner.boot - bootTime()) > 2) return true;
+  try {
+    process.kill(owner.pid, 0);
+    return false;
+  } catch {
+    return true;
   }
-  return false;
+}
+
+const isCode = (error: unknown, code: string): boolean =>
+  error instanceof Error && "code" in error && error.code === code;
+
+/**
+ * Creates `file` naming `owner`, only if no file has that name: the owner is written whole to a file of this owner's
+ * own, then linked into place, which fails if the name exists. So a claim file is never seen half-written, and of two
+ * owners creating one name, exactly one does.
+ */
+function createNaming(file: string, owner: ClaimOwner): boolean {
+  const draft = `${file}.${owner.run}.${owner.pid}.draft`;
+  writeFileSync(draft, JSON.stringify(owner));
+  try {
+    linkSync(draft, file);
+    return true;
+  } catch (error) {
+    if (isCode(error, "EEXIST")) return false;
+    throw error;
+  } finally {
+    rmSync(draft, { force: true });
+  }
+}
+
+/**
+ * Removes `file` if it still names `stale`, a gone owner: only while holding the port's takeover lock, so of runs that
+ * all found the same stale claim, one removes it and the rest find it gone or replaced. Nothing else removes a claim
+ * but its own run, so the claim read under the lock is the one removed.
+ */
+export function takeOver(file: string, stale: ClaimOwner, owner: ClaimOwner): void {
+  const lock = `${file}.takeover`;
+  if (!createNaming(lock, owner)) return;
+  try {
+    if (sameOwner(readOwner(file), stale)) rmSync(file, { force: true });
+  } finally {
+    rmSync(lock, { force: true });
+  }
+}
+
+/** Removes `file` if it names `owner`: a run gives back only its own claims. */
+function releaseIfOwn(file: string, owner: ClaimOwner): void {
+  if (sameOwner(readOwner(file), owner)) rmSync(file, { force: true });
+}
+
+function claimPort(file: string, owner: ClaimOwner): Claimed {
+  for (const tookOver of [false, true]) {
+    if (createNaming(file, owner)) return { ok: true };
+    const holder = readOwner(file);
+    if (tookOver || holder === undefined || !gone(holder)) return { ok: false, holder };
+    takeOver(file, holder, owner);
+  }
+  return { ok: false, holder: readOwner(file) };
+}
+
+/** Takes over every claim whose runner is gone (a run killed before its teardown), so none is left for good. */
+function sweep(dir: string, owner: ClaimOwner): void {
+  for (const name of readdirSync(dir)) {
+    if (!/^port-\d+$/u.test(name)) continue;
+    const file = join(dir, name);
+    const holder = readOwner(file);
+    if (holder !== undefined && gone(holder)) takeOver(file, holder, owner);
+  }
 }
 
 /**
  * Claims `count` consecutive ports from `base` for `owner`, all or none: a run's ports are its own for as long as its
  * runner lives, so a second run picking at the same moment cannot be handed any of them (#2943). Freeing a port to
- * check it, as the picker does, reserves nothing.
+ * check it, as the picker does, reserves nothing. Claims a gone runner left are swept first.
  */
-export function claimBlock(base: number, count: number, owner: ClaimOwner, dir = CLAIMS_DIR): boolean {
+export function claimBlock(base: number, count: number, owner: ClaimOwner, dir = CLAIMS_DIR): Claimed {
   mkdirSync(dir, { recursive: true });
-  const claimed: number[] = [];
+  sweep(dir, owner);
+  const claimed: string[] = [];
   for (let port = base; port < base + count; port++) {
-    if (!claimPort(dir, port, owner)) {
-      for (const done of claimed) rmSync(join(dir, `port-${done}`), { force: true });
-      return false;
+    const file = join(dir, `port-${port}`);
+    const result = claimPort(file, owner);
+    if (!result.ok) {
+      for (const done of claimed) releaseIfOwn(done, owner);
+      return result;
     }
-    claimed.push(port);
+    claimed.push(file);
   }
-  return true;
+  return { ok: true };
 }
 
-/** Gives back every port `run` claimed: the run's teardown calls it. */
-export function releaseRun(run: string, dir = CLAIMS_DIR): void {
+/** Gives back every port `owner` claimed: the run's teardown and its runner's exit call it. */
+export function releaseClaims(owner: ClaimOwner, dir = CLAIMS_DIR): void {
   let names: string[];
   try {
     names = readdirSync(dir);
-  } catch {
-    return;
+  } catch (error) {
+    if (isCode(error, "ENOENT")) return;
+    throw error;
   }
-  for (const name of names) {
-    const file = join(dir, name);
-    if (name.startsWith("port-") && ownerOf(file)?.run === run) rmSync(file, { force: true });
-  }
+  for (const name of names) if (/^port-\d+$/u.test(name)) releaseIfOwn(join(dir, name), owner);
 }
