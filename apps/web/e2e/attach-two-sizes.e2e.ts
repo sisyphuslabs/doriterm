@@ -82,6 +82,37 @@ test("a phone opening the terminal a desktop watches leaves the desktop's column
   }
 });
 
+test("a phone alone on a terminal no device has sized gives it the phone's own grid (#2974)", async ({ browser }) => {
+  const address = startShell("host", "phone-alone");
+  try {
+    seedSpaces([
+      {
+        id: "spc-phone-alone",
+        name: "phone-alone",
+        folder: "",
+        tabs: [{ id: "tb-phone-alone", name: "", terminal: address }],
+      },
+    ]);
+    const headless = coreSize(address);
+    await withPhone(browser, async (phone) => {
+      const phoneTerminal = phone.locator(`[data-terminal="${address}"]`);
+      await phone.goto("/");
+      await phone
+        .getByRole("button", { name: /phone-alone/ })
+        .first()
+        .click();
+      await expect(phoneTerminal).toBeVisible({ timeout: 20_000 });
+      // No other viewer is more recently active, so the core takes the watching phone's size from its attach.
+      await expect
+        .poll(async () => coreSize(address) === (await gridSize(phoneTerminal)), { timeout: 10_000 })
+        .toBe(true);
+      expect(coreSize(address)).not.toBe(headless);
+    });
+  } finally {
+    endAgent("host", address);
+  }
+});
+
 /** How many of the view's rows hold `text`, history included. */
 const rowsWith = (terminal: Locator, text: string): Promise<number> =>
   terminal.evaluate(

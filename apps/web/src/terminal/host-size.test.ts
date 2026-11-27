@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fitGrid, type GridSize, HostSize, type SizedStream, type ViewGrid } from "./host-size.ts";
+import { fitGrid, fitOwnBox, type GridSize, HostSize, type SizedStream, type ViewGrid } from "./host-size.ts";
 
 function recorder(): SizedStream & { readonly frames: string[] } {
   const frames: string[] = [];
@@ -93,12 +93,16 @@ test("a watching view draws at the pty's size, follows it, and its first input f
   const size = new HostSize(true);
   const stream = recorder();
   const view = grid({ cols: 48, rows: 43 });
-  expect(fitGrid(view)).toBe(true);
+  fitGrid(view);
   size.ptySized(view, { cols: 123, rows: 36 });
   // Held at the pty's grid: no fit takes the box's back while it watches.
-  expect(fitGrid(view)).toBe(false);
+  fitGrid(view);
   size.ptySized(view, { cols: 100, rows: 30 });
   expect(view.resizes).toEqual(["48x43", "123x36", "100x30"]);
+  // A reattach asks for its own box, then draws at the size the core answers with.
+  fitOwnBox(view);
+  size.ptySized(view, { cols: 100, rows: 30 });
+  expect(view.resizes.slice(3)).toEqual(["48x43", "100x30"]);
   expect(stream.frames).toEqual([]);
   size.inputStarts(stream, view);
   expect(view.autoResize).toBe(true);

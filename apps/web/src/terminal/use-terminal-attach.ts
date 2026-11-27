@@ -25,7 +25,7 @@ import {
   unsentReason,
 } from "./terminal-settle.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
-import { fitGrid, type HostSize } from "./host-size.ts";
+import { fitOwnBox, type HostSize } from "./host-size.ts";
 
 const encoder = new TextEncoder();
 
@@ -205,11 +205,12 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     // wterm pins the row height it measured at mount inline, over the stylesheet's font-size-derived one; without this
     // a font-size change (zoom, Settings) keeps the old row height, so the grid gains columns but never rows.
     ready.element.style.removeProperty("--term-row-height");
-    // wterm starts every grid at 80x24 and fits it later; the pty starts at the size the view renders. A watching view
-    // reattaching keeps the pty's grid it draws at (D1), which is no size of its own for new terminals to start at.
-    const own = fitGrid(ready);
+    // wterm starts every grid at 80x24 and fits it later; the pty starts at the size the view renders. Every attach asks
+    // for the view's own box, a watching one's included: the core gives it the pty only when no viewer is more recently
+    // active, and the answer says which size the view draws at (D1, host-size.ts).
+    fitOwnBox(ready);
     const { cols, rows } = ready;
-    if (own) noteViewSize(cols, rows);
+    noteViewSize(cols, rows);
     const display = readDisplay(ready.element);
     // A reattach after a reconnect says so: the core applies its size only once this viewer is active again.
     // A touch view only watching joins the same way, so the device in use keeps its size (D1, host-size.ts).
