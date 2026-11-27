@@ -2,6 +2,7 @@ import { FrameKind, MESH_OFFER_DOC, encodeFrame, isJsonObject } from "@doriface/
 import { coreDoc, setCoreDoc } from "./core-doc.ts";
 import { expect, test } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -10,7 +11,7 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const socket = await routeHcSocket(page);
     await page.goto(width === 390 ? "/settings" : "/");
-    if (width === 390) await page.getByRole("tab", { name: "Machines" }).click();
+    if (width === 390) await openSettingsSection(page, "Machines");
     await page.getByRole("button", { name: "Connect a device" }).click();
     const dialog = page.getByRole("dialog", { name: "Connect a device" });
     // A computer joins from the Computer tab; the sheet opens on a phone or browser.

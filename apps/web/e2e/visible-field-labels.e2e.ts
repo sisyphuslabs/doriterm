@@ -4,6 +4,7 @@ import { startAskingAgent } from "./approval-agent.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
 import { openPhoneTerminal } from "./phone-key-bar.ts";
 import { stubSpeech } from "./speech-stub.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 // Every text field keeps a label a sighted person can read while typing; the placeholder only shows the format (#1497).
 test.use({ serviceWorkers: "block" });
@@ -106,11 +107,9 @@ for (const width of [390, 1440] as const) {
       const settings = settingsDialog(page);
       await expectVisibleLabel(settings.getByRole("searchbox", { name: "Search settings" }));
       const open = async (name: string) => {
-        await settings
-          .getByRole(width === 390 ? "tab" : "button", { name, exact: true })
-          .first()
-          .click();
-        await expect(settings.getByRole("heading", { name, level: 2 })).toBeVisible();
+        await openSettingsSection(page, name);
+        // The section's page title on a phone, its caption from md (#2914).
+        await expect(settings.getByRole("heading", { name, exact: true })).toBeVisible();
       };
       await open("Keybindings");
       await expectVisibleLabel(settings.getByRole("searchbox", { name: "Search keybindings" }));

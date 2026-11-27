@@ -2,11 +2,18 @@
 // every surface it sits on (#1031): 4.5:1 for every label, filled or ghost (#1496), and 3:1 for a ghost icon, measured
 // as the browser composites it, opacity included. A working (loading) Button is busy, not unavailable, so it keeps its own colours.
 import { PAIR_CODE, PAIRING_SETTINGS } from "./capture-relay.ts";
-import { SHOTS } from "./capture-shots.ts";
+import { SHOTS, type Shot } from "./capture-shots.ts";
 import { expect, test } from "./fixtures.ts";
 import { MACHINE_NAME } from "./machine.ts";
 import { newOn, OFFLINE_BOUND_MS, OFFLINE_TEST_TIMEOUT_MS, reconnect, switchTo } from "./machine-switch.ts";
 import { measure, SURFACES } from "./painted-contrast.ts";
+
+/** The shot a test ran: its cleanup runs after the test whatever the outcome, so a later spec starts as the host did. */
+let ran: Shot | undefined;
+test.afterEach(() => {
+  ran?.cleanup?.();
+  ran = undefined;
+});
 
 test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
 
@@ -90,6 +97,7 @@ for (const theme of ["day", "night"] as const) {
     }) => {
       const shot = SHOTS.find((entry) => entry.name === "settings-keybindings");
       if (shot === undefined) throw new Error("capture settings-keybindings is missing");
+      ran = shot;
       await shot.run(page, "1440");
       const reset = page.getByRole("button", { name: "Reset all" });
       await expect(reset).toBeDisabled();
