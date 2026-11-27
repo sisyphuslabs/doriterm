@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-type Step = { name?: string; run?: string; uses?: string; env?: Record<string, string> };
+type Step = { name?: string; if?: string; run?: string; uses?: string; env?: Record<string, string> };
 type Job = { if?: string; environment?: string; env?: Record<string, string>; "runs-on"?: string; steps?: Step[] };
 type Workflow = { on: Record<string, unknown>; permissions?: Record<string, string>; jobs: Record<string, Job> };
 
@@ -42,7 +42,21 @@ test("herdr's archives are fetched, then the macOS ones checked against herdr's 
   expect(check).toContain('certificate leaf[subject.OU] = "2W9652Q7QR"');
   expect(check).toContain("for name in herdr-core-macos-aarch64.tar.gz herdr-core-macos-x86_64.tar.gz; do");
   expect(check).not.toContain("*");
+  // Every herdr release ships the bare binary (0.1.17 ships only that); the app bundle is checked when it is there.
+  expect(check).toContain('test -f "$unpacked/herdr-core" ||');
+  expect(check).toContain('codesign --verify --strict -R "$requirement" "$unpacked/herdr-core"');
+  expect(check).toContain('if [ -e "$unpacked/Herdr Core.app" ]; then');
+  expect(check).toContain('codesign --verify --strict -R "$requirement" "$unpacked/Herdr Core.app"');
   expect(mirror?.["runs-on"]).toMatch(/^macos-/);
+});
+
+test("production takes only a version staging already serves, checked before anything is downloaded", () => {
+  const gate = steps.findIndex((step) => step.name === "Production takes only a version staging serves");
+  expect(gate).toBeGreaterThan(-1);
+  expect(steps[gate]?.if).toBe("inputs.target == 'production'");
+  expect(steps[gate]?.run).toContain('curl -fsS "$staged" -o /dev/null ||');
+  expect(steps[gate]?.run).toContain('staged="https://staging.get.doriterm.com/core/$VERSION/manifest.json"');
+  expect(gate).toBeLessThan(at("release-r2.ts core-fetch"));
 });
 
 test("every action is pinned to a full commit", () => {
