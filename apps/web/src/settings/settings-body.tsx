@@ -2,7 +2,6 @@ import { cn } from "@doriface/ui";
 import type { ReactNode } from "react";
 import { desktopMcp } from "../desktop/mcp-bridge.ts";
 import { AppearanceSection } from "./appearance-section.tsx";
-import { BrowserInvite } from "./browser-invite.tsx";
 import { ConnectionSection } from "./connection-section.tsx";
 import { DeviceSection } from "./device-section.tsx";
 import { DevicesSection } from "./devices-section.tsx";
@@ -114,16 +113,15 @@ export function SectionBody({
               </p>
             ) : null}
           </Group>
-          {/* Connecting a machine joins it to the mesh, so it is on this screen, under the rows it adds to. */}
-          <Group title="Connect a machine" id={CONNECT_GROUP}>
+          {/* Connect a device (above, under the rows) is the way in; these are the same steps by hand (#2939). */}
+          <Group title="From a terminal" id={CONNECT_GROUP}>
             <p className="py-3 text-(length:--settings-row-detail) leading-5 text-pretty text-muted-foreground">
-              One command on this host opens an invite, and the other computer or phone joins with it. A join waits for
-              your approval under In your mesh.
+              Connect a device does this for you. By hand, one command on this host opens an invite, and the other
+              computer joins with it; a join that asks waits for your approval under In your mesh.
             </p>
             <PairSection />
           </Group>
           <Group title="In your mesh">
-            <BrowserInvite />
             <MeshSection attentionOnly={joinedBrowser} />
           </Group>
         </>

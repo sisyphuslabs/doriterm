@@ -25,7 +25,7 @@ usage: install.sh [options]
 
   --version <vX.Y.Z>    the release to install (default: the one this script came with, else the latest)
   --web-origin <url>    the web app the pairing QR code and link open (default: the Doriterm desktop app's link)
-  --join <link>         join the mesh of the host that made this link (the app's Add a machine command), instead
+  --join <link>         join the mesh of the host that made this link (the app's Connect a device command for a computer), instead
                         of printing a pairing; DORIFACE_JOIN=<link> does the same and keeps the link off this
                         script's command line, where other local users can read it
   --bin-dir <dir>       where doriface-host goes (default ~/.local/bin)

@@ -1,13 +1,15 @@
 import { Button } from "@doriface/ui";
+import { useState } from "react";
 import { useConnection } from "../connection/store.ts";
 import { isIos, runsInstalled } from "../device/install.ts";
-import { JoinCommandBlock } from "../workspace/join-command-block.tsx";
+import { ConnectDeviceSheet } from "../workspace/connect-device-dialog.tsx";
 import type { PairingOffer } from "./fragment.ts";
 import { InviteField } from "./invite-field.tsx";
 
 /** The same entry point for a fresh tab and a separate, empty iOS home-screen storage partition. */
 export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer) => void }) {
   const connection = useConnection();
+  const [connecting, setConnecting] = useState(false);
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center gap-5 px-4 py-10 md:px-6">
       <h1 className="text-2xl font-semibold text-balance">Join a mesh</h1>
@@ -28,21 +30,23 @@ export function JoinEntry({ onOffer }: { readonly onOffer: (offer: PairingOffer)
       ) : null}
       {connection.phase === "open" ? (
         <>
-          <section aria-labelledby="join-add-another" className="flex flex-col gap-3">
-            <h2 id="join-add-another" className="font-semibold text-foreground">
-              Add another machine
-            </h2>
-            <JoinCommandBlock connection={connection.connection} open />
-          </section>
+          <Button size="lg" onClick={() => setConnecting(true)}>
+            Connect a device
+          </Button>
+          {connecting ? (
+            <ConnectDeviceSheet connection={connection.connection} onClose={() => setConnecting(false)} />
+          ) : null}
           <h2 className="border-t border-border pt-4 font-semibold text-foreground">
             Have an invite from another machine?
           </h2>
         </>
       ) : null}
       <InviteField onOffer={onOffer} />
-      <Button size="lg" render={<a href="/settings#connect" />}>
-        Connect a machine
-      </Button>
+      {connection.phase === "open" ? null : (
+        <Button size="lg" render={<a href="/settings#connect" />}>
+          From a terminal
+        </Button>
+      )}
     </main>
   );
 }

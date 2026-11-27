@@ -402,7 +402,7 @@ export function useLayout(
   const { dropPane, closeTab } = useTabClose(tabs, active, view.spaces, layoutOf, setLoose, setView, leavePane);
 
   const moves = usePaneMoves({ active, focused, layoutOf, show, setView, history: history.current });
-  const drops = useTerminalDrops({ tabs, layoutOf, show });
+  const drops = useTerminalDrops({ tabs, focused: view.focused, layoutOf, show });
   const selectTab = useCallback((key: string): void => show(key, null), [show]);
   const focusPane = useCallback((tab: string, pane: string): void => show(tab, pane), [show]);
   const { moveTab, lastMove } = useTabMoves(shown, layoutOf);

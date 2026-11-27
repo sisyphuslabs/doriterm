@@ -147,11 +147,13 @@
           <p>Until now someone had to open a laptop and SSH in for that.</p>
           <h2 id="set-up">Set it up</h2>
           <p>
-            The assistant pairs like a phone and gets what a paired device gets on that machine. MCP is on by default,
-            so setup is pairing and one config.
+            The assistant pairs like a phone and gets what a paired device gets on that machine. Setup has three steps.
           </p>
-          <h2 id="turn-on">1. Check that MCP is on</h2>
-          <p>MCP is on by default for paired devices. If someone turned it off on a machine, turn it back on there:</p>
+          <h2 id="turn-on">1. Turn MCP on</h2>
+          <p>
+            MCP is off on a machine until you turn it on. A machine that already served paired devices before this
+            change keeps its MCP on. On the machine:
+          </p>
           <div class="code">
             <div class="code__head">
               <span>shell</span
@@ -400,7 +402,7 @@
               <tbody>
                 <tr>
                   <td>"MCP is off on this host"</td>
-                  <td>Someone turned MCP off there. Run <code>doriface-host mcp on</code> on the machine</td>
+                  <td>Run <code>doriface-host mcp on</code> on the machine</td>
                 </tr>
                 <tr>
                   <td>"studio needs an update to accept MCP clients"</td>
@@ -419,7 +421,7 @@
           <ol>
             <li><a href="#what-you-can-do">What you can do with this</a></li>
             <li><a href="#set-up">Set it up</a></li>
-            <li><a href="#turn-on">1. Check that MCP is on</a></li>
+            <li><a href="#turn-on">1. Turn MCP on</a></li>
             <li><a href="#pair">2. Pair the assistant's computer</a></li>
             <li><a href="#config">3. Paste the MCP config</a></li>
             <li><a href="#tools">What the assistant can do</a></li>

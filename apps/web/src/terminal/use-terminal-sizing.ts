@@ -59,7 +59,7 @@ export function useTerminalSizing(
   useTerminalPinch(wt, address, Number(single(config, "font-size")), host);
   const inputStarts = useRef(() => {});
   inputStarts.current = () => {
-    if (wt !== null) hostSize.inputStarts(stream.current, { cols: wt.cols, rows: wt.rows });
+    if (wt !== null) hostSize.inputStarts(stream.current, wt);
   };
   useKeyboardAsk(wt, inputStarts);
   const [starts] = useState(() => () => inputStarts.current());

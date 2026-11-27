@@ -71,12 +71,12 @@ export function JoinCommandBlock({
         </p>
       ) : offer.phase === "ready" ? (
         <div className="flex flex-col gap-2">
-          <p className="text-prose text-foreground">On the machine to add, run:</p>
-          <code aria-label="Join command" className={codeClass}>
-            {offer.command}
+          <p className="text-prose text-foreground">On the machine to add, run this. It joins without asking:</p>
+          <code aria-label="Join command" className={codeClass} title={offer.command}>
+            <span className="line-clamp-2">{offer.command}</span>
           </code>
           <div className="flex items-center gap-3">
-            <Button variant="secondary" onClick={() => copy(offer.command)}>
+            <Button variant="primary" onClick={() => copy(offer.command)}>
               {copied ? "Copied" : "Copy"}
             </Button>
             <span className="text-prose text-muted-foreground">It works once, for 10 minutes.</span>

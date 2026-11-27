@@ -133,7 +133,7 @@ Any member can give one, and none of them is special afterwards:
 | a machine, CLI                           | `doriface-host mesh pair`                    | a single-use mesh offer (10 minutes): link, QR, code                                                                                                                                                                                                                                                                                                                                  |
 | any web member (browser, phone, desktop) | Settings > Mesh > **Add a browser or phone** | the same offer, opened through the `doriface-mesh-offer` document with `client: true` on one machine: by default the first online machine of the client's machine list (online first, then by name, §4.5), named in the dialog ("The invite is opened on _studio_") with a picker for another online machine. The approver is any client connected to that machine, this one included |
 
-`client: true` makes the offer one that **asks** (§4.3). The one-line Add a machine (#668) keeps its auto-admitting
+`client: true` makes the offer one that **asks** (§4.3). The computer's one-line command (#668, the Computer tab of Connect a device) keeps its auto-admitting
 offer for machines.
 
 ### 4.3 Client invites always ask
@@ -501,7 +501,7 @@ the pairing psk.
   link puts an attacker in the inviter's seat, so the joiner never lets a missing `commit` lower its check:
   - a browser refuses an offer without `commit` ("this machine needs an update");
   - `mesh join` **without** `--yes` refuses an offer without `commit`: "this invite does not ask for a code: either the
-    inviting machine needs an update, or it is a one-line Add a machine invite (run that command as given). Or ask for
+    inviting machine needs an update, or it is a computer's one-line invite (run that command as given). Or ask for
     an invite with `doriface-host mesh pair` on an updated machine". The joiner cannot tell those two apart, so the
     sentence names both.
     The 40-character fingerprint question is gone from `mesh join`;
@@ -529,7 +529,7 @@ the pairing psk.
 - **No terminal to ask on.** The offer carries `commit` before the joiner sends its card, so a `mesh join` with no TTY
   (the installer, a script) that meets an offer that asks closes the session **before sending a card**, which leaves
   the offer unspent, and exits "this invite asks for a code: run `doriface-host mesh join <link>` in a terminal, or use
-  Add a machine's one-line command". `--yes` never answers the code question.
+  the one-line command on the Computer tab of Connect a device". `--yes` never answers the code question.
 - **Through the running host.** `mesh join` hands the join to the running host over the control socket
   (`commands/mesh-join.ts`). Today every control call is one request and one reply, and the reply ends the connection
   (`apps/host/src/control.ts`: the handler's answer is written and the socket ended; `requestControl` resolves on
@@ -546,7 +546,7 @@ the pairing psk.
   - The request's `yes` field (`apps/host/src/control-requests.ts`) is never read for the code answer. The connection
     closing before the CLI's answer line, or the offer's expiry, makes the host send `abort`.
 - **An older machine CLI on an offer that asks** sends a card with no `sas`. The host refuses it with "this machine's
-  doriface-host is too old to join on an invite that asks: update it, or use Add a machine's one-line command", signs
+  doriface-host is too old to join on an invite that asks: update it, or use the one-line command on the Computer tab of Connect a device", signs
   nothing, and the offer is spent like any first card.
 
 **What each side verifies:**

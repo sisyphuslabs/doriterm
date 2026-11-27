@@ -92,9 +92,19 @@ for (const size of [
  * harness's loopback link a drop is a full reattach, whose note that output may be missing is a fact, not a notice about
  * the link; the relay resumes the session instead and never shows it.
  */
+/** How long a redialed session may take to attach and echo on a loaded runner: the bound this test gave its echo. */
+const REATTACH_BOUND_MS = 20_000;
+
 test("a 0.8 s blip on a phone terminal shows no notice at any frame, during or after", async ({ page }) => {
   test.slow();
-  const link = await routeHcSocket(page);
+  await page.clock.install();
+  const reattached = Promise.withResolvers<void>();
+  let dropped = false;
+  const link = await routeHcSocket(page, {
+    sent(frame) {
+      if (dropped && frame.includes('"method":"terminal.attach"')) reattached.resolve();
+    },
+  });
   const terminal = await openPhoneTerminal(page);
   await page.evaluate(() => {
     const seen: string[] = [];
@@ -109,14 +119,36 @@ test("a 0.8 s blip on a phone terminal shows no notice at any frame, during or a
     };
     new MutationObserver(read).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10_000);
+  dropped = true;
   await link.drop(true);
   // The blip's length is the behavior under test.
-  await page.waitForTimeout(800);
+  await page.clock.runFor(800);
   link.restore();
+  // The route now accepts redials; that alone does not mean the page has a session.
+  // Drive the 1 s redial, then keep runner latency off the UI clock until the new session sends its attach.
+  await page.clock.runFor(300);
+  // The runner's clock, not the paused page's: a page that never re-attaches fails here by name, not at the test timeout.
+  let late: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      reattached.promise,
+      new Promise<never>((_, reject) => {
+        late = setTimeout(
+          () =>
+            reject(new Error(`the page did not re-send terminal.attach within ${REATTACH_BOUND_MS} ms of the redial`)),
+          REATTACH_BOUND_MS,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(late);
+  }
+  await page.clock.resume();
   await terminal.getByRole("textbox").focus();
   await page.keyboard.type("echo blip-quiet-$((1+1))");
   await page.keyboard.press("Enter");
-  await expect(terminal).toContainText("blip-quiet-2", { timeout: 20_000 });
+  await expect(terminal).toContainText("blip-quiet-2", { timeout: REATTACH_BOUND_MS });
   // Past the gate and the notice's shortest stay: had it been due, it would have shown by now.
   await page.waitForTimeout(2_500);
   expect(await page.evaluate(() => Reflect.get(window, "__linkLines") as string[])).toEqual([]);
