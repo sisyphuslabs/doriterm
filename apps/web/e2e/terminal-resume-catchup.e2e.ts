@@ -309,7 +309,10 @@ for (const device of ["desktop", "phone"] as const) {
         link.delay(rttMs);
         arrivals.since();
         await page.reload();
-        await expect(page.locator(`[data-terminal="${address}"]`)).toContainText(`line-${LAST}`, { timeout: 60_000 });
+        // The screen showing the last line is the event this waits on, within the test's own budget: a core that marks the
+        // end of its paint has it held until then, and how long a 10x slower page takes to draw it grows with the host's
+        // load (19-71 s measured at load 50-120, #2794). The frames below, not a deadline, are what this test checks.
+        await expect(page.locator(`[data-terminal="${address}"]`)).toContainText(`line-${LAST}`, { timeout: 0 });
         const frames = await sampledFrames(page);
         console.log(`history ${device} ${rttMs} ${slowdown}x: the replay came in ${arrivals.report()}`);
 
