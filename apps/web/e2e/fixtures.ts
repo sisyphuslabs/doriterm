@@ -1,4 +1,5 @@
 import { expect, test as base, type Locator, type Page } from "@playwright/test";
+import { readBoxesAtRest } from "./at-rest.ts";
 import { execFileSync } from "node:child_process";
 import { E2E_HOST_ENV, E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { clearLayouts } from "./layout-doc.ts";
@@ -74,6 +75,7 @@ export const test = base.extend<
     await use(context);
   },
   page: async ({ page, loopbackUrl, pinnedFonts }, use) => {
+    readBoxesAtRest(page);
     if (pinnedFonts) await pinFonts(page);
     const settings = {
       mode: "loopback",

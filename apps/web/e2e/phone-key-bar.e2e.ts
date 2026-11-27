@@ -1,9 +1,9 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import {
   expectTouchTargets,
   key,
-  keysAtRest,
   keysBar,
   openPhoneTerminal,
   PHONE,
@@ -52,7 +52,7 @@ for (const width of [390, 320]) {
     await expectTouchTargets(bar);
     const keysPill = bar.getByRole("group", { name: "Keys", exact: true });
     const actionsPill = bar.getByRole("group", { name: "Actions", exact: true });
-    await keysAtRest(page);
+    await atRest(page);
     const [keysBox, actionsBox] = await Promise.all([keysPill.boundingBox(), actionsPill.boundingBox()]);
     if (keysBox === null || actionsBox === null) throw new Error("pill not laid out");
     expect(Math.abs(keysBox.y - actionsBox.y)).toBeLessThanOrEqual(1);

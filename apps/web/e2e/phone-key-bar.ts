@@ -1,4 +1,5 @@
 import { devices, type Locator, type Page } from "@playwright/test";
+import { atRest } from "./at-rest.ts";
 import { coreSize, gridSize } from "./core-size.ts";
 import { expect } from "./fixtures.ts";
 
@@ -157,19 +158,8 @@ export const key = (page: Page, name: string) => page.getByRole("button", { name
  * Holds the keys bar's Ctrl until the Shortcut packs sheet opens, as a finger does: a held Ctrl opens the packs panel
  * (KeyButton's hold), and the lift that follows sends nothing. Resolves once the sheet is on screen.
  */
-/**
- * Waits until the keys panel and everything in it is at rest (#2875): the panel rides over 240 ms as the keyboard comes
- * and goes, and the input card rises 8 px as it opens, so a box read mid-motion is not where they settle.
- */
-export async function keysAtRest(page: Page): Promise<void> {
-  await keysBar(page).evaluate(async (toolbar) => {
-    const motions = toolbar.parentElement?.getAnimations({ subtree: true }) ?? [];
-    await Promise.all(motions.map((motion) => motion.finished));
-  });
-}
-
 export async function openShortcutPacks(page: Page): Promise<void> {
-  await keysAtRest(page);
+  await atRest(page);
   const ctrl = keysBar(page).getByRole("button", { name: "Control", exact: true });
   const box = await ctrl.boundingBox();
   if (box === null) throw new Error("the keys bar's Ctrl is not laid out");

@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
-import { key, keysAtRest, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { key, keysBar, openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
 
 // The redesign's second motion pass (#2875): panels and screens that came and went in one frame now move on the #2796
 // tokens, and leave as an inert picture that plays its exit (the mechanism Back uses).
@@ -17,13 +18,14 @@ interface Seen {
 }
 
 /**
- * Resolves with the motion of the first element matching `selector` that the page inserts after this call: as the
- * insertion's mutation is observed, before any frame of its motion is drawn.
+ * Watches for the first element matching `selector` that the page inserts from now on, and returns the call that gives
+ * its motion as the insertion's mutation was observed, before any frame of it was drawn. The watch is in place when this
+ * resolves, so the action that inserts the element comes after it however slow the page is.
  */
-function inserted(page: Page, selector: string): Promise<Seen> {
-  return page.evaluate(
-    (sought) =>
-      new Promise<Seen>((resolve) => {
+async function inserted(page: Page, selector: string): Promise<() => Promise<Seen>> {
+  const watch = await page.evaluateHandle(
+    (sought) => ({
+      seen: new Promise<Seen>((resolve) => {
         new MutationObserver((records, observer) => {
           for (const node of records.flatMap((record) => [...record.addedNodes])) {
             if (!(node instanceof HTMLElement)) continue;
@@ -49,8 +51,10 @@ function inserted(page: Page, selector: string): Promise<Seen> {
           }
         }).observe(document.body, { childList: true, subtree: true });
       }),
+    }),
     selector,
   );
+  return () => watch.evaluate((armed) => armed.seen);
 }
 
 const ready = async (page: Page): Promise<void> => {
@@ -64,30 +68,34 @@ interface Ride {
   readonly from: number;
 }
 
-/** The motion the keys panel plays as it next moves (docking or riding), seen as the move's attribute change lands. */
-const rideMotion = (page: Page) =>
-  page.evaluate(
-    () =>
-      new Promise<readonly Ride[]>((resolve) => {
-        const panel = document.querySelector('[role="toolbar"][aria-label="Terminal keys"]')?.parentElement;
-        if (!(panel instanceof HTMLElement)) throw new Error("no keys panel");
-        new MutationObserver((_records, observer) => {
-          observer.disconnect();
-          resolve(
-            panel.getAnimations().map((motion) => {
-              const first = (motion.effect as KeyframeEffect).getKeyframes()[0];
-              return {
-                what: Object.keys(first ?? {})
-                  .filter((property) => !["offset", "easing", "composite", "computedOffset"].includes(property))
-                  .join(","),
-                duration: Number(motion.effect?.getComputedTiming().duration ?? 0),
-                from: new DOMMatrixReadOnly(String(first?.["transform"] ?? "none")).m42,
-              };
-            }),
-          );
-        }).observe(panel, { attributes: true });
-      }),
-  );
+/**
+ * Watches the keys panel from now on, and returns the call that gives the motion it plays as it next moves (docking or
+ * riding), seen as the move's attribute change lands.
+ */
+async function rideMotion(page: Page): Promise<() => Promise<readonly Ride[]>> {
+  const watch = await page.evaluateHandle(() => ({
+    rides: new Promise<readonly Ride[]>((resolve) => {
+      const panel = document.querySelector('[role="toolbar"][aria-label="Terminal keys"]')?.parentElement;
+      if (!(panel instanceof HTMLElement)) throw new Error("no keys panel");
+      new MutationObserver((_records, observer) => {
+        observer.disconnect();
+        resolve(
+          panel.getAnimations().map((motion) => {
+            const first = (motion.effect as KeyframeEffect).getKeyframes()[0];
+            return {
+              what: Object.keys(first ?? {})
+                .filter((property) => !["offset", "easing", "composite", "computedOffset"].includes(property))
+                .join(","),
+              duration: Number(motion.effect?.getComputedTiming().duration ?? 0),
+              from: new DOMMatrixReadOnly(String(first?.["transform"] ?? "none")).m42,
+            };
+          }),
+        );
+      }).observe(panel, { attributes: true });
+    }),
+  }));
+  return () => watch.evaluate((armed) => armed.rides);
+}
 
 /** The keys panel's bottom edge where it is laid out, once no motion moves it. */
 const restingBottom = (page: Page) =>
@@ -104,14 +112,14 @@ test.describe("an iPad in portrait (medium)", () => {
   test("the sidebar drawer slides in with its scrim fading, and slides out as a picture", async ({ page }) => {
     await page.goto("/");
     await ready(page);
-    const opening = inserted(page, "[data-sidebar-drawer]");
+    const opening = await inserted(page, "[data-sidebar-drawer]");
     await page.getByRole("button", { name: "Show sidebar" }).click();
-    expect((await opening).motions).toContainEqual({ what: "transform", duration: 320 });
+    expect((await opening()).motions).toContainEqual({ what: "transform", duration: 320 });
     await expect(page.locator("[data-sidebar-drawer]")).toBeVisible();
 
-    const closing = inserted(page, "[data-leaving]:has(*)");
+    const closing = await inserted(page, "[data-leaving]:has(*)");
     await page.keyboard.press("Escape");
-    const picture = await closing;
+    const picture = await closing();
     expect(picture.motions).toEqual([{ what: "transform", duration: 200 }]);
     expect(picture.opacity).toBe("1");
     await expect(page.locator("[data-sidebar-drawer]")).toHaveCount(0);
@@ -122,9 +130,9 @@ test.describe("an iPad in portrait (medium)", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
     await ready(page);
-    const opening = inserted(page, "[data-sidebar-drawer]");
+    const opening = await inserted(page, "[data-sidebar-drawer]");
     await page.getByRole("button", { name: "Show sidebar" }).click();
-    expect((await opening).motions.map((motion) => motion.what)).toEqual(["opacity"]);
+    expect((await opening()).motions.map((motion) => motion.what)).toEqual(["opacity"]);
     await expect(page.locator("[data-sidebar-drawer]")).toBeVisible();
 
     await page.evaluate(() => {
@@ -146,15 +154,15 @@ test.describe("a desktop", () => {
   test("Settings' dialog scale-fades in and fades out as a picture", async ({ page }) => {
     await page.goto("/");
     await ready(page);
-    const opening = inserted(page, "[data-settings-dialog]");
+    const opening = await inserted(page, "[data-settings-dialog]");
     await page.getByRole("link", { name: "Settings" }).click();
-    const dialog = await opening;
+    const dialog = await opening();
     expect(dialog.motions).toContainEqual({ what: "transform", duration: 220 });
     expect(dialog.motions).toContainEqual({ what: "opacity", duration: 220 });
 
-    const closing = inserted(page, "[data-leaving]:has(*)");
+    const closing = await inserted(page, "[data-leaving]:has(*)");
     await page.keyboard.press("Escape");
-    expect((await closing).motions).toEqual([{ what: "opacity,transform", duration: 200 }]);
+    expect((await closing()).motions).toEqual([{ what: "opacity,transform", duration: 200 }]);
     await expect(page.locator("[data-leaving]")).toHaveCount(0);
   });
 
@@ -170,9 +178,9 @@ test.describe("a desktop", () => {
     });
     expect(top).toBeGreaterThan(0);
 
-    const closing = inserted(page, "[data-leaving]:has(*)");
+    const closing = await inserted(page, "[data-leaving]:has(*)");
     await page.keyboard.press("Escape");
-    expect((await closing).scrolled).toBe(top);
+    expect((await closing()).scrolled).toBe(top);
   });
 });
 
@@ -185,13 +193,13 @@ test.describe("a touch phone", () => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({ timeout: 20_000 });
     await ready(page);
-    const opening = inserted(page, "[data-settings-sheet]");
+    const opening = await inserted(page, "[data-settings-sheet]");
     await page.getByRole("link", { name: "Settings" }).click();
-    expect((await opening).motions).toContainEqual({ what: "transform", duration: 320 });
+    expect((await opening()).motions).toContainEqual({ what: "transform", duration: 320 });
 
-    const closing = inserted(page, "[data-leaving]");
+    const closing = await inserted(page, "[data-leaving]");
     await page.keyboard.press("Escape");
-    const picture = await closing;
+    const picture = await closing();
     expect(picture.motions).toEqual([{ what: "transform", duration: 200 }]);
     expect(picture.opacity).toBe("1");
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
@@ -200,9 +208,9 @@ test.describe("a touch phone", () => {
 
   test("Back's picture of the terminal starts as it was drawn, not from its own arrival", async ({ page }) => {
     await openPhoneTerminal(page);
-    const closing = inserted(page, "[data-leaving]");
+    const closing = await inserted(page, "[data-leaving]");
     await page.getByRole("button", { name: "Back to agents" }).click();
-    const picture = await closing;
+    const picture = await closing();
     expect(picture.opacity).toBe("1");
     expect(picture.motions).toEqual([{ what: "transform", duration: 200 }]);
   });
@@ -211,9 +219,9 @@ test.describe("a touch phone", () => {
     await openPhoneTerminal(page);
     await showKeyboard(page, 0);
     await expect(page.getByRole("button", { name: "Show keyboard" })).toBeVisible();
-    const ride = rideMotion(page);
+    const ride = await rideMotion(page);
     await page.getByRole("button", { name: "Show keyboard" }).click();
-    expect((await ride).map(({ what, duration }) => ({ what, duration }))).toEqual([
+    expect((await ride()).map(({ what, duration }) => ({ what, duration }))).toEqual([
       { what: "transform", duration: 240 },
     ]);
   });
@@ -221,9 +229,9 @@ test.describe("a touch phone", () => {
   test("the keys panel rides down to its dock as the keyboard goes", async ({ page }) => {
     await openPhoneTerminal(page);
     await expect(page.getByRole("button", { name: "Hide keyboard" })).toBeVisible();
-    const ride = rideMotion(page);
+    const ride = await rideMotion(page);
     await page.getByRole("button", { name: "Hide keyboard" }).click();
-    const [down] = await ride;
+    const [down] = await ride();
     expect(down?.what).toBe("transform");
     expect(down?.duration).toBe(240);
     expect(down?.from).toBeLessThan(0);
@@ -238,9 +246,9 @@ test.describe("a touch phone", () => {
     await expect.poll(() => restingBottom(page)).toBeLessThan(724);
     const before = await restingBottom(page);
 
-    const ride = rideMotion(page);
+    const ride = await rideMotion(page);
     await page.getByRole("button", { name: "Show keyboard" }).click();
-    const [up] = await ride;
+    const [up] = await ride();
     const after = await restingBottom(page);
     expect(up?.what).toBe("transform");
     expect(Math.abs((up?.from ?? 0) - (before - after))).toBeLessThanOrEqual(1);
@@ -250,7 +258,7 @@ test.describe("a touch phone", () => {
     const terminal = await openPhoneTerminal(page);
     // cat -t shows a tab as ^I; with echo off, each line the program prints is its one copy of what it was sent.
     await page.keyboard.type("stty -echo; cat -vt\r");
-    await keysAtRest(page);
+    await atRest(page);
     // The keyboard closes by its own key and the panel rides down to its dock. The watch is armed before the keyboard
     // moves, and catches the ride as the panel's move lands (its layout effect starts the ride in that same commit);
     // the ride is held at 120 ms of its 240 while Tab is hit where it is drawn.
@@ -277,7 +285,7 @@ test.describe("a touch phone", () => {
     await keysBar(page).evaluate((toolbar) => {
       for (const ride of toolbar.parentElement?.getAnimations() ?? []) ride.play();
     });
-    await keysAtRest(page);
+    await atRest(page);
     await page.locator("[data-terminal] textarea").focus();
     await page.keyboard.type("q\r");
     await expect(terminal.locator(".term-row").filter({ hasText: /^\^Iq\s*$/ })).toHaveCount(1, { timeout: 15_000 });
@@ -291,8 +299,8 @@ test.describe("a touch phone", () => {
     await openPhoneTerminal(page);
     await showKeyboard(page, 0);
     await expect(page.getByRole("button", { name: "Show keyboard" })).toBeVisible();
-    const ride = rideMotion(page);
+    const ride = await rideMotion(page);
     await page.getByRole("button", { name: "Show keyboard" }).click();
-    expect(await ride).toEqual([]);
+    expect(await ride()).toEqual([]);
   });
 });

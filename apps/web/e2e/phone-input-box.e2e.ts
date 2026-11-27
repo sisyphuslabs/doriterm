@@ -1,8 +1,9 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { Touch } from "./touch.ts";
 import { commandModifier, pressWithCommand } from "./platform-keys.ts";
-import { key, keysAtRest, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
+import { key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 test.use({ serviceWorkers: "block", ...PHONE, permissions: ["clipboard-read", "clipboard-write"] });
 
@@ -12,6 +13,7 @@ const value = (page: Page) => page.locator("[data-terminal]").evaluate((el) => e
 
 async function openInputCard(page: Page): Promise<void> {
   await key(page, "Type in a field").click();
+  await atRest(page);
   await expect(field(page)).toBeVisible();
   await expect(field(page)).toBeFocused();
 }
@@ -91,7 +93,7 @@ test("the field lives in the card above the keys bar, and stays when the keyboar
   const terminal = await openPhoneTerminal(page);
   await expect(card(page)).toHaveCount(0);
   await openInputCard(page);
-  await keysAtRest(page);
+  await atRest(page);
   const [box, cardBox, bar, term] = await Promise.all([
     field(page).boundingBox(),
     card(page).boundingBox(),
@@ -114,6 +116,7 @@ test("the field lives in the card above the keys bar, and stays when the keyboar
   await expect(field(page)).toBeVisible();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await key(page, "Type in a field").click();
+  await atRest(page);
   await expect(card(page)).toHaveCount(0);
 });
 

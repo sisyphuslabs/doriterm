@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { join } from "node:path";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { key, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 // No clipboard permissions here: WebKit refuses them, and this spec has to run there too (iOS is the phone it guards).
@@ -63,6 +64,7 @@ for (const theme of ["day", "night"] as const) {
     }, theme);
     const terminal = await openPhoneTerminal(page);
     await key(page, "Type in a field").click();
+    await atRest(page);
     await terminal.click();
     await expect(field(page)).toBeVisible();
     await expect.poll(async () => (await field(page).boundingBox())?.height).toBe(44);

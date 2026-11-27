@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { KEYS_BAR_HEIGHT } from "../src/workspace/phone-keys.tsx";
 import { expect, test } from "./fixtures.ts";
+import { atRest } from "./at-rest.ts";
 import { expectTouchTargets, key, keysBar, openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 
 // With the soft keyboard up the keys bar is one row of two pills, and pressing "Type in a field" opens the Input card
@@ -16,6 +17,7 @@ for (const width of [390, 320]) {
     const bar = keysBar(page);
     await expect(bar).toBeVisible();
     await key(page, "Type in a field").click();
+    await atRest(page);
     await expect(card(page)).toBeVisible();
     await expectTouchTargets(bar);
     await expectTouchTargets(card(page));
