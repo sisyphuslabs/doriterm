@@ -4,19 +4,23 @@ import { RELEASE_PUBLIC_KEYS } from "./release-keys.ts";
 
 export { RELEASE_PUBLIC_KEYS };
 
+// atob/btoa rather than Uint8Array.fromBase64/toBase64: this also runs under Node 24 (Playwright specs sign fixture
+// manifests), which has neither. Keys and signatures are 32 and 64 bytes, so the string round trip costs nothing.
 const decode = (text: string, length: number): Uint8Array | null => {
   const trimmed = text.trim();
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) return null;
-  const bytes = Uint8Array.fromBase64(trimmed);
+  const bytes = Uint8Array.from(atob(trimmed), (char) => char.charCodeAt(0));
   return bytes.length === length ? bytes : null;
 };
 
+const encode = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
+
 /** The public key of a 32-byte Ed25519 secret, as RELEASE_PUBLIC_KEYS writes it. */
-export const releasePublicKey = (secretKey: Uint8Array): string => ed25519.getPublicKey(secretKey).toBase64();
+export const releasePublicKey = (secretKey: Uint8Array): string => encode(ed25519.getPublicKey(secretKey));
 
 /** A detached signature file's text: base64 of the 64 signature bytes and a newline. */
 export const signRelease = (message: Uint8Array, secretKey: Uint8Array): string =>
-  `${ed25519.sign(message, secretKey).toBase64()}\n`;
+  `${encode(ed25519.sign(message, secretKey))}\n`;
 
 /** Whether `signature` is one of the trusted keys' signature over exactly `message`; anything malformed is false. */
 export function verifyRelease(
