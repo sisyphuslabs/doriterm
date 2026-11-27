@@ -24,6 +24,23 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const CLIENT_PRESENCE_MS = 45_000;
 
+/**
+ * A readmission receipt is handed back only to a retry of the exact signed request (M10): every signed field plus both
+ * signatures. Keying on the signatures alone handed the receipt to a request whose fields had been changed under them.
+ */
+function receiptKey(proof: NonNullable<ReturnType<typeof parseReadmit>>): string {
+  return JSON.stringify([
+    proof.old,
+    proof.signPub,
+    proof.noise,
+    proof.name,
+    proof.nonce,
+    proof.at,
+    proof.newSig,
+    proof.oldSig ?? "",
+  ]);
+}
+
 export class RestoreService {
   readonly #deps: Deps;
   readonly #blobs: RestoreBlobs;
@@ -107,7 +124,7 @@ export class RestoreService {
     if (request["t"] !== "readmit") return undefined;
     const proof = parseReadmit(request["proof"]);
     if (proof === undefined) return undefined;
-    const receipt = this.#recent.get(`${proof.oldSig ?? ""}${proof.newSig}`);
+    const receipt = this.#recent.get(receiptKey(proof));
     if (receipt?.lookup === lookup) return { json: { t: "admitted", record: receipt.record } };
     const owner = clients.find((client) => client.signPub === proof.old);
     if (owner === undefined || !this.#blobs.owns(lookup, owner, now)) return undefined;
@@ -141,7 +158,7 @@ export class RestoreService {
       }));
     });
     if (signed === undefined) return { json: { t: "invite" } };
-    this.#recent.set(`${proof.oldSig ?? ""}${proof.newSig}`, { lookup, at: Date.now(), record: signed });
+    this.#recent.set(receiptKey(proof), { lookup, at: Date.now(), record: signed });
     sync.changed();
     this.prune();
     return { json: { t: "admitted", record: signed } };
