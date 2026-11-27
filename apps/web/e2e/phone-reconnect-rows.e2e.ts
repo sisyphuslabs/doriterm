@@ -62,7 +62,8 @@ for (const size of [
       };
     });
     expect(target).toEqual({ height: expect.any(Number), hits: [true, true], inside: true });
-    expect(target.height).toBeGreaterThanOrEqual(44);
+    // 44 pt, read from fractional layout: rounding can leave a 44 px target at 43.99997; a short one misses by a pixel or more.
+    expect(target.height).toBeGreaterThanOrEqual(44 - 0.01);
     await expect(line.getByRole("button", { name: "Try again" })).toBeVisible();
     // The line is in the header, above the terminal: nothing is drawn over the terminal's rows.
     const lineBox = await line.boundingBox();
