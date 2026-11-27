@@ -123,7 +123,8 @@ export function PhoneShell(props: PhoneShellProps) {
       <div className="flex h-dvh min-h-0 min-w-0 flex-col bg-sidebar pr-(--safe-right) pl-(--safe-left)">
         <header
           data-titlebar
-          className="flex h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-1 pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,1rem)]"
+          data-phone-top
+          className="flex h-[calc(3rem+var(--safe-top))] shrink-0 items-center gap-1 bg-sidebar pt-(--safe-top) pr-4 pl-[var(--titlebar-inset-start,1rem)]"
         >
           <h1 className="flex-1 text-xl font-semibold text-foreground">{section === "agents" ? "Agents" : "Spaces"}</h1>
           <IconButton label="Command palette" icon={<Search />} size="md" onClick={onPalette} />

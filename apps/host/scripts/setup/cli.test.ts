@@ -77,6 +77,17 @@ test("uninstall removes the service with only an hc below the floor present, sin
   );
 });
 
+test("an empty or malformed --profile is refused with exit 2 before any step runs (#2860 review L1, L2)", async () => {
+  const runs = await Promise.all(
+    ["", "Work", "-x", "a/b"].map((profile) => setup(["install", `--profile=${profile}`])),
+  );
+  for (const run of runs) {
+    expect(run.code).toBe(2);
+    expect(run.lines[0]?.split(" ").slice(0, 3)).toEqual(["doriterm-setup:", "profile", "fail"]);
+    expect(run.gitRan).toBe(false);
+  }
+});
+
 test("a --timeout that is not a positive number is refused before any step runs (#821)", async () => {
   const runs = await Promise.all(["abc", "0", "-5", ""].map((timeout) => setup(["install", `--timeout=${timeout}`])));
   for (const run of runs) {

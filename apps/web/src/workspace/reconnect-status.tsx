@@ -48,18 +48,23 @@ export function reconnectingLabel(machine: string, seconds: number | null): stri
 }
 
 /**
- * What to say about the workspace's connection while it is not usable, or null while it is. A reconnect is said only
- * once it has taken a second, and then for at least half a second, so a quick one shows nothing and none blinks
- * (#2768). Offline is a state, not a wait, so it is said at once.
+ * What to say about the workspace's connection while it is not usable, or null while it is. A reconnect or a lost
+ * network is said only once it has lasted a second, and then for at least half a second, so a blip that recovers shows
+ * nothing and none blinks (#2768). A phone's network drops for a moment on every handover, while its session carries
+ * on, so Offline waits that second too (#2853).
  */
 export function useConnectionNotice(): ConnectionNotice | null {
   const notice = useCurrentNotice();
-  const waiting = notice !== null && !notice.offline;
-  const shown = useShownAfter(waiting);
+  const shown = useShownAfter(notice !== null);
   const last = useRef<ConnectionNotice | null>(null);
-  if (waiting) last.current = notice;
-  if (notice?.offline === true) return notice;
-  return shown ? (waiting ? notice : last.current) : null;
+  if (notice !== null) last.current = notice;
+  return shown ? (notice ?? last.current) : null;
+}
+
+/** The notice while the link is being redialed or carried on, not while offline: what a phone's header says in place. */
+export function useReconnectingNotice(): ConnectionNotice | null {
+  const notice = useConnectionNotice();
+  return notice === null || notice.offline ? null : notice;
 }
 
 function useCurrentNotice(): ConnectionNotice | null {
@@ -222,19 +227,23 @@ export function ConnectionPathItem() {
  * terminal's screen (`address`), once connected, the line says when that terminal may have lost output (#2033, #2257),
  * until dismissed; noted as the line went down, it takes the notice's place in the same render, at its height. While
  * that terminal's machine line is down (`connection` given), the line says it reconnects to that machine instead.
+ * `reconnectingInHeader`: the screen's header says Reconnecting in its own line (#2853), so this line takes no terminal
+ * row while a link is redialed; Offline, which waits on the person's network and offers Retry, is still said here.
  */
 export function ConnectionLine({
   address,
   connection,
+  reconnectingInHeader = false,
 }: {
   readonly address?: string;
   readonly connection?: HcConnection;
+  readonly reconnectingInHeader?: boolean;
 }) {
   const notice = useConnectionNotice();
   if (notice !== null) {
     return (
       <>
-        <NoticeLine notice={notice} />
+        {reconnectingInHeader && !notice.offline ? null : <NoticeLine notice={notice} />}
         <HostDownHelp phone />
       </>
     );

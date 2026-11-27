@@ -45,6 +45,8 @@ export function DirectionPad({ onKey, tail, className, style }: DirectionPadProp
     <div
       role="group"
       aria-label="Arrow keys"
+      // A press anywhere in the bubble, an empty cell or its padding as well as a key, keeps the keyboard up (#2871).
+      onMouseDown={keepFocus}
       style={style}
       className={cn(
         "relative grid grid-cols-3 gap-1 rounded-2xl border border-border bg-popover p-1.5 shadow-lg",
@@ -60,7 +62,6 @@ export function DirectionPad({ onKey, tail, className, style }: DirectionPadProp
             key={key.id}
             type="button"
             aria-label={key.name}
-            onMouseDown={keepFocus}
             onClick={() => onKey?.(key.id)}
             className={cn(
               "flex size-12 items-center justify-center rounded-xl bg-raised text-foreground outline-none active:bg-selected [&_svg:not([data-slot=spinner])]:size-5",
