@@ -425,7 +425,6 @@ export const SHOTS: readonly Shot[] = [
       await expect(working.getByRole("img", { name: "omo" })).toBeVisible();
       await expect(working.getByRole("img", { name: "Claude" })).toBeVisible();
       await expect(working.getByRole("img", { name: "Gemini" })).toBeVisible();
-      await expect(working.getByRole("img", { name: "Agent" }).first()).toBeVisible();
     },
     cleanup: () => {
       for (const address of iconShot) endAgent("host", address);

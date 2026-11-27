@@ -90,6 +90,19 @@ test("a wake's check waits four smoothed round trips and 500 ms, from 1.5 s to 1
   expect(deadlines).toEqual([1_500, 4_500, 10_000, 10_000]);
 });
 
+test("the app's store sizes a wake's check by the connection's own measured round trip, not a fixed 10 s (#2853)", async () => {
+  jest.useFakeTimers();
+  const live = core();
+  Object.assign(live.connection, { rtt: { srtt: 250, rttvar: 40, samples: 12 } });
+  const store = new ConnectionStore(RELAY, () => Promise.resolve({ connection: live.connection, path: "relay" }));
+  store.start();
+  await turns();
+  store.retryNow();
+  await turns();
+  expect(live.deadlines).toEqual([1_500]);
+  store.stop();
+});
+
 test("over a 250 ms relay a link that does not answer the wake is dropped at 1.5 s, not 10 s (#1370)", async () => {
   jest.useFakeTimers();
   const live = core();

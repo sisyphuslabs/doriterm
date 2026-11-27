@@ -10,21 +10,11 @@ export interface InputSink {
 }
 
 /**
- * A stream as the sink of a terminal's input. The person's input lets a held replay go (`personWrites`) as it is
- * written, each time it is tried; the terminal's own answers go as automatic input (AUTOMATIC_INPUT where the core takes
- * it, else DATA), which the core never counts as the person typing (#2794).
+ * A stream as the sink of a terminal's input: the person's input goes as typed input, and the terminal's own answers as
+ * automatic input (AUTOMATIC_INPUT where the core takes it, else DATA), which the core never counts as the person typing.
  */
-export function streamSink(
-  stream: Pick<TerminalStream, "write" | "writeAutomatic">,
-  personWrites: () => void,
-): InputSink {
-  return {
-    write: (data, person) => {
-      if (!person) return stream.writeAutomatic(data);
-      personWrites();
-      return stream.write(data);
-    },
-  };
+export function streamSink(stream: Pick<TerminalStream, "write" | "writeAutomatic">): InputSink {
+  return { write: (data, person) => (person ? stream.write(data) : stream.writeAutomatic(data)) };
 }
 
 /** One input waiting to be written, with whether the person typed it: the mark lives and goes with the input. */

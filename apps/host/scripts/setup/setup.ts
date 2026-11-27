@@ -18,6 +18,7 @@ import {
 } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
+import { profileSetupOptions } from "../../src/state/profile.ts";
 import {
   INSTALLER_LABEL,
   REPO_URL,
@@ -76,16 +77,41 @@ export const runCommand: Runner = async (command, options = {}) => {
   return { code, stdout, stderr };
 };
 
+/**
+ * What the command line asked for, plus the defaults a profile brings (`fallback`). A flag given wins, then what an
+ * installed service already runs with, then the profile's default, then the host's: a profile's defaults never
+ * override a service someone installed with other values (#2860 review).
+ */
+export interface SetupOptions extends PathOptions {
+  readonly fallback?: Pick<PathOptions, "stateDir" | "listen" | "session"> | undefined;
+}
+
 export interface SetupContext {
   readonly os: SetupOs;
   readonly home: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly run: Runner;
   readonly report: Report;
-  readonly options: PathOptions;
+  readonly options: SetupOptions;
 }
 
-export function setupContext(report: Report, options: PathOptions, run: Runner = runCommand): SetupContext {
+/** The options for `flags` under `profile` (none: the default host): the profile names the service, the rest falls back. */
+export function setupOptions(
+  flags: Omit<PathOptions, "logFile">,
+  profile: string | undefined,
+  os: SetupOs,
+  root: string,
+): SetupOptions {
+  if (profile === undefined) return flags;
+  const derived = profileSetupOptions(profile, os, root);
+  return {
+    ...flags,
+    label: flags.label ?? derived.label,
+    fallback: { stateDir: derived.stateDir, listen: derived.listen, session: derived.session },
+  };
+}
+
+export function setupContext(report: Report, options: SetupOptions, run: Runner = runCommand): SetupContext {
   return { os: setupOs(process.platform), home: homedir(), env: process.env, run, report, options };
 }
 
@@ -197,20 +223,29 @@ export async function findHc(context: SetupContext): Promise<string> {
   return found.path;
 }
 
-/** `--listen default` and `--session default` go back to the host's own default, whatever the service ran with (#821). */
+/**
+ * `--listen default` and `--session default` go back to the host's own default, whatever the service ran with (#821);
+ * under a profile that is the profile's own listener and session, never the default host's 7766 or core.
+ */
 export const DEFAULT_FLAG = "default";
 
-function chosen(flag: string | undefined, adopted: string | undefined): string | undefined {
-  return flag === DEFAULT_FLAG ? undefined : (flag ?? adopted);
+function chosen(
+  flag: string | undefined,
+  adopted: string | undefined,
+  fallback: string | undefined,
+): string | undefined {
+  return flag === DEFAULT_FLAG ? fallback : (flag ?? adopted ?? fallback);
 }
 
 export function resolvePaths(context: SetupContext, hc: string): SetupPaths {
   const tools = { bun: process.execPath, hc, shell: context.env["SHELL"] ?? userInfo().shell ?? "/bin/sh" };
+  const { fallback, ...options } = context.options;
   const first = setupPaths(context.os, context.home, context.env, tools, {
-    ...context.options,
+    ...options,
     src: srcOf(context),
-    listen: chosen(context.options.listen, undefined),
-    session: chosen(context.options.session, undefined),
+    stateDir: options.stateDir ?? fallback?.stateDir,
+    listen: chosen(options.listen, undefined, fallback?.listen),
+    session: chosen(options.session, undefined, fallback?.session),
   });
   if (context.os === "mac") {
     const installer = join(context.home, "Library", "LaunchAgents", `${INSTALLER_LABEL}.plist`);
@@ -235,11 +270,11 @@ export function resolvePaths(context: SetupContext, hc: string): SetupPaths {
     shell: existing.shell ?? tools.shell,
   };
   return setupPaths(context.os, context.home, context.env, kept, {
-    ...context.options,
+    ...options,
     src: first.src,
-    stateDir: context.options.stateDir ?? existing.stateDir,
-    listen: chosen(context.options.listen, existing.listen),
-    session: chosen(context.options.session, existing.session),
+    stateDir: options.stateDir ?? existing.stateDir ?? fallback?.stateDir,
+    listen: chosen(options.listen, existing.listen, fallback?.listen),
+    session: chosen(options.session, existing.session, fallback?.session),
     logFile: existing.logFile,
   });
 }

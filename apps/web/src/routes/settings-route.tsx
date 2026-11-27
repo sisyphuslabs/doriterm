@@ -187,12 +187,20 @@ export function SettingsRoute() {
       tabIndex={-1}
       className={cn(
         "flex h-full min-h-0 flex-col bg-background outline-none md:flex-row",
-        !dialog && "pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left)",
+        // On a phone the title row takes the top inset itself, so it is the page's top edge for iOS (styles.css, #2867).
+        !dialog && "pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) md:pt-(--safe-top)",
       )}
     >
       <CrashProbe region="settings" />
       <Tabs value={section} onValueChange={(value: SectionId) => setSection(value)} className="md:hidden">
-        <div {...titlebar} className="flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]">
+        <div
+          {...titlebar}
+          {...(dialog ? {} : { "data-phone-top": "" })}
+          className={cn(
+            "flex items-center gap-1 pt-3 pr-2 pb-1 pl-[var(--titlebar-inset-start,0.5rem)]",
+            !dialog && "bg-background pt-[calc(var(--safe-top)+0.75rem)]",
+          )}
+        >
           {back}
           <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
           {/* In the title row, so the phone header keeps its height and the sections below do not move (#1460). */}

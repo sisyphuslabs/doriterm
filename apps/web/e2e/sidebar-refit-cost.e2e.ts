@@ -1,7 +1,7 @@
 import type { CDPSession } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { LONG_MACHINE, machineConnected, renameMachine, SEEDS, start, stop, type Seed } from "./sidebar-seed.ts";
-import { rows as rowsOf } from "./sidebar-measure.ts";
+import { rows as rowsOf, showAges } from "./sidebar-measure.ts";
 
 /** Enough rows that a layout per row on refit shows up: the six seeds and sixty more. */
 const EXTRA: readonly Seed[] = Array.from({ length: 60 }, (_, index) => ({
@@ -91,6 +91,7 @@ test(`a sidebar width change refits ${ROWS} rows in at most ${MAX_LAYOUTS} layou
       }
     };
   });
+  await showAges(page);
   await page.goto("/");
   // Other specs on the same host may leave idle rows of their own, so at least this spec's rows.
   const rows = rowsOf(page.getByRole("region", { name: "Idle" }));

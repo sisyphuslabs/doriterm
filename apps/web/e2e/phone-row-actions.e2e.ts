@@ -1,6 +1,7 @@
 import { devices, type Locator, type Page } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { showAges } from "./sidebar-measure.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 test.use({ ...phone, serviceWorkers: "block" });
@@ -29,6 +30,7 @@ test("on the phone an agent row draws More alone, which takes a tap just inside 
   const long = startAgent("host", "longrow", "idle", "a-long-space-name-for-the-detail");
   const blocked = startAgent("host", "blockrow", "blocked");
   try {
+    await showAges(page);
     await page.goto("/");
     const row = page.getByRole("button", { name: /tapme/ }).first();
     const more = page.getByRole("button", { name: "More for tapme" });
