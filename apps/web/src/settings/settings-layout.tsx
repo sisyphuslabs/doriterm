@@ -18,18 +18,21 @@ export const captionClass =
 
 /**
  * A group's rows on their card. A card holding another card draws none itself, so the rows sit on the innermost card
- * whichever level a section groups them at.
+ * whichever level a section groups them at. The card pads only its leading side; rows pad their trailing side by
+ * `--settings-row-reach`, so a row's divider reaches the card's edge, and anything else on it that holds no rows keeps
+ * that much margin from the edge, so a bordered control or a notice stays inside too.
  */
 export const cardClass =
-  "flex flex-col rounded-(--settings-card-radius) bg-(--settings-card-bg) px-(--settings-card-inset) [--settings-row-reach:var(--settings-card-inset)] has-[[data-settings-card]]:rounded-none has-[[data-settings-card]]:bg-transparent has-[[data-settings-card]]:px-0 has-[[data-settings-card]]:[--settings-row-reach:0px]";
+  "flex flex-col rounded-(--settings-card-radius) bg-(--settings-card-bg) pl-(--settings-card-inset) [--settings-row-reach:var(--settings-card-inset)] has-[[data-settings-card]]:rounded-none has-[[data-settings-card]]:bg-transparent has-[[data-settings-card]]:pl-0 has-[[data-settings-card]]:[--settings-row-reach:0px] [&>*:not([data-setting-row]):not([data-list-row]):not(:has([data-setting-row],[data-list-row]))]:mr-[var(--settings-row-reach,0px)] [&>*:has([data-setting-row],[data-list-row])>*:not([data-setting-row]):not([data-list-row]):not(:has([data-setting-row],[data-list-row]))]:mr-[var(--settings-row-reach,0px)]";
 
 /**
  * A list row that is not a SettingRow (a link into a sheet, a key, a pack): SettingRow's height, padding and divider.
- * On a card it reaches the card's trailing edge (`--settings-row-reach`, which only a card sets), so its divider starts
- * at the text and runs to the edge, as the phone's do; in a sheet it stays inside.
+ * On a card it pads its own trailing side (`--settings-row-reach`, which only a card sets) while the card pads only its
+ * leading one, so its divider starts at the text and runs to the card's edge without leaving its box; in a sheet it has
+ * no such padding.
  */
 export const listRowClass =
-  "flex min-h-(--settings-row-min) items-center gap-3 border-b border-border py-(--settings-row-y) mr-[calc(var(--settings-row-reach,0px)*-1)] pr-[var(--settings-row-reach,0px)] last:border-b-0";
+  "flex min-h-(--settings-row-min) items-center gap-3 border-b border-border py-(--settings-row-y) pr-[var(--settings-row-reach,0px)] last:border-b-0";
 
 /** A row's trailing value: the size of its title, quieter by colour. */
 export const rowValueClass = "text-(length:--settings-row-title) leading-[1.375rem] text-muted-foreground";

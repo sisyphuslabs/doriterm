@@ -40,7 +40,8 @@ async function openDevice(page: Page, phone = false): Promise<void> {
       ? settingsSection(page, "This device")
       : page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "This device" })
   ).click();
-  await expect(page.getByRole("heading", { name: "This device" })).toBeVisible();
+  // On a phone the page's title and the group under it both read This device (#2914).
+  await expect(page.getByRole("heading", { name: "This device" }).first()).toBeVisible();
 }
 
 test.describe("desktop browser", () => {

@@ -42,10 +42,10 @@ export function SettingRow(props: SettingRowProps) {
     <div
       data-setting-row=""
       className={cn(
-        // Settings' row tokens (#2914); on a card it reaches the card's trailing edge (--settings-row-reach, which only a
-        // card sets), so the divider runs from the text to the edge.
+        // Settings' row tokens (#2914); on a card it pads its own trailing side (--settings-row-reach, which only a card
+        // sets) while the card pads only its leading one, so the divider runs from the text to the card's edge.
         "flex min-h-(--settings-row-min) items-center gap-x-6 gap-y-2 border-b border-border py-(--settings-row-y) last:border-b-0",
-        "mr-[calc(var(--settings-row-reach,0px)*-1)] pr-[var(--settings-row-reach,0px)]",
+        "pr-[var(--settings-row-reach,0px)]",
         "data-setting-landed:rounded-md data-setting-landed:bg-selected",
         inline ? "flex-nowrap" : "flex-wrap",
         className,

@@ -31,10 +31,7 @@ export function SettingHits(props: {
       <SettingsCard>
         <ul className="flex flex-col">
           {props.hits.map((hit) => (
-            <li
-              key={`${hit.section}:${hit.title}`}
-              className="mr-[calc(var(--settings-row-reach,0px)*-1)] border-b border-border last:border-b-0"
-            >
+            <li key={`${hit.section}:${hit.title}`} className="border-b border-border last:border-b-0">
               <Button
                 variant="ghost"
                 onClick={() => props.onOpen(hit)}
