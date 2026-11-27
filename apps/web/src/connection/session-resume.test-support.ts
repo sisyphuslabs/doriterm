@@ -11,7 +11,6 @@ export async function turns(count = 10): Promise<void> {
   await turns(count - 1);
 }
 
-
 /** The parts of a session the resumer drives, with scripted outcomes for each resume. */
 export function fakeSession(outcomes: readonly ("ok" | "refused" | "revoked" | "gone" | "old-host")[]) {
   const calls = { redials: 0, resumes: 0, abandoned: [] as Error[] };
