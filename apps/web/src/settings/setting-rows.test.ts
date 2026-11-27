@@ -29,6 +29,16 @@ describe("searching for one setting (#1528)", () => {
     expect(titles("theme")).toContain("appearance: Appearance");
   });
 
+  test("Show app name is found by its title and by Doriterm, wordmark and logo (#2967)", () => {
+    for (const query of ["Show app name", "Doriterm", "wordmark", "logo"]) {
+      expect(titles(query), query).toContain("appearance: Show app name");
+      expect(
+        matchSections(SECTIONS, query).map((section) => section.id),
+        query,
+      ).toContain("appearance");
+    }
+  });
+
   test("direct finds no setting: the direct path is off and nothing offers it (#2070)", () => {
     expect(matchSettings("direct")).toEqual([]);
     expect(matchSections(SECTIONS, "direct")).toEqual([]);
