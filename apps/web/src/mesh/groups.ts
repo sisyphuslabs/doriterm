@@ -1,6 +1,6 @@
 import type { MachineView, MeshMemberStatus, MeshPendingJoin, MeshRemovedStatus, MeshStatus } from "@doriface/protocol";
 import { HOST_ID_PATTERN } from "@doriface/relay-client";
-import type { Answered } from "./mesh-reader.ts";
+import type { Answered, JoinRequest } from "./mesh-reader.ts";
 
 /**
  * What a pending join's row offers: the two answers (also after the host refused one), nothing (expired), an answer
@@ -29,10 +29,10 @@ export function pendingAnswer(join: MeshPendingJoin, now: number, answered: Answ
 }
 
 export interface MeshGroups {
-  /** Joins whose offer is still open: only these wait for the owner. */
-  readonly pending: readonly MeshPendingJoin[];
+  /** Joins whose offer is still open, on any machine this app reaches: only these wait for the owner. */
+  readonly pending: readonly JoinRequest[];
   /** Joins whose offer ended; they need nothing and come last. */
-  readonly expired: readonly MeshPendingJoin[];
+  readonly expired: readonly JoinRequest[];
   readonly removed: readonly MeshRemovedStatus[];
   readonly online: readonly MeshMemberStatus[];
   readonly offline: readonly MeshMemberStatus[];
@@ -58,16 +58,17 @@ export function approvalConsequence(kind: "machine" | "client", name: string): s
 }
 
 /**
- * The panel's groups, most urgent first: joins waiting for this device, members an undecidable revoke removed, then
- * the members by whether their line is up, then how many keys were revoked. A member a fail-closed conflict removed
- * is also revoked in the view; it shows once, under the removal that explains it, and is not counted again.
+ * The panel's groups, most urgent first: joins waiting for this device (on whichever machine holds them), members an
+ * undecidable revoke removed, then the members by whether their line is up, then how many keys were revoked. A member a
+ * fail-closed conflict removed is also revoked in the view; it shows once, under the removal that explains it, and is
+ * not counted again.
  */
-export function meshGroups(status: MeshStatus, now: number): MeshGroups {
+export function meshGroups(status: MeshStatus, requests: readonly JoinRequest[], now: number): MeshGroups {
   const removed = new Set(status.removed.flatMap((group) => group.members.map((entry) => entry.hostId)));
-  const open = (join: MeshPendingJoin): boolean => pendingAnswer(join, now, undefined) !== "expired";
+  const open = (request: JoinRequest): boolean => pendingAnswer(request.join, now, undefined) !== "expired";
   return {
-    pending: status.pending.filter(open),
-    expired: status.pending.filter((join) => !open(join)),
+    pending: requests.filter(open),
+    expired: requests.filter((request) => !open(request)),
     removed: status.removed,
     online: status.members.filter(isOnline),
     offline: status.members.filter((member) => !isOnline(member)),

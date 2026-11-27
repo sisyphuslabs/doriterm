@@ -2,6 +2,7 @@ import { devices } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { drawnUnderSettings, workspaceInert } from "./under-settings.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 test.use({ ...phone, serviceWorkers: "block" });
@@ -50,7 +51,7 @@ test("the Appearance section keeps nothing of the workspace over it in dark (#87
       .first()
       .click();
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
-    await page.getByRole("tab", { name: "Appearance" }).click();
+    await openSettingsSection(page, "Appearance");
     await expect(page.getByRole("heading", { name: "Appearance", exact: true })).toHaveCount(1);
     expect(await workspaceInert(page)).toBe(true);
     await expect.poll(() => drawnUnderSettings(page)).toEqual([]);
