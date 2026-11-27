@@ -15,11 +15,8 @@ export interface ResumableSession {
  * there is the host's to say (its own window after it noticed the drop, docs/transport.md).
  */
 export const RESUME_BUDGET_MS = 60_000;
-/**
- * The waits between resume dials: short, since each dial is itself bounded, and cut short by a wake. The first second is
- * dialed at 250, 500 and 1000 ms, so a link back from a sub-second blip is found before the page says anything about it (#2853).
- */
-export const RESUME_BACKOFF_MS = [250, 250, 500, 1_000, 2_000, 5_000] as const;
+/** The waits between resume dials: short, since each dial is itself bounded, and cut short by a wake. */
+export const RESUME_BACKOFF_MS = [500, 1_000, 2_000, 5_000] as const;
 
 export interface ResumeHooks {
   /** The session is being carried on (true) or is carried on or given up (false). */

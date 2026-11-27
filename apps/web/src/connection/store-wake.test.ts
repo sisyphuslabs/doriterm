@@ -83,7 +83,7 @@ test("a page that comes back runs a waiting reconnect at once, without waiting o
   const failed = settled(store, "failed");
   store.start();
   await failed;
-  expect(store.state).toMatchObject({ phase: "failed", retryInMs: 250 });
+  expect(store.state).toMatchObject({ phase: "failed", retryInMs: 1_000 });
 
   const open = settled(store, "open");
   dispatchEvent(new Event("pageshow"));
@@ -179,7 +179,7 @@ test("a link that opens and drops keeps backing off instead of starting over", a
   await cycle();
   await cycle();
   store.stop();
-  expect(delays).toEqual([250, 250, 500]);
+  expect(delays).toEqual([1_000, 2_000, 5_000]);
 });
 
 test("a link that stayed up past the stability floor starts over when it drops", async () => {
@@ -202,7 +202,7 @@ test("a link that stayed up past the stability floor starts over when it drops",
   closes.at(-1)?.(new Error("dropped"));
   await failed;
   store.stop();
-  expect(delays).toEqual([250]);
+  expect(delays).toEqual([500]);
 });
 
 test("with no network the store dials nothing, and the network coming back dials at once", async () => {

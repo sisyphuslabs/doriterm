@@ -96,7 +96,7 @@ describe("SessionResumer", () => {
     await settle();
     expect(calls).toMatchObject({ redials: 3, resumes: 3, abandoned: [] });
     expect(resumer.active).toBe(false);
-    expect(RESUME_BACKOFF_MS.slice(0, 3)).toEqual([250, 250, 500]);
+    expect(RESUME_BACKOFF_MS[0]).toBe(500);
   });
 
   test("gives the session up with the last failure once the budget is spent, and at once when the host refuses the device", async () => {
@@ -195,30 +195,6 @@ describe("SessionResumer", () => {
     expect(down.calls.abandoned.map((error) => error.message)).toEqual(["could not resume the session: refused"]);
     expect(now).toBe(60_000);
     expect(resumer.active).toBe(false);
-  });
-
-  test("a link back from a 0.8 s blip is carried on well before the notice's 1.5 s gate (#2853)", async () => {
-    jest.useFakeTimers();
-    let now = 0;
-    const blip = fakeSession(["refused"]);
-    const resumed: number[] = [];
-    const resumer = new SessionResumer(blip.session, {
-      resuming: (on) => (on ? undefined : resumed.push(now)),
-      now: () => now,
-      hidden: () => false,
-    });
-    resumer.start(new Error("dropped"));
-    await turns();
-    for (let step = 0; step < 6 && resumed.length === 0; step += 1) {
-      now += 250;
-      // The link is back from 800 ms on: every dial from then on is answered.
-      if (now >= 800) blip.hostBack();
-      jest.advanceTimersByTime(250);
-      // oxlint-disable-next-line no-await-in-loop -- each backoff's dial runs before the next one is due
-      await turns();
-    }
-    expect(resumed).toEqual([1_000]);
-    expect(blip.calls.abandoned).toEqual([]);
   });
 
   test("gives the session up at once when the host refuses the resume (4413): another dial meets the same answer", async () => {

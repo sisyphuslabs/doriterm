@@ -55,7 +55,7 @@ test("retryNow makes the waiting attempt at once, and its back-off timer makes n
   const failed = reached("failed");
   store.start();
   await failed;
-  expect(store.state).toMatchObject({ phase: "failed", retryInMs: 250 });
+  expect(store.state).toMatchObject({ phase: "failed", retryInMs: 1_000 });
 
   const open = reached("open");
   store.retryNow();

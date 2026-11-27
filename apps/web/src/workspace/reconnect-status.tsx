@@ -1,4 +1,5 @@
-import { INDICATOR_MIN_MS, type ShowTiming, Spinner, StatusBarItem, useShownAfter } from "@doriface/ui";
+import type { HcConnection } from "@doriface/client";
+import { Spinner, StatusBarItem, useShownAfter } from "@doriface/ui";
 import { Cable, Globe, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { DirectReason } from "../connection/direct-attempt.ts";
@@ -7,7 +8,10 @@ import { hostFailure } from "../connection/host-failure.ts";
 import { type ConnectionSettings, staysOnThisComputer } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { useOnline } from "../pwa/use-online.ts";
+import { useMachineLine } from "../terminal/use-machine-line.ts";
+import { HistoryGapLine } from "./history-gap-status.tsx";
 import { HostDownHelp } from "./host-down-help.tsx";
+import { MachineDownHelp, useMachineDownWhy } from "./machine-down.tsx";
 import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { RetryButton } from "./retry-button.tsx";
 
@@ -44,23 +48,23 @@ export function reconnectingLabel(machine: string, seconds: number | null): stri
 }
 
 /**
- * How long a lost link goes unsaid, and how long its notice then stays. The page learns the link is back only from a
- * redial that succeeds, and it redials at 250, 500 and 1000 ms, so a link back from a sub-second blip is found by about
- * 1.3 s; 1.5 s says only an outage that outlasted it, and half a second on screen keeps the notice from blinking (#2853).
- */
-export const LINK_NOTICE_TIMING: ShowTiming = { delayMs: 1_500, minMs: INDICATOR_MIN_MS };
-
-/**
- * What to say about the workspace's connection while it is not usable, or null while it is: said only once the link
- * has been gone for {@link LINK_NOTICE_TIMING}, so a blip that recovers shows nothing and none blinks (#2768). A phone's
- * network drops for a moment on every handover, while its session carries on, so Offline waits too (#2853).
+ * What to say about the workspace's connection while it is not usable, or null while it is. A reconnect or a lost
+ * network is said only once it has lasted a second, and then for at least half a second, so a blip that recovers shows
+ * nothing and none blinks (#2768). A phone's network drops for a moment on every handover, while its session carries
+ * on, so Offline waits that second too (#2853).
  */
 export function useConnectionNotice(): ConnectionNotice | null {
   const notice = useCurrentNotice();
-  const shown = useShownAfter(notice !== null, LINK_NOTICE_TIMING);
+  const shown = useShownAfter(notice !== null);
   const last = useRef<ConnectionNotice | null>(null);
   if (notice !== null) last.current = notice;
   return shown ? (notice ?? last.current) : null;
+}
+
+/** The notice while the link is being redialed or carried on, not while offline: what a phone's header says in place. */
+export function useReconnectingNotice(): ConnectionNotice | null {
+  const notice = useConnectionNotice();
+  return notice === null || notice.offline ? null : notice;
 }
 
 function useCurrentNotice(): ConnectionNotice | null {
@@ -219,19 +223,48 @@ export function ConnectionPathItem() {
 }
 
 /**
- * The phone has no status bar: on a list screen, the same notice as one line under the header, only while there is one.
- * A terminal's screen says it in its header's own second line instead (phone-terminal-line.tsx), so the terminal keeps
- * its rows (#2853).
+ * The phone has no status bar: the same notice as one line under a screen's header, only while there is one. On a
+ * terminal's screen (`address`), once connected, the line says when that terminal may have lost output (#2033, #2257),
+ * until dismissed; noted as the line went down, it takes the notice's place in the same render, at its height. While
+ * that terminal's machine line is down (`connection` given), the line says it reconnects to that machine instead.
+ * `reconnectingInHeader`: the screen's header says Reconnecting in its own line (#2853), so this line takes no terminal
+ * row while a link is redialed; Offline, which waits on the person's network and offers Retry, is still said here.
  */
-export function ConnectionLine() {
+export function ConnectionLine({
+  address,
+  connection,
+  reconnectingInHeader = false,
+}: {
+  readonly address?: string;
+  readonly connection?: HcConnection;
+  readonly reconnectingInHeader?: boolean;
+}) {
   const notice = useConnectionNotice();
-  if (notice === null) return null;
-  return (
-    <>
-      <NoticeLine notice={notice} />
-      <HostDownHelp phone />
-    </>
-  );
+  if (notice !== null) {
+    return (
+      <>
+        {reconnectingInHeader && !notice.offline ? null : <NoticeLine notice={notice} />}
+        <HostDownHelp phone />
+      </>
+    );
+  }
+  if (address === undefined) return null;
+  if (connection === undefined) return <HistoryGapLine address={address} />;
+  return <TerminalLine connection={connection} address={address} />;
+}
+
+function TerminalLine({ connection, address }: { readonly connection: HcConnection; readonly address: string }) {
+  const away = useMachineLine(connection, address, true);
+  if (away === null) return <HistoryGapLine address={address} />;
+  return <AwayLine connection={connection} machine={away} />;
+}
+
+/** The phone's line while the terminal's machine is down: it reconnects, then, past the grace, why with Try again in its place. */
+function AwayLine({ connection, machine }: { readonly connection: HcConnection; readonly machine: string }) {
+  const why = useMachineDownWhy(connection, machine);
+  // The reason ends saying Doriterm keeps trying, so it replaces the reconnect line rather than stacking under it (#2599).
+  if (why === null) return <NoticeLine notice={machineNotice(machine)} />;
+  return <MachineDownHelp phone connection={connection} machine={machine} />;
 }
 
 function NoticeLine({ notice }: { readonly notice: ConnectionNotice }) {

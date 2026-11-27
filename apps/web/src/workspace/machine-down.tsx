@@ -5,6 +5,7 @@ import { machineLines } from "../terminal/machine-lines.ts";
 import { machineCause } from "./machine-cause.ts";
 import { ACTION_GRACE_MS } from "./machine-grace.ts";
 import { firstSentence } from "./first-sentence.ts";
+import { PHONE_LINE, PHONE_LINE_TEXT } from "./phone-line.ts";
 import { RetryButton } from "./retry-button.tsx";
 import { useMachinesContext } from "./use-machines.ts";
 
@@ -45,14 +46,26 @@ export function useMachineDownWhy(connection: HcConnection, machine: string): st
 export function MachineDownHelp({
   connection,
   machine,
+  phone = false,
 }: {
   readonly connection: HcConnection;
   readonly machine: string;
+  readonly phone?: boolean;
 }) {
   const { retry } = useMachinesContext();
   const why = useMachineDownWhy(connection, machine);
   if (why === null) return null;
   const tryNow = (): Promise<void> => retry(machine);
+  if (phone) {
+    return (
+      <div className={PHONE_LINE} data-machine-down>
+        <p className={PHONE_LINE_TEXT}>
+          <span className="min-w-0 text-pretty break-words">{why}</span>
+        </p>
+        <RetryButton size="sm" className="-my-1 shrink-0" onRetry={tryNow} />
+      </div>
+    );
+  }
   return (
     <span data-machine-down className="flex shrink-0 items-center gap-2">
       <span className="text-xs whitespace-nowrap text-foreground" title={why} aria-label={why}>
