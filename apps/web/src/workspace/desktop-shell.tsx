@@ -1,5 +1,15 @@
 import type { HcConnection } from "@doriface/client";
-import { type AgentStatus, cn, IconButton, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
+import {
+  type AgentStatus,
+  cn,
+  IconButton,
+  Menu,
+  MenuItem,
+  NeedsYouPill,
+  TabBar,
+  useToastManager,
+  type WorkspaceTab,
+} from "@doriface/ui";
 import { Columns2, PanelLeft, Rows2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
@@ -8,7 +18,7 @@ import { useWidthTier } from "../layout/width-tier.ts";
 import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
-import { agentStatus } from "./attention.ts";
+import { agentStatus, nextNeedingYou, waitingBesides } from "./attention.ts";
 import { machineOf, programKind, type Session, tabTitle, tabTitleKey } from "./model.ts";
 import { NewTabMenu } from "./new-tab-menu.tsx";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
@@ -242,7 +252,30 @@ export function DesktopShell(props: DesktopShellProps) {
   const splitRightKeys = useActionKeys("pane.split:right");
   const splitDownKeys = useActionKeys("pane.split:down");
   const cannotSplit = focusedTerminal === undefined || layout.active?.readOnly != null;
-  const split = (
+  const split = medium ? (
+    <Menu
+      align="end"
+      disabled={cannotSplit}
+      trigger={<IconButton label="Split pane" icon={<Columns2 />} disabled={cannotSplit} />}
+    >
+      <MenuItem
+        icon={<Columns2 />}
+        {...(splitRightKeys === undefined ? {} : { keys: splitRightKeys })}
+        disabled={cannotSplit}
+        onClick={() => onSplit("row")}
+      >
+        Split right
+      </MenuItem>
+      <MenuItem
+        icon={<Rows2 />}
+        {...(splitDownKeys === undefined ? {} : { keys: splitDownKeys })}
+        disabled={cannotSplit}
+        onClick={() => onSplit("column")}
+      >
+        Split down
+      </MenuItem>
+    </Menu>
+  ) : (
     <>
       <IconButton
         label="Split right"
@@ -260,6 +293,26 @@ export function DesktopShell(props: DesktopShellProps) {
       />
     </>
   );
+  const waiting = waitingBesides(terminals, focusedAddress ?? "");
+  const openNextNeedingYou = (): void => {
+    const next = nextNeedingYou(terminals, focusedAddress);
+    if (next !== null) openTerminal(next);
+  };
+  const needsYou = waiting > 0 ? <NeedsYouPill count={waiting} compact={medium} onOpen={openNextNeedingYou} /> : null;
+  const sessionControls =
+    focusedTerminal === undefined ? null : (
+      <>
+        {nothingToType ? null : (
+          <Titled terminal={focusedTerminal}>
+            {(title) => <DictateButton voice={voice} target={title} size="sm" ref={mic} />}
+          </Titled>
+        )}
+        <Titled terminal={focusedTerminal}>
+          {(title) => <SessionMenu address={focusedTerminal.address} title={title} />}
+        </Titled>
+      </>
+    );
+  const divider = <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />;
 
   const toggleExpanded = medium ? drawer : sidebar;
 
@@ -394,17 +447,11 @@ export function DesktopShell(props: DesktopShellProps) {
                 })}
             trailing={
               <>
-                {focusedTerminal === undefined || nothingToType ? null : (
-                  <Titled terminal={focusedTerminal}>
-                    {(title) => <DictateButton voice={voice} target={title} size="sm" ref={mic} />}
-                  </Titled>
-                )}
-                {focusedTerminal === undefined ? null : (
-                  <Titled terminal={focusedTerminal}>
-                    {(title) => <SessionMenu address={focusedTerminal.address} title={title} />}
-                  </Titled>
-                )}
+                {needsYou}
+                {needsYou === null ? null : divider}
                 {split}
+                {sessionControls === null ? null : divider}
+                {sessionControls}
               </>
             }
           />
