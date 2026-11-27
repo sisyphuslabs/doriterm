@@ -2,14 +2,19 @@ import type { HcConnection } from "@doriface/client";
 import type { Terminal } from "@doriface/protocol";
 import { Button, Dialog, Notice, QrCode, SegmentedControl, Spinner } from "@doriface/ui";
 import { useMemo, useState } from "react";
-import { qrModules } from "../pair/qr.ts";
+import { useConnectionSettings } from "../connection/store.ts";
+import { desktopPairOffer } from "../desktop/pair-bridge.ts";
 import { InviteField } from "../pair/invite-field.tsx";
+import { qrModules } from "../pair/qr.ts";
+import { AgentInvite } from "../settings/agent-invite.tsx";
 import { JoinCommandBlock } from "./join-command-block.tsx";
 import { useJoinOffer, webInviteLink } from "./join-command.ts";
 import type { MachineEntry } from "./machines.ts";
 import { useMachines } from "./use-machines.ts";
 
 const NO_TERMINALS: readonly Terminal[] = [];
+
+export type ConnectDeviceTab = "phone" | "computer" | "agent";
 
 export interface ConnectDeviceDialogProps {
   readonly open: boolean;
@@ -21,6 +26,7 @@ export interface ConnectDeviceDialogProps {
 const KINDS = [
   { value: "phone", label: "Phone or browser" },
   { value: "computer", label: "Computer" },
+  { value: "agent", label: "AI agent" },
 ] as const;
 
 /** A phone or browser joins with a link it opens (or a QR it scans), then waits for the owner's approval. */
@@ -86,7 +92,9 @@ function PhoneInvite({ connection, open }: { readonly connection: HcConnection; 
  * owner's approval; a computer joins with one command (#668) or from an invite it already holds (#2795).
  */
 export function ConnectDeviceDialog({ open, onClose, connection, machines }: ConnectDeviceDialogProps) {
-  const [shown, setShown] = useState<"phone" | "computer">("phone");
+  const [shown, setShown] = useState<ConnectDeviceTab>("phone");
+  const settings = useConnectionSettings();
+  const pair = useMemo(() => desktopPairOffer(), []);
   return (
     <Dialog
       open={open}
@@ -94,7 +102,7 @@ export function ConnectDeviceDialog({ open, onClose, connection, machines }: Con
         if (!next) onClose();
       }}
       title="Connect a device"
-      description="One invite for a phone, a browser or a computer. A phone or browser waits for your approval."
+      description="One invite for a phone, a browser, a computer or an AI agent. A phone or browser waits for your approval."
       className="w-[min(36rem,calc(100%-2rem))]"
       actions={<Button onClick={onClose}>Done</Button>}
     >
@@ -102,7 +110,7 @@ export function ConnectDeviceDialog({ open, onClose, connection, machines }: Con
         <SegmentedControl label="What to connect" options={KINDS} value={shown} onValueChange={setShown} />
         {shown === "phone" ? (
           <PhoneInvite connection={connection} open={open} />
-        ) : (
+        ) : shown === "computer" ? (
           <>
             <p className="max-w-measure text-prose text-muted-foreground">
               One command installs doriface-host and herdr-core if they are missing, runs the host as a service, and
@@ -116,6 +124,12 @@ export function ConnectDeviceDialog({ open, onClose, connection, machines }: Con
               <InviteField />
             </section>
           </>
+        ) : pair !== null && settings.mode === "loopback" ? (
+          <AgentInvite pair={pair} open={open} />
+        ) : (
+          <p className="text-prose text-pretty text-muted-foreground">
+            Open Doriterm on the computer your agent runs on, then come back to this tab there.
+          </p>
         )}
       </div>
     </Dialog>

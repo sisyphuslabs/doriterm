@@ -20,15 +20,3 @@ export const clientName = (client: DesktopMcpClient): string => client.name ?? "
 export function turnOffLine(count: number): string {
   return `${count} ${count === 1 ? "session closes" : "sessions close"}. Paired devices stay paired.`;
 }
-
-/** The line an assistant's MCP settings take for this computer. */
-export function mcpConfig(hostId: string): string {
-  return JSON.stringify(
-    { mcpServers: { doriterm: { command: "doriface-host", args: ["connect", "--mcp", hostId] } } },
-    null,
-    2,
-  );
-}
-
-/** What pairs the assistant's computer: the same command that later carries MCP, run once with the link. */
-export const connectCommand = (link: string): string => `doriface-host connect '${link}'`;
