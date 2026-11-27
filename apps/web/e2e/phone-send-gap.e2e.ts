@@ -17,6 +17,7 @@ const field = (page: Page) => page.getByLabel("Type into the terminal");
  * (#1516). An outline drawn outside the field's box takes that much of the gap; one drawn inside it takes none.
  */
 async function ringGap(page: Page): Promise<number> {
+  await atRest(page);
   const [outer, send] = await Promise.all([
     field(page).evaluate((element) => {
       const style = getComputedStyle(element);
@@ -37,6 +38,7 @@ async function ringGap(page: Page): Promise<number> {
 async function measure(
   page: Page,
 ): Promise<{ gap: number; micGap: number; send: { width: number; height: number }; field: number }> {
+  await atRest(page);
   const [box, send, mic] = await Promise.all([
     field(page).boundingBox(),
     key(page, "Send").boundingBox(),

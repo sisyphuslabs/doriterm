@@ -178,6 +178,8 @@ test("a press held in the terminal while typing gives the keyboard back as it li
   await key(page, "Show keyboard").click();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await expect(field(page)).toBeVisible();
+  // Read where the terminal is once the keys have ridden up over its bottom edge (#2875).
+  await atRest(page);
   const box = await terminal.boundingBox();
   if (box === null) throw new Error("the terminal is not laid out");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -202,6 +204,8 @@ test("another pointer lifting during a held press in the terminal leaves that pr
   await key(page, "Show keyboard").click();
   await expect(page.locator("[data-terminal] textarea")).toBeFocused();
   await expect(field(page)).toBeVisible();
+  // Read where the terminal is once the keys have ridden up over its bottom edge (#2875).
+  await atRest(page);
   const box = await terminal.boundingBox();
   if (box === null) throw new Error("the terminal is not laid out");
   const frames = (): Promise<void> =>

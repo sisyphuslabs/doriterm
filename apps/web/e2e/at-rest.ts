@@ -1,10 +1,11 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 /**
  * Waits until nothing on the page is moving: two frames (so a commit a resize or a click scheduled has drawn, and any
  * motion it started is running), then every finite animation and transition to its end, again until a pass finds none.
  * Endless ones (a spinner, a pulse) are not waited on. The app moves panels, sheets, Settings and the keys on the motion
- * tokens (DESIGN.md 6, #2875), so a box read mid-motion is not where the thing settles.
+ * tokens (DESIGN.md 6, #2875), so a box read mid-motion is not where the thing settles. It counts frames, so it is not
+ * for a page whose clock a spec has paused (page.clock).
  */
 export async function atRest(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -22,21 +23,4 @@ export async function atRest(page: Page): Promise<void> {
     };
     return settle();
   });
-}
-
-let installed = false;
-
-/**
- * Makes every `boundingBox()` read the box at rest (`atRest` first), so no spec measures a surface mid-motion. A spec
- * that means to see motion reads its animations in the page instead (panel-motion.e2e.ts, motion.e2e.ts).
- */
-export function readBoxesAtRest(page: Page): void {
-  if (installed) return;
-  installed = true;
-  const prototype: Locator = Object.getPrototypeOf(page.locator("html"));
-  const read = prototype.boundingBox;
-  prototype.boundingBox = async function boundingBoxAtRest(this: Locator, options) {
-    await atRest(this.page());
-    return await read.call(this, options);
-  };
 }

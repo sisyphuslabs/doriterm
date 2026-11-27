@@ -124,6 +124,8 @@ export async function openPhoneTerminal(
   // A keyboard that rises for the focus is up once the keys' toggle says so: the keys are on screen either way (#2499).
   const raises = keyboard === "overlay" || (keyboard !== "resize" && keyboard.raiseOnFocus);
   if (raises) await expect(key(page, "Hide keyboard")).toBeVisible();
+  // The screen pushed in and the keys riding up to the keyboard have settled: a spec reads the phone at rest (#2875).
+  await atRest(page);
   return terminal;
 }
 
@@ -171,6 +173,7 @@ export async function openShortcutPacks(page: Page): Promise<void> {
 }
 
 export async function expectTouchTargets(scope: Locator): Promise<void> {
+  await atRest(scope.page());
   const small = await scope.getByRole("button").evaluateAll((buttons) =>
     buttons
       .map((button) => ({ name: button.getAttribute("aria-label") ?? "", box: button.getBoundingClientRect() }))
