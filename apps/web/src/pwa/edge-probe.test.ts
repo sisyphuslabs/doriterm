@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { setEdgeProbe, startEdgeProbe } from "./edge-probe.ts";
+import { firstUpdateOrTeardown, setEdgeProbe, startEdgeProbe } from "./edge-probe.ts";
 
 function fakes() {
   const stored = new Map<string, string>();
@@ -72,4 +72,24 @@ test("the switch stores on only after the readout showed", () => {
   };
   expect(() => setEdgeProbe(true, deps)).toThrow();
   expect(stored.has("doriface.debug.edge-probe")).toBe(false);
+});
+
+test("a readout whose first update throws removes what it added and passes the error on", () => {
+  let tornDown = 0;
+  expect(() =>
+    firstUpdateOrTeardown(
+      () => {
+        throw new Error("no adoptedStyleSheets");
+      },
+      () => void tornDown++,
+    ),
+  ).toThrow("no adoptedStyleSheets");
+  expect(tornDown).toBe(1);
+  const stop = firstUpdateOrTeardown(
+    () => undefined,
+    () => void tornDown++,
+  );
+  expect(tornDown).toBe(1);
+  stop();
+  expect(tornDown).toBe(2);
 });

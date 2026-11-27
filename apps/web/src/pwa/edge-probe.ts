@@ -81,8 +81,7 @@ function showEdgeProbe(): () => void {
     target?.addEventListener("resize", update);
   }
   document.addEventListener("touchend", update, { passive: true });
-  update();
-  return () => {
+  const teardown = (): void => {
     for (const target of [window, window.visualViewport]) {
       target?.removeEventListener("scroll", update);
       target?.removeEventListener("resize", update);
@@ -91,6 +90,22 @@ function showEdgeProbe(): () => void {
     line.remove();
     inset.remove();
   };
+  return firstUpdateOrTeardown(update, teardown);
+}
+
+/**
+ * Runs the readout's first update; if it throws (iOS before 16.4 has no adoptedStyleSheets for the hit test), the nodes
+ * and listeners already added are removed before the error goes on, so no strip or listener is left behind and a
+ * repeated tap does not stack another set.
+ */
+export function firstUpdateOrTeardown(update: () => void, teardown: () => void): () => void {
+  try {
+    update();
+  } catch (error) {
+    teardown();
+    throw error;
+  }
+  return teardown;
 }
 
 function describeHeader(header: Element | null): string {
