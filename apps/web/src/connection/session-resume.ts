@@ -17,9 +17,12 @@ export interface ResumableSession {
 export const RESUME_BUDGET_MS = 60_000;
 /**
  * The waits between resume dials: short, since each dial is itself bounded, and cut short by a wake. The first second is
- * dialed at 250, 500 and 1000 ms, so a link back from a sub-second blip is found before the page says anything about it (#2853).
+ * dialed at 250, 500 and 1000 ms, so a link back from a sub-second blip is found before the page says anything about it
+ * (#2853). No wait is longer than 3 s, so a link back after a longer outage is found within 3 s and the reason the page
+ * shows clears with it (#2928). Not shorter: the relay allows 60 upgrades a minute per host key, shared by every
+ * device of that host, and 3 s is at most 20 a minute per device.
  */
-export const RESUME_BACKOFF_MS = [250, 250, 500, 1_000, 2_000, 5_000] as const;
+export const RESUME_BACKOFF_MS = [250, 250, 500, 1_000, 2_000, 3_000] as const;
 
 export interface ResumeHooks {
   /** The session is being carried on (true) or is carried on or given up (false). */

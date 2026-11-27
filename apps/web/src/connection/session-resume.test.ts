@@ -221,6 +221,30 @@ describe("SessionResumer", () => {
     expect(blip.calls.abandoned).toEqual([]);
   });
 
+  test("a link back after a 5.5 s outage is found within 3 s: no wait between dials is longer than that (#2928)", async () => {
+    jest.useFakeTimers();
+    let now = 0;
+    const outage = fakeSession(["refused"]);
+    const resumed: number[] = [];
+    const resumer = new SessionResumer(outage.session, {
+      resuming: (on) => (on ? undefined : resumed.push(now)),
+      now: () => now,
+      hidden: () => false,
+    });
+    resumer.start(new Error("dropped"));
+    await turns();
+    for (let step = 0; step < 60 && resumed.length === 0; step += 1) {
+      now += 250;
+      if (now >= 5_500) outage.hostBack();
+      jest.advanceTimersByTime(250);
+      // oxlint-disable-next-line no-await-in-loop -- each backoff's dial runs before the next one is due
+      await turns();
+    }
+    expect(resumed.length).toBe(1);
+    expect((resumed[0] ?? Infinity) - 5_500).toBeLessThanOrEqual(3_000);
+    expect(Math.max(...RESUME_BACKOFF_MS)).toBe(3_000);
+  });
+
   test("gives the session up at once when the host refuses the resume (4413): another dial meets the same answer", async () => {
     const { session, calls } = fakeSession(["gone", "ok"]);
     const resuming: boolean[] = [];
