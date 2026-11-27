@@ -150,7 +150,6 @@ export function TerminalView(props: TerminalViewProps) {
     typesComposition,
     predict,
     inputStarts,
-    personSends: () => pacer.typed(),
   });
   const { pending, answered, typedInto, typed, pasteFiles, linkReady } = input;
   // The renderer's own answers (query replies, focus reports) go to the program as they are, never as the person typing

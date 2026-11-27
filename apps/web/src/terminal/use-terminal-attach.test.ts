@@ -69,25 +69,18 @@ describe("an attach's replay hold (D5)", () => {
     expect(holds).toEqual([true, false]);
   });
 
-  test("queued input lets the new replay go just before the first key the person typed, so its echo is drawn (#2794)", () => {
-    const { pacer, holds } = attaching();
+  test("what was typed while no stream was open goes to the new one in order, keys as typed and answers as automatic input", () => {
+    const { holds } = attaching();
     const pending = [
       { data: "\u001b[?62c", person: false },
       { data: "l", person: true },
       { data: "s", person: true },
     ];
     const out = stream(holds);
-    writeQueued(pacer, pending, out);
-    expect(out.sent).toEqual(["automatic \u001b[?62c held=true", "typed l held=false", "typed s held=false"]);
-    expect([holds, pending]).toEqual([[true, false], []]);
-  });
-
-  test("queued answers the terminal gave to a program, with nothing the person typed, go as automatic input and leave the replay held", () => {
-    const { pacer, holds } = attaching();
-    const out = stream(holds);
-    writeQueued(pacer, [{ data: "\u001b[?62c", person: false }], out);
-    expect(out.sent).toEqual(["automatic \u001b[?62c held=true"]);
-    expect(holds).toEqual([true]);
+    writeQueued(pending, out);
+    expect(out.sent).toEqual(["automatic \u001b[?62c held=true", "typed l held=true", "typed s held=true"]);
+    // The replay is not cut short: its paint is held until it settles, and the keys' echo comes behind it anyway.
+    expect([holds, pending]).toEqual([[true], []]);
   });
 
   test("a terminal this page just started is not held: it has no history, so its first prompt is drawn as it arrives (#1928)", () => {

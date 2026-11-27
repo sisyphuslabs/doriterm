@@ -30,21 +30,18 @@ function held(sink: () => InputSink | null) {
   return { input, links, unwatch: input.watch() };
 }
 
-test("a stream's sink lets the replay go before each try of the person's input, and sends answers as automatic input", () => {
+test("a stream's sink sends the person's input as typed input, and the terminal's answers as automatic input", () => {
   const events: string[] = [];
   let refusing = true;
-  const sink = streamSink(
-    {
-      write: (data) => (events.push(`typed ${String(data)}`), !refusing),
-      writeAutomatic: (data) => (events.push(`automatic ${String(data)}`), true),
-    },
-    () => void events.push("release"),
-  );
+  const sink = streamSink({
+    write: (data) => (events.push(`typed ${String(data)}`), !refusing),
+    writeAutomatic: (data) => (events.push(`automatic ${String(data)}`), true),
+  });
   expect(sink.write("a", true)).toBe(false);
   refusing = false;
   expect(sink.write("a", true)).toBe(true);
   expect(sink.write("\u001b[O", false)).toBe(true);
-  expect(events).toEqual(["release", "typed a", "release", "typed a", "automatic \u001b[O"]);
+  expect(events).toEqual(["typed a", "typed a", "automatic \u001b[O"]);
 });
 
 test("each write is told whether the person typed what it writes, the terminal's answers apart", () => {

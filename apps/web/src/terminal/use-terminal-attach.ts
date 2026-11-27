@@ -76,17 +76,9 @@ export function replayOnAttach(pacer: OutputPacer, options: ReplayOptions, fresh
   pacer.replay(options);
 }
 
-/**
- * What was typed while no stream was open goes to the new one, in order, through the stream's input sink: before the
- * first input the person typed (not the terminal's answers to a program's queries), the replay just started lets go, so
- * its echo is drawn (#2794).
- */
-export function writeQueued(
-  pacer: OutputPacer,
-  pending: HeldEntry[],
-  stream: Pick<TerminalStream, "write" | "writeAutomatic">,
-): void {
-  const sink = streamSink(stream, () => pacer.typed());
+/** What was typed while no stream was open goes to the new one, in order, each input as typed or as an answer. */
+export function writeQueued(pending: HeldEntry[], stream: Pick<TerminalStream, "write" | "writeAutomatic">): void {
+  const sink = streamSink(stream);
   for (const { data, person } of pending.splice(0)) sink.write(data, person);
 }
 
@@ -326,7 +318,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           onEndNow.current?.(address, end);
           if (end === "lost") settle(null);
         });
-        writeQueued(pacer, pending.current, attached);
+        writeQueued(pending.current, attached);
         focusWhenFree(ready);
         return attached;
       },
