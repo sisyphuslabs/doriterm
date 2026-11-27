@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { offerFrom, type PairingOffer, parsePairingFragment } from "../pair/fragment.ts";
 import { PairingFailedError, pairAndOpen, pairAndRemember, type RememberedHost } from "../pair/handshake.ts";
 import { connect } from "./connect.ts";
+import { DialBudget } from "./relay-dial-budget.ts";
 import { MeshConnections } from "./mesh-connections.ts";
 import { ConnectionStore } from "./store.ts";
 import { DEFAULT_SETTINGS } from "./settings.ts";
@@ -129,4 +130,51 @@ describe("the web relay path against a real doriface-host", () => {
     expect(opened.connection.hello.framed).toBe(true);
     opened.connection.close();
   }, 30_000);
+
+  test("every relay dial takes its sockets from the page's budget: a fresh connect its best-of-3, a resume one (#2933 review)", async () => {
+    /** The page's budget, recording what each dial asks of it; `refuse` turns a dial away after it is counted. */
+    class Recording extends DialBudget {
+      readonly costs: number[] = [];
+      refuse = false;
+      override async acquire(cost: number, signal?: AbortSignal): Promise<void> {
+        this.costs.push(cost);
+        if (this.refuse) throw new Error("no dial past the budget in this test");
+        return super.acquire(cost, signal);
+      }
+    }
+    // A fresh connect to a relay on the default HTTPS port races 3 sockets for the nearest, and asks for all 3. It is turned
+    // away once counted, so nothing reaches the network.
+    const fresh = new Recording(45);
+    fresh.refuse = true;
+    const away = {
+      ...DEFAULT_SETTINGS,
+      mode: "relay" as const,
+      relayUrl: "wss://relay.example",
+      hostId: "a".repeat(26),
+      hostKey: "a".repeat(43),
+    };
+    await expect(connect(away, undefined, { ...deps, dials: fresh })).rejects.toThrow("no dial past the budget");
+    expect(fresh.costs).toEqual([3]);
+
+    // Against this test's relay (loopback, one route) the connect asks for 1; its session's resume dial asks for 1 more.
+    const { link } = await newOffer();
+    const saved: RememberedHost[] = [];
+    await pairAndRemember(link, "budget", (remembered) => saved.push(remembered), deps);
+    const remembered = saved[0];
+    if (remembered === undefined) throw new Error("the link pairing saved nothing");
+    const budget = new Recording(45);
+    const opened = await connect({ ...DEFAULT_SETTINGS, mode: "relay", ...remembered }, undefined, {
+      ...deps,
+      dials: budget,
+    });
+    try {
+      expect(budget.costs).toEqual([1]);
+      if (opened.session === undefined) throw new Error("a relay connection carries a resumable session");
+      const redialed = await opened.session.redial(new AbortController().signal);
+      redialed.close();
+      expect(budget.costs).toEqual([1, 1]);
+    } finally {
+      opened.connection.close();
+    }
+  });
 });
