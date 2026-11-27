@@ -165,6 +165,34 @@
   --avatar-ink: #ffffff;
   --tabbar-height: 2.625rem;
   --statusbar-height: 1.75rem;
+  /* --- Settings (#2914): one set, a fine value here and a coarse one below, so no surface draws its own sizes. Fine
+     follows the Herdr desktop app's Settings (flat rows under small uppercase captions, a 190 px navigation); coarse
+     follows its phone app (a large title alone, sentence-case captions over inset cards, rows of one height). Where
+     Herdr's own size would break a rule of ours it moves the least that keeps it: the heading steps stay 1.25x apart
+     (#1578), so the fine title is 18 px not 16 and the captions 11/12 px not 12/13; reading prose keeps its 14 px
+     floor on desktop, so a description is 14 px not 12.5. --- */
+  --settings-title: 1.125rem;
+  --settings-title-weight: 600;
+  --settings-caption: 0.6875rem;
+  --settings-caption-weight: 600;
+  --settings-caption-case: uppercase;
+  --settings-caption-inset: 0px;
+  --settings-row-min: 2.75rem;
+  --settings-row-title: 0.875rem;
+  --settings-row-detail: 0.875rem;
+  --settings-row-y: 0.625rem;
+  --settings-card-bg: transparent;
+  --settings-card-radius: 0px;
+  --settings-card-inset: 0px;
+  --settings-group-gap: 1.5rem;
+  --settings-nav-width: 12.5rem;
+  --settings-nav-item: 0.84375rem;
+  --settings-nav-item-y: 0.4375rem;
+  --settings-nav-radius: 7px;
+  --settings-icon: 0.9375rem;
+  --settings-tile: 0.9375rem;
+  --settings-tile-radius: 0px;
+  --settings-chevron: 0.875rem;
   /* Device safe areas; a preview frame sets them to a real device's insets. */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -204,6 +232,28 @@
     --control-lg: 3rem;
     --row: 2.75rem;
     --hit: 2.75rem;
+    --settings-title: 1.75rem;
+    --settings-title-weight: 700;
+    --settings-caption: 0.75rem;
+    --settings-caption-weight: 400;
+    --settings-caption-case: none;
+    --settings-caption-inset: 1rem;
+    --settings-row-min: 3.25rem;
+    --settings-row-title: 1.0625rem;
+    --settings-row-detail: 0.9375rem;
+    --settings-row-y: 0.625rem;
+    --settings-card-bg: var(--raised);
+    --settings-card-radius: 14px;
+    --settings-card-inset: 1rem;
+    --settings-group-gap: 1.75rem;
+    --settings-nav-width: 15rem;
+    --settings-nav-item: 1.0625rem;
+    --settings-nav-item-y: 0.5rem;
+    --settings-nav-radius: 10px;
+    --settings-icon: 1.0625rem;
+    --settings-tile: 1.75rem;
+    --settings-tile-radius: 7px;
+    --settings-chevron: 1rem;
   }
 }
 

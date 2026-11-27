@@ -114,7 +114,9 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
             );
           })}
           {shown.length === 0 ? (
-            <li className={cn(listRowClass, rowValueClass)}>The bar has no keys. Add one below.</li>
+            <li data-list-row className={cn(listRowClass, rowValueClass)}>
+              The bar has no keys. Add one below.
+            </li>
           ) : null}
           {drag === null ? null : <RowDropIndicator drag={drag} />}
           {drag === null ? null : <RowDropCaret drag={drag} />}
@@ -137,7 +139,11 @@ export function KeyboardEdit({ settings, host, readOnly }: KeyboardEditProps) {
               <span className="min-w-0 flex-1 truncate text-base text-foreground">{entry.label}</span>
             </li>
           ))}
-          {removed.length === 0 ? <li className={cn(listRowClass, rowValueClass)}>Every key is in the bar.</li> : null}
+          {removed.length === 0 ? (
+            <li data-list-row className={cn(listRowClass, rowValueClass)}>
+              Every key is in the bar.
+            </li>
+          ) : null}
         </ul>
       </Subgroup>
     </div>
