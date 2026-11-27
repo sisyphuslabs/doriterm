@@ -102,38 +102,46 @@ async function oldestLine(terminal: Locator): Promise<number> {
 /**
  * How many times each `line-N` shows in the history and on the screen, read half a view at a time from the top: the
  * history renders only the rows in view. Rows are keyed by their place, so a row read twice counts once. Leaves the
- * view at its end.
+ * view at its end. The page reads every step itself and waits for each step's rows a frame at a time: a wait per step
+ * from the test, each with its round trips and backoff, cost more than the test's whole budget under load (#2365).
  */
 async function lineCounts(terminal: Locator, rowHeight: number): Promise<Map<number, number>> {
-  const rows = new Map<number, string>();
-  const { height, view } = await terminal.evaluate((element) => ({
-    height: element.scrollHeight,
-    view: element.clientHeight,
-  }));
-  const inView = (): Promise<(readonly [number, string])[]> =>
-    terminal.evaluate((element, rowPx) => {
+  const rows = await terminal.evaluate(async (element, rowPx) => {
+    const read = new Map<number, string>();
+    const inView = (): (readonly [number, string])[] => {
       const box = element.getBoundingClientRect();
       return [...element.querySelectorAll(".term-grid .term-row")].flatMap((row) => {
         const rect = row.getBoundingClientRect();
         if (rect.bottom <= box.top || rect.top >= box.bottom) return [];
         return [[Math.round((rect.top - box.top + element.scrollTop) / rowPx), row.textContent ?? ""] as const];
       });
-    }, rowHeight);
-  const tops = Array.from({ length: Math.ceil(height / (view / 2)) }, (_unused, index) => (index * view) / 2);
-  await tops.reduce<Promise<void>>(async (previous, top) => {
-    await previous;
-    await terminal.evaluate((element, y) => {
-      element.scrollTop = y;
-    }, top);
-    // The rows in view render on the next frame: read them once the whole view has its rows.
-    await expect.poll(async () => (await inView()).length).toBeGreaterThanOrEqual(Math.floor(view / rowHeight));
-    for (const [at, text] of await inView()) rows.set(at, text);
-  }, Promise.resolve());
-  await terminal.evaluate((element) => {
+    };
+    const view = element.clientHeight;
+    const full = Math.floor(view / rowPx);
+    // One step a frame: scroll half a view down, and read once the whole view has its rows, which render on a later frame.
+    await new Promise<void>((resolve) => {
+      let top = 0;
+      element.scrollTop = top;
+      const step = (): void => {
+        const shown = inView();
+        if (shown.length >= full) {
+          for (const [at, text] of shown) read.set(at, text);
+          top += view / 2;
+          if (top >= element.scrollHeight) {
+            resolve();
+            return;
+          }
+          element.scrollTop = top;
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
     element.scrollTop = element.scrollHeight;
-  });
+    return [...read.values()];
+  }, rowHeight);
   const counts = new Map<number, number>();
-  for (const text of rows.values()) {
+  for (const text of rows) {
     const line = /^line-(\d+)[\s\u00a0]*$/u.exec(text);
     if (line) counts.set(Number(line[1]), (counts.get(Number(line[1])) ?? 0) + 1);
   }

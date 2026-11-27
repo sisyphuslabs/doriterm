@@ -121,6 +121,8 @@ test("the open card holds the mic just before Enter, and Enter with an empty fie
   await expect(mic(card(page))).toHaveCount(1);
   const enter = card(page).getByRole("button", { name: "Send", exact: true });
   await expect(enter).toBeEnabled();
+  // The card moves in on the motion tokens (#2875, #2917): its boxes are read once it has settled, not one per frame.
+  await atRest(page);
   const [voice, send, input] = [await box(mic(card(page))), await box(enter), await box(field(page))];
   // Under the full-width field, at its end: the mic, then Enter, on one line.
   expect(Math.abs(voice.y + voice.height / 2 - (send.y + send.height / 2))).toBeLessThanOrEqual(1);

@@ -125,3 +125,21 @@ test("on the phone, a 4-level chain caps guides at depth 2 and the fold button k
   await expect(r2).toBeVisible();
   await expect(r3).toBeVisible();
 });
+
+test("the Needs you header says what the Agents badge says: a working agent drawn there for its sub-agent is not counted (#2881)", async ({
+  page,
+}) => {
+  const lead = startAgent("host", "ptree-count-lead", "working", SPACE);
+  startHelper("ptree-count-probe", "blocked", lead);
+
+  await page.goto("/");
+  const needsYou = page.getByRole("region", { name: "Needs you", exact: true });
+  await expect(rowNamed(needsYou, "ptree-count-probe")).toBeVisible({ timeout: 20_000 });
+  await expect(rowNamed(needsYou, "ptree-count-lead")).toBeVisible();
+  const badge = page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("button", { name: /^Agents\b/ })
+    .locator("[data-slot='tab-badge']");
+  await expect(badge).toHaveText("1");
+  await expect(needsYou.locator("header [data-numeric]")).toHaveText("1");
+});

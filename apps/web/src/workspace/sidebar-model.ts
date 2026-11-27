@@ -22,13 +22,17 @@ export interface AgentGroup {
   readonly compactBlocked: boolean;
   readonly agents: readonly Agent[];
   /**
-   * The header's count: every terminal the group lists, by its place, so a row held in Working through its wait counts
-   * there (#1963). A sub-agent is counted with the agent that started it, in that agent's group, and nowhere else, so
-   * the counts together are the live terminals, each once (#2122); folding a row away does not change its group's count
-   * (#2746). Pinned agents are counted in Pinned, where they are listed. The palette's status filter counts live states
-   * instead, as the rows it filters by are.
+   * The header's count: the rows in `counted`. Folding a row away does not change it (#2746). The palette's status
+   * filter counts live states instead, as the rows it filters by are.
    */
   readonly count: number;
+  /**
+   * The rows the header counts. A status section counts the rows whose own place is that section, so a row held in
+   * Working through its wait counts there (#1963), and a parent drawn in Needs you only for its sub-agent is listed but
+   * not counted: Needs you then says what the tab badge says (#2881). Pinned, Offline and the space groups count every
+   * row they list.
+   */
+  readonly counted: ReadonlySet<string>;
 }
 
 const STATUS_GROUPS = [
@@ -47,6 +51,8 @@ interface Branch {
   readonly section: AgentStatus | "offline";
   readonly base: number;
   readonly rows: Agent[];
+  /** Each row's own place, in the order of `rows`: Offline, or its status before bubbling. */
+  readonly places: (AgentStatus | "offline")[];
 }
 
 /**
@@ -68,12 +74,13 @@ function branches(terminals: readonly Session[], nowMs: number, places: AgentPla
     let branch = under;
     if (branch === undefined || (pinned && !branch.pinned)) {
       const section = terminal.offline === true ? ("offline" as const) : row.urgency;
-      branch = { head: terminal, pinned, section, base: row.depth, rows: [] };
+      branch = { head: terminal, pinned, section, base: row.depth, rows: [], places: [] };
       found.push(branch);
     }
     above.push({ depth: row.depth, branch });
     const agent = Object.assign(toAgent(terminal, nowMs), { depth: row.depth - branch.base, urgency: row.urgency });
     branch.rows.push(pinned ? Object.assign(agent, { pinned: true }) : agent);
+    branch.places.push(terminal.offline === true ? "offline" : placed(terminal));
   }
   return found;
 }
@@ -98,9 +105,23 @@ export function agentGroups(
   const all = branches(terminals, nowMs, places).toSorted(
     (a, b) => rankOf(a) - rankOf(b) || (order.get(a.head.address) ?? 0) - (order.get(b.head.address) ?? 0),
   );
-  const listed = (own: readonly Branch[]): { readonly agents: readonly Agent[]; readonly count: number } => {
+  /**
+   * What `own` lists, counting every row without a `section`. With one, a branch counts its rows whose own place is
+   * `section`, and its top row when none is: a branch a done sub-agent brings to Idle (a done reads as idle there) still
+   * counts the agent it is placed by, so a listed section never says 0.
+   */
+  const listed = (
+    own: readonly Branch[],
+    section?: AgentStatus,
+  ): { readonly agents: readonly Agent[]; readonly count: number; readonly counted: ReadonlySet<string> } => {
     const agents = own.flatMap((branch) => withShape(branch.rows));
-    return { agents, count: agents.length };
+    const counted = new Set(
+      own.flatMap((branch) => {
+        const rows = branch.rows.filter((_, index) => section === undefined || branch.places[index] === section);
+        return (rows.length === 0 ? branch.rows.slice(0, 1) : rows).map((row) => row.id);
+      }),
+    );
+    return { agents, count: counted.size, counted };
   };
   const pinned = all.filter((branch) => branch.pinned);
   const rest = all.filter((branch) => !branch.pinned);
@@ -111,7 +132,8 @@ export function agentGroups(
       ...head,
       ...STATUS_GROUPS.flatMap((group) => {
         const own = rest.filter((branch) => branch.section === group.key);
-        return own.length === 0 ? [] : [{ ...group, compactBlocked: group.key === "blocked", ...listed(own) }];
+        const section = group.key === "offline" ? undefined : group.key;
+        return own.length === 0 ? [] : [{ ...group, compactBlocked: group.key === "blocked", ...listed(own, section) }];
       }),
     ];
   }
