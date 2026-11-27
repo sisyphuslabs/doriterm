@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { activeThemeId, type Appearance, DEFAULT_APPEARANCE, parseAppearance } from "./stored.ts";
+import { activePaletteKey, activeThemeId, type Appearance, DEFAULT_APPEARANCE, parseAppearance } from "./stored.ts";
 
 describe("parseAppearance", () => {
   test("a stored mode and picks come back as stored", () => {
@@ -78,5 +78,62 @@ describe("activeThemeId", () => {
     ["light", true, "tomorrow"],
   ] as const)("%s with the system dark=%p shows %s", (mode, systemDark, id) => {
     expect(activeThemeId({ ...appearance, mode }, systemDark)).toBe(id);
+  });
+});
+
+function customThemeFile(background: string, red: string) {
+  return {
+    background,
+    foreground: "#e8e6df",
+    selection: "#334455",
+    cursor: "#ffffff",
+    ansi: [
+      "#111111",
+      red,
+      "#22aa44",
+      "#ccaa22",
+      "#3366cc",
+      "#aa44cc",
+      "#22aaaa",
+      "#cccccc",
+      "#555555",
+      "#ff5566",
+      "#44cc66",
+      "#eecc44",
+      "#5588ee",
+      "#cc66ee",
+      "#44cccc",
+      "#ffffff",
+    ],
+  };
+}
+
+describe("activePaletteKey", () => {
+  test("changes on same-kind theme switch and ignores density or inactive-kind edits", () => {
+    const base: Appearance = { ...DEFAULT_APPEARANCE, mode: "dark", dark: "night", light: "day" };
+    const key = activePaletteKey(base, true);
+    expect(activePaletteKey({ ...base, density: "compact" }, true)).toBe(key);
+    expect(activePaletteKey({ ...base, light: "paper" }, true)).toBe(key);
+    expect(activePaletteKey({ ...base, mode: "system", light: "paper" }, true)).toBe(key);
+    expect(activePaletteKey({ ...base, dark: "dracula" }, true)).not.toBe(key);
+    expect(activePaletteKey({ ...base, mode: "light" }, true)).not.toBe(key);
+  });
+
+  test("changes when the active custom theme's terminal colours change under the same id", () => {
+    const first = { id: "custom:mine", name: "mine", file: customThemeFile("#101820", "#dd3344") };
+    const updated = { id: "custom:mine", name: "mine", file: customThemeFile("#181020", "#ee7722") };
+    const other = { id: "custom:other", name: "other", file: customThemeFile("#202020", "#cc2222") };
+    const base: Appearance = { ...DEFAULT_APPEARANCE, mode: "dark", dark: first.id, custom: [first] };
+    const key = activePaletteKey(base, true);
+
+    expect(activePaletteKey({ ...base, density: "spacious" }, true)).toBe(key);
+    expect(activePaletteKey({ ...base, custom: [first, other] }, true)).toBe(key);
+    expect(activePaletteKey({ ...base, custom: [updated] }, true)).not.toBe(key);
+  });
+
+  test("ignores an unparseable custom entry", () => {
+    const broken = { id: "night", name: "night", file: { background: "not-a-hex" } };
+    const base: Appearance = { ...DEFAULT_APPEARANCE, mode: "dark", dark: "night", custom: [broken] };
+    expect(activePaletteKey(base, true)).toBe("night");
   });
 });

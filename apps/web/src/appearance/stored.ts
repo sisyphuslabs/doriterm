@@ -1,3 +1,4 @@
+import { parseThemeFile, resolveTheme, themeVariables } from "@doriface/ui";
 import { themeChoices, type CustomTheme } from "./choices.ts";
 
 export type AppearanceMode = "system" | "light" | "dark";
@@ -73,4 +74,39 @@ export function parseAppearance(stored: unknown): Appearance {
 export function activeThemeId(appearance: Appearance, systemDark: boolean): string {
   const dark = appearance.mode === "dark" || (appearance.mode === "system" && systemDark);
   return dark ? appearance.dark : appearance.light;
+}
+
+const customPaletteKeys = new WeakMap<CustomTheme, string | null>();
+
+function customPaletteKey(entry: CustomTheme): string | null {
+  if (customPaletteKeys.has(entry)) return customPaletteKeys.get(entry) ?? null;
+  let key: string | null = null;
+  try {
+    const vars = themeVariables(resolveTheme(parseThemeFile(entry.file)));
+    key = [
+      vars["term-fg"] ?? "",
+      vars["term-bg"] ?? "",
+      vars["term-cursor"] ?? "",
+      ...Array.from({ length: 16 }, (_, index) => vars[`term-color-${index}`] ?? ""),
+    ].join("|");
+  } catch {
+    key = null;
+  }
+  customPaletteKeys.set(entry, key);
+  return key;
+}
+
+/**
+ * Identifies the active terminal palette for an appearance and system scheme: changes when the shown theme switches or
+ * a custom theme in view changes its terminal colours, and stays equal across density or inactive-kind edits.
+ */
+export function activePaletteKey(appearance: Appearance, systemDark: boolean): string {
+  const id = activeThemeId(appearance, systemDark);
+  for (let index = appearance.custom.length - 1; index >= 0; index -= 1) {
+    const entry = appearance.custom[index];
+    if (entry === undefined || entry.id !== id) continue;
+    const key = customPaletteKey(entry);
+    if (key !== null) return `${id}:${key}`;
+  }
+  return id;
 }
