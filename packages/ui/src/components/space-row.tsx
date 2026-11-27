@@ -92,7 +92,7 @@ export function SpaceRow({
       <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
     ) : (
       // The avatar is 2 px wider than the size-4 glyph every sidebar row leads with; taking those 2 px out of the gap
-      // keeps the name on the label column the section titles start on (#1612).
+      // keeps its name on the same column as a folder-led row's.
       <SpaceAvatar name={space.name} color={space.color} {...(rail ? {} : { className: "-mr-0.5" })} />
     );
   return (

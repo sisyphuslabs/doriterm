@@ -2,7 +2,7 @@ import { Pin } from "lucide-react";
 import { useRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { AgentMark } from "./agent-mark.tsx";
-import { hasAgentMark } from "./agent-marks.ts";
+import { isBrandMark } from "./agent-marks.ts";
 import { useRowFloors } from "./row-floors.ts";
 import { STATUS_LABEL, StatusChip, StatusIndicator, type AgentStatus } from "./status.tsx";
 
@@ -33,13 +33,13 @@ function TreeGuideCell({ guide }: { readonly guide: AgentTreeGuide }) {
   return (
     <span className="relative h-full w-[14px] shrink-0">
       {guide === "│" || guide === "├" ? (
-        <span className="absolute top-0 -bottom-px left-1/2 w-[1.5px] -translate-x-1/2 bg-border" />
+        <span className="absolute top-0 -bottom-px left-1/2 w-px -translate-x-1/2 bg-dim" />
       ) : null}
       {guide === "└" ? (
-        <span className="absolute top-0 left-1/2 h-[calc(50%+0.75px)] w-[1.5px] -translate-x-1/2 bg-border" />
+        <span className="absolute top-0 left-1/2 h-[calc(50%+0.5px)] w-px -translate-x-1/2 bg-dim" />
       ) : null}
       {guide === "├" || guide === "└" ? (
-        <span className="absolute top-1/2 right-0 left-[calc(50%+0.75px)] h-[1.5px] -translate-y-1/2 bg-border" />
+        <span className="absolute top-1/2 right-0 left-[calc(50%+0.5px)] h-px -translate-y-1/2 bg-dim" />
       ) : null}
     </span>
   );
@@ -116,6 +116,8 @@ export function AgentRow({
   const drawn = Math.min(Math.max(0, agent.depth ?? 0), Math.max(0, depthCap));
   const cells = guideCells(agent.guides, drawn);
   // The age and tree indent are in the key too: wider ages or deeper indents leave less room for the parts.
+  const shownAge = agent.age === "<1m" ? undefined : agent.age;
+  const brandKind = agent.kind !== undefined && isBrandMark(agent.kind) ? agent.kind : undefined;
   const todo = agent.todo === undefined ? undefined : `${agent.todo.done}/${agent.todo.total}`;
   useRowFloors(
     row,
@@ -123,8 +125,8 @@ export function AgentRow({
       agent.name,
       agent.detail,
       agent.machine,
-      agent.age,
-      agent.kind,
+      shownAge,
+      brandKind,
       todo,
       drawn,
       disclosure ? "1" : "0",
@@ -194,11 +196,11 @@ export function AgentRow({
         )}
       </span>
       {agent.icon ??
-        (agent.kind !== undefined && hasAgentMark(agent.kind) ? (
+        (brandKind !== undefined ? (
           // 14 px, held 2 px after the status glyph rather than the row's 10 px gap: the glyph draws inside its 16 px box, so
           // the two read as one cluster, and the mark costs the row's texts 16 px, which a narrow row with a long machine
           // name can give and still keep five characters of each (#2746).
-          <AgentMark kind={agent.kind} size={14} className="-ml-2 text-muted-foreground" />
+          <AgentMark kind={brandKind} size={14} className="-ml-2 text-muted-foreground" />
         ) : null)}
       <span
         title={agent.name}
@@ -251,9 +253,9 @@ export function AgentRow({
         // The same 14 px as the row's Unpin action that takes its place on hover, so the pin never jumps in size (#1562).
         <Pin role="img" aria-label="Pinned" data-row-meta className="size-3.5 shrink-0 text-muted-foreground" />
       ) : null}
-      {agent.age === undefined ? null : (
+      {shownAge === undefined ? null : (
         <time data-numeric data-row-meta className="min-w-7 shrink-0 text-right text-xs text-muted-foreground">
-          {agent.age}
+          {shownAge}
         </time>
       )}
     </button>

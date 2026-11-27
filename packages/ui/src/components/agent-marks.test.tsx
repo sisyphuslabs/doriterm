@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AgentMark } from "./agent-mark.tsx";
-import { AGENT_MARKS, hasAgentMark } from "./agent-marks.ts";
+import { AGENT_MARKS, hasAgentMark, isBrandMark } from "./agent-marks.ts";
 
 const NOTICES = readFileSync(join(import.meta.dirname, "../../NOTICES.md"), "utf8");
 
@@ -69,6 +69,37 @@ describe("AGENT_MARKS", () => {
     expect(readAttr(markup, "fill-rule")).toBe("evenodd");
     expect(readAttr(markup, "d")).toMatch(/^M9270 32167 c-309 -64/u);
     expect(markup).not.toMatch(/#[0-9a-fA-F]{3,8}\b/u);
+  });
+
+  test("isBrandMark returns true only for named-product marks and excludes generic and unknown kinds", () => {
+    const generic = new Set(["agent", "shell", "program"]);
+    const brands = Object.keys(AGENT_MARKS).filter((kind) => !generic.has(kind));
+    expect(brands).toEqual([
+      "claude",
+      "codex",
+      "cursor",
+      "copilot",
+      "gemini",
+      "grok",
+      "opencode",
+      "amp",
+      "kimi",
+      "antigravity",
+      "omo",
+      "omp",
+      "droid",
+      "qwen",
+    ]);
+    for (const kind of brands) {
+      expect(isBrandMark(kind)).toBe(true);
+    }
+    for (const kind of generic) {
+      expect(hasAgentMark(kind)).toBe(true);
+      expect(isBrandMark(kind)).toBe(false);
+    }
+    expect(isBrandMark("nope")).toBe(false);
+    expect(isBrandMark("")).toBe(false);
+    expect(isBrandMark("toString")).toBe(false);
   });
 
   test("packages/ui/NOTICES.md lists every mark in AGENT_MARKS and no extra key", () => {

@@ -78,6 +78,12 @@ export const AGENT_MARKS: Readonly<Record<string, AgentMarkEntry>> = {
   program: { label: "Program", from: "lucide", name: "square-terminal", icon: SquareTerminal },
 };
 
+/** Generic fallback marks in {@link AGENT_MARKS} that do not identify a named product. */
+const GENERIC_MARKS: ReadonlySet<string> = new Set(["agent", "shell", "program"]);
+
 /** Whether `kind` has a mark in {@link AGENT_MARKS} (own property only). */
 export const hasAgentMark = (kind: string | undefined): boolean =>
   kind !== undefined && Object.hasOwn(AGENT_MARKS, kind);
+
+/** Whether `kind` is a named-product mark in {@link AGENT_MARKS} (excluding generic `agent`, `shell`, `program`). */
+export const isBrandMark = (kind: string): boolean => hasAgentMark(kind) && !GENERIC_MARKS.has(kind);

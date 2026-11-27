@@ -205,6 +205,26 @@ test("the D-pad toggle opens the 3x3 pad in a bubble over its key", async ({ pag
   await expect(pad).toHaveCount(0);
 });
 
+// #2871: a press anywhere in the bubble, an empty cell or its padding as well as a key, keeps the keyboard up.
+test("a press on an empty cell or the padding of the pad's bubble keeps the terminal focused", async ({ page }) => {
+  await openPhoneTerminal(page);
+  const toggle = key(page, "Arrow keys");
+  await toggle.scrollIntoViewIfNeeded();
+  await toggle.click();
+  const pad = page.getByRole("group", { name: "Arrow keys", exact: true });
+  await expect(pad).toBeVisible();
+  const focused = page.locator("[data-terminal] textarea");
+  await expect(focused).toBeFocused();
+  await pad.locator(":scope > span[aria-hidden]:not([data-slot=pad-tail])").first().click();
+  await expect(focused).toBeFocused();
+  const box = await pad.boundingBox();
+  if (box === null) throw new Error("arrow pad not laid out");
+  // Inside the 6 px padding, level with the middle row, between the border and Left arrow.
+  await pad.click({ position: { x: 3, y: box.height / 2 } });
+  await expect(focused).toBeFocused();
+  await expect(pad).toBeVisible();
+});
+
 test("paging the key pill sideways moves its dots and reveals ~ | / -", async ({ page }) => {
   await openPhoneTerminal(page);
   const keysPill = keysBar(page).getByRole("group", { name: "Keys", exact: true });
