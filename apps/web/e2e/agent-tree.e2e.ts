@@ -116,6 +116,18 @@ test("a sub-agent an agent starts on the added machine is listed under it, and i
   }
 });
 
+test("a sub-agent its parent starts on the added machine's own core is listed under it (#2779)", async ({ page }) => {
+  // Both run on the added machine: its core records the parent bare, and this machine's feed names it as an address.
+  const lead = startAgent("machine", "tree-box-lead", "working", SPACE);
+  startAgent("machine", "tree-box-child", "blocked", SPACE, lead);
+  await page.goto("/");
+
+  const needsYou = section(page, "Needs you");
+  await expect(drawn(page, "Needs you")).toHaveText([/tree-box-lead/, /tree-box-child/], { timeout: 20_000 });
+  await expect(drawn(page, "Working")).toHaveCount(0);
+  await expect(rowNamed(needsYou, "tree-box-child").locator("[data-tree-guides]")).toHaveAttribute("data-depth", "1");
+});
+
 test("a child row is indented under its parent with depth-1 guides and a shifted status glyph", async ({ page }) => {
   const lead = startAgent("host", "tree-indent-lead", "working", SPACE);
   startHelper("tree-indent-child", "working", lead);
