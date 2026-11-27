@@ -1,9 +1,36 @@
 import type { Locator, Page } from "@playwright/test";
-import { expect, laidOutBox, openNewTerminal } from "./fixtures.ts";
+import { expect, laidOutBox, openNewTerminal, pressNewTab } from "./fixtures.ts";
 import { shortcut } from "./platform-keys.ts";
 
 export const strip = (page: Page) => page.getByRole("tablist", { name: "Tabs" });
 export const tabs = (page: Page) => strip(page).getByRole("tab");
+
+/**
+ * Presses New tab until the tabs no longer fit the scroller, at most `limit` times, measured as the strip measures it
+ * (tab-overflow.ts): the last tab's layout end plus the end padding, not scrollWidth, which counts hit areas (#2872).
+ */
+export async function openTabsUntilOverflow(page: Page, limit: number): Promise<void> {
+  const scroller = strip(page).locator("[data-tab-scroll]");
+  const tabsOverflow = () =>
+    scroller.evaluate((el) => {
+      const items = el.querySelectorAll<HTMLElement>("[data-tab-id]");
+      const last = items[items.length - 1];
+      if (last === undefined) return false;
+      const needed = last.offsetLeft + last.offsetWidth + Number.parseFloat(getComputedStyle(el).paddingRight);
+      return needed > el.clientWidth + 1;
+    });
+  if (limit <= 0 || (await tabsOverflow())) return;
+  const before = await tabs(page).count();
+  await pressNewTab(page.getByRole("button", { name: "New tab", exact: true }));
+  await expect(tabs(page)).toHaveCount(before + 1, { timeout: 15_000 });
+  await openTabsUntilOverflow(page, limit - 1);
+}
+
+/** Every tab's title, in strip order, as the tab and the All tabs menu both draw it. */
+export const titlesIn = (items: Locator): Promise<string[]> =>
+  items.evaluateAll((els) =>
+    els.map((el) => el.querySelector("span.truncate")?.textContent?.trim() ?? el.textContent?.trim() ?? ""),
+  );
 
 /**
  * The strip's tab whose panel shows the terminal: a tab reads its name or its number, as herdr-app's, so a spec finds a
