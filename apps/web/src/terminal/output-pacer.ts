@@ -1,4 +1,4 @@
-import { HeldUpdate, SYNCHRONIZED_UNPACED_MS } from "./held-update.ts";
+import { HeldUpdate } from "./held-update.ts";
 import { onTime } from "./late-timer.ts";
 import { CREDIT_WINDOW_BYTES, REPLAY_MAX_BYTES, ReplayHold, type ReplayOptions } from "./replay-hold.ts";
 import { opensUpdate, SynchronizedUpdate } from "./synchronized-update.ts";
@@ -126,9 +126,9 @@ export class OutputPacer {
   });
   /** When output last arrived, by {@link Clock}: a late timer is read as it is once none has come for the hold's cap. */
   #lastBytes = 0;
-  /** When the view last resized, and when the run of resizes it belongs to (a drag) began, by {@link Clock}. */
+  /** When the view last resized, by {@link Clock}, and how many more bytes the shell may answer that resize with. */
   #resizedAt = Number.NEGATIVE_INFINITY;
-  #resizesFrom = Number.NEGATIVE_INFINITY;
+  #answerLeft = 0;
   #catchUp: CatchUp | null = null;
   readonly #written = new Set<() => void>();
 
@@ -147,8 +147,8 @@ export class OutputPacer {
   push(bytes: Uint8Array, credit: (bytes: number) => void = () => undefined): void {
     if (bytes.byteLength === 0) return;
     const now = this.#clock();
-    const answer =
-      now - this.#resizedAt <= this.#roundTrip() && this.#openedAt !== null && this.#openedAt < this.#resizesFrom;
+    const answer = now - this.#resizedAt <= this.#roundTrip() && bytes.byteLength <= this.#answerLeft;
+    if (answer) this.#answerLeft -= bytes.byteLength;
     this.#queue.push({ bytes, credit, answer });
     this.#lastBytes = now;
     this.#replay.arrived();
@@ -224,16 +224,14 @@ export class OutputPacer {
   }
 
   /**
-   * The view resized. Resizes less than a quiet window apart are one drag. Within a round trip of a resize, bytes for an
-   * update that was already open when the drag began are the shell answering it (a prompt redrawn on SIGWINCH), not
-   * the update being drawn (#2922). An update opened during the drag is a program's redraw, and its bytes keep it held
-   * as before (#757, #2040); one left open during a drag is held until the drag stops plus its quiet window, under the
-   * cap.
+   * The view resized to `cols` columns. A shell answers a resize by redrawing its prompt line (bash and zsh on
+   * SIGWINCH: a return, the line blanked, the prompt; about two rows' bytes): within a round trip, up to three rows of
+   * the new width are that answer, not an update being drawn, so a drag does not keep an update left open held
+   * (#2922). A program redrawing in answer to the resize sends screens, past that, and keeps its hold (#757, #2040).
    */
-  resized(): void {
-    const now = this.#clock();
-    if (now - this.#resizedAt > Math.max(SYNCHRONIZED_UNPACED_MS, this.#roundTrip())) this.#resizesFrom = now;
-    this.#resizedAt = now;
+  resized(cols: number): void {
+    this.#resizedAt = this.#clock();
+    this.#answerLeft = 3 * cols;
   }
 
   /**
