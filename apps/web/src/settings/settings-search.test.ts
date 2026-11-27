@@ -6,9 +6,10 @@ const found = (query: string) => matchSections(SECTIONS, query).map((section) =>
 
 describe("searching across settings (#1460)", () => {
   test.each([
-    // Terminal's own `theme` key and Keyboard's shortcut packs are settings of theirs (#1528).
-    ["theme", ["terminal", "appearance"]],
-    ["font", ["terminal", "appearance"]],
+    // Terminal's own `theme` key and Keyboard's shortcut packs are settings of theirs (#1528); the list puts Appearance
+    // before Terminal under Look (#2914).
+    ["theme", ["appearance", "terminal"]],
+    ["font", ["appearance", "terminal"]],
     ["relay", ["device"]],
     ["shortcut", ["keyboard", "keybindings"]],
     ["push", ["notifications"]],

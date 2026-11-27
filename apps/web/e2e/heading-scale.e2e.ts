@@ -5,6 +5,7 @@ import { machineState, REDIAL_BOUND_MS } from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
 import { fakeSoftKeyboard, PHONE } from "./phone-key-bar.ts";
 import { shortcut } from "./platform-keys.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 // Every heading step in use differs by at least 1.25x, and the smallest heading from its body, on every screen (#1578).
 test.use({ serviceWorkers: "block" });
@@ -89,11 +90,9 @@ for (const width of [390, 1440] as const) {
       test(`Settings > ${section} keeps its heading steps apart`, async ({ page }) => {
         await page.goto("/settings");
         const settings = settingsDialog(page);
-        await settings
-          .getByRole(width === 390 ? "tab" : "button", { name: section, exact: true })
-          .first()
-          .click();
-        await expect(settings.getByRole("heading", { name: section, level: 2 })).toBeVisible();
+        await openSettingsSection(page, section);
+        // The section's page title on a phone, its caption from md (#2914).
+        await expect(settings.getByRole("heading", { name: section, exact: true })).toBeVisible();
         await expectScale(settings);
       });
     }
@@ -104,15 +103,16 @@ for (const width of [390, 1440] as const) {
       // Room for both named waits, the core's redial and the mesh groups', past the default 60 s test timeout.
       test.setTimeout(REDIAL_BOUND_MS + MESH_GROUPS_MS + 30_000);
       resetMeshDocs();
-      await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
-      await page.goto("/settings");
-      const settings = settingsDialog(page);
-      await settings
-        .getByRole(width === 390 ? "tab" : "button", { name: "Machines", exact: true })
-        .first()
-        .click();
-      await expect(settings.locator("[data-mesh-group]").first()).toBeVisible({ timeout: MESH_GROUPS_MS });
-      await expectScale(settings);
+      try {
+        await expect.poll(machineState, { timeout: REDIAL_BOUND_MS }).toBe("connected");
+        await page.goto("/settings");
+        const settings = settingsDialog(page);
+        await openSettingsSection(page, "Machines");
+        await expect(settings.locator("[data-mesh-group]").first()).toBeVisible({ timeout: MESH_GROUPS_MS });
+        await expectScale(settings);
+      } finally {
+        resetMeshDocs({ open: false });
+      }
     });
   });
 }
@@ -126,7 +126,7 @@ for (const pointer of ["phone", "mouse"] as const) {
     test("the Add keys sheet keeps its title, groups and chips apart", async ({ page }) => {
       await fakeSoftKeyboard(page);
       await page.goto("/settings");
-      await page.getByRole("tab", { name: "Keyboard" }).click();
+      await openSettingsSection(page, "Keyboard");
       await page.getByRole("button", { name: /^Keys/ }).click();
       const sheet = page.getByRole("dialog", { name: "Add keys" });
       await expect(sheet).toBeVisible();

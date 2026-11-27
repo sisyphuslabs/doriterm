@@ -34,9 +34,13 @@ export class DropOnce {
     this.#killed = killed;
   }
 
-  /** True the first time the session at `address` is dropped, false for every later report of the same session. */
-  take(address: string): boolean {
-    if (this.#dropped.has(address)) return false;
+  /**
+   * True the first time the session at `address` is dropped, false for every later report of the same session. A report
+   * while no saved tab shows it (`shown` false) drops nothing and is not that one drop: a tab saved for it afterwards (an
+   * adoption written while it still ran and saved once it had ended, #2913) is dropped when its end is reported again.
+   */
+  take(address: string, shown = true): boolean {
+    if (!shown || this.#dropped.has(address)) return false;
     const live = this.#live.get(address);
     this.#dropped.set(address, { session: live === undefined ? null : sessionOf(live), ended: live === undefined });
     return true;
@@ -78,14 +82,19 @@ export interface DropsOnce {
  * A close writes its pane's removal as it is chosen and then ends the session, whose end reports it again: that report
  * is the same drop, so with the close's write refused it would be written, refused and said a second time (#1328).
  */
-export function useDropOnce(terminals: readonly Listed[], drop: (address: string) => void): DropsOnce {
+export function useDropOnce(
+  terminals: readonly Listed[],
+  drop: (address: string) => void,
+  /** Whether a saved tab (one of a layout document) shows the terminal now. */
+  inDocument: (address: string) => boolean,
+): DropsOnce {
   const once = useRef(new DropOnce());
   useEffect(() => once.current.listed(terminals), [terminals]);
   const dropEnded = useCallback(
     (address: string): void => {
-      if (once.current.take(address)) drop(address);
+      if (once.current.take(address, inDocument(address))) drop(address);
     },
-    [drop],
+    [drop, inDocument],
   );
   const closing = useCallback((addresses: readonly string[]): void => {
     for (const address of addresses) once.current.take(address);
