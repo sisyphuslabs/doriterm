@@ -1,15 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import {
-  type AgentStatus,
-  cn,
-  IconButton,
-  Menu,
-  MenuItem,
-  NeedsYouPill,
-  TabBar,
-  useToastManager,
-  type WorkspaceTab,
-} from "@doriface/ui";
+import { cn, IconButton, Menu, MenuItem, NeedsYouPill, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
 import { Columns2, PanelLeft, Rows2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
@@ -18,15 +8,15 @@ import { useWidthTier } from "../layout/width-tier.ts";
 import { DictateButton } from "../voice/dictate-button.tsx";
 import { useDictation } from "../voice/use-dictation.ts";
 import { VoiceDock } from "../voice/voice-dock.tsx";
-import { agentStatus, nextNeedingYou, waitingBesides } from "./attention.ts";
-import { machineOf, programKind, type Session, tabTitle, tabTitleKey } from "./model.ts";
+import { nextNeedingYou, waitingBesides } from "./attention.ts";
+import { machineOf, type Session, tabTitleKey } from "./model.ts";
 import { NewTabMenu } from "./new-tab-menu.tsx";
 import { FirstRunGuideCard } from "../pair/first-run-guide-card.tsx";
 import { guideStore } from "../pair/first-run-guide.ts";
 import { NoTerminal } from "./no-terminal.tsx";
 import { QuietBusy } from "../terminal/quiet-busy.tsx";
 import { usePaneSends } from "./pane-sends.ts";
-import { panelId, SplitPanes } from "./split-panes.tsx";
+import { SplitPanes } from "./split-panes.tsx";
 import { useTabRename } from "./tab-rename.tsx";
 import { DesktopStatusBar } from "./desktop-status-bar.tsx";
 import { SessionMenu } from "./session-menu.tsx";
@@ -34,13 +24,14 @@ import { Sidebar } from "./sidebar.tsx";
 import { SidebarDrawer } from "./sidebar-drawer.tsx";
 import { sidebarFilter } from "./sidebar-filter-field.tsx";
 import { SkipLinks } from "./skip-links.tsx";
-import { frontIcon, Titled } from "./tab-live.tsx";
+import { Titled } from "./tab-live.tsx";
 import { useShown } from "./use-shown.ts";
+import { tabEntry } from "./tab-entry.ts";
 import { useAppActions, type SessionVerb } from "./use-app-actions.ts";
 import { useArrivalReady, workspaceSettled } from "./use-arrival-ready.ts";
 import { behindModal, useFocusSidebar } from "./use-focus-sidebar.ts";
 import { useSidebarShown, useSidebarSize } from "./layout-store.ts";
-import { findTerminal, type LayoutTab } from "./layout-model.ts";
+import { findTerminal } from "./layout-model.ts";
 import type { MachineIds } from "./tab-keys.ts";
 import { readDisplay } from "../terminal/display.ts";
 import { attachAhead, openingCallsOf } from "../terminal/opening-attach.ts";
@@ -48,36 +39,6 @@ import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import { TerminalDragProvider } from "./terminal-drag.tsx";
-
-/** A tab's glyph: the state that most needs the person among its panes, as the sidebar sections rank them. */
-const URGENCY: readonly AgentStatus[] = ["blocked", "done", "working", "idle", "unknown"];
-
-/**
- * A tab as the strip draws it: its name, else its agent's title (#1541), else its place in its space (1, 2, ...), with the icon of its agent,
- * else of its first pane's program, and the state that most needs the person among its panes. No machine label: the bar
- * shows one space's tabs, and a space is one machine's (#404, #478).
- */
-function tabEntry(tab: LayoutTab, position: number, byAddress: ReadonlyMap<string, Session>): WorkspaceTab {
-  const shown = tab.panes.flatMap((pane) => {
-    const terminal = pane.address === null ? undefined : byAddress.get(pane.address);
-    return terminal === undefined ? [] : [terminal];
-  });
-  const agent = shown.find((terminal) => programKind(terminal) === "agent");
-  const first = shown[0];
-  const lead = agent ?? first;
-  const icon = lead === undefined ? undefined : frontIcon(lead);
-  const statuses = new Set(shown.map(agentStatus));
-  const status = URGENCY.find((each) => statuses.has(each));
-  return {
-    id: tab.key,
-    arrivalKey: tab.mount ?? tab.key,
-    title: tabTitle(tab.name, position, agent, first),
-    controls: panelId(tab.key),
-    pinned: tab.pinned,
-    ...(icon === undefined ? {} : { icon }),
-    ...(status === undefined ? {} : { status }),
-  };
-}
 
 /** The tab whose button has keyboard focus, which Move tab left/right moves instead of the active one. */
 const focusedTab = (): string | null =>
@@ -107,6 +68,8 @@ export interface DesktopShellProps {
   /** Closes several tabs at once ("Close tabs to the right", "Close other tabs"), asking once (#1561). */
   readonly onCloseTabs: (keys: readonly string[]) => void;
   readonly onClosePane: (address: string) => void;
+  /** The terminal whose close waits for its tab to be placed: its tab shows the close as taken (#2913). */
+  readonly closeWaiting?: string | null;
   readonly onEnd: (address: string, end: TerminalEnd) => void;
   readonly onPalette: () => void;
   readonly onSession: SessionVerb;
@@ -196,7 +159,9 @@ export function DesktopShell(props: DesktopShellProps) {
   // change alone, stays out of the shell (#2607).
   const named = useShown(terminals, tabTitleKey);
   const byAddress = new Map(named.map((terminal) => [terminal.address, terminal]));
-  const tabList: WorkspaceTab[] = layout.shown.map((tab, position) => tabEntry(tab, position, byAddress));
+  const tabList: WorkspaceTab[] = layout.shown.map((tab, position) =>
+    tabEntry(tab, position, byAddress, props.closeWaiting ?? null),
+  );
   const tabRename = useTabRename(layout, tabList);
   useAppActions({
     terminals,

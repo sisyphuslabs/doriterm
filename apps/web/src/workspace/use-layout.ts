@@ -55,12 +55,13 @@ export interface Layout extends PaneMoves, TerminalDrops {
    * when the terminal is on that space's machine; else, or with `newSpace`, as the first tab of a new space. With `space`
    * (a `spaceKey` of the terminal's machine) the new tab goes into that space, also one with no tab to select.
    */
-  readonly openTerminal: (address: string, newSpace?: boolean, space?: string) => void;
+  /** Settles once its tab's write has been saved or refused (at once when nothing is written). */
+  readonly openTerminal: (address: string, newSpace?: boolean, space?: string) => Promise<unknown>;
   /**
    * Focuses the pane that shows the terminal, or opens it in a new tab in the space adoption would put it in (`placeOf`:
    * its labels, else its folder, else Home), so an agent picked from a list before its adoption lands where it belongs.
    */
-  readonly placeTerminal: (address: string) => void;
+  readonly placeTerminal: (address: string) => Promise<unknown>;
   /** Puts a terminal started for a pane (the focused one unless `target` names another) beside it, and focuses it. */
   readonly split: (axis: Axis, address: string, target?: PaneTarget, pane?: string) => void;
   /** Takes the terminal's pane out of its tab, and the tab when it was the last pane; the terminal is untouched. */
@@ -310,7 +311,7 @@ export function useLayout(
       const tab = target === undefined ? active : (tabs.find((each) => each.key === target.tab) ?? null);
       // A named pane may not be on screen yet (a split still being written); the document edit finds it.
       const from = target === undefined ? focused : { id: target.pane };
-      if (tab === null || from === null) return addTab(address);
+      if (tab === null || from === null) return void addTab(address);
       const layout = layoutOf(tab.machine);
       if (layout === undefined || layout.readOnly !== null) return undefined;
       const pane = made;
