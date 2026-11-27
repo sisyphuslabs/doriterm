@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
@@ -45,6 +45,9 @@ export interface TabBarProps {
   readonly onPin?: (id: string, pinned: boolean) => void;
   /** "Close tabs to the right" and "Close other tabs" from a tab's menu; neither closes a pinned tab (#1561). */
   readonly onCloseSet?: (id: string, which: "right" | "others") => void;
+  /** Session-level rename & end actions folded into each tab's context menu. */
+  readonly onRenameSession?: (id: string) => void;
+  readonly onEndSession?: (id: string) => void;
   readonly onNew?: () => void;
   /** New tab cannot start a terminal now (the space's machine is not reachable): it stays in place, disabled. */
   readonly newDisabled?: boolean;
@@ -80,6 +83,8 @@ export function TabBar({
   onClose,
   onPin,
   onCloseSet,
+  onRenameSession,
+  onEndSession,
   onNew,
   newDisabled = false,
   newMenu,
@@ -160,7 +165,7 @@ export function TabBar({
   }
 
   const { actions, offers } = useTabActions(
-    { onSelect, onClose, onPin, onCloseSet, onNew, onRename, onMove },
+    { onSelect, onClose, onPin, onCloseSet, onRenameSession, onEndSession, onNew, onRename, onMove },
     { pinnedDrag, restDrag, touching },
     { buttons, handedOn, setMenuFor },
   );
@@ -266,52 +271,73 @@ export function TabBar({
           onClick={onNew}
         />
       ) : (
-        <Menu
-          trigger={
+        <div className="flex shrink-0 items-center">
+          {onNew === undefined ? null : (
             <IconButton
               label="New tab"
               {...(newTabKeys === undefined ? {} : { keys: newTabKeys })}
               icon={<Plus />}
               disabled={newDisabled}
+              onClick={onNew}
+              className="rounded-r-none"
             />
-          }
-          className="w-[250px]"
-          disabled={newDisabled}
-          onOpenChange={(open) => {
-            if (!open) return;
-            chose.current = false;
-            handedTo.current = null;
-          }}
-          // A choice starts a tab that takes the keyboard at once, so the page stays live (not modal) and, as the menu
-          // closes, focus goes where the choice put it rather than back to +, where the next keys typed would press it.
-          modal={false}
-          // Base UI asks once the closing animation has ended. The page was live all along, so by then the person may
-          // have moved on (another menu, a dialog): what holds the keyboard now keeps it (#1014).
-          finalFocus={() => {
-            const holder = document.activeElement;
-            const movedOn = holder instanceof HTMLElement && holder !== document.body && holder !== handedTo.current;
-            if (movedOn) return false;
-            return chose.current ? (handedTo.current ?? false) : true;
-          }}
-        >
-          <div
-            className="contents"
-            onClickCapture={(event) => {
-              chose.current = true;
-              const popup = event.currentTarget;
-              const record = (focus: FocusEvent): void => {
-                if (focus.target instanceof HTMLElement && !popup.contains(focus.target))
-                  handedTo.current = focus.target;
-              };
-              document.addEventListener("focusin", record, true);
-              // Removed once the whole click has been dispatched (microtasks would run between its listeners, before the
-              // item's own handler focuses anything).
-              setTimeout(() => document.removeEventListener("focusin", record, true), 0);
+          )}
+          <Menu
+            trigger={
+              onNew === undefined ? (
+                <IconButton
+                  label="New tab"
+                  {...(newTabKeys === undefined ? {} : { keys: newTabKeys })}
+                  icon={<Plus />}
+                  disabled={newDisabled}
+                />
+              ) : (
+                <IconButton
+                  label="More new options"
+                  icon={<ChevronDown />}
+                  disabled={newDisabled}
+                  className="w-5 rounded-l-none px-0 text-muted-foreground [&_svg:not([data-slot=spinner])]:size-3"
+                />
+              )
+            }
+            className="w-[250px]"
+            disabled={newDisabled}
+            onOpenChange={(open) => {
+              if (!open) return;
+              chose.current = false;
+              handedTo.current = null;
+            }}
+            // A choice starts a tab that takes the keyboard at once, so the page stays live (not modal) and, as the menu
+            // closes, focus goes where the choice put it rather than back to +, where the next keys typed would press it.
+            modal={false}
+            // Base UI asks once the closing animation has ended. The page was live all along, so by then the person may
+            // have moved on (another menu, a dialog): what holds the keyboard now keeps it (#1014).
+            finalFocus={() => {
+              const holder = document.activeElement;
+              const movedOn = holder instanceof HTMLElement && holder !== document.body && holder !== handedTo.current;
+              if (movedOn) return false;
+              return chose.current ? (handedTo.current ?? false) : true;
             }}
           >
-            {newMenu}
-          </div>
-        </Menu>
+            <div
+              className="contents"
+              onClickCapture={(event) => {
+                chose.current = true;
+                const popup = event.currentTarget;
+                const record = (focus: FocusEvent): void => {
+                  if (focus.target instanceof HTMLElement && !popup.contains(focus.target))
+                    handedTo.current = focus.target;
+                };
+                document.addEventListener("focusin", record, true);
+                // Removed once the whole click has been dispatched (microtasks would run between its listeners, before the
+                // item's own handler focuses anything).
+                setTimeout(() => document.removeEventListener("focusin", record, true), 0);
+              }}
+            >
+              {newMenu}
+            </div>
+          </Menu>
+        </div>
       )}
       {overflowing ? <TabOverflowMenu tabs={tabs} activeId={activeId} onSelect={onSelect} /> : null}
       <div aria-hidden className="flex-1 self-stretch" />

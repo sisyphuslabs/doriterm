@@ -15,13 +15,13 @@ const header = (onToggle?: () => void): string =>
     />,
   );
 
-/** The classes of the header's last element: the chevron, or the slot kept for it. */
-const lastClasses = (markup: string): readonly string[] => {
+/** The classes of the header's leading chevron, or the slot kept for it. */
+const chevronClasses = (markup: string): readonly string[] => {
   const all = [...markup.matchAll(/class="([^"]*)"/g)].map((match) => match[1] ?? "");
-  return (all.findLast((classes) => classes.split(" ").includes("size-6")) ?? "").split(" ");
+  return (all.find((classes) => classes.split(" ").includes("size-6")) ?? "").split(" ");
 };
 
 test("the slot kept for the chevron does not shrink, as the chevron it stands for does not (#2024)", () => {
-  expect(lastClasses(header(() => {}))).toContain("shrink-0");
-  expect(lastClasses(header())).toContain("shrink-0");
+  expect(chevronClasses(header(() => {}))).toContain("shrink-0");
+  expect(chevronClasses(header())).toContain("shrink-0");
 });

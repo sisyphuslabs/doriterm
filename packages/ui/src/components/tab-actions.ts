@@ -7,6 +7,8 @@ export interface TabCallbacks {
   readonly onClose?: ((id: string) => void) | undefined;
   readonly onPin?: ((id: string, pinned: boolean) => void) | undefined;
   readonly onCloseSet?: ((id: string, which: "right" | "others") => void) | undefined;
+  readonly onRenameSession?: ((id: string) => void) | undefined;
+  readonly onEndSession?: ((id: string) => void) | undefined;
   readonly onNew?: (() => void) | undefined;
   readonly onRename?: ((id: string) => void) | undefined;
   readonly onMove?: ((id: string, to: number) => void) | undefined;
@@ -49,6 +51,8 @@ export function useTabActions(
     move: (id, to) => latest.current.onMove?.(id, to),
     pin: (id, pinned) => latest.current.onPin?.(id, pinned),
     closeSet: (id, which) => latest.current.onCloseSet?.(id, which),
+    renameSession: (id) => latest.current.onRenameSession?.(id),
+    endSession: (id) => latest.current.onEndSession?.(id),
     newTab: () => latest.current.onNew?.(),
     pointerDown: (event, id, local, pinned) =>
       (pinned ? latest.current.pinnedDrag : latest.current.restDrag).onPointerDown(event, id, local),
@@ -81,9 +85,11 @@ export function useTabActions(
   const pin = callbacks.onPin !== undefined;
   const close = callbacks.onClose !== undefined;
   const closeSet = callbacks.onCloseSet !== undefined;
+  const renameSession = callbacks.onRenameSession !== undefined;
+  const endSession = callbacks.onEndSession !== undefined;
   const offers = useMemo<TabOffers>(
-    () => ({ move, rename, newTab, pin, close, closeSet }),
-    [move, rename, newTab, pin, close, closeSet],
+    () => ({ move, rename, newTab, pin, close, closeSet, renameSession, endSession }),
+    [move, rename, newTab, pin, close, closeSet, renameSession, endSession],
   );
   return { actions, offers };
 }

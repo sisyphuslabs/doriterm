@@ -11,6 +11,7 @@ export interface Appearance {
   readonly dark: string;
   readonly light: string;
   readonly density: Density;
+  readonly statusBar: boolean;
   readonly custom: readonly CustomTheme[];
 }
 
@@ -19,6 +20,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   dark: "night",
   light: "day",
   density: "comfortable",
+  statusBar: true,
   custom: [],
 };
 
@@ -50,10 +52,12 @@ export function parseAppearance(stored: unknown): Appearance {
   const choices = themeChoices(custom);
   const pick = (id: string | undefined, light: boolean): string | undefined =>
     id !== undefined && choices.get(id)?.theme.light === light ? id : undefined;
+  const rawStatusBar: unknown = Reflect.get(stored, "statusBar");
   const base = {
     dark: pick(text(stored, "dark"), false) ?? DEFAULT_APPEARANCE.dark,
     light: pick(text(stored, "light"), true) ?? DEFAULT_APPEARANCE.light,
     density: DENSITIES.find((entry) => entry === text(stored, "density")) ?? DEFAULT_APPEARANCE.density,
+    statusBar: typeof rawStatusBar === "boolean" ? rawStatusBar : DEFAULT_APPEARANCE.statusBar,
     custom,
   };
   const mode = MODES.find((entry) => entry === text(stored, "mode"));

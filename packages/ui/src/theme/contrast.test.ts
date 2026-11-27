@@ -60,7 +60,11 @@ describe.each(Object.entries(BUILTIN_PALETTES))("%s meets WCAG 2.2 AA", (_, pale
     expect(worstContrast(role(name), surfaces)).toBeGreaterThanOrEqual(AA_TEXT);
   });
 
-  test.each(["input", "ring", "status-working", "status-blocked", "status-done", "status-idle"])(
+  test("--input edge on every container surface", () => {
+    expect(worstContrast(role("input"), opaque)).toBeGreaterThanOrEqual(AA_GRAPHIC);
+  });
+
+  test.each(["ring", "status-working", "status-blocked", "status-done", "status-idle"])(
     "--%s edge or glyph on every surface",
     (name) => {
       expect(worstContrast(role(name), surfaces)).toBeGreaterThanOrEqual(AA_GRAPHIC);

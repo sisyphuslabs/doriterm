@@ -1,6 +1,6 @@
 import type { Terminal } from "@doriface/protocol";
 import { agentRowLead, IconButton, Menu, MenuRadioGroup, MenuRadioItem, SidebarSection } from "@doriface/ui";
-import { Clock, Layers } from "lucide-react";
+import { ArrowUpDown, Clock, Layers } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { AgentItem } from "./agent-item.tsx";
 import { publishAgentOrder } from "./agent-order.ts";
@@ -28,11 +28,12 @@ export interface AgentsGroupProps {
 
 function SortMenu({ size }: { readonly size?: "md" }) {
   const [sort, setSort] = useAgentSort();
+  const triggerIcon = sort === "space" ? <Layers /> : <ArrowUpDown />;
   const trigger =
     size === undefined ? (
-      <IconButton label="Sort agents" icon={<Clock />} className="-mr-1" />
+      <IconButton label="Sort agents" icon={triggerIcon} className="-mr-1" />
     ) : (
-      <IconButton label="Sort agents" icon={<Clock />} size={size} />
+      <IconButton label="Sort agents" icon={triggerIcon} size={size} />
     );
   return (
     <Menu align="end" trigger={trigger}>
@@ -177,6 +178,7 @@ export function AgentsGroup({
       })}
     </div>
   );
+  const totalAgents = useMemo(() => groups.reduce((sum, group) => sum + group.count, 0), [groups]);
   if (!heading)
     return (
       <section aria-label="Agents" className="flex flex-col gap-px">
@@ -184,8 +186,19 @@ export function AgentsGroup({
       </section>
     );
   return (
-    <SidebarSection title="Agents" {...(rail ? { className: "[&>header]:sr-only" } : { action: sortMenu })}>
-      {list}
+    <SidebarSection
+      variant="region"
+      title="Agents"
+      {...(totalAgents > 0 ? { count: totalAgents } : {})}
+      {...(rail ? { className: "[&>header]:sr-only" } : totalAgents > 0 ? { action: sortMenu } : {})}
+    >
+      {groups.length === 0 ? (
+        rail ? null : (
+          <p className="px-2 py-1 text-xs text-muted-foreground/70">No active agents</p>
+        )
+      ) : (
+        list
+      )}
     </SidebarSection>
   );
 }

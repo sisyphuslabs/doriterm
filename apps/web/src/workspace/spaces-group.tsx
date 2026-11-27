@@ -72,7 +72,7 @@ export function SpacesGroup({ onOpen, rail = false, query = "", filterable = fal
 /** Holds the spaces' place, labeled, until the first machine.list answer: one row, where the first machine row goes. */
 function SpacesLoading({ rail }: { readonly rail: boolean }) {
   return (
-    <SidebarSection title="Spaces" className={rail ? "[&>header]:sr-only" : "pt-2"}>
+    <SidebarSection variant="region" title="Spaces" className={rail ? "[&>header]:sr-only" : "pt-2"}>
       <div
         role="status"
         aria-label="Loading machines and spaces"
@@ -199,6 +199,7 @@ function SpacesLists({
   );
   return (
     <SidebarSection
+      variant="region"
       title="Spaces"
       {...(grouped === undefined ? { count: shownSpaces.length } : {})}
       {...(showFilter || newHere !== undefined

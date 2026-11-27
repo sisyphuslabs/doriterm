@@ -45,6 +45,7 @@ const ROWS: readonly SettingHit[] = [
   row("appearance", "Text size", "The interface's text size", ["font size", "zoom"]),
   row("appearance", "Appearance", "Theme: dark, light or the system's", ["theme", "dark", "light", "night", "day"]),
   row("appearance", "Density", "How much room the rows take", ["compact", "spacing"]),
+  row("appearance", "Status bar", "Show or hide the bottom status bar", ["footer", "bottom bar"]),
   row("appearance", "Import a herdr-app theme", "From a theme file", ["theme", "herdr-app theme", "import"]),
   row("keybindings", "Import keybinds…", "From a Ghostty config", ["keybinds", "keybindings", "import", "ghostty"]),
   row("voice", "Language", "The language dictation listens for", ["dictation", "speech"]),

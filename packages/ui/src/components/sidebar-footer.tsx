@@ -50,12 +50,15 @@ export function SidebarFooterItem({ icon, label, dot, rail = false, onClick, ren
   );
 }
 
-/** The sidebar's footer: hairline above, its items stacked (on the rail, centred). */
+/** The sidebar's footer: compact single-row action bar when expanded, stacked icon column on the rail. */
 export function SidebarFooter({ rail = false, children }: { readonly rail?: boolean; readonly children: ReactNode }) {
   return (
     <div
       data-slot="sidebar-footer"
-      className={cn("flex shrink-0 flex-col gap-px border-t border-sidebar-border p-2", rail && "items-center px-0")}
+      className={cn(
+        "flex shrink-0 border-t border-sidebar-border",
+        rail ? "flex-col items-center gap-px px-0 py-2" : "flex-row items-center gap-1 px-2 py-1.5",
+      )}
     >
       {children}
     </div>

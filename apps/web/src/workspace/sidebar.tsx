@@ -108,26 +108,40 @@ export function Sidebar({
       </RegionBoundary>
       <SidebarFooter rail={rail}>
         {rail ? (
-          <SidebarFooterItem
-            rail
-            icon={<PanelLeftOpen aria-hidden />}
-            label="Expand sidebar"
-            onClick={onExpand ?? (() => setSize({ rail: false }))}
-          />
-        ) : null}
-        <SidebarFooterItem
-          rail={rail}
-          icon={<Settings aria-hidden />}
-          label="Settings"
-          {...(update === null ? {} : { dot: "update ready" })}
-          render={<Link to="/settings" />}
-        />
-        <SidebarFooterItem
-          rail={rail}
-          icon={<Plus aria-hidden />}
-          label="Connect a device"
-          onClick={machines.openConnect}
-        />
+          <>
+            <SidebarFooterItem
+              rail
+              icon={<PanelLeftOpen aria-hidden />}
+              label="Expand sidebar"
+              onClick={onExpand ?? (() => setSize({ rail: false }))}
+            />
+            <SidebarFooterItem
+              rail
+              icon={<Settings aria-hidden />}
+              label="Settings"
+              {...(update === null ? {} : { dot: "update ready" })}
+              render={<Link to="/settings" />}
+            />
+            <SidebarFooterItem
+              rail
+              icon={<Plus aria-hidden />}
+              label="Connect a device"
+              onClick={machines.openConnect}
+            />
+          </>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1">
+              <SidebarFooterItem
+                icon={<Settings aria-hidden />}
+                label="Settings"
+                {...(update === null ? {} : { dot: "update ready" })}
+                render={<Link to="/settings" />}
+              />
+            </div>
+            <IconButton label="Connect a device" icon={<Plus />} size="md" onClick={machines.openConnect} />
+          </>
+        )}
       </SidebarFooter>
       {drawer || railProp !== undefined ? null : (
         <SidebarEdge width={sidebarWidth} rail={rail} railWidth={railPx} onChange={setSize} onDragging={setDragging} />

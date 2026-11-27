@@ -46,6 +46,7 @@
   --color-affirmative-foreground: var(--avatar-ink);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-scrollbar-thumb: var(--scrollbar-thumb);
   --color-ring: var(--ring);
   --color-selection: var(--selection);
   --color-sidebar: var(--sidebar);
@@ -163,7 +164,7 @@
   --avatar-green: #33945a;
   --avatar-pink: #c45487;
   --avatar-ink: #ffffff;
-  --tabbar-height: 2.625rem;
+  --tabbar-height: 2.75rem;
   --statusbar-height: 1.75rem;
   /* --- Settings (#2914): one set, a fine value here and a coarse one below, so no surface draws its own sizes. Fine
      follows the Herdr desktop app's Settings (flat rows under small uppercase captions, a 190 px navigation); coarse
@@ -212,7 +213,8 @@
   --duration-handle: 150ms;
   --duration-card: 240ms;
   --duration-settle: 120ms;
-  --overlay-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.12);
+  --overlay-shadow:
+    0 12px 32px -8px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
 /* One set of coarse sizes: the variant applies it to :root on a touch device and to a previewing region. */

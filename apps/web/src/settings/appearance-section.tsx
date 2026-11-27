@@ -6,6 +6,7 @@ import {
   Notice,
   SegmentedControl,
   SettingRow,
+  Switch,
   ThemeBrowser,
   type ThemeOption,
 } from "@doriface/ui";
@@ -142,6 +143,17 @@ export function AppearanceSection() {
         }
       />
       <TextSizeRow />
+      <SettingRow
+        title="Status bar"
+        description="Show machine, space, and quick command bar at the bottom."
+        control={
+          <Switch
+            aria-label="Show status bar"
+            checked={appearance.statusBar}
+            onCheckedChange={(statusBar) => appearanceStore.update({ statusBar })}
+          />
+        }
+      />
       <SettingRow
         title="Import a herdr-app theme"
         description="A herdr-app theme file (.json) imports unchanged."

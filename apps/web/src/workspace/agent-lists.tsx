@@ -61,8 +61,10 @@ export function SidebarLists({
     ) : (
       <TerminalsLoadError cause={terminalsError} onRetry={retryTerminals} />
     );
+  const agentsEmpty = terminalsLoaded && !terminals.some((terminal) => terminal.state === "live");
   return (
     <SidebarSplit
+      agentsEmpty={agentsEmpty}
       spaces={
         terminalsLoaded ? (
           <div className={pad}>
@@ -74,7 +76,7 @@ export function SidebarLists({
       }
       agents={
         terminalsLoaded ? (
-          <div className={pad}>
+          <div className={agentsEmpty ? "px-2 pb-2" : pad}>
             <AgentsGroup terminals={terminals} active={active} onOpen={onOpen} rail={rail} query={query} />
           </div>
         ) : (

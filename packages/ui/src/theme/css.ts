@@ -46,7 +46,9 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
   const chrome = rgb(r.chrome);
   const popover = flatten(r.popover, base);
   const selected = [base, canvas, chrome, popover].map((under) => flatten(r.selected, under));
-  const surfaces = [base, canvas, chrome, popover, flatten(r.raised, base), ...selected];
+  const raised = flatten(r.raised, base);
+  const inputSurfaces = [base, canvas, chrome, popover, raised];
+  const surfaces = [...inputSurfaces, ...selected];
   const text = (value: string): string => ensureContrast(value, surfaces, AA_TEXT, ink);
   const graphic = (value: string): string => ensureContrast(value, surfaces, AA_GRAPHIC, ink);
   const termBg = rgb(r.background);
@@ -55,7 +57,7 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
   const termFg = rgb(termText);
   /** Ghostty draws faint text at faint-opacity 0.5; the guard lifts it to AA on the terminal background. */
   const faint = ensureContrast(hex(mix(termBg, termFg, 0.5)), [termBg], AA_TEXT, termFg);
-  const edge = ensureContrast(hex(mix(base, ink, 0.3)), surfaces, AA_GRAPHIC, ink);
+  const edge = ensureContrast(hex(mix(base, ink, 0.3)), inputSurfaces, AA_GRAPHIC, ink);
   const muted = text(r.muted);
   const vars: Record<string, string> = {
     background: r.canvas,
@@ -86,6 +88,7 @@ export function themeVariables(theme: ResolvedTheme): CssVariables {
     "destructive-foreground": r.solid_foreground,
     border: r.border,
     input: edge,
+    "scrollbar-thumb": r.input,
     ring: graphic(r.accent),
     selection: r.selection,
     sidebar: r.chrome,

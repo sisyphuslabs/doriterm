@@ -2,6 +2,7 @@ import type { HcConnection } from "@doriface/client";
 import { cn, IconButton, Menu, MenuItem, NeedsYouPill, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
 import { Columns2, PanelLeft, Rows2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAppearance } from "../appearance/appearance.ts";
 import { actionChosen } from "../keys/dispatcher.ts";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { useWidthTier } from "../layout/width-tier.ts";
@@ -19,7 +20,7 @@ import { usePaneSends } from "./pane-sends.ts";
 import { SplitPanes } from "./split-panes.tsx";
 import { useTabRename } from "./tab-rename.tsx";
 import { DesktopStatusBar } from "./desktop-status-bar.tsx";
-import { SessionMenu } from "./session-menu.tsx";
+import { useAskSession } from "./session-context.ts";
 import { Sidebar } from "./sidebar.tsx";
 import { SidebarDrawer } from "./sidebar-drawer.tsx";
 import { sidebarFilter } from "./sidebar-filter-field.tsx";
@@ -217,8 +218,19 @@ export function DesktopShell(props: DesktopShellProps) {
   );
   const splitRightKeys = useActionKeys("pane.split:right");
   const splitDownKeys = useActionKeys("pane.split:down");
+  const { statusBar } = useAppearance();
+  const askSession = useAskSession();
+  const sessionAddressOfTab = useCallback(
+    (key: string): string | null => {
+      const target = layout.tabs.find((tab) => tab.key === key);
+      if (target === undefined) return null;
+      if (target.key === layout.active?.key && focusedAddress !== null) return focusedAddress;
+      return target.panes[0]?.address ?? null;
+    },
+    [layout.tabs, layout.active?.key, focusedAddress],
+  );
   const cannotSplit = focusedTerminal === undefined || layout.active?.readOnly != null;
-  const split = medium ? (
+  const split = (
     <Menu
       align="end"
       disabled={cannotSplit}
@@ -241,23 +253,6 @@ export function DesktopShell(props: DesktopShellProps) {
         Split down
       </MenuItem>
     </Menu>
-  ) : (
-    <>
-      <IconButton
-        label="Split right"
-        {...(splitRightKeys === undefined ? {} : { keys: splitRightKeys })}
-        icon={<Columns2 />}
-        disabled={cannotSplit}
-        onClick={() => onSplit("row")}
-      />
-      <IconButton
-        label="Split down"
-        {...(splitDownKeys === undefined ? {} : { keys: splitDownKeys })}
-        icon={<Rows2 />}
-        disabled={cannotSplit}
-        onClick={() => onSplit("column")}
-      />
-    </>
   );
   const waiting = waitingBesides(terminals, focusedAddress ?? "");
   const openNextNeedingYou = (): void => {
@@ -266,17 +261,10 @@ export function DesktopShell(props: DesktopShellProps) {
   };
   const needsYou = waiting > 0 ? <NeedsYouPill count={waiting} compact={medium} onOpen={openNextNeedingYou} /> : null;
   const sessionControls =
-    focusedTerminal === undefined ? null : (
-      <>
-        {nothingToType ? null : (
-          <Titled terminal={focusedTerminal}>
-            {(title) => <DictateButton voice={voice} target={title} size="sm" ref={mic} />}
-          </Titled>
-        )}
-        <Titled terminal={focusedTerminal}>
-          {(title) => <SessionMenu address={focusedTerminal.address} title={title} />}
-        </Titled>
-      </>
+    focusedTerminal === undefined || nothingToType ? null : (
+      <Titled terminal={focusedTerminal}>
+        {(title) => <DictateButton voice={voice} target={title} size="sm" ref={mic} />}
+      </Titled>
     );
   const divider = <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />;
 
@@ -371,6 +359,14 @@ export function DesktopShell(props: DesktopShellProps) {
               )
             }
             onCloseSet={(key, which) => onCloseTabs(layout.closeSetOf(key, which))}
+            onRenameSession={(key) => {
+              const address = sessionAddressOfTab(key);
+              if (address !== null) askSession({ kind: "rename", address });
+            }}
+            onEndSession={(key) => {
+              const address = sessionAddressOfTab(key);
+              if (address !== null) askSession({ kind: "end", address });
+            }}
             onNew={onNew}
             newDisabled={props.newDisabled}
             newMenu={
@@ -446,17 +442,20 @@ export function DesktopShell(props: DesktopShellProps) {
               }
             />
           </main>
-          <DesktopStatusBar
-            connection={connection}
-            terminals={terminals}
-            live={live}
-            loaded={loaded}
-            focusedAddress={focusedAddress}
-            focusedTerminal={focusedTerminal}
-            focusedMachine={focusedMachine}
-            onOpen={openTerminal}
-            onPalette={onPalette}
-          />
+          {statusBar ? (
+            <DesktopStatusBar
+              connection={connection}
+              terminals={terminals}
+              live={live}
+              loaded={loaded}
+              focusedAddress={focusedAddress}
+              focusedTerminal={focusedTerminal}
+              focusedMachine={focusedMachine}
+              hideNeedsYou={needsYou !== null}
+              onOpen={openTerminal}
+              onPalette={onPalette}
+            />
+          ) : null}
         </div>
       </TerminalDragProvider>
     </div>

@@ -8,6 +8,7 @@ describe("parseAppearance", () => {
       dark: "dracula",
       light: "solarized-light",
       density: "compact",
+      statusBar: false,
       custom: [],
     };
     expect(parseAppearance(stored)).toEqual(stored);
@@ -19,7 +20,12 @@ describe("parseAppearance", () => {
     [{ theme: "paper" }, { mode: "light", dark: "night", light: "paper" }],
     [{ theme: "gone" }, { mode: "dark", dark: "night", light: "day" }],
   ] as const)("the one-theme form %j becomes a mode and a pick", (stored, expected) => {
-    expect(parseAppearance({ ...stored, custom: [] })).toEqual({ ...expected, density: "comfortable", custom: [] });
+    expect(parseAppearance({ ...stored, custom: [] })).toEqual({
+      ...expected,
+      density: "comfortable",
+      statusBar: true,
+      custom: [],
+    });
   });
 
   test("a pick of the wrong kind or an unknown id falls back to the default for that kind", () => {

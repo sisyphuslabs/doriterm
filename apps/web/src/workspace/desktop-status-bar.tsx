@@ -2,6 +2,8 @@ import { terminalSpaceName } from "@doriface/protocol";
 import type { HcConnection } from "@doriface/client";
 import { Button, Kbd, StatusBar, StatusBarItem } from "@doriface/ui";
 import { Monitor } from "lucide-react";
+import { staysOnThisComputer } from "../connection/settings.ts";
+import { useConnectionSettings } from "../connection/store.ts";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { useMachineLine } from "../terminal/use-machine-line.ts";
 import { agentStatus, nextNeedingYou } from "./attention.ts";
@@ -29,6 +31,8 @@ export interface DesktopStatusBarProps {
   readonly focusedTerminal: Session | undefined;
   /** The focused terminal's machine, else the connected core's. */
   readonly focusedMachine: string;
+  /** Avoids duplicating "N needs you" when the top bar's NeedsYouPill is already visible. */
+  readonly hideNeedsYou?: boolean;
   /** Opens a terminal as the sidebar's row does. */
   readonly onOpen: (address: string) => void;
   readonly onPalette: () => void;
@@ -36,8 +40,20 @@ export interface DesktopStatusBarProps {
 
 /** The desktop's footer: where the focused terminal is, how many there are and who needs you, and the palette. */
 export function DesktopStatusBar(props: DesktopStatusBarProps) {
-  const { connection, terminals, live, loaded, focusedAddress, focusedTerminal, focusedMachine, onOpen, onPalette } =
-    props;
+  const {
+    connection,
+    terminals,
+    live,
+    loaded,
+    focusedAddress,
+    focusedTerminal,
+    focusedMachine,
+    hideNeedsYou = false,
+    onOpen,
+    onPalette,
+  } = props;
+  const settings = useConnectionSettings();
+  const localLoopback = staysOnThisComputer(settings);
   const paletteKeys = useActionKeys("app.palette");
   const blocked = live.filter((terminal) => agentStatus(terminal) === "blocked").length;
   const next = nextNeedingYou(terminals, focusedAddress);
@@ -73,7 +89,7 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
             <span className="flex shrink-0 items-center gap-1">
               <StatusBarItem>{`${live.length} ${live.length === 1 ? "terminal" : "terminals"}`}</StatusBarItem>
               {/* Beside the words, not inside their ellipsis box: the button's hit area would widen it (#1448). */}
-              {next === null ? null : (
+              {next === null || hideNeedsYou ? null : (
                 <>
                   <span aria-hidden>·</span>
                   <Button
@@ -95,8 +111,8 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
           {reconnecting || away === null ? null : <MachineLineStatus machine={away} />}
           {reconnecting || away === null ? null : <MachineDownHelp connection={connection} machine={away} />}
           {offline === undefined ? null : <MachineOfflineStatus machine={offline} />}
-          {/* One connection item at a time: the focused terminal's machine, when it is down, takes Connected's place. */}
-          {away === null && offline === undefined ? <ConnectedStatus /> : null}
+          {/* One connection item at a time; quiet on healthy local loopback so only remote/error states surface. */}
+          {away === null && offline === undefined && !localLoopback ? <ConnectedStatus /> : null}
           {reconnecting ? null : <HistoryGapStatus address={focusedAddress} />}
           <ConnectionPathItem />
         </>

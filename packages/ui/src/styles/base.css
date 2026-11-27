@@ -92,7 +92,7 @@
   /* Overlay scrollbars on touch; thin themed bars where the platform reserves a gutter. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--input) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   code,

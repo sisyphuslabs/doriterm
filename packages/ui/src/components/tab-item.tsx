@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ArrowRightToLine, CopyX, Pencil, Pin, PinOff, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowRightToLine, CopyX, Pencil, Pin, PinOff, Plus, Power, X } from "lucide-react";
 import { memo, type PointerEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
@@ -28,6 +28,8 @@ export interface TabActions {
   readonly move: (id: string, to: number) => void;
   readonly pin: (id: string, pinned: boolean) => void;
   readonly closeSet: (id: string, which: "right" | "others") => void;
+  readonly renameSession: (id: string) => void;
+  readonly endSession: (id: string) => void;
   readonly newTab: () => void;
   readonly pointerDown: (event: PointerEvent<HTMLElement>, id: string, local: number, pinned: boolean) => void;
   readonly touching: () => boolean;
@@ -45,6 +47,8 @@ export interface TabOffers {
   readonly pin: boolean;
   readonly close: boolean;
   readonly closeSet: boolean;
+  readonly renameSession: boolean;
+  readonly endSession: boolean;
 }
 
 export interface TabItemProps {
@@ -272,6 +276,34 @@ export const TabItem = memo(function TabItem(props: TabItemProps) {
           <MenuItem icon={<CopyX />} disabled={!closesOthers} onClick={() => actions.closeSet(tab.id, "others")}>
             Close other tabs
           </MenuItem>
+        </>
+      ) : null}
+      {offers.renameSession || offers.endSession ? (
+        <>
+          <MenuSeparator />
+          {offers.renameSession ? (
+            <MenuItem
+              icon={<Pencil />}
+              onClick={() => {
+                actions.handOn();
+                actions.renameSession(tab.id);
+              }}
+            >
+              Rename session…
+            </MenuItem>
+          ) : null}
+          {offers.endSession ? (
+            <MenuItem
+              icon={<Power />}
+              destructive
+              onClick={() => {
+                actions.handOn();
+                actions.endSession(tab.id);
+              }}
+            >
+              End session…
+            </MenuItem>
+          ) : null}
         </>
       ) : null}
     </ContextMenu>

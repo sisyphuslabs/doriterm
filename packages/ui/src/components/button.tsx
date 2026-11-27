@@ -21,13 +21,13 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          "bg-primary text-primary-foreground hover:opacity-88 data-disabled:not-aria-busy:bg-selected data-disabled:not-aria-busy:text-foreground/70",
+          "bg-primary text-primary-foreground hover:bg-primary/90 data-disabled:not-aria-busy:bg-selected data-disabled:not-aria-busy:text-foreground/70",
         secondary:
           "border border-border bg-raised text-foreground hover:bg-selected data-disabled:not-aria-busy:bg-transparent data-disabled:not-aria-busy:text-muted-foreground",
         ghost:
           "text-foreground/85 hover:bg-hover hover:text-foreground data-disabled:not-aria-busy:text-muted-foreground data-disabled:not-aria-busy:[&_svg]:text-disabled-glyph",
         destructive:
-          "bg-destructive text-destructive-foreground hover:opacity-88 data-disabled:not-aria-busy:bg-selected data-disabled:not-aria-busy:text-foreground/70",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 data-disabled:not-aria-busy:bg-selected data-disabled:not-aria-busy:text-foreground/70",
       },
       size: {
         sm: "h-(--control-sm) px-2.5 text-sm",

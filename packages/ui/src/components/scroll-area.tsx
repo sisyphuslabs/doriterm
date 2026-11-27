@@ -33,7 +33,7 @@ export function ScrollArea({ children, className, viewportClassName, slot, viewp
         orientation="vertical"
         className="flex w-2 justify-center p-0.5 opacity-0 transition-opacity data-hovering:opacity-100 data-scrolling:opacity-100"
       >
-        <BaseScrollArea.Thumb className="w-full rounded-full bg-input" />
+        <BaseScrollArea.Thumb className="w-full rounded-full bg-scrollbar-thumb" />
       </BaseScrollArea.Scrollbar>
     </BaseScrollArea.Root>
   );

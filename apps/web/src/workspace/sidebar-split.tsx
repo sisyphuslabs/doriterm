@@ -9,13 +9,15 @@ const STEP = 16;
 export interface SidebarSplitProps {
   readonly spaces: ReactNode;
   readonly agents: ReactNode;
+  /** When there are no agents to show, collapse the bottom pane to its compact header instead of holding a 40% void. */
+  readonly agentsEmpty?: boolean;
 }
 
 /**
  * Spaces on top, Agents docked at the bottom, with herdr-app's divider between them: drag it, or focus it and use the
  * arrows (Home and End for the limits) to share the height; each section keeps a minimum, and a double-click resets.
  */
-export function SidebarSplit({ spaces, agents }: SidebarSplitProps) {
+export function SidebarSplit({ spaces, agents, agentsEmpty = false }: SidebarSplitProps) {
   const [share, setShare] = useAgentsShare();
   const root = useRef<HTMLDivElement | null>(null);
   const [total, setTotal] = useState(0);
@@ -61,33 +63,45 @@ export function SidebarSplit({ spaces, agents }: SidebarSplitProps) {
           {spaces}
         </ScrollArea>
       </div>
-      <div
-        role="separator"
-        aria-label="Resize Spaces and Agents"
-        aria-orientation="horizontal"
-        aria-valuemin={Math.round(bounds.min * 100)}
-        aria-valuemax={Math.round(bounds.max * 100)}
-        aria-valuenow={Math.round(shown * 100)}
-        aria-valuetext={`Agents ${Math.round(shown * 100)} percent`}
-        tabIndex={0}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={end}
-        onPointerCancel={end}
-        onDoubleClick={() => setShare(DEFAULT_AGENTS_SHARE)}
-        onKeyDown={onKeyDown}
-        className={cn(
-          "relative z-10 h-px shrink-0 cursor-row-resize touch-none bg-sidebar-border outline-none",
-          "before:absolute before:inset-x-0 before:-inset-y-1 transition-colors duration-(--duration-micro)",
-          "hover:bg-ring focus-visible:bg-ring",
-          active && "bg-ring",
-        )}
-      />
-      <div data-sidebar-pane="agents" className="flex min-h-0 flex-col pt-2" style={{ flex: `0 0 ${shown * 100}%` }}>
-        <ScrollArea slot="agents-list" className="flex-1">
+      {agentsEmpty ? (
+        <div data-sidebar-pane="agents" className="flex shrink-0 flex-col border-t border-sidebar-border pt-1.5">
           {agents}
-        </ScrollArea>
-      </div>
+        </div>
+      ) : (
+        <>
+          <div
+            role="separator"
+            aria-label="Resize Spaces and Agents"
+            aria-orientation="horizontal"
+            aria-valuemin={Math.round(bounds.min * 100)}
+            aria-valuemax={Math.round(bounds.max * 100)}
+            aria-valuenow={Math.round(shown * 100)}
+            aria-valuetext={`Agents ${Math.round(shown * 100)} percent`}
+            tabIndex={0}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={end}
+            onPointerCancel={end}
+            onDoubleClick={() => setShare(DEFAULT_AGENTS_SHARE)}
+            onKeyDown={onKeyDown}
+            className={cn(
+              "relative z-10 h-px shrink-0 cursor-row-resize touch-none bg-sidebar-border outline-none",
+              "before:absolute before:inset-x-0 before:-inset-y-1 transition-colors duration-(--duration-micro)",
+              "hover:bg-ring focus-visible:bg-ring",
+              active && "bg-ring",
+            )}
+          />
+          <div
+            data-sidebar-pane="agents"
+            className="flex min-h-0 flex-col pt-2"
+            style={{ flex: `0 0 ${shown * 100}%` }}
+          >
+            <ScrollArea slot="agents-list" className="flex-1">
+              {agents}
+            </ScrollArea>
+          </div>
+        </>
+      )}
     </div>
   );
 }
