@@ -4,6 +4,7 @@
 import { devices, type Page } from "@playwright/test";
 import { endAgent, startAgent } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
 test.use({ ...phone, serviceWorkers: "block" });
@@ -73,16 +74,17 @@ test("on the phone every agent row's More, New space and fold button takes a tap
 
 test("on the phone every Settings switch takes a tap anywhere in its 44x44 box, on every section", async ({ page }) => {
   await page.goto("/settings");
-  const tabs = page.getByRole("tablist").getByRole("tab");
-  await expect(tabs.first()).toBeVisible({ timeout: 20_000 });
+  // A phone lists its sections on Settings' first screen, each opening the section's page (#2914).
+  const sections = page.locator("[data-settings-list]").getByRole("button");
+  await expect(sections.first()).toBeVisible({ timeout: 20_000 });
   const body = page.locator("[data-slot=settings-body]");
   const found: string[] = [];
   let switches = 0;
-  for (const label of await tabs.allTextContents()) {
+  for (const label of await sections.allTextContents()) {
     // oxlint-disable-next-line no-await-in-loop -- one section at a time: each tap changes the page the next one reads
-    await tabs.filter({ hasText: label }).first().click();
+    await openSettingsSection(page, label);
     // oxlint-disable-next-line no-await-in-loop -- as above
-    await expect(page.getByRole("heading", { name: label, level: 2 }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: label, exact: true }).first()).toBeVisible();
     // oxlint-disable-next-line no-await-in-loop -- as above
     const { height, view } = await body.evaluate((element) => ({
       height: element.scrollHeight,

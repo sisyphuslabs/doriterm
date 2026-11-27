@@ -31,9 +31,9 @@ function NavGroup({
   const id = useId();
   return (
     <div role="group" aria-labelledby={id} className="flex flex-col gap-px pt-3 first:pt-0">
-      <p id={id} className={cn(captionClass, "px-2.5")}>
+      <div id={id} className={cn(captionClass, "px-2.5")}>
         {group}
-      </p>
+      </div>
       {entries.map((entry) => (
         <Button
           key={entry.id}
