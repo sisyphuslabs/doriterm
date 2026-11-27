@@ -4,7 +4,7 @@ import { addPack, removePack } from "../keybar/operations.ts";
 import { FAVORITES_PACK_ID, PACKS } from "../keybar/packs.ts";
 import type { KeyBarSettings } from "../keybar/settings.ts";
 import { keyBarStore } from "../keybar/store.ts";
-import { listRowClass, rowValueClass } from "./settings-layout.tsx";
+import { listRowClass, rowDetailClass, rowValueClass } from "./settings-layout.tsx";
 
 export interface PacksSheetProps {
   readonly open: boolean;
@@ -36,7 +36,7 @@ export function PacksSheet({ open, onOpenChange, settings, readOnly }: PacksShee
                     {count} {count === 1 ? "key" : "keys"}
                   </span>
                 </p>
-                <p data-row-value className={cn("truncate", rowValueClass)}>
+                <p data-row-detail className={cn("truncate", rowDetailClass)}>
                   {row.description}
                 </p>
               </div>

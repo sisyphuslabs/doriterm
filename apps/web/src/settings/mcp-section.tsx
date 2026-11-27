@@ -58,7 +58,7 @@ export function McpClients({ view, busy, note, onSwitch, onConnect, onDisconnect
       )}
       {view.kind !== "on" ? null : (
         <>
-          <div className={cn(listRowClass, "flex-wrap justify-between")}>
+          <div data-list-row className={cn(listRowClass, "flex-wrap justify-between")}>
             <h3 className="text-base text-foreground">
               {view.clients.length === 0 ? "No MCP client is connected to this computer." : "Connected clients"}
             </h3>

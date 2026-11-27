@@ -126,7 +126,10 @@ export class OutputPacer {
       this.#schedule();
     },
   });
-  /** When output last arrived, by {@link Clock}: a late timer is read as it is once none has come for the hold's cap. */
+  /**
+   * When output that is not a shell's answer to a resize last arrived, by {@link Clock}: a late timer's reading compares
+   * it to tell whether bytes came behind it (late-timer.ts). An answer the hold ignores must not restart it there (#2941).
+   */
   #lastBytes = 0;
   /** When the view last resized, by {@link Clock}, and how many more bytes the shell may answer that resize with. */
   #resizedAt = Number.NEGATIVE_INFINITY;
@@ -152,7 +155,7 @@ export class OutputPacer {
     const answer = now - this.#resizedAt <= this.#roundTrip() && bytes.byteLength <= this.#answerLeft;
     if (answer) this.#answerLeft -= bytes.byteLength;
     this.#queue.push({ bytes, credit, answer });
-    this.#lastBytes = now;
+    if (!answer) this.#lastBytes = now;
     this.#replay.arrived();
     // A shell's answer to a resize is not the held update still being drawn: a drag must not keep its paint held.
     if (!answer) this.#held.drawing();

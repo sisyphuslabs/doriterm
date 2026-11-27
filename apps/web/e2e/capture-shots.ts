@@ -19,6 +19,7 @@ import {
   OFFLINE_TEST_TIMEOUT_MS,
 } from "./machine-switch.ts";
 import { resetMeshDocs } from "./mesh-reset.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 export type Width = "1440" | "390";
 /** Which stored connection a shot starts from: the e2e host, pairing against the fake relay, or none. */
@@ -61,12 +62,9 @@ const openTerminal = async (page: Page, name: RegExp, text: string | RegExp) => 
 };
 const section = async (page: Page, label: string) => {
   await page.goto("/settings");
-  await page
-    .getByRole("tab", { name: label })
-    .or(page.getByRole("button", { name: label }))
-    .first()
-    .click();
-  await expect(page.getByRole("heading", { name: label, level: 2 }).first()).toBeVisible();
+  await openSettingsSection(page, label);
+  // The section's page title on a phone, its caption from md (#2914).
+  await expect(page.getByRole("heading", { name: label, exact: true }).first()).toBeVisible();
 };
 const scrollToEnd = (page: Page) =>
   page.locator("[data-slot=settings-body]").evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
@@ -86,6 +84,8 @@ const refusedWith = (closeCode: number) => async (page: Page) => {
 };
 const SETTINGS = ["Appearance", "This device", "Terminal", "Keybindings"] as const;
 /** The mesh panel once its document and the added machine it is checked against have both arrived. */
+/** The open join the mesh shots draw raises the approval card over every later screen: put the start state back. */
+const quietMesh = (): void => resetMeshDocs({ open: false });
 const meshLoaded = async (page: Page) => {
   resetMeshDocs();
   await page.goto("/");
@@ -278,7 +278,7 @@ export const SHOTS: readonly Shot[] = [
     start: "connected",
     run: async (page) => {
       await page.goto("/settings");
-      await expect(page.getByRole("heading", { name: "This device", level: 2 }).first()).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Settings", level: 1 }).first()).toBeVisible();
     },
   },
   ...SETTINGS.map((label): Shot => ({
@@ -304,11 +304,12 @@ export const SHOTS: readonly Shot[] = [
       await expect(page.getByText("Go to space 1").first()).toBeVisible();
     },
   },
-  { name: "settings-mesh", start: "connected", run: meshLoaded },
+  { name: "settings-mesh", start: "connected", run: meshLoaded, cleanup: quietMesh },
   {
     // The fail-closed removal and its re-found command, which neither the top nor the end frame shows at 390.
     name: "settings-mesh-removed",
     start: "connected",
+    cleanup: quietMesh,
     run: async (page) => {
       await meshLoaded(page);
       await page.locator('[data-mesh-group^="removed-"]').first().scrollIntoViewIfNeeded();
@@ -317,6 +318,7 @@ export const SHOTS: readonly Shot[] = [
   {
     name: "settings-mesh-end",
     start: "connected",
+    cleanup: quietMesh,
     run: async (page) => {
       await meshLoaded(page);
       await scrollToEnd(page);

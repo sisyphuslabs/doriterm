@@ -75,7 +75,7 @@ test("Settings offers this computer, and a fresh browser pairs with the code it 
   await page
     .getByRole("navigation", { name: "Settings", exact: true })
     .getByRole("button", { name: "This device", exact: true })
-    .or(page.getByRole("tab", { name: "This device", exact: true }))
+    .or(page.locator("[data-settings-list]").getByRole("button", { name: "This device", exact: true }))
     .filter({ visible: true })
     .click();
 

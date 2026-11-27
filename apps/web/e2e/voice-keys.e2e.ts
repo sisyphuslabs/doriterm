@@ -4,6 +4,7 @@ import { expect, test } from "./fixtures.ts";
 import { chordOf, commandModifier } from "./platform-keys.ts";
 import { hcOn } from "./machine-switch.ts";
 import { type SpeechStub, stubSpeech } from "./speech-stub.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 // The service worker reloads the page once it takes control; only pwa.e2e.ts tests it.
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
@@ -111,7 +112,7 @@ test.describe("on a phone", () => {
   test("a chord bound to Dictate reaches the open terminal's dictation from the phone shell", async ({ page }) => {
     await stubSpeech(page);
     await page.goto("/settings");
-    await page.getByRole("tab", { name: "Keybindings" }).click();
+    await openSettingsSection(page, "Keybindings");
     await page.getByRole("button", { name: "Record a shortcut for Dictate", exact: true }).click();
     await page.keyboard.press("Control+Alt+Shift+D");
     await expect(
