@@ -163,12 +163,12 @@ export function SettingsRoute() {
             </RegionBoundary>
           )}
           {paged ? null : (
-            <div className="contents md:hidden">
+            <div className="flex flex-col gap-(--settings-group-gap) md:hidden">
               {nothing}
               <PhoneSections shown={shown} onOpen={openSection} />
             </div>
           )}
-          <div className={cn("contents", !paged && "max-md:hidden")}>
+          <div className={cn("flex flex-col gap-(--settings-group-gap)", !paged && "max-md:hidden")}>
             <RegionBoundary
               key={section}
               region="settings-section"

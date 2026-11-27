@@ -15,7 +15,9 @@ const TARGET = 44;
 /**
  * Every control on screen whose box is under the target in either direction, with each point of the target box centred
  * on it that a tap does not reach it from: `<name> <w>x<h> misses <corner or edge>:<what the tap hit>`. A point is held
- * just inside the box's edge so sub-pixel rounding cannot decide it, and a point off the screen cannot be tapped at all.
+ * just inside the box's edge so sub-pixel rounding cannot decide it, and a point off the screen cannot be tapped at all;
+ * nor can one outside the visible box of the control's own scroller (a header that stays over a scrolled list covers it,
+ * #2914), where scrolling the control fully into view is the tap.
  */
 const shortTargets = (page: Page): Promise<readonly string[]> =>
   page.evaluate((target) => {
@@ -39,13 +41,22 @@ const shortTargets = (page: Page): Promise<readonly string[]> =>
       if (box.width === 0 || box.height === 0 || (box.width >= target && box.height >= target)) continue;
       const x = box.left + box.width / 2;
       const y = box.top + box.height / 2;
+      let view = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+      for (let up = control.parentElement; up !== null; up = up.parentElement) {
+        const { overflowY } = getComputedStyle(up);
+        if (overflowY === "auto" || overflowY === "scroll") {
+          const clip = up.getBoundingClientRect();
+          view = { left: clip.left, top: clip.top, right: clip.right, bottom: clip.bottom };
+          break;
+        }
+      }
       if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
       // A control nothing can tap (hidden, or under another layer) is not a target on this screen.
       const centre = document.elementFromPoint(x, y);
       if (centre === null || !control.contains(centre)) continue;
       const misses = offsets.flatMap(([dx, dy]) => {
         const at = { x: x + dx, y: y + dy };
-        if (at.x < 0 || at.y < 0 || at.x >= innerWidth || at.y >= innerHeight) return [];
+        if (at.x < view.left || at.y < view.top || at.x >= view.right || at.y >= view.bottom) return [];
         const hit = document.elementFromPoint(at.x, at.y);
         if (hit !== null && control.contains(hit)) return [];
         const where = `${"-0+".charAt(Math.sign(dx) + 1)}${"-0+".charAt(Math.sign(dy) + 1)}`;
@@ -57,6 +68,34 @@ const shortTargets = (page: Page): Promise<readonly string[]> =>
       }
     }
     return found;
+  }, TARGET);
+
+/**
+ * The switches whose whole 44x44 box lies inside the visible box of their scroller at this scroll position, by name:
+ * the ones shortTargets measured at every point, so a switch that only ever sat at a scroller's edge is not passed
+ * unmeasured (#2914).
+ */
+const wholeSwitches = (page: Page): Promise<readonly string[]> =>
+  page.evaluate((target) => {
+    const reach = target / 2;
+    return [...document.querySelectorAll<HTMLElement>('[role="switch"]')].flatMap((control) => {
+      const box = control.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) return [];
+      let view = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+      for (let up = control.parentElement; up !== null; up = up.parentElement) {
+        const { overflowY } = getComputedStyle(up);
+        if (overflowY === "auto" || overflowY === "scroll") {
+          const clip = up.getBoundingClientRect();
+          view = { left: clip.left, top: clip.top, right: clip.right, bottom: clip.bottom };
+          break;
+        }
+      }
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      const whole =
+        x - reach >= view.left && y - reach >= view.top && x + reach <= view.right && y + reach <= view.bottom;
+      return whole ? [control.getAttribute("aria-label") ?? control.id ?? "switch"] : [];
+    });
   }, TARGET);
 
 test("on the phone every agent row's More, New space and fold button takes a tap anywhere in its 44x44 box", async ({
@@ -80,6 +119,9 @@ test("on the phone every Settings switch takes a tap anywhere in its 44x44 box, 
   const body = page.locator("[data-slot=settings-body]");
   const found: string[] = [];
   let switches = 0;
+  // Every switch of every section, and those measured with their whole box in view: the two must match.
+  const every = new Set<string>();
+  const measured = new Set<string>();
   for (const label of await sections.allTextContents()) {
     // oxlint-disable-next-line no-await-in-loop -- one section at a time: each tap changes the page the next one reads
     await openSettingsSection(page, label);
@@ -95,11 +137,22 @@ test("on the phone every Settings switch takes a tap anywhere in its 44x44 box, 
       await body.evaluate((element, to) => element.scrollTo({ top: to }), top);
       // oxlint-disable-next-line no-await-in-loop -- as above
       found.push(...(await shortTargets(page)).map((entry) => `${label}: ${entry}`));
+      // oxlint-disable-next-line no-await-in-loop -- as above
+      for (const name of await wholeSwitches(page)) measured.add(`${label}: ${name}`);
     }
     // oxlint-disable-next-line no-await-in-loop -- counted per section, after its scroll positions
     switches += await body.getByRole("switch").count();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    for (const name of await body
+      .getByRole("switch")
+      .evaluateAll((all) => all.map((el) => el.getAttribute("aria-label") ?? el.id ?? "switch")))
+      every.add(`${label}: ${name}`);
   }
   // An empty list only means something when switches were there to measure.
   expect(switches).toBeGreaterThan(0);
   expect([...new Set(found)]).toEqual([]);
+  expect(
+    [...every].filter((name) => !measured.has(name)),
+    "switches never measured with their whole box in view",
+  ).toEqual([]);
 });
