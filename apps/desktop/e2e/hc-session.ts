@@ -1,4 +1,4 @@
-import { encodeRequest, isJsonObject, parseJsonRpc } from "@doriface/protocol";
+import { encodeRequest, isJsonObject, JsonRpcParseError, parseJsonRpc } from "@doriface/protocol";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -52,11 +52,24 @@ export function scratchHcSession(hc = process.env["HC_BIN"]): {
       encoding: "utf8",
       timeout: CORE_EXIT_BOUND_MS,
     });
-    const replies = output.trim().split("\n").map(parseJsonRpc);
+    // A line that is not JSON (hc's own words on a failed connect) is no reply and is passed over, as the web twin does.
+    const replies = output
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .flatMap((line) => {
+        try {
+          return [parseJsonRpc(line)];
+        } catch (error) {
+          if (error instanceof JsonRpcParseError) return [];
+          throw error;
+        }
+      });
     const status = replies.find((reply) => reply.kind === "success" && reply.id === 1);
     const pid = status?.kind === "success" && isJsonObject(status.result) ? status.result["pid"] : undefined;
-    if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0) throw new Error("missing scratch core pid");
-    if (!replies.some((reply) => reply.kind === "success" && reply.id === 2)) throw new Error("server.stop failed");
+    if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0)
+      throw new Error(`the scratch core did not name its pid, so its exit cannot be awaited: ${output}`);
+    if (!replies.some((reply) => reply.kind === "success" && reply.id === 2))
+      throw new Error(`server.stop got no success reply from the scratch core: ${output}`);
     await waitForCoreExit(pid);
     rmSync(dir, { recursive: true, force: true });
   };
