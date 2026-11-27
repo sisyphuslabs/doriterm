@@ -47,6 +47,11 @@ export interface HostOptions {
   readonly pairingSlots?: PairingSlotRegistrar | undefined;
   /** Keeps an authenticated uplink to this relay and answers E2EE sessions through it; needs `stateDir`. */
   readonly relay?: { readonly url: string; readonly createSocket?: CreateSocket | undefined } | undefined;
+  /**
+   * `--local-only`: with no `relay`, this computer alone reaches the host. Every pairing or mesh offer and every mesh
+   * join is refused, so nothing hands out or dials a relay.
+   */
+  readonly localOnly?: boolean | undefined;
   /** The mesh status `mesh status` asks for; undefined while this host is in no mesh. Defaults to mesh.json's. */
   readonly meshStatus?: (() => MeshStatus | undefined) | undefined;
   /** For tests: the program mesh lines' `via` names; defaults to this executable or a launcher of this entry point. */

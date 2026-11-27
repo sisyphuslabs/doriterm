@@ -10,6 +10,7 @@ const HC_FAILURES: ReadonlySet<string> = new Set(["hc-binary-missing", "hc-versi
 /** What each phase of Install herdr-core shows while it runs. */
 const INSTALL_PHASES: Readonly<Record<string, string>> = {
   manifest: "Finding the latest herdr-core…",
+  signature: "Checking that Doriterm signed this herdr-core release…",
   download: "Downloading herdr-core…",
   verify: "Checking the download's checksum…",
   extract: "Unpacking herdr-core…",

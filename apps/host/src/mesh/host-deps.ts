@@ -28,6 +28,7 @@ export interface MeshDepsOptions {
     readonly url: string | undefined;
     readonly createSocket?: CreateSocket | undefined;
     readonly proofs?: RelayProofs | undefined;
+    readonly localOnly?: boolean | undefined;
   };
   /** The program mesh lines' `via` names; defaults to this executable or a launcher of this entry point. */
   readonly program?: string | undefined;

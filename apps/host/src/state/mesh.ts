@@ -1,8 +1,6 @@
 import { base64urlEncode, type HostIdentity } from "@doriface/crypto";
 import {
-  type CardBody,
   meshIdOf,
-  type MemberKind,
   parseRecord,
   type RecordBody,
   type Signed,
@@ -11,18 +9,20 @@ import {
   type View,
   viewOf,
 } from "@doriface/mesh";
-import { cardBodyFor, JoinRefused, type OwnCard } from "@doriface/mesh/join";
+import { JoinRefused, type OwnCard } from "@doriface/mesh/join";
 import { join } from "node:path";
-import { AuthorizeIndex, indexOf } from "../mesh/authorize-index.ts";
-import { DeviceStore } from "./devices.ts";
-import { createPrivateJson, ensureStateDir, fileStamp, readJson, writePrivateJson } from "./files.ts";
-import { KnownHosts } from "./known-hosts.ts";
-import { SubscriptionStore } from "../push/subscriptions.ts";
+import type { AuthorizeIndex } from "../mesh/authorize-index.ts";
+import { createPrivateJson, ensureStateDir, fileStamp, writePrivateJson } from "./files.ts";
 import { DEFAULT_LOCK_TIMEOUT_MS, withStateLock } from "./lock.ts";
-import { MESH_FILE, type MeshFile, meshFileJson, newMeshFile, parseMeshFile, writeVersionOf } from "./mesh-file.ts";
+import { recordClientSession } from "./client-session-record.ts";
+import { cleanupAfterWrite, withIndex } from "./mesh-cleanup.ts";
+import { MESH_FILE, type MeshFile, meshFileJson, newMeshFile } from "./mesh-file.ts";
+import { readMeshFile, unreadableMesh } from "./mesh-read.ts";
+import { cardBody, foundBody, persistedIndex } from "./mesh-records.ts";
 import { type MergeResult, type MeshTx, ownN, Transaction } from "./mesh-tx.ts";
 
 export { CounterBehindError, type MergeResult, type MeshTx } from "./mesh-tx.ts";
+export { cardBody } from "./mesh-records.ts";
 
 export interface MeshStoreOptions {
   readonly log: (line: string) => void;
@@ -43,8 +43,6 @@ export interface MeshCandidate {
   readonly committed: boolean;
 }
 
-const CLIENT_SESSION_WRITE_INTERVAL_MS = 5 * 60_000;
-
 /**
  * `mesh.json` under the state lock (sections 8.4 and 10.1). Every write evaluates the view once, persists the
  * authorize index with the records at a new `generation`, and in the same lock hold removes every paired device and
@@ -56,6 +54,8 @@ export class MeshStore {
   readonly #options: MeshStoreOptions;
   #cache: { readonly stamp: string; readonly index: AuthorizeIndex } | undefined;
   #candidate: { file: MeshFile; users: number; committed: boolean } | undefined;
+  /** The file stamp an unreadable mesh.json was last reported at. */
+  #unreadable: string | undefined;
 
   constructor(stateDir: string, options: MeshStoreOptions) {
     this.#dir = ensureStateDir(stateDir);
@@ -63,47 +63,44 @@ export class MeshStore {
     this.#options = options;
   }
 
+  /**
+   * The mesh file, or undefined when this host is in no mesh it can use: none exists, or one that cannot be read or
+   * parsed (#2951), which is said once per change on disk and never written over: every write follows a read of the
+   * file or creates one only where none exists. Joins and offers ask `unreadable` first and refuse with its reason.
+   */
   read(): MeshFile | undefined {
-    const value = readJson(this.#path);
-    return value === undefined ? undefined : parseMeshFile(value);
+    const state = readMeshFile(this.#path);
+    if (state.kind === "file") return state.file;
+    if (state.kind === "unreadable") {
+      const stamp = fileStamp(this.#path);
+      if (stamp !== this.#unreadable) {
+        this.#unreadable = stamp;
+        this.#options.log(`mesh: ${unreadableMesh(this.#path, state.reason)}; this host runs as in no mesh until then`);
+      }
+    }
+    return undefined;
+  }
+
+  /** Why mesh.json cannot be used, or undefined when it can (or there is none). */
+  unreadable(): string | undefined {
+    const state = readMeshFile(this.#path);
+    return state.kind === "unreadable" ? unreadableMesh(this.#path, state.reason) : undefined;
   }
 
   /** Best-effort local observation, at most once per client per five minutes; never waits for a busy state lock. */
   recordClientSession(devicePub: string, at = Date.now()): void {
-    try {
-      const seen = this.authorizeIndex()?.client(devicePub);
-      if (
-        seen === undefined ||
-        (seen.lastSessionAt !== undefined && at - seen.lastSessionAt < CLIENT_SESSION_WRITE_INTERVAL_MS)
-      )
-        return;
-      withStateLock(
-        this.#dir,
-        () => {
-          const file = this.read();
-          if (file === undefined) return;
-          const index = file.index;
-          if (index?.generation !== file.generation) throw new Error(`${MESH_FILE}: its authorize index is stale`);
-          const client = new AuthorizeIndex(index).client(devicePub);
-          if (client === undefined) return;
-          if (client.lastSessionAt !== undefined && at - client.lastSessionAt < CLIENT_SESSION_WRITE_INTERVAL_MS)
-            return;
-          const members = index.members.map((member) =>
-            member.signPub === client.signPub ? { ...member, lastSessionAt: at } : member,
-          );
-          writePrivateJson(
-            this.#path,
-            meshFileJson({ ...file, index: { ...index, members } }),
-            this.#options.durable ?? true,
-          );
-        },
-        0,
-      );
-    } catch (error) {
-      this.#options.log(
-        `mesh: cannot record client session: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    recordClientSession(
+      {
+        dir: this.#dir,
+        path: this.#path,
+        durable: this.#options.durable ?? true,
+        index: () => this.authorizeIndex(),
+        read: () => this.read(),
+        log: this.#options.log,
+      },
+      devicePub,
+      at,
+    );
   }
 
   /**
@@ -274,44 +271,13 @@ export class MeshStore {
   }
 
   #indexed(file: MeshFile, view = this.#evaluate(file.records)): MeshFile {
-    const index = indexOf(file.records, view, file.generation);
-    const previous = this.read();
-    const seen = new Map(
-      (previous?.meshId === file.meshId ? (previous.index?.members ?? []) : []).flatMap((member) =>
-        member.kind === "client" && member.lastSessionAt !== undefined
-          ? [[member.signPub, member.lastSessionAt] as const]
-          : [],
-      ),
-    );
-    const members = index.members.map((member) => {
-      const lastSessionAt = member.kind === "client" ? seen.get(member.signPub) : undefined;
-      return lastSessionAt === undefined ? member : { ...member, lastSessionAt };
-    });
-    return { ...file, version: writeVersionOf(index), index: { ...index, members } };
+    return withIndex(file, view, this.read());
   }
 
   readonly #evaluate = (records: readonly Signed[]): View => (this.#options.evaluate ?? viewOf)(records);
 
   #cleanup(file: MeshFile): void {
-    if (file.index === undefined) return;
-    const index = new AuthorizeIndex(file.index);
-    const { keys, hostIds } = index.cleanup();
-    for (const device of new DeviceStore(this.#dir).removeKeysHeld(keys)) {
-      this.#options.log(`mesh: removed paired device "${device.name}": its key belongs to a mesh member`);
-    }
-    for (const hostId of new KnownHosts(this.#dir).removeHostsHeld(hostIds)) {
-      this.#options.log(`mesh: removed saved host ${hostId}: the mesh reaches it now`);
-    }
-    try {
-      new SubscriptionStore(this.#dir).keepOwnersHeld(
-        new Set([
-          ...new DeviceStore(this.#dir).list().map((device) => device.clientStaticPub),
-          ...index.clients().flatMap((client) => (client.devicePub === undefined ? [] : [client.devicePub])),
-        ]),
-      );
-    } catch (error) {
-      this.#options.log(`mesh: cannot prune push subscriptions: ${String(error)}`);
-    }
+    cleanupAfterWrite(this.#dir, file, this.#options.log);
   }
 
   #require(): MeshFile {
@@ -324,31 +290,3 @@ export class MeshStore {
     return withStateLock(this.#dir, fn, this.#options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS);
   }
 }
-
-function persistedIndex(file: MeshFile): AuthorizeIndex {
-  if (file.index?.generation !== file.generation) throw new Error(`${MESH_FILE}: its authorize index is stale`);
-  return new AuthorizeIndex(file.index);
-}
-
-/** The card body for this host in mesh `mesh`, invited by `inviter` (both `"-"` in a found). */
-export function cardBody(
-  identity: HostIdentity,
-  card: OwnCard,
-  mesh: string,
-  inviter: string,
-  at?: string,
-  kind?: MemberKind,
-): CardBody {
-  const member = { hostId: identity.hostId, sign: identity.sign, noisePub: identity.noise.publicKey };
-  return cardBodyFor(member, card, { mesh, inviter, nonce: at, kind });
-}
-
-const foundBody = (identity: HostIdentity, card: Signed): RecordBody => ({
-  v: 2,
-  mesh: "-",
-  type: "found",
-  by: base64urlEncode(identity.sign.publicKey),
-  n: 1,
-  prev: [],
-  subject: { card },
-});

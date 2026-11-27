@@ -1,8 +1,9 @@
-import { ROW_DRAG_THRESHOLD_PX, ROW_TOUCH_HOLD_MS } from "@doriface/ui";
+import { cancelTap, ROW_DRAG_THRESHOLD_PX, ROW_TOUCH_HOLD_MS } from "@doriface/ui";
 import {
   createContext,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
   useCallback,
   useContext,
   useEffect,
@@ -15,7 +16,7 @@ import type { TerminalDropTarget } from "./use-terminal-drops.ts";
 /** A held touch that moves this far before it lifts the row was a swipe: the list scrolls and nothing drags. */
 const TOUCH_SLOP_PX = 8;
 
-/** A terminal being dragged from the sidebar: where the pointer is, and the pane it would land on there (none: no drop). */
+/** A terminal being dragged from the sidebar or tab strip: pointer position and the pane it would land on (none: no drop). */
 export interface TerminalDrag {
   readonly address: string;
   readonly name: string;
@@ -24,7 +25,7 @@ export interface TerminalDrag {
   readonly target: TerminalDropTarget | null;
 }
 
-/** The panes a sidebar drag drops on: what lies under a point for a terminal, and the drop itself. */
+/** The panes a terminal drag drops on: what lies under a point for a terminal, and the drop itself. */
 export interface TerminalDropSurface {
   readonly targetAt: (address: string, x: number, y: number) => TerminalDropTarget | null;
   readonly drop: (address: string, target: TerminalDropTarget) => void;
@@ -36,16 +37,29 @@ export interface TerminalGrab {
   readonly onClickCapture: (event: { stopPropagation(): void; preventDefault(): void }) => void;
 }
 
+/** Imperative drive of the shared terminal drag from another gesture (e.g. a tab dragged past the top strip). */
+export interface TerminalDragSession {
+  readonly move: (address: string, name: string, x: number, y: number) => TerminalDropTarget | null;
+  readonly drop: (address: string, x: number, y: number) => boolean;
+  readonly cancel: () => void;
+}
+
+/** Hit-testing and highlight state for dropping a dragged pane header onto the top tab strip. */
+export interface TabStripDrop {
+  readonly inStrip: (x: number, y: number) => boolean;
+  readonly setActive: (active: boolean) => void;
+}
+
 interface Grabbing extends TerminalGrab {
   readonly surface: { current: TerminalDropSurface | null };
+  readonly strip: { current: HTMLElement | null };
+  readonly session: TerminalDragSession;
+  readonly stripDrop: TabStripDrop;
 }
 
 const GrabContext = createContext<Grabbing | null>(null);
 const DragContext = createContext<TerminalDrag | null>(null);
-
-function cancelTap(touchEnd: TouchEvent): void {
-  if (touchEnd.cancelable) touchEnd.preventDefault();
-}
+const StripDropContext = createContext<boolean>(false);
 
 /**
  * Lets an agent row of the sidebar be dragged onto the panes, where it becomes a pane (herdr-app's pane drag, from the
@@ -55,7 +69,9 @@ function cancelTap(touchEnd: TouchEvent): void {
  */
 export function TerminalDragProvider({ children }: { readonly children: ReactNode }) {
   const [drag, setDrag] = useState<TerminalDrag | null>(null);
+  const [stripActive, setStripActive] = useState(false);
   const surface = useRef<TerminalDropSurface | null>(null);
+  const strip = useRef<HTMLElement | null>(null);
   const swallowClick = useRef(false);
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
@@ -142,16 +158,51 @@ export function TerminalDragProvider({ children }: { readonly children: ReactNod
     event.preventDefault();
   }, []);
 
+  const session = useMemo<TerminalDragSession>(
+    () => ({
+      move: (address, name, x, y) => {
+        stop.current?.();
+        const target = surface.current?.targetAt(address, x, y) ?? null;
+        setDrag({ address, name, x, y, target });
+        return target;
+      },
+      drop: (address, x, y) => {
+        const target = surface.current?.targetAt(address, x, y) ?? null;
+        setDrag(null);
+        if (target === null) return false;
+        surface.current?.drop(address, target);
+        return true;
+      },
+      cancel: () => setDrag(null),
+    }),
+    [],
+  );
+
+  const stripDrop = useMemo<TabStripDrop>(
+    () => ({
+      inStrip: (x, y) => {
+        const element = strip.current;
+        if (element === null) return false;
+        const box = element.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+      },
+      setActive: setStripActive,
+    }),
+    [],
+  );
+
   const grabbing = useMemo<Grabbing>(
-    () => ({ onPointerDown, onClickCapture, surface }),
-    [onPointerDown, onClickCapture],
+    () => ({ onPointerDown, onClickCapture, surface, strip, session, stripDrop }),
+    [onPointerDown, onClickCapture, session, stripDrop],
   );
   return (
     <GrabContext.Provider value={grabbing}>
-      <DragContext.Provider value={drag}>
-        {children}
-        {drag === null ? null : <DragChip drag={drag} />}
-      </DragContext.Provider>
+      <StripDropContext.Provider value={stripActive}>
+        <DragContext.Provider value={drag}>
+          {children}
+          {drag === null ? null : <DragChip drag={drag} />}
+        </DragContext.Provider>
+      </StripDropContext.Provider>
     </GrabContext.Provider>
   );
 }
@@ -188,7 +239,7 @@ export function useTerminalDrag(): TerminalDrag | null {
   return useContext(DragContext);
 }
 
-/** Makes `surface` the panes a sidebar drag drops on, while the caller is mounted. */
+/** Makes `surface` the panes a sidebar or tab-strip drag drops on, while the caller is mounted. */
 export function useTerminalDropSurface(surface: TerminalDropSurface): void {
   const grabbing = useContext(GrabContext);
   const latest = useRef(surface);
@@ -204,4 +255,32 @@ export function useTerminalDropSurface(surface: TerminalDropSurface): void {
       ref.current = null;
     };
   }, [grabbing]);
+}
+
+/** Shared terminal-drag controller for another drag source (the top tab strip), or null outside the desktop shell. */
+export function useTerminalDragSession(): TerminalDragSession | null {
+  return useContext(GrabContext)?.session ?? null;
+}
+
+/** Registers the top tab strip element as a pane-drop target while mounted. */
+export function useTabStripDropTarget(ref: RefObject<HTMLElement | null>): void {
+  const grabbing = useContext(GrabContext);
+  useEffect(() => {
+    if (grabbing === null) return undefined;
+    const slot = grabbing.strip;
+    slot.current = ref.current;
+    return () => {
+      if (slot.current === ref.current) slot.current = null;
+    };
+  }, [grabbing, ref]);
+}
+
+/** Hit-testing and highlight control for dragging a pane header onto the top tab strip. */
+export function useTabStripDrop(): TabStripDrop | null {
+  return useContext(GrabContext)?.stripDrop ?? null;
+}
+
+/** True while a dragged pane header hovers over the top tab strip. */
+export function useStripDropActive(): boolean {
+  return useContext(StripDropContext);
 }

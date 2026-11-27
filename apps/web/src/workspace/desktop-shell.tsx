@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { cn, IconButton, Menu, MenuItem, NeedsYouPill, TabBar, useToastManager, type WorkspaceTab } from "@doriface/ui";
+import { cn, IconButton, Menu, MenuItem, NeedsYouPill, useToastManager, type WorkspaceTab } from "@doriface/ui";
 import { Columns2, PanelLeft, Rows2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actionChosen } from "../keys/dispatcher.ts";
@@ -39,6 +39,7 @@ import type { Axis } from "@doriface/protocol/layout";
 import type { Layout, PaneTarget } from "./use-layout.ts";
 import type { TerminalEnd } from "../terminal/terminal-end.ts";
 import { TerminalDragProvider } from "./terminal-drag.tsx";
+import { WorkspaceTabBar } from "./workspace-tab-bar.tsx";
 
 /** The tab whose button has keyboard focus, which Move tab left/right moves instead of the active one. */
 const focusedTab = (): string | null =>
@@ -355,7 +356,8 @@ export function DesktopShell(props: DesktopShellProps) {
           />
         </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <TabBar
+          <WorkspaceTabBar
+            layout={layout}
             tabs={tabList}
             activeId={layout.active?.key ?? ""}
             {...(newTabKeys === undefined ? {} : { newTabKeys })}

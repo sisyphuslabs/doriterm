@@ -172,7 +172,7 @@ export async function updateCheckout(context: SetupContext, ref: string): Promis
 }
 
 /**
- * herdr-core in ~/.local/bin, else on PATH; installed or updated by the host's own checksummed installer when none
+ * herdr-core in ~/.local/bin, else on PATH; installed or updated by the host's own signature-verified installer (`--install-hc`) when none
  * meets the floor. The installer writes `~/.local/bin/herdr-core` and adds the `hc` link beside it only when no `hc`
  * is on PATH, so the path it reports is the one used, and a qualifying ~/.local/bin binary wins over an older `hc`
  * elsewhere on PATH (otherwise every re-run would install again).

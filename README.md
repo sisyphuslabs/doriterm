@@ -155,7 +155,7 @@ bun install
 bun run --cwd apps/host start --print-token   # the gateway on 127.0.0.1:7766, and its client token
 ```
 
-`doriface-host --install-hc` installs or updates herdr-core in `~/.local/bin` from its checksummed release, then exits. The host
+`doriface-host --install-hc` installs or updates herdr-core in `~/.local/bin` from a release a Doriterm key signed (the signature is verified before anything is downloaded), then exits. The host
 keeps its keys and the devices it paired in `$XDG_STATE_HOME/doriface-host` (or `--state-dir`), and `doriface-host devices
 list` and `doriface-host devices revoke <id>` manage what is paired.
 

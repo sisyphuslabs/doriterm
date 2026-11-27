@@ -36,9 +36,9 @@ const member = (view: MachineView): MachineView => ({
 test("an added machine's row says to update hc there when machine.list reports its core below the floor (#2285)", () => {
   const html = row(listed("0.1.16"));
   expect(html).toContain("box&#x27;s herdr-core is 0.1.16, and Doriterm needs");
-  expect(html).toContain("Run hc update on that computer.");
+  expect(html).toContain("Run doriface-host --install-hc on that computer.");
   // A core at the floor reads as the connected machine it is, with nothing to do.
-  expect(row(listed("0.1.20"))).not.toContain("Run hc update");
+  expect(row(listed("0.1.20"))).not.toContain("--install-hc");
 });
 
 /** The sidebar's notice under a machine's header, with the machine list the workspace would provide. */
@@ -53,7 +53,7 @@ function Notice({ view }: { readonly view: MachineView }) {
 
 test("the sidebar notice for an old core says to update hc there and offers no Try again, which cannot help (#2285)", () => {
   const old = renderToStaticMarkup(<Notice view={listed("0.1.16")} />);
-  expect(old).toContain("Run hc update on that computer.");
+  expect(old).toContain("Run doriface-host --install-hc on that computer.");
   expect(old).not.toContain("Try again");
   // A machine whose line is down still gets its Try again.
   const down = renderToStaticMarkup(<Notice view={{ ...listed("0.1.20"), state: "unreachable", why: "(4404)" }} />);

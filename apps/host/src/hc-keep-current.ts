@@ -1,6 +1,8 @@
 import { accessSync, constants, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { compareHcVersions, HC_VERSION_RECOMMENDED } from "@doriface/protocol";
+import { hcInstallDir, installHc } from "./hc-install.ts";
 
 export interface Ran {
   readonly code: number | null;
@@ -15,6 +17,8 @@ export interface KeepCurrentDeps {
   readonly installDir: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly run: (argv: readonly string[]) => Promise<Ran>;
+  /** The verified installer (hc-install.ts `installHc`) pinned to a version; never `hc update`, which is unsigned. */
+  readonly install: (version: string) => Promise<unknown>;
   readonly log: (line: string) => void;
 }
 
@@ -46,9 +50,12 @@ function userInstall(hc: string, installDir: string): boolean {
 }
 
 /**
- * Brings the host's hc up to the version this release recommends, with no user step. `hc update` restarts only the
- * core: the holder keeps every program running and the new core adopts its terminals, so nothing is lost. The update is
- * judged by what it promised: the new version reports, and every terminal listed before is still listed.
+ * Brings the host's hc up to the version this release recommends, with no user step, through the same verified
+ * installer as Install herdr-core (#2945): a manifest a Doriterm release key signed, its sha256, herdr's codesign on a
+ * Mac, the floor and no downgrade. Never herdr's own `hc update`, which downloads from herdr's server with no Doriterm
+ * signature. The installer swaps a running core with `update --from <verified file>`: the holder keeps every program
+ * running and the new core adopts its terminals. The update is judged by what it promised: the new version reports,
+ * and every terminal listed before is still listed.
  */
 export async function keepHcCurrent(deps: KeepCurrentDeps): Promise<KeepCurrent> {
   const skip = (reason: string): KeepCurrent => {
@@ -62,9 +69,7 @@ export async function keepHcCurrent(deps: KeepCurrentDeps): Promise<KeepCurrent>
     return skip("installed outside the user's own folder, so its owner updates it");
   try {
     const before = addresses(await deps.run([deps.hc, "ls", "--json"]));
-    const updated = await deps.run([deps.hc, "update", "--version", HC_VERSION_RECOMMENDED, "--json"]);
-    if (updated.code !== 0)
-      throw new Error(`hc update failed: ${updated.stderr.trim() || `exit ${String(updated.code)}`}`);
+    await deps.install(HC_VERSION_RECOMMENDED);
     const now = (await deps.run([deps.hc, "--version"])).stdout.trim().replace(/^hc /, "");
     if (compareHcVersions(now, HC_VERSION_RECOMMENDED) < 0) throw new Error(`hc reports ${now} after the update`);
     const after = new Set(addresses(await deps.run([deps.hc, "ls", "--json"])));
@@ -96,4 +101,26 @@ export async function runOnSession(
     child.exited,
   ]);
   return { code, stdout, stderr };
+}
+
+/** The running host's core, kept current in the background, so a slow download never holds up the host. */
+export function keepHostCoreCurrent(
+  options: {
+    readonly hc: string;
+    readonly session?: string | undefined;
+    readonly env?: Readonly<Record<string, string | undefined>> | undefined;
+    readonly log: (line: string) => void;
+  },
+  version: string,
+): void {
+  const env = options.env ?? process.env;
+  void keepHcCurrent({
+    hc: options.hc,
+    version,
+    installDir: hcInstallDir(process.platform, homedir(), env),
+    env,
+    run: (argv) => runOnSession(argv, options.session, options.env),
+    install: (pinned) => installHc({ home: homedir(), env: { ...env, HC_VERSION: pinned } }),
+    log: options.log,
+  });
 }
