@@ -228,7 +228,7 @@ export function PhoneTerminal(props: PhoneTerminalProps) {
           onOpen={onOpen}
           action={untyped || cardShown ? null : <DictateButton voice={voice} target={title} ref={mic} />}
         />
-        <ConnectionLine address={terminal.address} {...(offline ? {} : { connection })} />
+        <ConnectionLine address={terminal.address} reconnectingInHeader {...(offline ? {} : { connection })} />
         {pair === null || panes.length > 2 ? (
           <PaneSwitcher panes={panes} open={terminal.address} onOpen={onOpen} />
         ) : null}
