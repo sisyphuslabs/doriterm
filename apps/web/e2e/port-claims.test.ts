@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type ClaimOwner, claimBlock, ownerFor, releaseClaims, takeOver } from "./port-claims.ts";
+import { type ClaimOwner, claimBlock, ownerFor, releaseClaims, takeOver, takeOverHolding } from "./port-claims.ts";
 
 const MODULE = join(import.meta.dir, "port-claims.ts");
 
@@ -124,6 +124,41 @@ test("a takeover removes only the stale claim it read, never a live claim that r
     takeOver(file, stale, ownerFor("a"));
     expect((JSON.parse(readFileSync(file, "utf8")) as ClaimOwner).run).toBe("b");
     expect(claimBlock(25_000, 1, ownerFor("a"), dir)).toEqual({ ok: false, holder: ownerFor("b") });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The reaper interleaving (#2953 review): L holds the takeover lock and has read the stale claim; a reaper moves L's
+// lock away, run M takes the free name. L must then back off: leave M's lock, and leave the claim for M to judge.
+test("a holder whose takeover lock was taken from it backs off: it removes neither the newcomer's lock nor the claim", () => {
+  const dir = claimsDir();
+  try {
+    const file = join(dir, "port-29000");
+    const lock = `${file}.takeover`;
+    const stale = goneOwner("killed");
+    seed(dir, 29_000, 1, stale);
+    const [l, m] = [ownerFor("l"), ownerFor("m")];
+    // M now holds the lock L had taken.
+    writeFileSync(lock, JSON.stringify(m));
+    takeOverHolding(lock, file, stale, l);
+    expect((JSON.parse(readFileSync(lock, "utf8")) as ClaimOwner).run).toBe("m");
+    expect((JSON.parse(readFileSync(file, "utf8")) as ClaimOwner).run).toBe("killed");
+    // M, still holding it, takes the stale claim over and lets the lock go.
+    takeOverHolding(lock, file, stale, m);
+    expect(readdirSync(dir)).toEqual([]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a tomb a killed reaper left is swept", () => {
+  const dir = claimsDir();
+  try {
+    const killed = goneOwner("reaper");
+    writeFileSync(join(dir, `port-30000.takeover.${killed.run}.${killed.pid}.reaped`), JSON.stringify(goneOwner("x")));
+    expect(claimBlock(30_001, 1, ownerFor("next"), dir).ok).toBe(true);
+    expect(readdirSync(dir)).toEqual(["port-30001"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

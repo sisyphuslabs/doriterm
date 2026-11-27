@@ -65,11 +65,15 @@ const sameOwner = (a: ClaimOwner | undefined, b: ClaimOwner): boolean =>
 function gone(owner: ClaimOwner): boolean {
   if (owner.host !== hostname()) return false;
   if (owner.boot !== "" && BOOT !== "" && owner.boot !== BOOT) return true;
+  return !running(owner.pid);
+}
+
+function running(pid: number): boolean {
   try {
-    process.kill(owner.pid, 0);
-    return false;
-  } catch {
+    process.kill(pid, 0);
     return true;
+  } catch {
+    return false;
   }
 }
 
@@ -103,10 +107,19 @@ function createNaming(file: string, owner: ClaimOwner): boolean {
 export function takeOver(file: string, stale: ClaimOwner, owner: ClaimOwner): void {
   const lock = `${file}.takeover`;
   if (!createNaming(lock, owner)) return;
+  takeOverHolding(lock, file, stale, owner);
+}
+
+/**
+ * The takeover once `owner` has taken `lock`. A reaper may have moved the lock away since, and another run taken it
+ * (reapLock): so the claim is removed only while the lock still names `owner`, and the lock is released only if it
+ * does, so a displaced holder backs off and never removes the newcomer's lock or acts on a claim it no longer guards.
+ */
+export function takeOverHolding(lock: string, file: string, stale: ClaimOwner, owner: ClaimOwner): void {
   try {
-    if (sameOwner(readOwner(file), stale)) rmSync(file, { force: true });
+    if (sameOwner(readOwner(lock), owner) && sameOwner(readOwner(file), stale)) rmSync(file, { force: true });
   } finally {
-    rmSync(lock, { force: true });
+    releaseIfOwn(lock, owner);
   }
 }
 
@@ -142,6 +155,7 @@ function reapLock(lock: string, holder: ClaimOwner, owner: ClaimOwner): void {
     try {
       linkSync(tomb, lock);
     } catch (error) {
+      // Another run took the free name meanwhile: the moved holder is displaced, and backs off (takeOverHolding).
       if (!isCode(error, "EEXIST")) throw error;
     }
   }
@@ -160,6 +174,11 @@ function sweep(dir: string, owner: ClaimOwner): void {
     if (/^port-\d+$/u.test(name)) takeOver(file, holder, owner);
     else if (/^port-\d+\.takeover$/u.test(name)) reapLock(file, holder, owner);
     else if (name.endsWith(`.${holder.run}.${holder.pid}.draft`)) rmSync(file, { force: true });
+  }
+  // A reaper killed between moving a lock and removing its tomb: the tomb is named after the reaper.
+  for (const name of readdirSync(dir)) {
+    const reaper = /\.(\d+)\.reaped$/u.exec(name)?.[1];
+    if (reaper !== undefined && !running(Number(reaper))) rmSync(join(dir, name), { force: true });
   }
 }
 
