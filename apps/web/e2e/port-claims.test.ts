@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -69,12 +69,42 @@ test("claims a killed run left are swept by the next claim, wherever it picks, a
 test("a claim from an earlier boot is dead though its pid runs again, and one from another computer is never taken", () => {
   const dir = claimsDir();
   try {
-    const rebooted = { ...ownerFor("before-reboot"), boot: ownerFor("x").boot - 3600 };
+    // This very process's pid, from another boot: the pid runs again, the runner that claimed is long gone.
+    const rebooted = { ...ownerFor("before-reboot"), boot: "an-earlier-boot" };
     seed(dir, 22_000, 4, rebooted);
     expect(claimBlock(22_000, 4, ownerFor("now"), dir).ok).toBe(true);
     const elsewhere = { ...goneOwner("elsewhere"), host: "another-computer" };
     seed(dir, 23_000, 4, elsewhere);
     expect(claimBlock(23_000, 4, ownerFor("now"), dir)).toEqual({ ok: false, holder: elsewhere });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A laptop waking or NTP stepping the clock moves "now" but not the boot: a live runner's claims stay live.
+test("a live run's claims stay live when the clock is stepped", () => {
+  const dir = claimsDir();
+  const live = ownerFor("live");
+  expect(claimBlock(26_000, 4, live, dir).ok).toBe(true);
+  // The clock steps a day after the claim was made, and before another run judges it.
+  const stepped = spyOn(Date, "now").mockReturnValue(Date.now() + 86_400_000);
+  try {
+    expect(claimBlock(26_000, 4, ownerFor("other"), dir)).toEqual({ ok: false, holder: live });
+  } finally {
+    stepped.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a killed run's half-made claim and takeover lock are swept, and a live run's lock is left alone", () => {
+  const dir = claimsDir();
+  try {
+    const killed = goneOwner("killed");
+    writeFileSync(join(dir, `port-27000.${killed.run}.${killed.pid}.draft`), JSON.stringify(killed));
+    writeFileSync(join(dir, "port-27001.takeover"), JSON.stringify(killed));
+    writeFileSync(join(dir, "port-27002.takeover"), JSON.stringify(ownerFor("taking-over")));
+    expect(claimBlock(28_000, 1, ownerFor("next"), dir).ok).toBe(true);
+    expect(readdirSync(dir).toSorted()).toEqual(["port-27002.takeover", "port-28000"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -1,5 +1,6 @@
-import { linkSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, hostname, uptime } from "node:os";
+import { execFileSync } from "node:child_process";
+import { linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -16,12 +17,25 @@ export interface ClaimOwner {
   readonly run: string;
   readonly pid: number;
   readonly host: string;
-  readonly boot: number;
+  readonly boot: string;
 }
 
-/** When this computer booted, in whole seconds, read once: two readings can round a second apart. */
-const BOOT = Math.round(Date.now() / 1000 - uptime());
-const bootTime = (): number => Math.round(Date.now() / 1000 - uptime());
+/**
+ * This boot of this computer, as the system names it: unlike a boot time worked out from the clock, it does not move when
+ * the clock is stepped (NTP, a laptop waking), so a live runner's claims are never judged from an earlier boot. Empty
+ * where the system names none: such a claim is judged by its pid alone.
+ */
+function readBootId(): string {
+  try {
+    if (process.platform === "linux") return readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+    if (process.platform === "darwin")
+      return execFileSync("sysctl", ["-n", "kern.bootsessionuuid"], { encoding: "utf8" }).trim();
+  } catch {
+    return "";
+  }
+  return "";
+}
+const BOOT = readBootId();
 
 /** This process as a claim's owner, for `run`. */
 export function ownerFor(run: string): ClaimOwner {
@@ -36,7 +50,7 @@ function readOwner(file: string): ClaimOwner | undefined {
     const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
     if (typeof parsed !== "object" || parsed === null) return undefined;
     const [run, pid, host, boot] = ["run", "pid", "host", "boot"].map((key) => Reflect.get(parsed, key));
-    return typeof run === "string" && typeof pid === "number" && typeof host === "string" && typeof boot === "number"
+    return typeof run === "string" && typeof pid === "number" && typeof host === "string" && typeof boot === "string"
       ? { run, pid, host, boot }
       : undefined;
   } catch {
@@ -50,7 +64,7 @@ const sameOwner = (a: ClaimOwner | undefined, b: ClaimOwner): boolean =>
 /** Whether `owner`'s runner is gone: on this computer, from an earlier boot or no longer running. Another's is live. */
 function gone(owner: ClaimOwner): boolean {
   if (owner.host !== hostname()) return false;
-  if (Math.abs(owner.boot - bootTime()) > 2) return true;
+  if (owner.boot !== "" && BOOT !== "" && owner.boot !== BOOT) return true;
   try {
     process.kill(owner.pid, 0);
     return false;
@@ -111,13 +125,41 @@ function claimPort(file: string, owner: ClaimOwner): Claimed {
   return { ok: false, holder: readOwner(file) };
 }
 
-/** Takes over every claim whose runner is gone (a run killed before its teardown), so none is left for good. */
+/**
+ * Removes a takeover lock whose holder is gone (killed inside a takeover), so the port can be taken over again. The lock
+ * is moved to a name of this run's own first, so of runs reaping it at once only one gets it; if the moved file is not
+ * the gone holder's (a live run took the lock meanwhile), it is put back.
+ */
+function reapLock(lock: string, holder: ClaimOwner, owner: ClaimOwner): void {
+  const tomb = `${lock}.${owner.run}.${owner.pid}.reaped`;
+  try {
+    renameSync(lock, tomb);
+  } catch (error) {
+    if (isCode(error, "ENOENT")) return;
+    throw error;
+  }
+  if (!sameOwner(readOwner(tomb), holder)) {
+    try {
+      linkSync(tomb, lock);
+    } catch (error) {
+      if (!isCode(error, "EEXIST")) throw error;
+    }
+  }
+  rmSync(tomb, { force: true });
+}
+
+/**
+ * Takes over every claim whose runner is gone (a run killed before its teardown), so none is left for good, and removes
+ * what such a run left mid-claim: its drafts (named after it, so only it ever writes one) and a takeover lock it held.
+ */
 function sweep(dir: string, owner: ClaimOwner): void {
   for (const name of readdirSync(dir)) {
-    if (!/^port-\d+$/u.test(name)) continue;
     const file = join(dir, name);
     const holder = readOwner(file);
-    if (holder !== undefined && gone(holder)) takeOver(file, holder, owner);
+    if (holder === undefined || !gone(holder)) continue;
+    if (/^port-\d+$/u.test(name)) takeOver(file, holder, owner);
+    else if (/^port-\d+\.takeover$/u.test(name)) reapLock(file, holder, owner);
+    else if (name.endsWith(`.${holder.run}.${holder.pid}.draft`)) rmSync(file, { force: true });
   }
 }
 
