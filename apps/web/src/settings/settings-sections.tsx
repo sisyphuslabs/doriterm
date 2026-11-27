@@ -1,16 +1,39 @@
 import { Bell, Keyboard, Mic, MonitorSmartphone, Network, Palette, PanelBottom, SquareTerminal } from "lucide-react";
 
-/** Settings' sections in the order the navigation lists them (DESIGN.md (d)). */
+/**
+ * Settings' sections in the order the navigation lists them, under the caption of their group (DESIGN.md (d), #2914):
+ * the phone's first screen and the side navigation draw the same groups. `tile` colours the icon's tile under a coarse
+ * pointer; a fine one draws the icon bare, as the Herdr desktop app does.
+ */
 export const SECTIONS = [
-  { id: "device", label: "This device", icon: <MonitorSmartphone /> },
-  { id: "machines", label: "Machines", icon: <Network /> },
-  { id: "terminal", label: "Terminal", icon: <SquareTerminal /> },
-  { id: "keyboard", label: "Keyboard", icon: <PanelBottom /> },
-  { id: "notifications", label: "Notifications", icon: <Bell /> },
-  { id: "appearance", label: "Appearance", icon: <Palette /> },
-  { id: "keybindings", label: "Keybindings", icon: <Keyboard /> },
-  { id: "voice", label: "Voice input", icon: <Mic /> },
+  {
+    id: "device",
+    label: "This device",
+    group: "Connection",
+    tile: "coarse:bg-(--avatar-blue)",
+    icon: <MonitorSmartphone />,
+  },
+  { id: "machines", label: "Machines", group: "Connection", tile: "coarse:bg-(--avatar-green)", icon: <Network /> },
+  { id: "appearance", label: "Appearance", group: "Look", tile: "coarse:bg-(--avatar-violet)", icon: <Palette /> },
+  { id: "terminal", label: "Terminal", group: "Look", tile: "coarse:bg-dim", icon: <SquareTerminal /> },
+  { id: "keyboard", label: "Keyboard", group: "Input", tile: "coarse:bg-(--avatar-orange)", icon: <PanelBottom /> },
+  { id: "keybindings", label: "Keybindings", group: "Input", tile: "coarse:bg-dim", icon: <Keyboard /> },
+  { id: "voice", label: "Voice input", group: "Input", tile: "coarse:bg-(--avatar-pink)", icon: <Mic /> },
+  { id: "notifications", label: "Notifications", group: "More", tile: "coarse:bg-(--avatar-teal)", icon: <Bell /> },
 ] as const;
+
+/** The sections as the navigation groups them, groups in order, each with its sections in order. */
+export function groupSections<Entry extends { readonly group: string }>(
+  entries: readonly Entry[],
+): readonly { readonly group: string; readonly entries: readonly Entry[] }[] {
+  const groups: { group: string; entries: Entry[] }[] = [];
+  for (const entry of entries) {
+    const last = groups.at(-1);
+    if (last?.group === entry.group) last.entries.push(entry);
+    else groups.push({ group: entry.group, entries: [entry] });
+  }
+  return groups;
+}
 
 export type SettingsSection = (typeof SECTIONS)[number];
 export type SectionId = SettingsSection["id"];
@@ -27,11 +50,18 @@ const GROUPS: Readonly<Record<string, { readonly section: SectionId; readonly gr
   connect: { section: "machines", group: CONNECT_GROUP },
 };
 
-/** The section a link's hash asks for, and the group in it to show, else the one Settings always opens on. */
-export function sectionFromLink(hash: string): { readonly section: SectionId; readonly group?: string } {
+/**
+ * The section a link's hash asks for, and the group in it to show, else the one Settings always opens on. `named` says
+ * the link named one: a phone opens that section's page, and otherwise its list of sections.
+ */
+export function sectionFromLink(hash: string): {
+  readonly section: SectionId;
+  readonly group?: string;
+  readonly named: boolean;
+} {
   const asked = hash.replace(/^#/, "");
   const group = Object.hasOwn(GROUPS, asked) ? GROUPS[asked] : undefined;
-  if (group !== undefined) return group;
+  if (group !== undefined) return { ...group, named: true };
   const section = SECTIONS.find((entry) => entry.id === asked);
-  return { section: section === undefined ? "device" : section.id };
+  return section === undefined ? { section: "device", named: false } : { section: section.id, named: true };
 }

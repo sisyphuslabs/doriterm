@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { phoneContext, routeOnlyRelay, savedMembership, enterInvite } from "./browser-mesh-page.ts";
 import { startFakeRelayHost } from "./relay-route.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -29,6 +30,8 @@ test("Safari hands an invite to an empty app partition, compares both screens, t
     await host.answerJoin(first.nonce, first.code, true);
     await expect(tab).toHaveURL(/\/settings#machines$/);
     await tab.goto("/settings");
+    // A phone opens on the list of sections; joining from the app is on This device (#2914).
+    await openSettingsSection(tab, "This device");
     await tab.getByRole("button", { name: "Join in the home-screen app", exact: true }).click();
     await expect(tab.getByRole("link", { name: "Open invite", exact: true })).toBeVisible();
     let invite: string;

@@ -3,6 +3,7 @@
 import { STARTS } from "./layout-screens.ts";
 import { LAYOUT_CORE } from "./layout-seed.ts";
 import { expect, test } from "./fixtures.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -63,7 +64,7 @@ test("a long Korean host name wraps between words, and its icon sits on the firs
   );
   const page = await context.newPage();
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "This device" }).click();
+  await openSettingsSection(page, "This device");
   // The workspace stays mounted and hidden under Settings (router.tsx), and its own machine header and status bar name
   // the host as well: they are in the page at 390 but never visible, so the row holds the one name a reader sees (#836).
   const paired = page.locator("section").filter({ has: page.getByRole("heading", { name: "Host", exact: true }) });

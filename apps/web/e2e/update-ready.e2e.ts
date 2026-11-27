@@ -82,7 +82,10 @@ test("a waiting service worker lights the Settings dot, and Reload to update app
 test.describe("on the phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test("a waiting service worker lights the dot on the tab bar's Settings (#422)", async ({ page, baseURL }) => {
+  test("a waiting service worker lights the dot on the tab bar's Settings (#422), and Settings opens on Reload to update (#2914)", async ({
+    page,
+    baseURL,
+  }) => {
     const site = await deployableSite(baseURL ?? "");
     try {
       await page.goto(site.url);
@@ -97,6 +100,12 @@ test.describe("on the phone", () => {
       });
       await expect(settings).toHaveAccessibleName("Settings, update ready", { timeout: 20_000 });
       await expect(settings.locator('[data-slot="settings-dot"]')).toHaveCount(1);
+
+      // The phone's first Settings screen, its list of sections, carries the update: no section has to be opened first.
+      await settings.click();
+      await expect(page).toHaveURL(/\/settings$/);
+      await expect(page.locator("[data-settings-list]")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Reload to update" })).toBeVisible();
     } finally {
       await site.close();
     }

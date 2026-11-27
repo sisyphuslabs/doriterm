@@ -1,6 +1,13 @@
 import { endAgent, startShell } from "./agents.ts";
-import { SHOTS } from "./capture-shots.ts";
+import { SHOTS, type Shot } from "./capture-shots.ts";
 import { expect, test } from "./fixtures.ts";
+
+/** The shot a test ran: its cleanup runs after the test whatever the outcome, so a later spec starts as the host did. */
+let ran: Shot | undefined;
+test.afterEach(() => {
+  ran?.cleanup?.();
+  ran = undefined;
+});
 
 test.use({ serviceWorkers: "block" });
 
@@ -29,6 +36,7 @@ for (const width of [390, 1440] as const) {
           }, theme);
           const shot = SHOTS.find((entry) => entry.name === name);
           if (shot === undefined) throw new Error(`capture ${name} is missing`);
+          ran = shot;
           await shot.run(page, width === 390 ? "390" : "1440");
           await page.mouse.move(0, 0);
           await page.evaluate(() => document.fonts.ready);
@@ -69,6 +77,7 @@ test.describe("1440 day reading paragraphs", () => {
     test(`${name} paragraphs are at least 14 px`, async ({ page }) => {
       const shot = SHOTS.find((entry) => entry.name === name);
       if (shot === undefined) throw new Error(`capture ${name} is missing`);
+      ran = shot;
       await shot.run(page, "1440");
       await page.mouse.move(0, 0);
       await page.evaluate(() => document.fonts.ready);
@@ -106,6 +115,7 @@ test.describe("1440 day reading paragraphs", () => {
     test(`${name} notice text is at least 14 px`, async ({ page }) => {
       const shot = SHOTS.find((entry) => entry.name === name);
       if (shot === undefined) throw new Error(`capture ${name} is missing`);
+      ran = shot;
       if (shot.storageFails === true) {
         await page.addInitScript(() => {
           IDBFactory.prototype.open = () => {

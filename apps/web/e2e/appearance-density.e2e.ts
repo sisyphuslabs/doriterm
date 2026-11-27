@@ -1,5 +1,6 @@
 import { devices, type Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 
@@ -84,7 +85,7 @@ test.describe("touch", () => {
   ] as const) {
     test(`${density} keeps touch rows at ${height} px, never under the 44 px target`, async ({ page }) => {
       await page.goto("/settings");
-      await page.getByRole("tab", { name: "Appearance" }).click();
+      await openSettingsSection(page, "Appearance");
       await page.getByLabel("Density").getByRole("button", { name: density }).click();
       await expect(page.getByLabel("Density").getByRole("button", { name: density })).toHaveAttribute(
         "aria-pressed",

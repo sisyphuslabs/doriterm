@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 import { bandOutside, ephemeralRange, IANA_DYNAMIC, parsePortRange } from "./ephemeral-range.ts";
 import { HOST_BLOCK } from "./port-block.ts";
-import { ensureRunPorts, parseTried, portsToProbe } from "./run-ports.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ownerFor, releaseClaims } from "./port-claims.ts";
+import { E2E_RUN_ID_ENV, ensureRunPorts, parseTried, portsToProbe } from "./run-ports.ts";
 
 const NAMES = ["E2E_HOST_PORT", "E2E_WEB_PORT", "E2E_LAYOUT_PORT"] as const;
 
@@ -20,7 +24,41 @@ test("the run's ports are none the OS hands out by itself", () => {
     ).toEqual([]);
     expect(new Set(ports).size).toBe(HOST_BLOCK + 2);
   } finally {
+    releaseClaims(ownerFor(process.env[E2E_RUN_ID_ENV] ?? ""));
     NAMES.forEach((name, index) => {
+      const value = saved[index];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    });
+  }
+});
+
+/** Runs `ensureRunPorts` as the run `run` with no ports of its own yet, and returns the host port it was given. */
+function pickAs(run: string, options: Parameters<typeof ensureRunPorts>[0]): number {
+  for (const name of NAMES) delete process.env[name];
+  process.env[E2E_RUN_ID_ENV] = run;
+  ensureRunPorts(options);
+  return Number(process.env["E2E_HOST_PORT"]);
+}
+
+// Two runs whose pickers land on the same free block, as two runs started together can (#2943): the second may not be
+// handed the first's ports while the first lives. A band one block wide makes them land on it every time.
+test("a second run that picks the block a live run holds is refused, naming that run, and never handed its ports", () => {
+  const saved = [...NAMES, E2E_RUN_ID_ENV].map((name) => process.env[name]);
+  const claims = mkdtempSync(join(tmpdir(), "run-ports-claims-"));
+  try {
+    // A free block anywhere, then a band exactly that wide.
+    const first = pickAs("first", { claims });
+    releaseClaims(ownerFor("first"), claims);
+    const band = { first, last: first + HOST_BLOCK + 1 };
+    expect(pickAs("a", { band, claims })).toBe(first);
+    expect(() => pickAs("b", { band, claims, picks: 1 })).toThrow(/held by run a \(pid \d+/u);
+    releaseClaims(ownerFor("a"), claims);
+    expect(pickAs("c", { band, claims })).toBe(first);
+  } finally {
+    releaseClaims(ownerFor("c"), claims);
+    rmSync(claims, { recursive: true, force: true });
+    [...NAMES, E2E_RUN_ID_ENV].forEach((name, index) => {
       const value = saved[index];
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;

@@ -61,7 +61,7 @@ test("a fresh browser pairs with the desktop app through the hosted relay and ty
   await page
     .getByRole("navigation", { name: "Settings", exact: true })
     .getByRole("button", { name: "Machines", exact: true })
-    .or(page.getByRole("tab", { name: "Machines", exact: true }))
+    .or(page.locator("[data-settings-list]").getByRole("button", { name: "Machines", exact: true }))
     .filter({ visible: true })
     .click();
   await page.getByRole("button", { name: "Pair a device", exact: true }).click();
