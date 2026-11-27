@@ -28,6 +28,15 @@ member. Use a new invite to regain access and create a new credential when setti
 cannot start a session, but a person with access to the passkey and locator can attempt readmission; the sole-client
 unattended case still applies. Backing up the vault key is outside this protocol.
 
+## Without a key restore (S2, M14)
+
+When the passkey has no `largeBlob`, or a holder answers `invite` (an older member that cannot read or approve a
+`readmit`, M12), there is no key restore. The fallback is the existing one: a member invites the new device, and a
+member removes the old one with the existing revoke. Holders never publish the attended form (ii) of `readmit` (no
+`oldSig`); the view keeps M14's rule for it (valid only when approved by a current client other than `old`, and
+never by a machine key or by `old` itself), so a record of that form from any source is checked the same way. This
+keeps one invariant for every `readmit` a holder writes: it carries `oldSig`.
+
 ## Relay rollout gate
 
 The client requires `/v1/restore/<hostId>` rather than an ordinary member socket. The relay must independently

@@ -42,7 +42,9 @@ async function recoverCard(
       return { mesh: json["mesh"], seed };
     }),
   ).catch(() => {
-    throw new Error("No current holder could open this passkey’s restore data. Ask a member for an invite.");
+    throw new Error(
+      "No current holder could open this passkey’s restore data. Ask a member for an invite, and to remove the old device.",
+    );
   });
 }
 
@@ -110,7 +112,7 @@ function ready(
       const { json } = await anonymousRestore(relayUrl, holder, () => ({ t: "readmit", lookup, proof }));
       if (object(json) && json["t"] === "waiting") return "waiting";
       if (!object(json) || json["t"] !== "admitted" || !signed(json["record"]))
-        throw new Error("The member was not readmitted. Ask a member for an invite.");
+        throw new Error("The member was not readmitted. Ask a member for an invite, and to remove the old device.");
       const verified = mergeAtDoor(records, [], [json["record"]]);
       const view = viewOf(verified.stored);
       if (
@@ -118,7 +120,9 @@ function ready(
         view.members.has(proof.old) ||
         view.noise.get(proof.signPub) !== proof.noise
       )
-        throw new Error("The new device was not admitted by the verified roster. Ask a member for an invite.");
+        throw new Error(
+          "The new device was not admitted by the verified roster. Ask a member for an invite, and to remove the old device.",
+        );
       const inviter = holderSigningKey(verified.stored, holder);
       if (inviter === undefined) throw new Error("The holder left the mesh during readmission.");
       await install(verified.stored, { ...holder, mesh, inviter }, relayUrl, fresh, proof);

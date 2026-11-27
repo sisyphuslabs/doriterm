@@ -27,7 +27,7 @@ export function RestoreEntry() {
       }
     } catch (error) {
       setState(prepared === undefined ? "idle" : "waiting");
-      setMessage(error instanceof Error ? error.message : "Ask a member for an invite.");
+      setMessage(error instanceof Error ? error.message : "Ask a member for an invite, and to remove the old device.");
     }
   };
 

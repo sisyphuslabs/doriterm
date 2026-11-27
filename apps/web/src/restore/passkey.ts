@@ -96,7 +96,9 @@ export class Passkey {
     const result = await this.#get({ prf: prf(), largeBlob: { read: true } });
     const blob = result.extensions.largeBlob?.blob;
     if (blob === undefined)
-      throw new RestorePasskeyError("This passkey has no restore locator. Ask a member for an invite.");
+      throw new RestorePasskeyError(
+        "This passkey has no restore locator. Ask a member for an invite, and to remove the old device.",
+      );
     return { credential: ref(result), p0: this.#readPrf(result), bytes: bytesOf(blob) };
   }
 
