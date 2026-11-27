@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
+import { showAges } from "./sidebar-measure.ts";
 
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 // Each case goes through Settings, types a printf and takes a DPR 2 full-page screenshot: no single step hangs, but on a
@@ -20,6 +21,8 @@ for (const colorScheme of ["light", "dark"] as const) {
   for (const width of [1440, 390]) {
     test(`configured Nerd Font at 16 points, ${colorScheme} ${width}`, async ({ page }, testInfo) => {
       await page.emulateMedia({ colorScheme });
+      // The phone list finds the row by its age, which a row younger than a minute does not draw (#2864).
+      await showAges(page);
       await page.goto("/");
       const opened = await openNewTerminal(page);
       const address = (await opened.getAttribute("data-terminal")) ?? "";

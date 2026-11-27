@@ -29,7 +29,7 @@ function startAppAgent(name: string, state: string, app: string): string {
   return String(started.address);
 }
 
-test("an agent reporting app=claude shows the Claude mark in its sidebar row and tab; plain agents show Agent (#2746)", async ({
+test("an agent reporting app=claude shows the Claude mark in its sidebar row and tab; a plain agent draws no mark (#2746, #2864)", async ({
   page,
 }) => {
   const claude = startAppAgent("icon-claude", "working", "claude");
@@ -43,7 +43,9 @@ test("an agent reporting app=claude shows the Claude mark in its sidebar row and
   await expect(plainRow).toBeVisible({ timeout: 20_000 });
 
   await expect(claudeRow.getByRole("img", { name: "Claude" })).toBeVisible();
-  await expect(plainRow.getByRole("img", { name: "Agent" })).toBeVisible();
+  // Only a product has a mark: the generic agent glyph is not drawn (#2864, decision E2).
+  await expect(plainRow.locator("[data-agent-mark]")).toHaveCount(0);
+  await expect(plainRow.getByRole("img", { name: "Agent" })).toHaveCount(0);
 
   await claudeRow.click();
   const tab = await tabOf(page, claude);

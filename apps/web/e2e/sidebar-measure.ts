@@ -69,3 +69,23 @@ export const visibleCharacters = (part: Locator, title: string) =>
     const drawn = rights.filter((right) => right <= end + 1 / 64).length;
     return { visible: Math.max(0, drawn - before), total: [...segmenter.segment(wanted)].length };
   }, title);
+
+/**
+ * A row younger than a minute draws no age (#2864); a page whose Date runs 15 minutes ahead gives every fresh row one to
+ * fit. Only Date moves: Playwright's clock would also fake timers and performance marks, which the refit traces read.
+ */
+export const showAges = async (page: Page): Promise<void> => {
+  await page.addInitScript((ahead: number) => {
+    const Real = Date;
+    class Ahead extends Real {
+      constructor(...args: ConstructorParameters<DateConstructor> | []) {
+        if (args.length === 0) super(Real.now() + ahead);
+        else super(...(args as ConstructorParameters<DateConstructor>));
+      }
+      static override now(): number {
+        return Real.now() + ahead;
+      }
+    }
+    globalThis.Date = Ahead as DateConstructor;
+  }, 15 * 60_000);
+};

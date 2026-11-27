@@ -61,7 +61,9 @@ export function InputBox({ onSend, draftKey, fieldRef, accessory, className, sty
       element.blur();
       element.focus();
     }
-    const line = element?.value ?? text;
+    // Send ends the line once: line breaks left at the end of the field are not sent as Returns of their own, which would
+    // answer the next prompt (#2870).
+    const line = (element?.value ?? text).replace(/[\r\n]+$/, "");
     // With nothing written Enter is still Enter: it presses Return alone, as the Herdr app's card does. A line of spaces is
     // sent as written; a pager or a prompt reads them.
     onSend(line);
