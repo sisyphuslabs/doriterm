@@ -36,6 +36,13 @@ export const SYNCHRONIZED_UNPACED_MS = 1000;
  */
 export const SYNCHRONIZED_HOLD_CAP_MS = 20_000;
 
+/**
+ * A pacer timer that runs later than this was held up by a page busy with other work, longer than any delay a page doing
+ * nothing else adds to a timer (clamping, frame alignment). The output that arrived meanwhile is queued behind it, unseen,
+ * so its window starts again rather than being read as quiet (#2895).
+ */
+export const LATE_TIMER_MS = 50;
+
 /** Milliseconds from some fixed point, for how long an update has been open. */
 export type Clock = () => number;
 
@@ -351,12 +358,14 @@ export class OutputPacer {
   }
 
   /**
-   * Runs `then` `ms` from now, or `again` when the timer runs more than `ms` late: a page that ran nothing for that long
-   * (a starved tab, a phone waking) saw no output in it, which says nothing about whether the replay stopped coming.
+   * Runs `then` `ms` from now, or `again` when the timer runs more than {@link LATE_TIMER_MS} late: a page that ran
+   * nothing else for that long (busy writing a batch, a starved tab, a phone waking) did not see the output that came
+   * meanwhile, which is queued behind this timer, so its silence says nothing about whether the output stopped coming
+   * (#2895).
    */
   #onTime(ms: number, then: () => void, again: () => void): () => void {
     const due = this.#clock() + ms;
-    return this.#timer(() => (this.#clock() - due > ms ? again() : then()), ms);
+    return this.#timer(() => (this.#clock() - due > LATE_TIMER_MS ? again() : then()), ms);
   }
 
   /**
