@@ -13,17 +13,23 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { hostProfile, profileStateDir } from "./profile.ts";
 import { createPrivateFile, openPrivateStateDir, readPrivateFile, replacePrivateFile } from "./win32/private-state.ts";
 
 /** Windows keeps private state with ACLs, not mode bits (#406); every other platform keeps the POSIX rules. */
 const WINDOWS = process.platform === "win32";
 
-/** $DORIFACE_HOST_STATE_DIR, else $XDG_STATE_HOME/doriface-host, else ~/.local/state/doriface-host. */
+/**
+ * $DORIFACE_HOST_STATE_DIR, else the $DORITERM_PROFILE host's `<root>/doriface-host-profiles/<name>`, else
+ * `<root>/doriface-host`, where `<root>` is $XDG_STATE_HOME, else ~/.local/state.
+ */
 export function defaultStateDir(env: Readonly<Record<string, string | undefined>> = process.env): string {
   const explicit = env["DORIFACE_HOST_STATE_DIR"];
   if (explicit !== undefined && explicit !== "") return explicit;
   const xdg = env["XDG_STATE_HOME"];
-  return join(xdg !== undefined && xdg !== "" ? xdg : join(homedir(), ".local", "state"), "doriface-host");
+  const root = xdg !== undefined && xdg !== "" ? xdg : join(homedir(), ".local", "state");
+  const profile = hostProfile(env);
+  return profile === undefined ? join(root, "doriface-host") : profileStateDir(root, profile);
 }
 
 /**
