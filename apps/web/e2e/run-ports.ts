@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { bandOutside, ephemeralRange } from "./ephemeral-range.ts";
 import { HOST_BLOCK, PORT_TRY_LIMIT } from "./port-block.ts";
+import { claimBlock } from "./port-claims.ts";
 import { describePortFailure, listPortHolders, type TriedBlock } from "./port-holders.ts";
 
 const NAMES = ["E2E_HOST_PORT", "E2E_WEB_PORT", "E2E_LAYOUT_PORT"] as const;
@@ -91,23 +92,31 @@ export function ensureRunPorts(): void {
   process.env[E2E_RUN_ID_ENV] ??= crypto.randomUUID();
   if (NAMES.every((name) => process.env[name] !== undefined)) return;
   const band = bandOutside(ephemeralRange(), HOST_BLOCK + 2);
-  const picked = spawnSync(process.execPath, ["-e", PICK], {
-    env: {
-      ...process.env,
-      E2E_HOST_BLOCK: String(HOST_BLOCK),
-      E2E_PORT_LOW: String(band.first),
-      E2E_PORT_HIGH: String(band.last),
-      E2E_PORT_TRIES: String(PORT_TRY_LIMIT),
-    },
-    encoding: "utf8",
-  });
-  if (picked.status !== 0) {
-    const tried = parseTried(picked.stdout);
-    throw new Error(
-      `could not find free ports for this e2e run: ${describePortFailure(tried, listPortHolders(portsToProbe(tried)))}${picked.stderr === "" ? "" : ` (${picked.stderr})`}`,
-    );
+  const owner = { run: process.env[E2E_RUN_ID_ENV], pid: process.pid };
+  // A block free when the picker checked it is claimed before it is used: another run picking at the same moment may
+  // have found the same ports free (#2943). A block another run claimed first is skipped for a fresh pick.
+  let ports: { host: number; web: number; layout: number } | undefined;
+  for (let tries = 0; tries < PORT_TRY_LIMIT && ports === undefined; tries++) {
+    const picked = spawnSync(process.execPath, ["-e", PICK], {
+      env: {
+        ...process.env,
+        E2E_HOST_BLOCK: String(HOST_BLOCK),
+        E2E_PORT_LOW: String(band.first),
+        E2E_PORT_HIGH: String(band.last),
+        E2E_PORT_TRIES: String(PORT_TRY_LIMIT),
+      },
+      encoding: "utf8",
+    });
+    if (picked.status !== 0) {
+      const tried = parseTried(picked.stdout);
+      throw new Error(
+        `could not find free ports for this e2e run: ${describePortFailure(tried, listPortHolders(portsToProbe(tried)))}${picked.stderr === "" ? "" : ` (${picked.stderr})`}`,
+      );
+    }
+    const block = JSON.parse(picked.stdout) as { host: number; web: number; layout: number };
+    if (claimBlock(block.host, HOST_BLOCK + 2, owner)) ports = block;
   }
-  const ports = JSON.parse(picked.stdout) as { host: number; web: number; layout: number };
+  if (ports === undefined) throw new Error(`could not claim free ports for this e2e run in ${PORT_TRY_LIMIT} picks`);
   process.env["E2E_HOST_PORT"] = String(ports.host);
   process.env["E2E_WEB_PORT"] = String(ports.web);
   process.env["E2E_LAYOUT_PORT"] = String(ports.layout);

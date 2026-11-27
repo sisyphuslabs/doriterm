@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { bandOutside, ephemeralRange, IANA_DYNAMIC, parsePortRange } from "./ephemeral-range.ts";
 import { HOST_BLOCK } from "./port-block.ts";
-import { ensureRunPorts, parseTried, portsToProbe } from "./run-ports.ts";
+import { releaseRun } from "./port-claims.ts";
+import { E2E_RUN_ID_ENV, ensureRunPorts, parseTried, portsToProbe } from "./run-ports.ts";
 
 const NAMES = ["E2E_HOST_PORT", "E2E_WEB_PORT", "E2E_LAYOUT_PORT"] as const;
 
@@ -20,6 +21,7 @@ test("the run's ports are none the OS hands out by itself", () => {
     ).toEqual([]);
     expect(new Set(ports).size).toBe(HOST_BLOCK + 2);
   } finally {
+    releaseRun(process.env[E2E_RUN_ID_ENV] ?? "");
     NAMES.forEach((name, index) => {
       const value = saved[index];
       if (value === undefined) delete process.env[name];

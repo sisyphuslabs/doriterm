@@ -9,6 +9,7 @@ import { dirname } from "node:path";
 import { sweepRunDir } from "@doriface/host/testing/run-dir";
 import type { FullConfig } from "@playwright/test";
 import { E2E_LAYOUT_ENV, E2E_LAYOUT_LEFT, E2E_LAYOUT_STOPPED, E2E_RUN_ID, hostEnvOf, hostPortOf } from "./config.ts";
+import { releaseRun } from "./port-claims.ts";
 import { readSavedEnv, readSavedEnvIfWhole } from "./saved-env.ts";
 
 const STOP_WITHIN_MS = 30_000;
@@ -180,6 +181,8 @@ export default async function leftoverHosts(config: FullConfig, options: LayoutS
   // Last, once every host has stopped: any hc process still holding a file under the run's dir (a spec's own scratch
   // session, a core launchd started on macOS) outlived what started it (#470).
   const swept = await sweepRunDir();
+  // Every server of the run is down: its ports go back for the next run to claim (#2943).
+  releaseRun(E2E_RUN_ID);
   const failures: string[] = [];
   if (left.length > 0) failures.push(`e2e hosts outlived their workers (now stopped): ${left.join(", ")}`);
   failures.push(...layoutStopFailures(layout));
