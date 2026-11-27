@@ -307,6 +307,7 @@ export function TerminalView(props: TerminalViewProps) {
         onResize={(cols, rows) => {
           // The core reflows its rows to the new width, with no output: the cells a find read have moved.
           written.current += 1;
+          pacer.resized();
           hostSize.resize(stream.current, cols, rows);
         }}
         onFocus={(event) => {

@@ -50,6 +50,8 @@ interface Pending {
   readonly bytes: Uint8Array;
   /** Hands the stream's credit back once these bytes are written (`TerminalStream.consumed`). */
   readonly credit: (bytes: number) => void;
+  /** Arrived within a round trip of the view's resize: the shell answering it (a prompt redrawn on SIGWINCH, #2922). */
+  readonly answer: boolean;
 }
 
 /** Runs a callback on the next animation frame; returns how to cancel it. */
@@ -154,6 +156,8 @@ export class OutputPacer {
   #replay: Replay | null = null;
   /** When output last arrived, by {@link Clock}: a late timer is read as it is once none has come for the hold's cap. */
   #lastBytes = 0;
+  /** When the view last resized, by {@link Clock}. */
+  #resizedAt = Number.NEGATIVE_INFINITY;
   #catchUp: CatchUp | null = null;
   readonly #written = new Set<() => void>();
 
@@ -171,10 +175,13 @@ export class OutputPacer {
 
   push(bytes: Uint8Array, credit: (bytes: number) => void = () => undefined): void {
     if (bytes.byteLength === 0) return;
-    this.#queue.push({ bytes, credit });
-    this.#lastBytes = this.#clock();
+    const now = this.#clock();
+    const answer = now - this.#resizedAt <= 1.5 * (this.#srtt() ?? 0) + 50;
+    this.#queue.push({ bytes, credit, answer });
+    this.#lastBytes = now;
     if (this.#replay !== null) this.#quietFrom(this.#replay);
-    if (this.#held !== null) this.#heldQuietFrom(this.#held);
+    // A shell's answer to a resize is not the held update still being drawn: a drag must not keep its paint held.
+    if (this.#held !== null && !answer) this.#heldQuietFrom(this.#held);
     if (this.#visible && this.#unpaced()) {
       this.#cancel?.();
       this.#cancel = null;
@@ -275,6 +282,11 @@ export class OutputPacer {
       this.#cancel = null;
       this.#flush("arrived");
     }
+  }
+
+  /** The view resized: what arrives within a round trip is the shell answering it, not output being drawn (#2922). */
+  resized(): void {
+    this.#resizedAt = this.#clock();
   }
 
   /**
@@ -450,11 +462,14 @@ export class OutputPacer {
     let size = 0;
     // Whether this batch opens, continues or ends inside a synchronized update: the update holds the paint for it.
     let synchronized = this.#update.open;
+    // Whether any of it is a program's output, not only a shell's answer to a resize (#2922).
+    let drawn = false;
     while (this.#queue.length > 0) {
       const unpaced = this.#unpaced();
       if (!unpaced && size >= limit) break;
       const head = this.#queue[0];
       if (head === undefined) break;
+      drawn ||= !head.answer;
       const room = unpaced ? head.bytes.byteLength : Math.min(head.bytes.byteLength, limit - size);
       // Read up to where an open update ends: what follows it is paced again.
       const take = this.#update.advance(head.bytes.subarray(0, room));
@@ -475,7 +490,7 @@ export class OutputPacer {
       credits.push([head.credit, take]);
       size += take;
       if (take === head.bytes.byteLength) this.#queue.shift();
-      else this.#queue[0] = { bytes: head.bytes.subarray(take), credit: head.credit };
+      else this.#queue[0] = { ...head, bytes: head.bytes.subarray(take) };
     }
     if (size === 0) return 0;
     const batch = parts.length === 1 ? (parts[0] ?? new Uint8Array()) : concat(parts, size);
@@ -487,7 +502,7 @@ export class OutputPacer {
     if (held?.paint === true) {
       held.written += size;
       if (held.written >= REPLAY_MAX_BYTES) this.#endHeld();
-    } else if (held !== null) this.#heldQuietFrom(held);
+    } else if (held !== null && drawn) this.#heldQuietFrom(held);
     const replay = this.#replay;
     if (replay === null) return size;
     replay.written += size;
