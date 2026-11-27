@@ -43,8 +43,10 @@ export function openControl(
         meshJoined?.();
         return joined;
       }
-      case "mesh-status":
-        return (await meshStatus?.()) ?? null;
+      case "mesh-status": {
+        const unreadable = e2ee.mesh.unreadable();
+        return (await meshStatus?.()) ?? (unreadable === undefined ? null : { unreadable });
+      }
       case "mesh-revoke":
         return e2ee.meshCommands.revoke(request);
       case "mesh-rename":

@@ -121,6 +121,9 @@ async function inviterOf(options: JoinOptions): Promise<Inviter> {
  * host's own open mesh offer before it dials (#1301).
  */
 export async function joinMesh(options: JoinOptions): Promise<Joined> {
+  // Before any network step: a join over a mesh.json nobody can read would be admitted and then fail here (#2951).
+  const unreadable = new MeshStore(options.stateDir, { log: options.log }).unreadable();
+  if (unreadable !== undefined) throw new JoinRefused(unreadable);
   const invite = await refuseEarly(options);
   const inviter = await inviterOf(options);
   if (inviter.hostId === options.identity.hostId) {

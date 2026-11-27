@@ -56,6 +56,11 @@ export function e2eeDeps(
     sessions,
     policy,
     live: { count: (replacing?: string) => sessions.count(replacing) },
+    /** A state file changed on disk, whoever wrote it: revoked sessions close, and a mesh.json repaired by hand syncs. */
+    stateChanged: () => {
+      sessions.closeRevoked();
+      meshParts.sync.changed();
+    },
     ...meshParts,
     rekeyInterval: options.rekeyInterval,
     log: options.log,

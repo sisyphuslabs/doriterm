@@ -150,6 +150,8 @@ export class HostMesh {
    * admitted without asking.
    */
   async pair(auto: boolean): Promise<PendingPairing> {
+    const unreadable = this.#options.mesh.unreadable();
+    if (unreadable !== undefined) throw new JoinRefused(unreadable);
     this.pending.expireAll();
     this.resumes.clear();
     const offer = await this.#options.slots.open(true);

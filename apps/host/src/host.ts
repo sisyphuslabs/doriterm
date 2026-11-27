@@ -99,7 +99,7 @@ async function serve(
   if (e2ee !== undefined && stateDir !== undefined)
     started(
       "revocation watch",
-      watchRevocations(stateDir, () => e2ee.sessions.closeRevoked(), options.log),
+      watchRevocations(stateDir, () => e2ee.stateChanged(), options.log),
     );
   const push =
     stateDir === undefined || e2ee === undefined
