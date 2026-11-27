@@ -686,8 +686,12 @@ jobs:
       # Ubuntu's AppArmor blocks the unprivileged user namespaces Chromium's sandbox needs; the app keeps its sandbox on.
       - name: Allow the Chromium sandbox
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # The e2e build trusts the e2e release key in place of the shipped ones (scripts/build.ts), so the hc-install spec
+      # can sign its fixture manifest; this packaged app only runs the specs and is never shipped.
       - name: Package (electron-builder --dir)
         working-directory: apps/desktop
+        env:
+          DORITERM_E2E_RELEASE_KEYS: "1"
         run: bun run pack
       # Installing and packing must not rewrite tracked files: a declared bin that is not committed executable gets chmodded.
       - name: The tree is clean after install and pack
@@ -784,9 +788,12 @@ jobs:
         if: steps.scope.outputs.match == 'true'
         working-directory: apps/desktop
         run: bun test
+      # As the Linux desktop job: the e2e build trusts the e2e release key, and this packaged app is never shipped.
       - name: Package (electron-builder --dir)
         if: steps.scope.outputs.match == 'true'
         working-directory: apps/desktop
+        env:
+          DORITERM_E2E_RELEASE_KEYS: "1"
         run: bun run pack
       # The dictation addon (apps/desktop/native, #726) was just built by pack: it is universal and loads without a prompt.
       # The slice check is scripts/universal-addon.ts, whose test runs on every pull request (#1116).

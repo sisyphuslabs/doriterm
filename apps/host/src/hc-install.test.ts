@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { releasePublicKey, signRelease } from "@doriface/crypto";
 import { join } from "node:path";
 import {
   compareHcVersions,
@@ -91,7 +92,13 @@ interface Release {
   version: string;
   sha256?: string;
   script: string;
+  /** The key the manifest is signed with; the trusted test key unless a case says otherwise. */
+  signer?: Uint8Array;
 }
+
+/** The Doriterm release key as these tests see it: installHc is told to trust only this one. */
+const releaseKey = crypto.getRandomValues(new Uint8Array(32));
+const TRUSTED = [releasePublicKey(releaseKey)];
 
 const dirs: string[] = [];
 const scratch = (name: string): string => {
@@ -141,12 +148,14 @@ beforeAll(() => {
       requests.push(url.pathname + url.search);
       const bytes = await built(release.script);
       const sha256 = release.sha256 ?? new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-      if (url.pathname === "/core/latest.json") {
-        const build = { url: `${url.origin}/core/${release.version}/hc.tar.gz`, sha256 };
-        const targets = Object.fromEntries(
-          ["linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64"].map((target) => [target, build]),
-        );
-        return Response.json({ version: release.version, generation: 1, targets });
+      const build = { url: `${url.origin}/core/${release.version}/hc.tar.gz`, sha256 };
+      const targets = Object.fromEntries(
+        ["linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64"].map((target) => [target, build]),
+      );
+      const served = JSON.stringify({ version: release.version, generation: 1, targets });
+      if (url.pathname === "/core/latest.json") return new Response(served);
+      if (url.pathname === `/core/${release.version}/manifest.json.sig`) {
+        return new Response(signRelease(new TextEncoder().encode(served), release.signer ?? releaseKey));
       }
       if (url.pathname === `/core/${release.version}/hc.tar.gz`) return new Response(bytes);
       return new Response("not found", { status: 404 });
@@ -181,7 +190,7 @@ async function cli(home: string): Promise<{ code: number; out: string; err: stri
 async function install(home: string): Promise<{ phases: HcInstallPhase[]; done: Promise<unknown> }> {
   const phases: HcInstallPhase[] = [];
   const env = { PATH: "/usr/bin:/bin", HERDR_RELEASES_URL: `http://127.0.0.1:${String(server?.port)}/` };
-  const done = installHc({ home, env, onPhase: (phase) => phases.push(phase) });
+  const done = installHc({ home, env, trustedKeys: TRUSTED, onPhase: (phase) => phases.push(phase) });
   return { phases, done };
 }
 
@@ -200,12 +209,58 @@ describe.skipIf(process.platform === "win32")("installing herdr-core from a rele
     const { phases, done } = await install(home);
     const bin = join(home, ".local", "bin");
     expect(await done).toEqual({ version: "0.1.18", path: join(bin, "herdr-core"), action: "installed" });
-    expect(phases).toEqual(["manifest", "download", "verify", "extract", "check", "install"]);
+    expect(phases).toEqual(["manifest", "signature", "download", "verify", "extract", "check", "install"]);
     expect(lstatSync(join(bin, "herdr-core")).mode & 0o777).toBe(0o755);
     expect(readFileSync(join(bin, "herdr-core"), "utf8")).toBe(hcScript("0.1.18"));
     expect(readlinkSync(join(bin, "hc"))).toBe("herdr-core");
     expect(existsSync(join(bin, "herdr-core.new"))).toBe(false);
-    expect(requests).toEqual(["/core/latest.json", "/core/0.1.18/hc.tar.gz?src=install"]);
+    expect(requests).toEqual([
+      "/core/latest.json",
+      "/core/0.1.18/manifest.json.sig",
+      "/core/0.1.18/hc.tar.gz?src=install",
+    ]);
+  });
+
+  test("a tampered archive served with its own same-origin sha256 is refused before any download: only a trusted key's signature counts", async () => {
+    release = {
+      version: "0.1.18",
+      script: hcScript("0.1.18 tampered"),
+      signer: crypto.getRandomValues(new Uint8Array(32)),
+    };
+    const home = scratch("home");
+    const { phases, done } = await install(home);
+    const error = await failure(done);
+    expect([error.phase, error.message]).toEqual([
+      "signature",
+      "the core manifest's signature is not one this host trusts; nothing was downloaded",
+    ]);
+    expect(phases).toEqual(["manifest", "signature"]);
+    expect(requests).toEqual(["/core/latest.json", "/core/0.1.18/manifest.json.sig"]);
+    expect(existsSync(join(home, ".local"))).toBe(false);
+  });
+
+  test("a latest.json whose version is not a plain version is refused before any signature or archive is fetched", async () => {
+    release = { version: "../../elsewhere", script: hcScript("0.1.18") };
+    const home = scratch("home");
+    const error = await failure((await install(home)).done);
+    expect([error.phase, error.message]).toEqual(["manifest", "the release manifest names no version"]);
+    expect(requests).toEqual(["/core/latest.json"]);
+  });
+
+  test("a signed manifest older than the herdr-core already installed is refused before any download: no rollback", async () => {
+    const home = scratch("home");
+    const bin = join(home, ".local", "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "herdr-core"), hcScript("0.1.19"), { mode: 0o755 });
+    const { phases, done } = await install(home);
+    const error = await failure(done);
+    expect([error.phase, error.message]).toEqual([
+      "manifest",
+      "herdr-core 0.1.18 is older than the installed 0.1.19; nothing was downloaded",
+    ]);
+    expect(phases).toEqual(["manifest", "signature"]);
+    expect(requests).toEqual(["/core/latest.json", "/core/0.1.18/manifest.json.sig"]);
+    expect(readFileSync(join(bin, "herdr-core"), "utf8")).toBe(hcScript("0.1.19"));
   });
 
   test("a download whose sha256 does not match is refused and nothing is installed", async () => {
@@ -216,7 +271,7 @@ describe.skipIf(process.platform === "win32")("installing herdr-core from a rele
     expect(error.phase).toBe("verify");
     expect(error.message).toStartWith("the download is damaged (checksum mismatch: expected 000");
     expect(error.message).toEndWith("nothing was installed");
-    expect(phases).toEqual(["manifest", "download", "verify"]);
+    expect(phases).toEqual(["manifest", "signature", "download", "verify"]);
     expect(existsSync(join(home, ".local"))).toBe(false);
   });
 
@@ -254,22 +309,16 @@ describe.skipIf(process.platform === "win32")("installing herdr-core from a rele
     expect(existsSync(join(old, ".local"))).toBe(false);
   });
 
-  test("doriface-host --install-hc installs it, and a checksum mismatch exits 1 with the cause and no usage", async () => {
+  test("doriface-host --install-hc trusts only the keys compiled into it: a manifest signed by any other key exits 1 with the cause and no usage", async () => {
     const home = scratch("home");
-    const bin = join(home, ".local", "bin");
-    const done = await cli(home);
-    expect(done.code).toBe(0);
-    expect(done.out).toBe(
-      `herdr-core 0.1.18 installed at ${bin}/herdr-core\nAdd ${bin} to your PATH, or pass --hc ${bin}/herdr-core.\n`,
+    const rejected = await cli(home);
+    expect(rejected.code).toBe(1);
+    expect(rejected.err).toContain("installing herdr-core: signature");
+    expect(rejected.err).toContain(
+      "doriface-host --install-hc: the core manifest's signature is not one this host trusts; nothing was downloaded",
     );
-    expect(done.err).toContain("installing herdr-core: verify");
-
-    release = { ...release, sha256: "0".repeat(64) };
-    const other = scratch("home");
-    const damaged = await cli(other);
-    expect(damaged.code).toBe(1);
-    expect(damaged.err).toContain("doriface-host --install-hc: the download is damaged (checksum mismatch");
-    expect(damaged.err).not.toContain("usage:");
-    expect(existsSync(join(other, ".local"))).toBe(false);
+    expect(rejected.err).not.toContain("usage:");
+    expect(existsSync(join(home, ".local"))).toBe(false);
+    expect(requests).toEqual(["/core/latest.json", "/core/0.1.18/manifest.json.sig"]);
   });
 });

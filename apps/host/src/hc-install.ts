@@ -1,7 +1,9 @@
 /**
- * Installs herdr-core (hc) the way its own distribution/install.sh and install.ps1 do: the release manifest, a download
- * whose sha256 must match, a `--version` run of the new binary, then a user-level install (an existing one is swapped
- * with `herdr-core update --from`, so its terminals keep running). Node APIs only: the Electron main process runs it too.
+ * Installs herdr-core (hc) from the herdr-core releases Doriterm vouched for (#2945): a release manifest whose signature
+ * by a Doriterm release key (RELEASE_PUBLIC_KEYS) is checked before anything else is read from it, a download whose
+ * sha256 must match the signed one, a `--version` run of the new binary, then a user-level install (an existing one is
+ * swapped with `herdr-core update --from`, so its terminals keep running). Node APIs only: the Electron main process
+ * runs it too.
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -9,12 +11,14 @@ import { accessSync, constants, copyFileSync, cpSync, existsSync, linkSync, syml
 import { chmod, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { RELEASE_PUBLIC_KEYS, verifyRelease } from "@doriface/crypto";
 
 // The floor and the version order are shared with the client, which checks a core it reached against the same floor.
 export { compareHcVersions, HC_VERSION_FLOOR, meetsHcFloor } from "@doriface/protocol";
 import { compareHcVersions, HC_VERSION_FLOOR, meetsHcFloor } from "@doriface/protocol";
 
-export const DEFAULT_RELEASES_URL = "https://releases.herdr.dev";
+/** Doriterm's mirror of the herdr-core releases it signed (.github/workflows/core-mirror.yml), at herdr's own paths. */
+export const DEFAULT_RELEASES_URL = "https://get.doriterm.com";
 
 export type HcTarget = "linux-x86_64" | "linux-aarch64" | "macos-x86_64" | "macos-aarch64" | "windows-x86_64";
 
@@ -28,7 +32,7 @@ export function hcTarget(platform: NodeJS.Platform, arch: string): HcTarget | un
   return undefined;
 }
 
-export type HcInstallPhase = "manifest" | "download" | "verify" | "extract" | "check" | "install";
+export type HcInstallPhase = "manifest" | "signature" | "download" | "verify" | "extract" | "check" | "install";
 
 export class HcInstallError extends Error {
   override readonly name = "HcInstallError";
@@ -71,6 +75,19 @@ export function parseHcManifest(text: string, target: HcTarget): HcRelease {
   return { version, url, sha256: sha256.toLowerCase() };
 }
 
+const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$/;
+
+/** The version an unverified manifest claims, only to locate its signature: a plain version or nothing. */
+function claimedVersion(manifest: Uint8Array): string | undefined {
+  try {
+    const version = field(JSON.parse(new TextDecoder().decode(manifest)), "version");
+    return typeof version === "string" && VERSION.test(version) ? version : undefined;
+  } catch (error) {
+    if (error instanceof SyntaxError) return undefined;
+    throw error;
+  }
+}
+
 const isExecutable = (path: string): boolean => {
   try {
     accessSync(path, constants.X_OK);
@@ -86,6 +103,8 @@ export interface HcInstallOptions {
   readonly platform?: NodeJS.Platform | undefined;
   readonly arch?: string | undefined;
   readonly onPhase?: ((phase: HcInstallPhase) => void) | undefined;
+  /** For tests: the keys a manifest's signature must be by; every caller in a shipped build leaves the compiled ones. */
+  readonly trustedKeys?: readonly string[] | undefined;
 }
 
 export interface HcInstalled {
@@ -108,7 +127,7 @@ export function hcInstallDir(
   return join(local === undefined || local === "" ? join(home, "AppData", "Local") : local, "Programs", "herdr-core");
 }
 
-/** The release server: $HERDR_RELEASES_URL (tests), else herdr's own. */
+/** The release server: $HERDR_RELEASES_URL (tests; its manifests are held to the same signature), else Doriterm's mirror. */
 export function hcReleasesUrl(env: Readonly<Record<string, string | undefined>>): string {
   const given = env["HERDR_RELEASES_URL"];
   return (given === undefined || given === "" ? DEFAULT_RELEASES_URL : given).replace(/\/+$/, "");
@@ -161,12 +180,39 @@ export async function installHc(options: HcInstallOptions): Promise<HcInstalled>
   phase("manifest");
   const pinned = env["HC_VERSION"];
   const manifestUrl = `${releases}/core/${pinned === undefined || pinned === "" ? "latest.json" : `${pinned}/manifest.json`}`;
-  const release = parseHcManifest(await (await fetchOk(manifestUrl, "manifest", "the release server")).text(), target);
+  const manifest = new Uint8Array(await (await fetchOk(manifestUrl, "manifest", "the release server")).arrayBuffer());
+
+  phase("signature");
+  // latest.json has no signature of its own: it is checked against the immutable signature of the version it names, so
+  // a cached latest.json never meets another version's signature. That version only locates the file; nothing else
+  // in the manifest is read until the signature over all of it checks out.
+  const named = pinned === undefined || pinned === "" ? claimedVersion(manifest) : pinned;
+  if (named === undefined) throw new HcInstallError("manifest", "the release manifest names no version");
+  const signatureUrl = `${releases}/core/${named}/manifest.json.sig`;
+  const signature = await (await fetchOk(signatureUrl, "signature", "the release server")).text();
+  if (!verifyRelease(manifest, signature, options.trustedKeys ?? RELEASE_PUBLIC_KEYS)) {
+    throw new HcInstallError(
+      "signature",
+      "the core manifest's signature is not one this host trusts; nothing was downloaded",
+    );
+  }
+  const release = parseHcManifest(new TextDecoder().decode(manifest), target);
   if (!meetsHcFloor(release.version)) {
     throw new HcInstallError(
       "manifest",
       `herdr-core ${release.version} is older than ${HC_VERSION_FLOOR}, which Doriterm needs`,
     );
+  }
+  // A signed but older manifest (a rolled-back latest.json) never downgrades: asked of the herdr-core already
+  // installed, before anything is downloaded, let alone run.
+  if (existsSync(installed)) {
+    const current = await run(installed, ["--version"], env).catch(() => undefined);
+    if (current?.code === 0 && compareHcVersions(release.version, current.out) < 0) {
+      throw new HcInstallError(
+        "manifest",
+        `herdr-core ${release.version} is older than the installed ${current.out.replace(/^hc /, "")}; nothing was downloaded`,
+      );
+    }
   }
 
   phase("download");
@@ -200,6 +246,8 @@ export async function installHc(options: HcInstallOptions): Promise<HcInstalled>
     // would otherwise stop the --version run below.
     if (platform === "darwin")
       await run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", unpacked], env).catch(() => undefined);
+    // Before anything from the download runs: herdr signs its macOS builds, and a test server's are not signed.
+    if (platform === "darwin" && releases === DEFAULT_RELEASES_URL) await verifyHerdrSigned(unpacked, exe, env);
 
     phase("check");
     const check = await run(fresh, ["--version"], env).catch((error: unknown) => {
@@ -215,7 +263,7 @@ export async function installHc(options: HcInstallOptions): Promise<HcInstalled>
     const bundled = join(unpacked, "Herdr Core.app", "Contents", "MacOS", "herdr-core");
     const ownUser = process.getuid?.() !== 0 && bin.startsWith(`${home}/`);
     if (platform === "darwin" && ownUser && isExecutable(bundled)) {
-      await installBundle({ bundled, installed, action, releases, env, unpacked });
+      await installBundle({ bundled, installed, action, env });
     } else if (action === "updated") {
       // Swapped the planned way, so its terminals keep running.
       const update = await run(installed, ["update", "--from", fresh], env);
@@ -267,27 +315,28 @@ interface Bundle {
   readonly bundled: string;
   readonly installed: string;
   readonly action: "installed" | "updated";
-  readonly releases: string;
   readonly env: Readonly<Record<string, string | undefined>>;
-  readonly unpacked: string;
+}
+
+const HERDR_REQUIREMENT =
+  '=identifier "dev.herdr.core" and anchor apple generic and certificate leaf[subject.OU] = "2W9652Q7QR"';
+
+/** macOS: the download's binary, and its Herdr Core.app when it has one, are signed by herdr's Apple team. */
+async function verifyHerdrSigned(
+  unpacked: string,
+  exe: string,
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<void> {
+  const app = join(unpacked, "Herdr Core.app");
+  for (const path of existsSync(app) ? [app, join(unpacked, exe)] : [join(unpacked, exe)]) {
+    // oxlint-disable-next-line no-await-in-loop -- two codesign runs, in order
+    const signed = await run("/usr/bin/codesign", ["--verify", "--strict", "-R", HERDR_REQUIREMENT, path], env);
+    if (signed.code !== 0) throw new HcInstallError("verify", `not a signed Herdr release: ${signed.out}`);
+  }
 }
 
 /** macOS: the core is its own app, Herdr Core.app, installed by the bundled binary itself (install.sh's path). */
-async function installBundle({ bundled, installed, action, releases, env, unpacked }: Bundle): Promise<void> {
-  if (action === "updated") {
-    const [old, next] = await Promise.all([run(installed, ["--version"], env), run(bundled, ["--version"], env)]);
-    if (compareHcVersions(next.out, old.out) < 0) {
-      throw new HcInstallError("install", `${next.out} is older than ${old.out}; hc update --from --force downgrades`);
-    }
-  }
-  // Only herdr's own releases are signed by herdr; a test server's are not.
-  if (releases === DEFAULT_RELEASES_URL) {
-    const requirement =
-      '=identifier "dev.herdr.core" and anchor apple generic and certificate leaf[subject.OU] = "2W9652Q7QR"';
-    const app = join(unpacked, "Herdr Core.app");
-    const signed = await run("/usr/bin/codesign", ["--verify", "--strict", "-R", requirement, app], env);
-    if (signed.code !== 0) throw new HcInstallError("verify", `not a signed Herdr release: ${signed.out}`);
-  }
+async function installBundle({ bundled, installed, action, env }: Bundle): Promise<void> {
   const done = await run(bundled, ["--hc-install-bundle", bundled, installed], env);
   if (done.code !== 0) throw new HcInstallError("install", `installing Herdr Core.app failed: ${done.out}`);
   if (action === "updated") {
