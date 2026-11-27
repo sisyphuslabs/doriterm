@@ -14,11 +14,11 @@ const TEXT_SPACING = `
 const header = (page: Page) => page.getByRole("banner");
 
 /**
- * A box read once the terminal has fitted its rows to a new size and painted them. The terminal measures its new size
- * in a frame's ResizeObserver callbacks and rebuilds its rows in an animation frame it queues then, for the next frame,
- * so the frame after the size change can still paint the rows sized for the old height (#2925). This reads after the
- * second frame from now is painted: the first frame's callback runs before that ResizeObserver, so the rebuild it
- * queues runs in the second frame, ahead of this read.
+ * Resolves once the terminal has fitted its rows to a new size and painted them, so a box read after it sees the new
+ * rows. The terminal measures its new size in a frame's ResizeObserver callbacks and rebuilds its rows in an animation
+ * frame it queues then, for the next frame, so the frame after the size change can still paint the rows sized for the
+ * old height (#2925). This resolves after the second frame from now is painted: the first frame's callback runs before
+ * that ResizeObserver, so the rebuild it queues runs in the second frame, ahead of the caller's read.
  */
 const afterRefit = (page: Page) =>
   page.evaluate(
