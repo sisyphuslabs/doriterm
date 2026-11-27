@@ -2,7 +2,16 @@ import { agentRow } from "./agents.ts";
 import { expect, test } from "./fixtures.ts";
 import { hcOn } from "./machine-switch.ts";
 import { askHost, deliverPush, heldSubscriptions, serviceWorker, subscribedKey, tapNotification } from "./push.ts";
-import { finishingAgent, openSettings, press, pushButton, pushState, pushSuite, turnOn } from "./push-suite.ts";
+import {
+  finishingAgent,
+  openSettings,
+  press,
+  pushButton,
+  pushState,
+  pushStepsDone,
+  pushSuite,
+  turnOn,
+} from "./push-suite.ts";
 
 const suite = pushSuite();
 
@@ -14,6 +23,7 @@ test("Turn on is the only thing that asks; the host then holds the subscription,
   await expect(pushState(page)).toHaveAttribute("data-push-state", "off");
   expect(await page.evaluate(() => Reflect.get(globalThis, "permissionAsks"))).toBe(0);
   await pushButton(page, "Turn on").click();
+  await pushStepsDone(page);
   await expect(pushState(page)).toHaveAttribute("data-push-state", "on");
   expect(await page.evaluate(() => Reflect.get(globalThis, "permissionAsks"))).toBe(1);
   expect(await heldSubscriptions()).toEqual([expect.objectContaining({ endpoint: service.endpoint })]);
@@ -24,6 +34,7 @@ test("Turn on is the only thing that asks; the host then holds the subscription,
   expect(tested.vapidKey).toBe(await subscribedKey(page));
 
   await pushButton(page, "Turn off").click();
+  await pushStepsDone(page);
   await expect(pushState(page)).toHaveAttribute("data-push-state", "off");
   expect(await heldSubscriptions()).toEqual([]);
   expect(await subscribedKey(page)).toBeNull();

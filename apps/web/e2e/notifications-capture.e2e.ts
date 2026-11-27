@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 import { askHost, stubPushManager, TestPushService } from "./push.ts";
-import { pushButton, openSettingsSection } from "./push-suite.ts";
+import { pushButton, openSettingsSection, pushStepsDone } from "./push-suite.ts";
 
 const OUT = join(import.meta.dirname, "../../../docs/design/app");
 const SHOTS = [
@@ -46,6 +46,8 @@ async function openSection(
   };
   await context.addInitScript(
     ([chosen, stored]) => {
+      // Turn on and Turn off record their action here, so a capture waits for it to be done (recordPushStep, #2934).
+      Reflect.set(globalThis, "__dorifacePushSteps", []);
       localStorage.setItem("doriface.appearance", JSON.stringify({ theme: chosen, custom: [] }));
       localStorage.setItem("doriface.connection", stored);
     },
@@ -81,10 +83,12 @@ test("notifications, off and on", async ({ browser }) => {
     await expect(state).toHaveAttribute("data-push-state", "off");
     await shoot(page, shot, "notifications-off");
     await pushButton(page, "Turn on").click();
+    await pushStepsDone(page);
     await expect(state).toHaveAttribute("data-push-state", "on");
     await expect(state.getByRole("switch", { name: /^Notifications from / }).first()).toBeVisible();
     await shoot(page, shot, "notifications-on");
     await pushButton(page, "Turn off").click();
+    await pushStepsDone(page);
     await expect(state).toHaveAttribute("data-push-state", "off");
     await close();
   });
