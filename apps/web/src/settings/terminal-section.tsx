@@ -51,6 +51,12 @@ function matches(def: KeyDef, query: string): boolean {
   );
 }
 
+function humanKeyLabel(def: KeyDef): string {
+  if (def.label !== undefined) return def.label;
+  const words = def.key.split("-");
+  return words.map((word, index) => (index === 0 ? `${word.charAt(0).toUpperCase()}${word.slice(1)}` : word)).join(" ");
+}
+
 function KeyRow({
   def,
   config,
@@ -67,10 +73,10 @@ function KeyRow({
     <SettingRow
       id={`terminal-${def.key}`}
       className="items-start"
-      {...(def.label === undefined ? {} : { configKey: def.key })}
+      configKey={def.key}
       title={
-        <span className="flex flex-wrap items-center gap-2 font-mono">
-          {def.label ?? def.key}
+        <span className="flex flex-wrap items-center gap-2">
+          {humanKeyLabel(def)}
           {unsupported ? <Badge>Not applied</Badge> : null}
           {def.support.level === "new-terminals" ? <Badge>New terminals</Badge> : null}
           {/* On the title's line, so the control below has the row's whole width (#2920 review); hidden, not removed,
@@ -113,6 +119,9 @@ export function TerminalSection() {
   const storageError = useTerminalConfigError();
   const [query, setQuery] = useState("");
   const shown = KEYS.filter((def) => matches(def, query));
+  const searching = query.trim() !== "";
+  const supported = searching ? shown : shown.filter((def) => def.support.level !== "unsupported");
+  const unsupportedKeys = searching ? [] : shown.filter((def) => def.support.level === "unsupported");
   return (
     <div className={sectionStackClass}>
       {storageError === null ? null : (
@@ -147,7 +156,7 @@ export function TerminalSection() {
         }
       />
       {GROUPS.map((group) => {
-        const defs = shown.filter((def) => def.group === group);
+        const defs = supported.filter((def) => def.group === group);
         if (defs.length === 0) return null;
         return (
           <Subgroup key={group} id={`terminal-group-${group}`} title={GROUP_LABEL[group]}>
@@ -157,6 +166,20 @@ export function TerminalSection() {
           </Subgroup>
         );
       })}
+      {unsupportedKeys.length > 0 ? (
+        <details className="group rounded-lg border border-border bg-surface/40">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-muted-foreground select-none [&::-webkit-details-marker]:hidden">
+            <span>Unsupported Ghostty keys ({unsupportedKeys.length})</span>
+            <span className="text-xs group-open:hidden">Show</span>
+            <span className="hidden text-xs group-open:inline">Hide</span>
+          </summary>
+          <div className="border-t border-border px-4">
+            {unsupportedKeys.map((def) => (
+              <KeyRow key={def.key} def={def} config={config} readOnly={storageError !== null} />
+            ))}
+          </div>
+        </details>
+      ) : null}
       {shown.length === 0 ? <p className="text-prose text-muted-foreground">No setting matches “{query}”.</p> : null}
     </div>
   );

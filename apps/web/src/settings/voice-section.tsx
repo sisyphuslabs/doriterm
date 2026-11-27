@@ -67,11 +67,16 @@ export function VoiceSection() {
       ))}
     </Menu>
   );
+  const engineDescription =
+    native !== null && settings.engine !== "soniox"
+      ? native.unavailableReason === "device-windows"
+        ? "Windows SAPI recognizes speech on this computer; audio stays local."
+        : "macOS Speech Recognition runs locally on this Mac; audio never leaves this device."
+      : ENGINE_NOTE[settings.engine];
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <p data-voice-intro className="text-prose text-pretty text-muted-foreground">
-        Dictation types what you say into the focused terminal, at the cursor, without pressing Return. Start it with
-        the mic above the terminal, beside its title, then speak.
+        Dictate directly into the focused terminal using the mic button in the top bar (no Return is pressed).
       </p>
       {blocked === "insecure" ? (
         <Notice tone="info" title="Dictation isn't available here">
@@ -83,20 +88,13 @@ export function VoiceSection() {
             {blocked === null || settings.engine === "soniox" ? (
               <SettingRow
                 title="Language"
-                description="Speech recognition takes one language at a time."
+                description="Speech recognition listens for one language at a time."
                 control={language}
               />
             ) : null}
-            {native !== null ? (
-              <p data-voice-on-mac className="pt-3 text-prose text-pretty text-muted-foreground">
-                {native.unavailableReason === "device-windows"
-                  ? "Windows SAPI recognizes speech on this computer; the audio never leaves it."
-                  : "macOS recognizes speech on this Mac; the audio never leaves it."}
-              </p>
-            ) : null}
             <SettingRow
               title="Speech recognition"
-              description={ENGINE_NOTE[settings.engine]}
+              description={engineDescription}
               control={
                 <SegmentedControl<Engine>
                   label="Speech recognition"

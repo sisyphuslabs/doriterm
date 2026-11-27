@@ -13,6 +13,7 @@ describe("searching across settings (#1460)", () => {
     ["relay", ["device"]],
     ["shortcut", ["keyboard", "keybindings"]],
     ["push", ["notifications"]],
+    ["skill", ["skills"]],
     ["dictation", ["voice"]],
     ["invite", ["machines"]],
     ["approval", ["machines"]],

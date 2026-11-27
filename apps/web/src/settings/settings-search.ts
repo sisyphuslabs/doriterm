@@ -45,6 +45,7 @@ const SECTION_WORDS: Readonly<Record<SectionId, readonly string[]>> = {
   terminal: ["font", "font size", "cursor", "scrollback", "ghostty", "config", "colors", "padding", "opacity", "bell"],
   keyboard: ["key bar", "keys bar", "your keys", "packs", "extra keys", "phone keys", "ctrl chords"],
   notifications: ["alerts", "push", "test notification", "following"],
+  skills: ["skill", "agent skill", "claude", "codex", "opencode", "install", "doriterm"],
   appearance: ["theme", "dark", "light", "night", "day", "density", "text size", "font size", "herdr-app theme"],
   keybindings: ["shortcuts", "shortcut", "bindings", "import keybindings"],
   voice: ["dictation", "dictate", "speech recognition", "microphone", "language"],

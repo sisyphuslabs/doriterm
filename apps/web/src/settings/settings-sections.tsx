@@ -1,4 +1,14 @@
-import { Bell, Keyboard, Mic, MonitorSmartphone, Network, Palette, PanelBottom, SquareTerminal } from "lucide-react";
+import {
+  Bell,
+  Keyboard,
+  Mic,
+  MonitorSmartphone,
+  Network,
+  Palette,
+  PanelBottom,
+  Sparkles,
+  SquareTerminal,
+} from "lucide-react";
 
 /**
  * Settings' sections in the order the navigation lists them, under the caption of their group (DESIGN.md (d), #2914):
@@ -20,6 +30,7 @@ export const SECTIONS = [
   { id: "keybindings", label: "Keybindings", group: "Input", tile: "coarse:bg-dim", icon: <Keyboard /> },
   { id: "voice", label: "Voice input", group: "Input", tile: "coarse:bg-(--avatar-pink)", icon: <Mic /> },
   { id: "notifications", label: "Notifications", group: "More", tile: "coarse:bg-(--avatar-teal)", icon: <Bell /> },
+  { id: "skills", label: "Agent Skills", group: "More", tile: "coarse:bg-(--avatar-violet)", icon: <Sparkles /> },
 ] as const;
 
 /** The sections as the navigation groups them, groups in order, each with its sections in order. */

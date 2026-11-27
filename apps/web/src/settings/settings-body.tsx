@@ -1,6 +1,7 @@
 import { cn } from "@doriface/ui";
 import type { ReactNode } from "react";
 import { desktopMcp } from "../desktop/mcp-bridge.ts";
+import { AgentSkillsSection } from "./agent-skills-section.tsx";
 import { AppearanceSection } from "./appearance-section.tsx";
 import { ConnectionSection } from "./connection-section.tsx";
 import { DeviceSection } from "./device-section.tsx";
@@ -139,6 +140,12 @@ export function SectionBody({
       return (
         <Group title="Notifications" named>
           <NotificationsSection />
+        </Group>
+      );
+    case "skills":
+      return (
+        <Group title="Agent Skills" named>
+          <AgentSkillsSection />
         </Group>
       );
     case "appearance":

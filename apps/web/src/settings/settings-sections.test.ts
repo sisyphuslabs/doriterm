@@ -13,6 +13,7 @@ describe("connecting a machine is part of Machines", () => {
 
   test("a link names a section by its id, and anything else opens This device", () => {
     expect(sectionFromLink("#machines")).toEqual({ section: "machines", named: true });
+    expect(sectionFromLink("#skills")).toEqual({ section: "skills", named: true });
     expect(sectionFromLink("#voice")).toEqual({ section: "voice", named: true });
     expect(sectionFromLink("")).toEqual({ section: "device", named: false });
     expect(sectionFromLink("#nope")).toEqual({ section: "device", named: false });

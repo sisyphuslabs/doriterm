@@ -8,6 +8,8 @@ export interface MenuOptions {
   readonly platform: DesktopPlatform;
   readonly openExternal: (url: string) => void;
   readonly openSettings: () => void;
+  /** Opens Settings directly to Agent Skills; omitted when not wired. */
+  readonly openSkills?: (() => void) | undefined;
   /** The page's trigger per Shell menu action, as it last reported them; empty until it has. */
   readonly keys: ReadonlyMap<string, string>;
   readonly runAction: (action: string) => void;
@@ -22,7 +24,11 @@ const updateItem = (check: (() => void) | undefined): MenuItemConstructorOptions
  * The macOS app menu in its standard order, with Settings… after About. The page's keymap owns Cmd+, (it also closes
  * Settings), so the item shows the shortcut without registering it and never runs twice for one key press.
  */
-function appMenu(openSettings: () => void, check: (() => void) | undefined): MenuItemConstructorOptions {
+function appMenu(
+  openSettings: () => void,
+  openSkills: (() => void) | undefined,
+  check: (() => void) | undefined,
+): MenuItemConstructorOptions {
   return {
     role: "appMenu",
     submenu: [
@@ -30,6 +36,7 @@ function appMenu(openSettings: () => void, check: (() => void) | undefined): Men
       ...updateItem(check),
       { type: "separator" },
       { label: "Settings…", accelerator: "CommandOrControl+,", registerAccelerator: false, click: openSettings },
+      ...(openSkills === undefined ? [] : [{ label: "Agent Skills…", click: openSkills }]),
       { type: "separator" },
       { role: "services" },
       { type: "separator" },
@@ -70,6 +77,8 @@ function viewMenu(runAction: (action: string) => void): MenuItemConstructorOptio
   return {
     label: "View",
     submenu: [
+      textItem("command-palette", "Command Palette…", "CommandOrControl+Shift+P", "app.palette"),
+      { type: "separator" },
       { role: "reload" },
       // No key: Cmd+Shift+R (Ctrl+Shift+R) renames the tab in the page (#702), so the menu must not take it first.
       {
@@ -106,5 +115,5 @@ export function menuTemplate(options: MenuOptions): MenuItemConstructorOptions[]
       ],
     },
   ];
-  return mac ? [appMenu(options.openSettings, options.checkForUpdates), ...common] : common;
+  return mac ? [appMenu(options.openSettings, options.openSkills, options.checkForUpdates), ...common] : common;
 }

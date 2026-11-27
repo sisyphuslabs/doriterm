@@ -138,6 +138,7 @@ function navigate(path: string): void {
 }
 
 const openSettings = (): void => navigate("/settings");
+const openSkills = (): void => navigate("/settings#skills");
 
 /** How often a long-running app looks for a release again after the check at launch. */
 const UPDATE_CHECK_MS = 4 * 60 * 60 * 1000;
@@ -152,7 +153,9 @@ let checkForUpdates: (() => void) | undefined;
 
 function showMenu(keys: ReadonlyMap<string, string>): void {
   Menu.setApplicationMenu(
-    Menu.buildFromTemplate(menuTemplate({ platform, openExternal, openSettings, keys, runAction, checkForUpdates })),
+    Menu.buildFromTemplate(
+      menuTemplate({ platform, openExternal, openSettings, openSkills, keys, runAction, checkForUpdates }),
+    ),
   );
 }
 

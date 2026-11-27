@@ -150,6 +150,8 @@ describe("menus", () => {
       const menu = menuTemplate(options(platform, { runAction: (action) => steps.push(action) }));
       const view = submenuOf(menu.find((item) => item.label === "View"));
       expect(roles(view)).toEqual([
+        "Command Palette…",
+        "separator",
         "reload",
         "Force Reload",
         "toggleDevTools",
