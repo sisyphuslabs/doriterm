@@ -5,13 +5,12 @@ import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useScreenAwake } from "../device/keep-awake.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
 import { isBrowsing, useBrowseMode } from "./browse-mode.ts";
-import { readDisplay } from "./display.ts";
 import { PasteDialog } from "./paste-dialog.tsx";
 import { type Point } from "./long-press.ts";
 import { KittyPngTranscoder } from "./kitty-png.ts";
 import { OutputPacer } from "./output-pacer.ts";
-import { readThemeColors } from "./theme-colors.ts";
 import { useDarkScheme } from "./use-dark-scheme.ts";
+import { useTerminalPalette } from "./use-terminal-palette.ts";
 import { useBehaviors, type PendingPaste } from "./use-behaviors.ts";
 import { useFocusAfterSelect } from "./use-focus-after-select.ts";
 import { useLongPressSelect } from "./use-long-press-select.ts";
@@ -120,20 +119,7 @@ export function TerminalView(props: TerminalViewProps) {
   const { isFocused, focusWhenFree } = useKeyboardClaim(handle, focused, claimed, softKeyboard);
 
   useCursor(wt, handle, options.cursorSequence);
-
-  // After the stylesheet or the system's light/dark changes, tell libghostty and the core the colors programs
-  // may query. The colors set last are inline on the element and would shadow the page's new ones, so they go first.
-  useEffect(() => {
-    if (wt === null) return undefined;
-    const frame = requestAnimationFrame(() => {
-      wt.setThemeColors(null);
-      const colors = readThemeColors(wt.element);
-      if (colors !== null) wt.setThemeColors(colors);
-      stream.current?.facts(readDisplay(wt.element));
-      wt.fit();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [wt, config, dark]);
+  useTerminalPalette(wt, config, dark, stream);
 
   const onUnsafePaste = useCallback((pending: PendingPaste) => setPaste(pending), []);
   const predict = useRef<((data: TerminalInput) => void) | null>(null);
