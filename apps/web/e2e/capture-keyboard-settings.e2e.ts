@@ -5,6 +5,7 @@ import type { Locator, Page } from "@playwright/test";
 import { E2E_HOST_PORT, E2E_TOKEN } from "./config.ts";
 import { expect, test } from "./fixtures.ts";
 import { openPhoneTerminal, PHONE, showKeyboard } from "./phone-key-bar.ts";
+import { openSettingsSection } from "./settings-sections.ts";
 
 const OUT = join(import.meta.dirname, "../../../docs/design/app");
 const CONNECTION = JSON.stringify({
@@ -41,7 +42,7 @@ for (const theme of ["day", "night"] as const) {
       try {
         await page.goto("/settings");
         await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible({ timeout: 20_000 });
-        if (width === 390) await page.getByRole("tab", { name: "Keyboard" }).click();
+        if (width === 390) await openSettingsSection(page, "Keyboard");
         else await page.getByRole("button", { name: "Keyboard", exact: true }).click();
         await expect(page.locator(HERO)).toBeVisible();
         await seedBar(page);

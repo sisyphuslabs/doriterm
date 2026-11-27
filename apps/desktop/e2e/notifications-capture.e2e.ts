@@ -67,7 +67,7 @@ async function take(page: Page, { width, height, theme }: Shot): Promise<void> {
   await page
     .getByRole("navigation", { name: "Settings", exact: true })
     .getByRole("button", { name: "Notifications", exact: true })
-    .or(page.getByRole("tablist").getByRole("tab", { name: "Notifications", exact: true }))
+    .or(page.locator("[data-settings-list]").getByRole("button", { name: "Notifications", exact: true }))
     .filter({ visible: true })
     .click();
   await expect(section(page)).toHaveAttribute("data-push-state", "off");
