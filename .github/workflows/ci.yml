@@ -3,7 +3,10 @@ name: CI
 on:
   push:
     branches: [dev]
+  # ready_for_review runs the e2e suites a draft skipped (below) once the pull request leaves draft, and
+  # converted_to_draft re-runs CI when a ready pull request goes back to draft, so its e2e checks turn failed again.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   merge_group:
 
 concurrency:
@@ -165,7 +168,9 @@ jobs:
     # A pull request from a fork gets no secrets, so no part runs for it (see `Relay e2e`).
     name: Relay e2e (${{ matrix.shard }}/2)
     needs: shard-plan
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # A draft pull request skips the relay suites (runner slots are shared by every pull request); Relay e2e below fails
+    # for it, so a draft never shows the required check green.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     # Twice the slowest part's p95 (6.0 min, #2715) plus the 12 min the Chromium install step may take on a slow
     # mirror in the part that runs it (#1012).
@@ -357,8 +362,14 @@ jobs:
     timeout-minutes: 5
     env:
       FROM_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
       PARTS: ${{ needs.relay-e2e-part.result }}
     steps:
+      - name: A draft pull request does not run the relay suites
+        if: env.DRAFT == 'true' && env.FROM_FORK != 'true'
+        run: |
+          echo "::error title=Relay e2e (draft: not run)::draft: e2e not run; mark the pull request ready for review to run it."
+          exit 1
       - name: A fork's pull request does not run the relay suites
         if: env.FROM_FORK == 'true'
         run: |
@@ -428,6 +439,8 @@ jobs:
     # e2e` below is the required context and reports the shards together.
     name: Web e2e (${{ matrix.shard }}/4)
     needs: shard-plan
+    # A draft pull request skips the browser suite; Web e2e below fails for it, so a draft never shows it green.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     # Twice the slowest shard's p95 (11.9 min over 21 runs, #2715); it also covers the 12 min Chromium install bound.
     timeout-minutes: 24
@@ -559,6 +572,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: A draft pull request does not run the browser suite
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft
+        run: |
+          echo "::error title=Web e2e (draft: not run)::draft: e2e not run; mark the pull request ready for review to run it."
+          exit 1
       - name: Every Web e2e shard passed
         env:
           SHARDS: ${{ needs.web-e2e-shard.result }}
