@@ -4,7 +4,7 @@ import { LayoutDoc } from "@doriface/protocol/layout";
 import { graceViews, OFFLINE_GRACE_MS } from "./machine-grace.ts";
 import { machineCause } from "./machine-cause.ts";
 import { stateLabel } from "./machines.ts";
-import { docCalls, docEdit, layoutsRestored, LAYOUT_LOADING, noEditsWhy } from "./use-layout-docs.ts";
+import { docCalls, docEdit, layoutsRestored, LAYOUT_LOADING, noEditsWhy, readOnlyOf } from "./use-layout-docs.ts";
 
 const noChange = (): null => null;
 
@@ -185,4 +185,24 @@ test("a machine held through a redial refuses its edits as its row reads it, rec
 test("a machine that reads offline, or is not listed, has the offline reason", () => {
   expect(noEditsWhy("m1", [listed("m1", "unreachable")])).toBe("m1 is offline");
   expect(noEditsWhy("m1", [])).toBe("the machine is offline");
+});
+
+test("a layout whose last read failed still takes an edit: the edit reads it again and says why if that fails too (#2436)", () => {
+  // The cached phase is only the last read's outcome; refusing on it would park a pane drop silently, or refuse a close,
+  // until some later event happened to read the document again.
+  expect(readOnlyOf({ phase: "unavailable", reason: "doc.get timed out" }, "unused")).toBeNull();
+  expect(readOnlyOf({ phase: "ready", doc: null, version: 1 }, "unused")).toBeNull();
+  expect(readOnlyOf({ phase: "loading" }, "unused")).not.toBeNull();
+  expect(readOnlyOf({ phase: "unreadable", reason: "a newer format", version: 2 }, "unused")).toContain(
+    "a newer format",
+  );
+  expect(readOnlyOf(undefined, "the machine is not connected")).toBe("the machine is not connected");
+});
+
+test("a layout read that failed because the link is down takes no edits until the link is back (#2455, #2436)", () => {
+  // No read can succeed over a dropped link, so every action is offered disabled, with the read's own reason, rather
+  // than enabled and then refused; only a live link lets an edit read the document again.
+  const failed = { phase: "unavailable", reason: "the connection closed" } as const;
+  expect(readOnlyOf(failed, "unused", false)).toBe("the connection closed");
+  expect(readOnlyOf(failed, "unused", true)).toBeNull();
 });

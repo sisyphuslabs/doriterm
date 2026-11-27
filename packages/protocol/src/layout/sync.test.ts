@@ -160,6 +160,42 @@ describe("the layout document sync", () => {
     expect(doc.state).toEqual({ phase: "unavailable", reason: "connection is closed" });
   });
 
+  test("one re-read that fails does not leave the document unwritable for the next edit once the core answers again (#2436)", async () => {
+    // A doc event's re-read hits a slow or dropped link once; the core answers again before the user's next edit.
+    const core = store({ spaces: [] });
+    let failNext = false;
+    const calls: DocCalls = {
+      get: (on) => {
+        if (!failNext) return core.calls.get(on);
+        failNext = false;
+        return Promise.reject(new Error("doc.get timed out"));
+      },
+      set: core.calls.set,
+    };
+    const { doc } = await ready(calls);
+    failNext = true;
+    await doc.heard(core.write({ spaces: [], theirs: true }));
+    expect(doc.state).toEqual({ phase: "unavailable", reason: "doc.get timed out" });
+    await expect(doc.edit((current) => named(current, "mine"))).resolves.toBe(true);
+    expect(core.writes).toEqual([{ spaces: [], theirs: true, mine: true }]);
+  });
+
+  test("a write while the document is unavailable whose re-read fails again rejects with that reason, and writes nothing (#2436)", async () => {
+    const core = store({ spaces: [] });
+    let down = false;
+    const calls: DocCalls = {
+      get: (on) => (down ? Promise.reject(new Error("doc.get timed out")) : core.calls.get(on)),
+      set: core.calls.set,
+    };
+    const { doc } = await ready(calls);
+    down = true;
+    await doc.heard(core.write({ spaces: [], theirs: true }));
+    const edit = doc.edit((current) => named(current, "mine"));
+    await expect(edit).rejects.toThrow("The layout cannot take changes now: doc.get timed out");
+    await expect(edit).rejects.toMatchObject({ kind: "unwritable", detail: "doc.get timed out" });
+    expect(core.writes).toEqual([]);
+  });
+
   test("a doc event for a version it did not write reads the document again", async () => {
     const core = store({ spaces: [] });
     const { doc, states } = await ready(core.calls);
