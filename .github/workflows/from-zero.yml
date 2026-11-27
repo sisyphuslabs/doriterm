@@ -35,9 +35,12 @@ on:
       - docs/getting-started.md
       - apps/desktop/e2e/hosted-relay-pair.e2e.ts
 
+# As in ci.yml (#2361): a pull request cancels its older run; every other run queues in its ref's group, so a dev push
+# no longer replaces the dev run waiting for a runner. GitHub rejects queue: max with cancel-in-progress: true.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
 
 permissions:
   contents: read

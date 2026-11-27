@@ -6,9 +6,14 @@ on:
   pull_request:
   merge_group:
 
+# A newer push to a pull request cancels its older run. Every other run waits its turn in its ref's group: by default a
+# group keeps one pending run and a newer one replaces it, so each dev push cancelled the dev run still waiting for a
+# runner and a merge could end with no finished run (#2361). queue: max keeps up to 100 waiting runs in order. GitHub
+# rejects it together with cancel-in-progress: true, so both are derived from the event.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
 
 permissions:
   contents: read
