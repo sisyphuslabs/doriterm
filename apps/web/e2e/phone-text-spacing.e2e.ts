@@ -1,4 +1,4 @@
-import { devices, type Locator, type Page } from "@playwright/test";
+import { devices, type Page } from "@playwright/test";
 import { expect, laidOutBox, test } from "./fixtures.ts";
 
 const { defaultBrowserType: _browser, ...phone } = devices["iPhone 14"];
@@ -20,17 +20,15 @@ const header = (page: Page) => page.getByRole("banner");
  * second frame from now is painted: the first frame's callback runs before that ResizeObserver, so the rebuild it
  * queues runs in the second frame, ahead of this read.
  */
-const painted = (locator: Locator) =>
-  locator.evaluate(
-    (el) =>
-      new Promise<{ readonly y: number }>((resolve) => {
+const afterRefit = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
         requestAnimationFrame(() =>
           requestAnimationFrame(() => {
             // A message posted in a frame's callback is delivered once that frame is painted.
             const channel = new MessageChannel();
-            channel.port1.addEventListener("message", () => resolve({ y: el.getBoundingClientRect().y }), {
-              once: true,
-            });
+            channel.port1.addEventListener("message", () => resolve(), { once: true });
             channel.port1.start();
             channel.port2.postMessage(null);
           }),
@@ -99,8 +97,9 @@ async function expectHeaderHolds(page: Page, width: number, withAction: boolean)
   const terminal = await laidOutBox(page.locator("[data-terminal]"));
   expect(terminal.y).toBeGreaterThanOrEqual(bottom - 0.5);
   const row = page.locator("[data-terminal] .term-row").first();
-  await laidOutBox(row);
-  const firstRow = await painted(row);
+  await afterRefit(page);
+  // The refit replaces row nodes. Resolve the locator after it, not before it.
+  const firstRow = await laidOutBox(row);
   expect(firstRow.y).toBeGreaterThanOrEqual(bottom - 0.5);
 
   // Every button stays a full touch target inside the header and the screen.
