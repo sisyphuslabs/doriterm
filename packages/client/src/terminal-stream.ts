@@ -9,6 +9,7 @@ import {
   type Terminal,
 } from "@doriface/protocol";
 import { HcConnectionClosedError } from "./errors.ts";
+import { CreditReturn } from "./credit-return.ts";
 import { Listeners, type Unsubscribe } from "./listeners.ts";
 import { closeFromPayload, connectionClose, type StreamClose } from "./stream-close.ts";
 import type { ChannelHandler } from "./wire.ts";
@@ -48,6 +49,7 @@ export class TerminalStream implements ChannelHandler {
   readonly automaticInput: boolean;
   readonly autoCredit: boolean;
   readonly #wire: StreamWire;
+  readonly #returned: CreditReturn;
   readonly #data = new Listeners<Uint8Array>();
   readonly #resize = new Listeners<TerminalSize>();
   readonly #closeListeners = new Listeners<StreamClose>();
@@ -61,6 +63,7 @@ export class TerminalStream implements ChannelHandler {
   constructor(wire: StreamWire, result: AttachResult, automaticInput: boolean, autoCredit: boolean) {
     this.#wire = wire;
     this.channel = result.channel;
+    this.#returned = new CreditReturn(result.channel, (frame) => wire.sendBytes(frame));
     this.terminal = result.terminal;
     this.attachResult = result;
     this.automaticInput = automaticInput;
@@ -129,6 +132,7 @@ export class TerminalStream implements ChannelHandler {
       throw new RangeError(`consumed(${bytes}) exceeds the ${this.#uncredited} uncredited bytes on this stream`);
     }
     this.#uncredited -= bytes;
+    // Keep manual credit on the consumer's draw schedule (#560), not on the automatic quiet timer.
     if (bytes > 0 && this.#state === "open") this.#sent(() => this.#wire.sendBytes(encodeCredit(this.channel, bytes)));
   }
 
@@ -136,6 +140,7 @@ export class TerminalStream implements ChannelHandler {
   close(): Promise<StreamClose> {
     if (this.#state === "open") {
       this.#state = "closing";
+      this.#returned.discard();
       this.#wire.sendClose(this.channel);
     }
     return this.#closed.promise;
@@ -186,7 +191,7 @@ export class TerminalStream implements ChannelHandler {
 
   #credit(bytes: number): void {
     if (bytes === 0 || this.#state !== "open") return;
-    if (this.autoCredit) this.#sent(() => this.#wire.sendBytes(encodeCredit(this.channel, bytes)));
+    if (this.autoCredit) this.#returned.add(bytes);
     else this.#uncredited += bytes;
   }
 
@@ -223,6 +228,7 @@ export class TerminalStream implements ChannelHandler {
   #finish(info: StreamClose): void {
     if (this.#state === "closed") return;
     this.#state = "closed";
+    this.#returned.discard();
     this.#closeInfo = info;
     this.#wire.unregister(this.channel);
     this.#closeListeners.emit(info);
