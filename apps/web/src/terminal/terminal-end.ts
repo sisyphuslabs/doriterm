@@ -7,8 +7,10 @@ import type { StreamClose } from "@doriface/client";
  *   restarted in place; the terminal stays, and the view attaches to the program that runs in it next.
  * - `detached`: this viewer let go of it (the view unmounted); the program runs on.
  * - `dropped`: the connection went away; the client knows nothing about the program, and the view reattaches.
+ * - `closed`: the person closed a view that said its program had ended; the pane goes now, whatever an earlier drop of
+ *   it met (#2986).
  */
-export type TerminalEnd = "finished" | "lost" | "detached" | "dropped";
+export type TerminalEnd = "finished" | "lost" | "detached" | "dropped" | "closed";
 
 export function terminalEnd(close: StreamClose): TerminalEnd {
   switch (close.by) {
@@ -21,7 +23,7 @@ export function terminalEnd(close: StreamClose): TerminalEnd {
   }
 }
 
-/** Only a program that ended closes its tab; a loss, a detach or a dropped connection keeps it. */
+/** Only a program that ended, or the person's close of its ended view, closes its tab; a loss, a detach or a drop keeps it. */
 export function closesTab(end: TerminalEnd): boolean {
-  return end === "finished";
+  return end === "finished" || end === "closed";
 }

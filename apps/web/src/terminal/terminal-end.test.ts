@@ -22,4 +22,8 @@ describe("terminalEnd", () => {
       expect(closesTab(terminalEnd(close))).toBe(closes);
     },
   );
+
+  test("the person's close of a view that said its program ended closes its tab (#2986)", () => {
+    expect(closesTab("closed")).toBe(true);
+  });
 });

@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import type { LayoutTab } from "./layout-model.ts";
 import { machineOf } from "./model.ts";
 
-/** The finishes that end a terminal for good, as herdr-app reads them (`checked_closed`): any other may come back. */
-const FINAL: ReadonlySet<string> = new Set(["exited", "killed"]);
-
-/** Whether the core's record says the terminal's program is over for good: it exited, or it was killed. */
-export const endedForGood = (terminal: Pick<Terminal, "state" | "reason">): boolean =>
-  terminal.state === "finished" && FINAL.has(terminal.reason ?? "");
+/**
+ * Whether the core's record says the terminal is over for good: finished, for any reason. herdr-core keeps a kept
+ * terminal whose program was lost (holder_lost, server_stop, host_shutdown, stopped_by_restart, signaled) live while it
+ * restarts it, and a finished record never turns live again; a program the host resumes comes back in a new terminal
+ * (resume/relaunch.ts). So a holder lost or a core stop ends a plain terminal's tab as an exit does (#2986).
+ */
+export const endedForGood = (terminal: Pick<Terminal, "state">): boolean => terminal.state === "finished";
 
 /**
  * How long a terminal that ended keeps its pane from when it started, as herdr-app's `just_born` waits before it asks
@@ -124,8 +125,8 @@ export function stepMissing(
  * Keeps the panes to the core's terminals, as herdr-app's `reconcile` does on every listing: once the feed is loaded,
  * each pane whose terminal is not live there (past its just-born grace, `settledPanes`) is asked about once, and it is
  * dropped, in view or not, when the core says
- * not_found (removed, as by `hc rm`) or that its program exited or was killed. Any other answer (a terminal the feed
- * lists a moment later, a machine that is offline, a lost holder) keeps it. A terminal that is live again is asked
+ * not_found (removed, as by `hc rm`) or that it finished (endedForGood). Any other answer (a terminal the feed lists
+ * live a moment later, a machine that is offline) keeps it. A terminal that is live again is asked
  * about again if it goes later.
  *
  * An added machine's terminals can read as unknown while it reconnects or right after a rename, so its panes are asked
