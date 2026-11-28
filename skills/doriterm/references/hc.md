@@ -6,14 +6,14 @@
 
 ```sh
 hc templates                                   # roles installed here, if any; `hc run <template> "<task>"` starts one
-hc run --bg --name review --cwd ~/repo omo "Review src/x.ts only. Read-only. Report with hc send $HC_TERMINAL_ID when done or stuck."
-hc run --bg --name fix --cwd ~/repo omo "Fix the failing test in x.test.ts; edit no other file."
+hc run --bg --outlive-parent --name review --cwd ~/repo omo "Review src/x.ts only. Read-only. Report with hc send $HC_TERMINAL_ID when done or stuck."
+hc run --bg --outlive-parent --name fix --cwd ~/repo omo "Fix the failing test in x.test.ts; edit no other file."
 ```
 
 - Use `--bg` for agents, or their whole screen streams into your output. Give each one a name and an exact scope.
 - Put the first task in `run`. A message sent to an agent that is still booting can be dropped. Check `first_message.sent` in the launch result; when it is false, `hc read <t>` first (a trust dialog may need `hc keys <t> enter`), then send. Never resend blindly: it may have arrived.
 - Run agents interactively, never in a one-shot print mode, so they stay watchable and can take another turn.
-- Children end when you end. `--outlive-parent` keeps one running after you.
+- Start every `--bg` child with `--outlive-parent`. Without it, hc ends the child when you end; with it, the child keeps running without an owner until someone closes it, and Doriterm shows it as ownerless.
 - Codex needs `--no-daemon`, or its commands run outside hc.
 
 ## Talk, wait and read results
@@ -41,9 +41,9 @@ Your own shell tool holds you until its command ends. Run builds, test suites, i
 
 ```sh
 hc run cargo test                          # wait and stream like a shell; returns its exit code
-hc run --bg --rm --no-notify --name build -- cargo build --release
+hc run --bg --outlive-parent --rm --no-notify --name build -- cargo build --release
 hc wait build                              # its exit code; --rm then removes it
-hc run --bg --name web -- bun dev
+hc run --bg --outlive-parent --name web -- bun dev
 hc wait web --output "ready"               # text printed after the wait starts
 ```
 

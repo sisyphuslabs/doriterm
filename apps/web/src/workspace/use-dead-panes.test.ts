@@ -122,13 +122,14 @@ test("an added machine's finished terminal waits like an absent one, and the ren
   ).toBe(0);
 });
 
-test("only a program that exited or was killed is over for good; a lost holder, a stopped server and a live terminal are not (#2122)", () => {
-  expect(["exited", "killed"].map((reason) => endedForGood({ state: "finished", reason }))).toEqual([true, true]);
-  const kept = ["holder_lost", "server_stop", "stopped_by_restart", "signaled", "host_shutdown", "spawn_pending"];
-  expect(kept.map((reason) => endedForGood({ state: "finished", reason }))).toEqual(kept.map(() => false));
-  expect(endedForGood({ state: "finished" })).toBe(false);
-  // A kept terminal whose program was lost stays live with the loss as its reason, until its shell comes back.
-  expect(endedForGood({ state: "live", reason: "killed" })).toBe(false);
+test("a finished terminal is over for good whatever ended it; a kept one restarting after a loss is live (#2986)", () => {
+  const reasons = ["exited", "killed", "holder_lost", "server_stop", "stopped_by_restart", "host_shutdown", null];
+  const finished = reasons.map((reason) => ({ state: "finished", reason }));
+  expect(finished.map(endedForGood)).toEqual(reasons.map(() => true));
+  // herdr-core keeps a kept terminal whose program was lost live, with the loss as its reason, while it restarts it.
+  const losses = ["holder_lost", "server_stop", "stopped_by_restart", "host_shutdown", "signaled"];
+  const restarting = losses.map((reason) => ({ state: "live", reason }));
+  expect(restarting.map(endedForGood)).toEqual(losses.map(() => false));
 });
 
 test("an absent remote pane is asked about only once a later machine.list read still finds it absent on that machine", () => {
