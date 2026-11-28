@@ -1,5 +1,5 @@
 import { HcCoreMismatchError, type HcCoreMismatch } from "@doriface/client";
-import { DeviceNotPairedError } from "./connect.ts";
+import { DeviceNotPairedError, LoopbackTokenError } from "./connect.ts";
 import { LoopbackAddressError } from "./loopback-address.ts";
 
 const BY_CODE: Readonly<Record<number, string>> = {
@@ -28,20 +28,27 @@ function coreMismatch(mismatch: HcCoreMismatch): string {
 
 /** Why this device cannot reach its host, in plain words: the close code decides, never the transport's message. */
 export function hostFailure(error: Error): string {
-  if (error instanceof DeviceNotPairedError || error instanceof LoopbackAddressError) return error.message;
+  if (
+    error instanceof DeviceNotPairedError ||
+    error instanceof LoopbackAddressError ||
+    error instanceof LoopbackTokenError
+  )
+    return error.message;
   if (error instanceof HcCoreMismatchError) return coreMismatch(error.mismatch);
   const code = "code" in error && typeof error.code === "number" ? error.code : undefined;
   return (code === undefined ? undefined : BY_CODE[code]) ?? FALLBACK;
 }
 
 /**
- * A failure a retry cannot fix: the host does not know this device, the address is not on this computer, or its core has
- * to be updated on one side or the other (#462, #515, #651). None of them is helped by dialing again.
+ * A failure a retry cannot fix: the host does not know this device, the address is not on this computer, this
+ * computer's host turned the token down, or its core has to be updated on one side or the other (#462, #515, #651,
+ * #2003). None of them is helped by dialing again.
  */
 export function isFinal(error: Error): boolean {
   return (
     error instanceof DeviceNotPairedError ||
     error instanceof LoopbackAddressError ||
+    error instanceof LoopbackTokenError ||
     error instanceof HcCoreMismatchError
   );
 }
