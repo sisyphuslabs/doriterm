@@ -78,7 +78,11 @@ function branches(terminals: readonly Session[], nowMs: number, places: AgentPla
       found.push(branch);
     }
     above.push({ depth: row.depth, branch });
-    const agent = Object.assign(toAgent(terminal, nowMs), { depth: row.depth - branch.base, urgency: row.urgency });
+    const agent = Object.assign(
+      toAgent(terminal, nowMs),
+      { depth: row.depth - branch.base, urgency: row.urgency },
+      row.ownerless ? { ownerless: true } : {},
+    );
     branch.rows.push(pinned ? Object.assign(agent, { pinned: true }) : agent);
     branch.places.push(terminal.offline === true ? "offline" : placed(terminal));
   }
