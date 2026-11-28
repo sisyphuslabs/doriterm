@@ -1,5 +1,6 @@
 import { buildPairingDeepLink, createPairingOffer, generateHostIdentity, PAIRING_TTL_MS } from "@doriface/crypto";
-import { describe, expect, test } from "bun:test";
+import { DEFAULT_HANDSHAKE_TIMEOUT_MS } from "@doriface/client";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import { DIAL_TIMEOUT_MS, dialBoundOf } from "../commands/connect.ts";
 import { linkOf, pairingHost, runSession } from "../testing/pairing-harness.ts";
 import { awaitPairingAnswer } from "./dial.ts";
@@ -20,7 +21,35 @@ async function agentWaiting() {
   return { host, join, lines, answer };
 }
 
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 describe("doriface-host connect on an agent invite (#2939)", () => {
+  test("an agent still waits past a hello's usual 10 s, so an owner who answers later pairs it", async () => {
+    const host = pairingHost({ agentOffer: true });
+    const run = runSession(host, { kind: "lan" }, linkOf(host, "claude"));
+    const client = await run.client;
+    if (client === undefined) throw new Error("the agent's handshake failed");
+    jest.useFakeTimers();
+    const answer = awaitPairingAnswer(client, true, () => {}).then(
+      () => "paired",
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+    const join = await host.approvals.next();
+    jest.advanceTimersByTime(DEFAULT_HANDSHAKE_TIMEOUT_MS * 3);
+    jest.useRealTimers();
+    // A bound that fired settles the answer in microtasks, all of which run before the next macrotask.
+    const waiting = new Promise<string>((resolve) => setImmediate(() => resolve("waiting")));
+    expect(await Promise.race([answer, waiting])).toBe("waiting");
+    // This harness has no core behind the host to say hello, so the stored device is the approval's proof.
+    host.approvals.decide(join.nonce, true, join.code);
+    expect(await run.host).toBeDefined();
+    expect(host.deps.devices.list().map((device) => device.name)).toEqual(["claude"]);
+    run.clientEnd.close();
+    await answer;
+  });
+
   test("says it waits for the owner, with the code the owner sees on the request", async () => {
     const { host, join, lines, answer } = await agentWaiting();
     expect(lines).toEqual([

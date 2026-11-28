@@ -5,6 +5,7 @@ import {
   closeCodeOf,
   fingerprintOf,
   type KeyPair,
+  PAIRING_TTL_MS,
   type PairingSecret,
   rawStaticKey,
   type SecureLink,
@@ -212,7 +213,8 @@ const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
 
 /**
  * Waits for the host's answer to a confirmed pairing: its `hello`, sent once it stored this device. An agent's pairing
- * waits for an owner's approval (#2939), so it first says which code to compare, and a refusal reads as one.
+ * waits for an owner's approval (#2939), so it first says which code to compare and waits as long as the offer lives, not
+ * the 10 s a hello otherwise gets; the host refuses it once the offer ends, and that refusal reads as one.
  */
 export async function awaitPairingAnswer(
   secure: SecureLink,
@@ -224,7 +226,8 @@ export async function awaitPairingAnswer(
       `Waiting for the owner to approve this agent in Doriterm. Compare this code there: ${agentPairingCode(secure.handshakeHash)}`,
     );
   }
-  const opened = await HcConnection.open(secure).catch((error: unknown) => {
+  const bound = agent ? { handshakeTimeoutMs: PAIRING_TTL_MS } : {};
+  const opened = await HcConnection.open(secure, bound).catch((error: unknown) => {
     if (agent && error instanceof Error && closeCodeOf(error) === CloseCode.UnknownDevice) {
       throw new Error(
         "the owner denied this agent, or no one approved it before the invite ended: ask for a new invite",
