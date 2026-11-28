@@ -95,6 +95,14 @@ export const WAITING_METHODS: ReadonlySet<HcMethod> = new Set<HcMethod>([
 ]);
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 45_000;
 
+/**
+ * The params a call goes out with. Every terminal Doriterm starts outlives the terminal that started it: when that parent
+ * ends, the child only loses its owner and runs on until someone closes it (#2990). hc ends a child with its parent
+ * unless its run says `outlive_parent`, so every `terminal.run` says it, whoever asked for the run.
+ */
+const outgoing = (method: HcMethod, params: object): object =>
+  method === "terminal.run" ? { ...params, outlive_parent: true } : params;
+
 /** One framed herdr-core connection over a ByteLink. */
 export class HcConnection {
   readonly hello: HelloResult;
@@ -136,15 +144,15 @@ export class HcConnection {
   /** Calls run concurrently; each resolves with its typed result or rejects with HcRpcError. */
   call<M extends HcMethod>(method: M, ...args: CallArgs<M>): Promise<HcResult<M>> {
     const [params, options] = args;
-    return this.#request(method, params ?? {}, options ?? {}, (result) => result);
+    return this.#request(method, outgoing(method, params ?? {}), options ?? {}, (result) => result);
   }
 
   /**
    * A call by method name for passthrough tooling (the host's MCP server): the method comes from a generated table, the
-   * params are given as they are, and the result is checked only for being a JSON object, as {@link call} checks it.
+   * params are given as they are (a run's with `outlive_parent`, as {@link call} sends it), and the result is checked only for being a JSON object, as {@link call} checks it.
    */
   callByName(method: HcMethod, params: object, options: CallOptions = {}): Promise<HcResult<HcMethod>> {
-    return this.#request(method, params, options, (result) => result);
+    return this.#request(method, outgoing(method, params), options, (result) => result);
   }
 
   /** Attaches as a viewer. Kind 6 is used only when both the core and this attach path offer it. */
