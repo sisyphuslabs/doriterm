@@ -1,6 +1,6 @@
 import type { HcConnection } from "@doriface/client";
 import { Button, IconButton, cn } from "@doriface/ui";
-import { Monitor, Smartphone, X } from "lucide-react";
+import { Bot, Monitor, Smartphone, X } from "lucide-react";
 import { useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWidthTier } from "../layout/width-tier.ts";
@@ -12,10 +12,19 @@ import { holderOf, type JoinRequest } from "./mesh-reader.ts";
 import { useJoinAnswer } from "./use-join-answer.ts";
 import { useMesh } from "./use-mesh.ts";
 
-const grants = (request: JoinRequest): string =>
-  request.join.kind === "client"
-    ? "Approve only if it shows the same code. It will reach every machine in this mesh."
-    : "Approve only if it shows the same code. It joins this mesh as a machine.";
+/** What approving gives, by what the join asks to be (#2939: an agent pairs as a device of the inviting host). */
+const GRANTS: Readonly<Record<JoinRequest["join"]["kind"], string>> = {
+  client: "Approve only if it shows the same code. It will reach every machine in this mesh.",
+  machine: "Approve only if it shows the same code. It joins this mesh as a machine.",
+  agent:
+    "Approve only if the agent shows the same code. It can read and type into your terminals, run commands and write files on this computer.",
+};
+const TITLES: Readonly<Record<JoinRequest["join"]["kind"], (name: string) => string>> = {
+  client: (name) => `${name} wants to join`,
+  machine: (name) => `${name} wants to join`,
+  agent: (name) => `The agent ${name} wants to connect`,
+};
+const ICONS = { client: Smartphone, machine: Monitor, agent: Bot } as const;
 
 /**
  * The card never takes focus from a terminal, but a person may tab or click into it; when it leaves (answered, Not now)
@@ -62,7 +71,7 @@ function Card({ request, holder, now, more, compact, onAnswer, onLater }: CardPr
   const { busy, failure, send } = useJoinAnswer((verdict) => onAnswer(request, verdict));
   const state = pendingAnswer(join, now, request.answered);
   const shownFailure = failure ?? refusalText(join, holder, request.answered);
-  const Icon = join.kind === "client" ? Smartphone : Monitor;
+  const Icon = ICONS[join.kind];
   const keepFocus = useFocusReturn();
   const source = `Invite from ${holder} · ends in ${formatAge(0, Date.parse(join.expiresAt) - now)}${more > 0 ? ` · ${more} more in Settings` : ""}`;
   const buttons =
@@ -111,7 +120,7 @@ function Card({ request, holder, now, more, compact, onAnswer, onLater }: CardPr
       <header className="flex items-center gap-2">
         <Icon aria-hidden className="size-4 text-muted-foreground" />
         <h2 id="join-request-title" className="min-w-0 flex-1 truncate text-lg font-semibold">
-          {`${join.name} wants to join`}
+          {TITLES[join.kind](join.name)}
         </h2>
         <IconButton label="Not now" icon={<X />} onClick={onLater} />
       </header>
@@ -122,7 +131,7 @@ function Card({ request, holder, now, more, compact, onAnswer, onLater }: CardPr
           {join.code}
         </p>
       )}
-      <p className="max-w-measure text-prose text-muted-foreground">{grants(request)}</p>
+      <p className="max-w-measure text-prose text-muted-foreground">{GRANTS[join.kind]}</p>
       {shownFailure === undefined ? null : <p className="text-prose text-status-blocked-text">{shownFailure}</p>}
       {settled}
       {compact ? (
@@ -153,21 +162,21 @@ export function JoinRequestCard({ connection }: { readonly connection: HcConnect
   // The workspace stays mounted under Settings, whose Machines section lists the same joins: the card is the workspace's.
   const onWorkspace = useRouterState({ select: (state) => state.location.pathname }) === "/";
   const waiting =
-    read.phase === "ready"
+    read.phase === "ready" || read.phase === "none"
       ? read.requests.filter(
           (request) => !later.has(request.join.nonce) && pendingAnswer(request.join, now, undefined) !== "expired",
         )
       : [];
   const first = waiting[0];
   // Mounted, empty, before any card, so a screen reader announces a card arriving without moving focus to it.
-  const announced = first === undefined ? "" : `${first.join.name} wants to join`;
+  const announced = first === undefined ? "" : TITLES[first.join.kind](first.join.name);
   const live = (
     <p aria-live="polite" aria-atomic="true" className="sr-only" data-join-request-live>
       {announced}
     </p>
   );
   if (!onWorkspace) return null;
-  if (read.phase !== "ready" || first === undefined) return live;
+  if (first === undefined) return live;
   return (
     <>
       {live}
@@ -182,7 +191,7 @@ export function JoinRequestCard({ connection }: { readonly connection: HcConnect
         <Card
           key={first.join.nonce}
           request={first}
-          holder={holderOf(first, read.status)}
+          holder={read.phase === "ready" ? holderOf(first, read.status) : connection.hello.core.name}
           now={now}
           more={waiting.length - 1}
           compact={compact}

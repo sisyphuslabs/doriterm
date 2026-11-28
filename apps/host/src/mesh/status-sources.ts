@@ -70,7 +70,7 @@ export interface PendingJoinFact {
   readonly noisePub: string;
   readonly expiresAt: Date;
   /** What it joins as; the approval copy says what that grants. */
-  readonly kind: "machine" | "client";
+  readonly kind: "machine" | "client" | "agent";
   readonly code?: string;
   readonly joinerConfirmed?: boolean;
 }

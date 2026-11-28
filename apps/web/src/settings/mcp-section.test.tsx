@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { desktopMcp, mcpAnswer } from "../desktop/mcp-bridge.ts";
 import { McpClients, McpSection } from "./mcp-section.tsx";
-import { connectCommand, mcpConfig, mcpView, turnOffLine } from "./mcp-view.ts";
+import { connectCommand, mcpConfig } from "./agent-snippets.ts";
+import { mcpView, turnOffLine } from "./mcp-view.ts";
 
 const acts = { busy: false, note: null, onSwitch: () => {}, onConnect: () => {}, onDisconnect: () => {} };
 

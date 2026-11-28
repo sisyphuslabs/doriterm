@@ -22,10 +22,15 @@ export interface DesktopPairedDevice {
   readonly pairedAt: string;
 }
 
+/** `open` replaces a pending offer, `open-agent` opens one whose device waits for approval, `state` reads it. */
+export type PairOfferRequest = "open" | "open-agent" | "state";
+
 /** What the shell's `pairOffer` answers; `unavailable` says why this app cannot ask its host at all. */
 export type DesktopPairAnswer =
   | { readonly state: "pending"; readonly offer: DesktopPairOffer }
   | { readonly state: "paired"; readonly device: DesktopPairedDevice | null }
+  /** An agent redeemed an agent offer and waits for an owner's approval (#2939); no device is stored yet. */
+  | { readonly state: "approval" }
   | { readonly state: "expired" }
   | { readonly state: "none" }
   | { readonly state: "unavailable"; readonly reason: string };
@@ -67,7 +72,7 @@ function deviceOf(value: unknown): DesktopPairedDevice | null | undefined {
 export function pairAnswer(value: unknown): DesktopPairAnswer | undefined {
   const state = text(value, "state");
   if (state === undefined || typeof value !== "object" || value === null) return undefined;
-  if (state === "none" || state === "expired") return { state };
+  if (state === "none" || state === "expired" || state === "approval") return { state };
   if (state === "unavailable") {
     const reason = text(value, "reason");
     return reason === undefined ? undefined : { state, reason };
@@ -87,7 +92,7 @@ export function pairAnswer(value: unknown): DesktopPairAnswer | undefined {
  */
 export function desktopPairOffer(
   scope: object = globalThis,
-): ((request: "open" | "state") => Promise<DesktopPairAnswer>) | null {
+): ((request: PairOfferRequest) => Promise<DesktopPairAnswer>) | null {
   const pair = bridgeMethod("pairOffer", scope);
   if (pair === null) return null;
   return async (request) => {

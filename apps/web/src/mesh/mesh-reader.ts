@@ -7,6 +7,8 @@ import {
   type MeshPendingJoin,
   type MeshStatus,
   parseMeshStatus,
+  parseSoloJoins,
+  SOLO_JOINS_DOC,
 } from "@doriface/protocol";
 
 export type Verdict = "approve" | "deny";
@@ -30,7 +32,8 @@ export interface Answered {
 
 export type MeshRead =
   | { readonly phase: "loading" }
-  | { readonly phase: "none" }
+  /** This host is in no mesh; joins may still wait on it, such as an AI agent's first connection (#2939). */
+  | { readonly phase: "none"; readonly requests: readonly JoinRequest[] }
   | { readonly phase: "unreadable" }
   | { readonly phase: "failed"; readonly message: string }
   | {
@@ -148,12 +151,16 @@ export function holderOf(request: JoinRequest, status: MeshStatus): string {
 }
 
 async function readMesh(calls: MeshCalls, bound: ReadBound): Promise<MeshRead> {
-  const [doc, machines, answer] = await Promise.all([
+  const [doc, machines, answer, solo] = await Promise.all([
     calls.doc(MESH_STATUS_DOC),
     calls.machines(),
     calls.doc(MESH_APPROVAL_DOC),
+    calls.doc(SOLO_JOINS_DOC),
   ]);
-  if (doc.value === null) return { phase: "none" };
+  if (doc.value === null) {
+    const joins = parseSoloJoins(solo.value);
+    return { phase: "none", requests: joins === undefined ? [] : requestsIn(joins.pending, null, answer.value) };
+  }
   const status = parseMeshStatus(doc.value);
   if (status === undefined) return { phase: "unreadable" };
   const connected = machines.filter((machine) => machine.state === "connected");

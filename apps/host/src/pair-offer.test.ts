@@ -20,6 +20,7 @@ function offer(over: Partial<PendingPairing> = {}): PendingPairing {
     slot: "registered",
     codeAttempts: 0,
     mesh: false,
+    agent: false,
     ...over,
   };
 }

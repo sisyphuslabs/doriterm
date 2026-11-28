@@ -12,14 +12,14 @@ import {
   ViewCache,
   viewOf,
 } from "@doriface/mesh";
-import type { MeshStatus } from "@doriface/protocol";
+import type { MeshStatus, SoloJoins } from "@doriface/protocol";
 import { isRecord } from "../state/files.ts";
 import type { MeshFile } from "../state/mesh-file.ts";
 import { ownN } from "../state/mesh-tx.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import type { MeshLiveFacts, MeshHooks } from "./host-hooks.ts";
 import type { LocalFacts, MeshSources, RevocationFact } from "./status-sources.ts";
-import { hostIdOfKey, meshStatus } from "./status.ts";
+import { hostIdOfKey, meshStatus, soloJoins } from "./status.ts";
 import { witnessFacts } from "./witness.ts";
 import { indexOf } from "./authorize-index.ts";
 
@@ -182,4 +182,10 @@ export function storedMeshStatus(store: MeshStore, identity: HostIdentity, hooks
   const self = base64urlEncode(identity.sign.publicKey);
   const cache = new ViewCache();
   return meshStatus(meshSourcesOf(file, viewOf(file.records, cache), self, hooks.live(), cache), new Date());
+}
+
+/** The joins this host publishes while it is in no mesh, or undefined in a mesh (its status carries them): `soloJoins`. */
+export function storedSoloJoins(store: MeshStore, identity: HostIdentity, hooks: MeshHooks): SoloJoins | undefined {
+  if (store.read() !== undefined || store.pendingFoundForStatus() !== undefined) return undefined;
+  return soloJoins(identity.hostId, hooks.live().pending);
 }

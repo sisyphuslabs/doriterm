@@ -53,8 +53,18 @@ export const isOnline = (member: MeshMemberStatus): boolean =>
  * approving control of every machine it can reach, and the row has to say that rather than call it a device (design of
  * #942, section 4). A machine joining is the ordinary case and gets no line of its own.
  */
-export function approvalConsequence(kind: "machine" | "client", name: string): string | undefined {
-  return kind === "client" ? `Approving gives ${name} control of every machine in this mesh.` : undefined;
+export function approvalConsequence(kind: "machine" | "client" | "agent", name: string): string | undefined {
+  if (kind === "client") return `Approving gives ${name} control of every machine in this mesh.`;
+  // An agent pairs as a device of the inviting host (#2939): what a paired device gets there, it gets.
+  if (kind === "agent")
+    return `Approving lets the agent ${name} read and type into your terminals, run commands and write files on this computer.`;
+  return undefined;
+}
+
+/** Joins whose offer is still open, which wait for the owner, and the ones whose offer ended. */
+export function joinGroups(requests: readonly JoinRequest[], now: number): Pick<MeshGroups, "pending" | "expired"> {
+  const open = (request: JoinRequest): boolean => pendingAnswer(request.join, now, undefined) !== "expired";
+  return { pending: requests.filter(open), expired: requests.filter((request) => !open(request)) };
 }
 
 /**
@@ -65,10 +75,8 @@ export function approvalConsequence(kind: "machine" | "client", name: string): s
  */
 export function meshGroups(status: MeshStatus, requests: readonly JoinRequest[], now: number): MeshGroups {
   const removed = new Set(status.removed.flatMap((group) => group.members.map((entry) => entry.hostId)));
-  const open = (request: JoinRequest): boolean => pendingAnswer(request.join, now, undefined) !== "expired";
   return {
-    pending: requests.filter(open),
-    expired: requests.filter((request) => !open(request)),
+    ...joinGroups(requests, now),
     removed: status.removed,
     online: status.members.filter(isOnline),
     offline: status.members.filter((member) => !isOnline(member)),

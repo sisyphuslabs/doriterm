@@ -30,6 +30,8 @@ import {
   type MeshRevokedStatus,
   type MeshStatus,
   type MeshStuckReason,
+  SOLO_JOINS_VERSION,
+  type SoloJoins,
 } from "./mesh-status.ts";
 
 type StuckKind = Exclude<MeshStuckReason["kind"], "unknown">;
@@ -147,7 +149,7 @@ const readPendingBase = objectOf<Omit<MeshPendingJoin, "code" | "joinerConfirmed
   hostId: readId,
   fingerprint: readFingerprint,
   expiresAt: readTime,
-  kind: oneOf("machine", "client"),
+  kind: oneOf("machine", "client", "agent"),
 });
 const readPending: Reader<MeshPendingJoin> = (value) => {
   const base = readPendingBase(value);
@@ -162,7 +164,7 @@ const readPending: Reader<MeshPendingJoin> = (value) => {
     ...(joinerConfirmed === undefined ? {} : { joinerConfirmed }),
   };
 };
-const PENDING_KINDS: readonly MeshPendingJoin["kind"][] = ["machine", "client"];
+const PENDING_KINDS: readonly MeshPendingJoin["kind"][] = ["machine", "client", "agent"];
 /**
  * Approving a join grants what its kind says, so a join of a kind a newer host added is left out: this reader could not
  * say what approving it grants (#1139). Any other entry is read as it is.
@@ -240,4 +242,15 @@ function isConsistent(status: MeshStatus): boolean {
 export function parseMeshStatus(value: unknown): MeshStatus | undefined {
   const status = readMeshStatus(value);
   return status !== undefined && isConsistent(status) ? status : undefined;
+}
+
+const readSoloJoins = objectOf<SoloJoins>({
+  v: when((value): value is typeof SOLO_JOINS_VERSION => value === SOLO_JOINS_VERSION),
+  self: readId,
+  pending: readPendingList,
+});
+
+/** The joins in a `doriface-joins` document, read as forward compatibly as the status's own; undefined otherwise. */
+export function parseSoloJoins(value: unknown): SoloJoins | undefined {
+  return readSoloJoins(value);
 }

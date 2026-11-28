@@ -57,6 +57,7 @@ export {
   type PairingOffer,
   type PairingTarget,
 } from "./pairing.ts";
+export { agentPairingCode } from "./pairing-keys.ts";
 export {
   decodeHello,
   decodeReply,

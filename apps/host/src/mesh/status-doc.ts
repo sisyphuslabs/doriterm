@@ -1,5 +1,13 @@
 import type { HcConnection } from "@doriface/client";
-import { HcRpcError, isJsonObject, type JsonValue, MESH_STATUS_DOC, type MeshStatus } from "@doriface/protocol";
+import {
+  HcRpcError,
+  isJsonObject,
+  type JsonValue,
+  MESH_STATUS_DOC,
+  type MeshStatus,
+  SOLO_JOINS_DOC,
+  type SoloJoins,
+} from "@doriface/protocol";
 
 /** herdr's documents: `doc.get` and a `doc.set` that refuses with `conflict` when the version moved. */
 export interface DocStore {
@@ -33,7 +41,16 @@ export function publishMeshStatus(
   current: () => MeshStatus | undefined,
   self: string,
 ): Promise<MeshStatusPublish> {
-  return attemptPublish(store, current, self, 1);
+  return attemptPublish(store, MESH_STATUS_DOC, current, self, 1);
+}
+
+/** Writes the joins waiting on a host in no mesh to `doriface-joins` by the same rules (#2939), clearing only its own. */
+export function publishSoloJoins(
+  store: DocStore,
+  current: () => SoloJoins | undefined,
+  self: string,
+): Promise<MeshStatusPublish> {
+  return attemptPublish(store, SOLO_JOINS_DOC, current, self, 1);
 }
 
 /**
@@ -45,19 +62,20 @@ const ours = (value: JsonValue, self: string): boolean => isJsonObject(value) &&
 
 async function attemptPublish(
   store: DocStore,
-  current: () => MeshStatus | undefined,
+  name: string,
+  current: () => JsonValue | undefined,
   self: string,
   attempt: number,
 ): Promise<MeshStatusPublish> {
-  const doc = await store.get(MESH_STATUS_DOC);
+  const doc = await store.get(name);
   const status = current();
   if (status === undefined && !ours(doc.value, self)) return "unchanged";
   if (status !== undefined && isJsonObject(doc.value) && Bun.deepEquals(doc.value, status)) return "unchanged";
   try {
-    await store.set(MESH_STATUS_DOC, status ?? null, doc.version);
+    await store.set(name, status ?? null, doc.version);
     return status === undefined ? "cleared" : "written";
   } catch (error) {
     if (!isConflict(error) || attempt >= ATTEMPTS) throw error;
-    return attemptPublish(store, current, self, attempt + 1);
+    return attemptPublish(store, name, current, self, attempt + 1);
   }
 }

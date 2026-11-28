@@ -17,6 +17,21 @@ export const codePairingCi = (hostId: string, noiseStaticPub: Uint8Array, slot: 
     utf8(slot),
   );
 
+const AGENT_CODE = utf8("doriface/1.3 agent pairing code");
+
+/**
+ * The six digits an owner compares before approving an agent's pairing (#2939), from the pairing session's Noise
+ * handshake hash, which both ends hold. The pairing secret already keeps a third party out of the handshake, so no
+ * commit-reveal is needed: the code only ties the owner's approval to this request, and the host decides alone.
+ */
+export function agentPairingCode(handshakeHash: Uint8Array): string {
+  const bytes = hkdf(sha512, handshakeHash, EMPTY, AGENT_CODE, 4);
+  const digits = String(
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0) % 1_000_000,
+  ).padStart(6, "0");
+  return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+}
+
 /** CPace PRS and CI for `code`, typed for the host `hostId` whose Noise static key is `noiseStaticPub`. */
 export function codePairingInputs(code: string, hostId: string, noiseStaticPub: Uint8Array) {
   const canonical = normalizePairingCode(code);

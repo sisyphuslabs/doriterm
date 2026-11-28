@@ -1,4 +1,4 @@
-import type { LocalHostEndpoint, PairOffer, PairOfferAnswer } from "../shared/bridge.ts";
+import type { LocalHostEndpoint, PairOffer, PairOfferAnswer, PairOfferRequest } from "../shared/bridge.ts";
 
 /** Long enough for a host that is still opening its offer on the relay, short enough to keep the dialog responsive. */
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -21,13 +21,15 @@ const unavailable = (reason: string): PairOfferAnswer => ({ state: "unavailable"
  */
 export async function requestPairOffer(
   endpoint: LocalHostEndpoint,
-  request: "open" | "state",
+  request: PairOfferRequest,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<PairOfferAnswer> {
   let response: Response;
   try {
-    response = await fetch(pairEndpointUrl(endpoint), {
-      method: request === "open" ? "POST" : "GET",
+    const url = new URL(pairEndpointUrl(endpoint));
+    if (request === "open-agent") url.searchParams.set("agent", "1");
+    response = await fetch(url, {
+      method: request === "state" ? "GET" : "POST",
       headers: { authorization: `Bearer ${endpoint.token}` },
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -49,6 +51,7 @@ export function pairOfferAnswer(value: unknown): PairOfferAnswer | undefined {
   switch (state) {
     case "none":
     case "expired":
+    case "approval":
       return { state };
     case "pending": {
       const offer = pairOffer(Reflect.get(value, "offer"));

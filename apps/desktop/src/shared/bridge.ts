@@ -226,9 +226,14 @@ export interface PairedDevice {
 export type PairOfferAnswer =
   | { readonly state: "pending"; readonly offer: PairOffer }
   | { readonly state: "paired"; readonly device: PairedDevice | null }
+  /** An agent redeemed an agent offer and waits for an owner's approval (#2939). */
+  | { readonly state: "approval" }
   | { readonly state: "expired" }
   | { readonly state: "none" }
   | { readonly state: "unavailable"; readonly reason: string };
+
+/** `open` replaces a pending offer, `open-agent` opens one whose device waits for approval, `state` reads it. */
+export type PairOfferRequest = "open" | "open-agent" | "state";
 
 /**
  * What `pairedDevices` answers: every device this computer has stored, or why this app cannot ask its host.
@@ -407,7 +412,7 @@ export interface DorifaceBridge {
    * This computer's pairing offer: `open` replaces a pending one, `state` reads what stands. Never throws; a host that
    * cannot answer is an `unavailable` answer.
    */
-  pairOffer(request: "open" | "state"): Promise<PairOfferAnswer>;
+  pairOffer(request: PairOfferRequest): Promise<PairOfferAnswer>;
   /** This computer's paired devices; revoking one from here closes its sessions on the host. */
   pairedDevices(): Promise<PairedDevicesAnswer>;
   revokeDevice(id: string): Promise<RevokeDeviceAnswer>;

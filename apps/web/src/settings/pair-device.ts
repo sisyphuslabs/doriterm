@@ -6,6 +6,7 @@ export type PairDeviceView =
   | { readonly kind: "asking" }
   | { readonly kind: "offer"; readonly offer: DesktopPairOffer; readonly expired: boolean }
   | { readonly kind: "paired"; readonly device: DesktopPairedDevice | null }
+  | { readonly kind: "approval" }
   | { readonly kind: "expired" }
   | { readonly kind: "unavailable"; readonly reason: string };
 
@@ -16,6 +17,8 @@ export function pairDeviceView(answer: DesktopPairAnswer | null, now: number): P
       return { kind: "offer", offer: answer.offer, expired: now >= answer.offer.expiresAt };
     case "paired":
       return { kind: "paired", device: answer.device };
+    case "approval":
+      return { kind: "approval" };
     case "expired":
       return { kind: "expired" };
     case "unavailable":

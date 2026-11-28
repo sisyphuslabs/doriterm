@@ -254,11 +254,43 @@
             </div>
             <pre><code>doriface-host connect &lt;code&gt; --fingerprint '3FA9 4C0E 7B21 D855'</code></pre>
           </div>
+          <p>
+            Or copy one prompt into an agent that can run commands, with your <code>&lt;link&gt;</code> and
+            <code>&lt;hostId&gt;</code> filled in:
+          </p>
+          <div class="code">
+            <div class="code__head">
+              <span>prompt</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>Connect yourself to my Doriterm. Run these in a terminal on this computer:
+1. If doriface-host is not installed: curl -fsSL https://get.doriterm.com | sh -s -- --no-service --no-pair
+2. Pair this computer once: doriface-host connect '&lt;link&gt;' &lt; /dev/null
+3. Add an MCP server named doriterm to your own MCP settings that runs: doriface-host connect --mcp &lt;hostId&gt;
+Then tell me it is connected.</code></pre>
+          </div>
           <h2 id="config">3. Paste the MCP config</h2>
           <p>
             Add this to the assistant's MCP settings. The host id is the one <code>doriface-host pair</code> printed on
             your machine.
           </p>
+          <h3 id="config-omo">OmO</h3>
+          <p>Add to <code>~/.omo/agent/mcp.json</code>:</p>
           <div class="code">
             <div class="code__head">
               <span>json</span
@@ -283,7 +315,130 @@
   "mcpServers": {
     "doriterm": {
       "command": "doriface-host",
-      "args": ["connect", "--mcp", "&lt;hostId&gt;"]
+      "args": [
+        "connect",
+        "--mcp",
+        "&lt;hostId&gt;"
+      ]
+    }
+  }
+}</code></pre>
+          </div>
+          <h3 id="config-claude-code">Claude Code</h3>
+          <div class="code">
+            <div class="code__head">
+              <span>shell</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>claude mcp add doriterm -- doriface-host connect --mcp &lt;hostId&gt;</code></pre>
+          </div>
+          <h3 id="config-codex">Codex</h3>
+          <p>Add to <code>~/.codex/config.toml</code>:</p>
+          <div class="code">
+            <div class="code__head">
+              <span>toml</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>[mcp_servers.doriterm]
+command = "doriface-host"
+args = ["connect", "--mcp", "&lt;hostId&gt;"]</code></pre>
+          </div>
+          <h3 id="config-cursor">Cursor</h3>
+          <p>Add to <code>.cursor/mcp.json</code>:</p>
+          <div class="code">
+            <div class="code__head">
+              <span>json</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>{
+  "mcpServers": {
+    "doriterm": {
+      "command": "doriface-host",
+      "args": [
+        "connect",
+        "--mcp",
+        "&lt;hostId&gt;"
+      ]
+    }
+  }
+}</code></pre>
+          </div>
+          <h3 id="config-other">Other</h3>
+          <p>Add to its MCP settings:</p>
+          <div class="code">
+            <div class="code__head">
+              <span>json</span
+              ><button class="copy" type="button" data-copy data-copied="Copied" data-copy-failed="Select and copy">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                ><span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <pre><code>{
+  "mcpServers": {
+    "doriterm": {
+      "command": "doriface-host",
+      "args": [
+        "connect",
+        "--mcp",
+        "&lt;hostId&gt;"
+      ]
     }
   }
 }</code></pre>

@@ -5,7 +5,7 @@ import { type ReactNode, useSyncExternalStore } from "react";
 import type { ConnectionSettings } from "../connection/settings.ts";
 import { connectionStore, useConnection } from "../connection/store.ts";
 import { ExpiredJoinRow, MeshBanners, PendingRow, RemovedRows } from "../mesh/attention.tsx";
-import { disagreement, meshGroups } from "../mesh/groups.ts";
+import { disagreement, joinGroups, meshGroups } from "../mesh/groups.ts";
 import { MemberRow } from "../mesh/mesh-rows.tsx";
 import { holderOf } from "../mesh/mesh-reader.ts";
 import { useMesh } from "../mesh/use-mesh.ts";
@@ -91,14 +91,30 @@ export function MeshBody({
           Update doriface-host or this app. Until then, run doriface-host mesh status on the host.
         </Notice>
       );
-    case "none":
+    case "none": {
+      const joins = joinGroups(read.requests, now);
       return (
-        <SettingRow
-          title="No machine in this mesh yet"
-          description={`${host} is in no mesh, so no other machine is reachable from it yet. On ${host}, run doriface-host mesh pair to open an invite, then doriface-host mesh join with that link on the machine to connect.`}
-          control={null}
-        />
+        <div className={sectionStackClass}>
+          <MeshGroup id="pending" title="Waiting for approval" count={joins.pending.length}>
+            {joins.pending.map((request) => (
+              <PendingRow
+                key={request.join.nonce}
+                join={request.join}
+                holder={host}
+                now={now}
+                answered={request.answered}
+                onAnswer={(verdict) => answer(request, verdict)}
+              />
+            ))}
+          </MeshGroup>
+          <SettingRow
+            title="No machine in this mesh yet"
+            description={`${host} is in no mesh, so no other machine is reachable from it yet. On ${host}, run doriface-host mesh pair to open an invite, then doriface-host mesh join with that link on the machine to connect.`}
+            control={null}
+          />
+        </div>
       );
+    }
     case "ready":
       break;
   }

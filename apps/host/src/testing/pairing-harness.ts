@@ -14,6 +14,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acceptE2ee, type E2eeDeps, type E2eeTransport } from "../e2ee/accept.ts";
+import { PendingJoins } from "../mesh/pending-joins.ts";
 import { DeviceStore } from "../state/devices.ts";
 import type { MeshStore } from "../state/mesh.ts";
 import { PairingStore } from "../state/pairing.ts";
@@ -23,6 +24,8 @@ export function pairingHost(
   options: {
     readonly mesh?: (dir: string) => MeshStore;
     readonly meshOffer?: boolean;
+    /** An agent offer (#2939): its pairing waits in `approvals` for an owner's answer. */
+    readonly agentOffer?: boolean;
     readonly dir?: string;
     /** The plan the host runs under; open when a test names none. */
     readonly policy?: PlanPolicy;
@@ -34,7 +37,8 @@ export function pairingHost(
   const logs: string[] = [];
   const log = (line: string): void => void logs.push(line);
   const pairing = new PairingStore(dir, log);
-  const offer = pairing.offer(Date.now(), options.meshOffer === true);
+  const offer = pairing.offer(Date.now(), options.meshOffer === true, options.agentOffer === true);
+  const approvals = new PendingJoins();
   const deps: E2eeDeps = {
     identity: generateHostIdentity(),
     devices: new DeviceStore(dir),
@@ -44,9 +48,10 @@ export function pairingHost(
     lanUrls: [],
     policy: options.policy ?? OPEN_POLICY,
     live: { count: () => options.live ?? 0 },
+    approvals,
   };
   const relay: E2eeTransport = { kind: "relay", openSlot: pairingSlotOf(offer.code) };
-  return { dir, logs, pairing, offer, deps, relay };
+  return { dir, logs, pairing, offer, deps, relay, approvals };
 }
 
 export type PairingHost = ReturnType<typeof pairingHost>;
