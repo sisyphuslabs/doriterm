@@ -253,15 +253,14 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
         }
         stream.current = attached;
         // A watching view draws at the pty's grid (D1): the size the answer carries, before its first paint; later
-        // changes come from the core's size events (usePtySize).
-        hostSize.ptySized(ready, attached.size);
-        // The view in use (the focused pane, in a focused window) was the active viewer before the drop; a FOCUS frame
-        // makes it active again, so the core applies its size now. Other views send no FOCUS, which would report
-        // focus-in to their programs; their size applies when they are focused or resized.
+        // changes come from the core's size events (usePtySize). A reattach says whether this view is the one in use.
         const inUse = isFocused.current && document.hasFocus() && ready.element.contains(document.activeElement);
-        if (attachedBefore.current && inUse) hostSize.focus(attached, true);
-        // A fit while the attach was in flight had no stream to resize.
-        if (ready.cols !== askedCols || ready.rows !== askedRows) hostSize.resize(attached, ready.cols, ready.rows);
+        const reattach = attachedBefore.current ? (inUse ? "in use" : "background") : null;
+        hostSize.attached(attached, ready, {
+          asked: { cols: askedCols, rows: askedRows },
+          size: attached.size,
+          reattach,
+        });
         // Reattached after a reconnect: the core repaints the screen, and the history above it stays as the view holds it
         // (#1997). The view clears its screen first, so the repaint's ESC[2J has no marked prompt to scroll into history.
         if (attachedBefore.current) {

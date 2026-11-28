@@ -1,6 +1,6 @@
-import type { HcConnection } from "@doriface/client";
+import type { HcConnection, TerminalStream } from "@doriface/client";
 import type { WTerm } from "@wterm/react";
-import { useEffect } from "react";
+import { type RefObject, useEffect } from "react";
 import { rosterFor } from "../roster/roster.ts";
 import type { HostSize } from "./host-size.ts";
 import type { OutputPacer } from "./output-pacer.ts";
@@ -15,6 +15,7 @@ export function usePtySize(
   connection: HcConnection,
   address: string,
   wt: WTerm | null,
+  stream: RefObject<TerminalStream | null>,
   hostSize: HostSize,
   pacer: OutputPacer,
 ): void {
@@ -28,9 +29,9 @@ export function usePtySize(
       if (terminal === undefined || (terminal.cols === cols && terminal.rows === rows)) return;
       ({ cols, rows } = terminal);
       const size = { cols, rows };
-      pacer.inOrder(() => hostSize.ptySized(wt, size));
+      pacer.inOrder(() => hostSize.ptySized(stream.current, wt, size));
     };
     follow();
     return live.subscribeTo(address, follow);
-  }, [connection, address, wt, hostSize, pacer]);
+  }, [connection, address, wt, stream, hostSize, pacer]);
 }

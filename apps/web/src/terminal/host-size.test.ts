@@ -94,14 +94,14 @@ test("a watching view draws at the pty's size, follows it, and its first input f
   const stream = recorder();
   const view = grid({ cols: 48, rows: 43 });
   fitGrid(view);
-  size.ptySized(view, { cols: 123, rows: 36 });
+  size.ptySized(stream, view, { cols: 123, rows: 36 });
   // Held at the pty's grid: no fit takes the box's back while it watches.
   fitGrid(view);
-  size.ptySized(view, { cols: 100, rows: 30 });
+  size.ptySized(stream, view, { cols: 100, rows: 30 });
   expect(view.resizes).toEqual(["48x43", "123x36", "100x30"]);
   // A reattach asks for its own box, then draws at the size the core answers with.
   size.asks(view);
-  size.ptySized(view, { cols: 100, rows: 30 });
+  size.ptySized(stream, view, { cols: 100, rows: 30 });
   expect(view.resizes.slice(3)).toEqual(["48x43", "100x30"]);
   expect(stream.frames).toEqual([]);
   size.inputStarts(stream, view);
@@ -109,7 +109,7 @@ test("a watching view draws at the pty's size, follows it, and its first input f
   expect(view.resizes.at(-1)).toBe("48x43");
   expect(stream.frames).toEqual(["resize 48x43"]);
   // In use, the view's grid is its own: the pty's size the core reports no longer moves it.
-  size.ptySized(view, { cols: 123, rows: 36 });
+  size.ptySized(stream, view, { cols: 123, rows: 36 });
   expect(view.resizes.at(-1)).toBe("48x43");
 });
 
@@ -119,15 +119,15 @@ test("a watching view the core gave its own size keeps fitting its box, and each
   const box = { cols: 44, rows: 29 };
   const view = grid(box);
   expect(size.asks(view)).toEqual({ cols: 44, rows: 29 });
-  size.ptySized(view, { cols: 44, rows: 29 });
+  size.ptySized(stream, view, { cols: 44, rows: 29 });
   expect(view.autoResize).toBe(true);
   // The web font arrives: wterm refits the box and reports the grid's new size.
   Object.assign(box, { cols: 38, rows: 31 });
   fitGrid(view);
   size.resize(stream, view.cols, view.rows);
   // The core's size event for the attach's size comes after the resize went: the view still leads.
-  size.ptySized(view, { cols: 44, rows: 29 });
-  size.ptySized(view, { cols: 38, rows: 31 });
+  size.ptySized(stream, view, { cols: 44, rows: 29 });
+  size.ptySized(stream, view, { cols: 38, rows: 31 });
   expect(view.resizes).toEqual(["44x29", "38x31"]);
   expect(stream.frames).toEqual(["resize 38x31"]);
   // Shown again with a box changed meanwhile: the fit's size goes, and nothing is sent for an unchanged one.
@@ -145,8 +145,8 @@ test("a watching view a desk took the pty from draws at the desk's size, and lea
   const box = { cols: 38, rows: 31 };
   const view = grid(box);
   size.asks(view);
-  size.ptySized(view, { cols: 38, rows: 31 });
-  size.ptySized(view, { cols: 120, rows: 30 });
+  size.ptySized(stream, view, { cols: 38, rows: 31 });
+  size.ptySized(stream, view, { cols: 120, rows: 30 });
   expect(view.autoResize).toBe(false);
   // Rotated while the desk leads: the grid stays at the desk's size, and nothing is sent, shown again or not (D1).
   Object.assign(box, { cols: 84, rows: 14 });
@@ -156,7 +156,7 @@ test("a watching view a desk took the pty from draws at the desk's size, and lea
   expect(view.resizes.at(-1)).toBe("120x30");
   expect(stream.frames).toEqual([]);
   // The desk leaves: the core gives the pty the size this view last gave it, and the view fits its box again.
-  size.ptySized(view, { cols: 38, rows: 31 });
+  size.ptySized(stream, view, { cols: 38, rows: 31 });
   expect(view.autoResize).toBe(true);
   expect(view.resizes.at(-1)).toBe("84x14");
   size.resize(stream, 84, 14);
@@ -164,27 +164,49 @@ test("a watching view a desk took the pty from draws at the desk's size, and lea
 });
 
 /**
- * The core's side, as herdr-core's viewers.rs keeps it: the pty takes the size of the viewer that resized or gained
- * focus last. Nothing here runs on a clock, so every exchange settles as it is made.
+ * The core's side, as herdr-core's viewers.rs keeps it: each viewer has a size and the moment it was last active
+ * (attached without `resumed`, resized, or focused); the pty takes the size of the most recently active one, a viewer
+ * never active counting as the least, and of the latest such viewer on a tie (`apply_size`). Nothing here runs on a
+ * clock, so every exchange settles as it is made.
  */
 function core() {
-  const sizes = new Map<string, GridSize>();
+  const viewers = new Map<string, { size: GridSize | null; activeAt: number }>();
   const frames: string[] = [];
   let pty: GridSize | null = null;
+  let clock = 0;
+  const apply = (): void => {
+    let leader: { size: GridSize | null; activeAt: number } | undefined;
+    for (const each of viewers.values()) if (leader === undefined || each.activeAt >= leader.activeAt) leader = each;
+    pty = leader?.size ?? pty;
+  };
+  const touch = (id: string, size?: GridSize): void => {
+    const each = viewers.get(id) ?? { size: null, activeAt: -1 };
+    viewers.set(id, { size: size ?? each.size, activeAt: (clock += 1) });
+    apply();
+  };
   const viewer = (id: string): SizedStream => ({
     resize: (cols, rows) => {
-      sizes.set(id, { cols, rows });
-      pty = { cols, rows };
       frames.push(`${id} resize ${cols}x${rows}`);
+      touch(id, { cols, rows });
       return true;
     },
     focus: (gained) => {
       frames.push(`${id} focus ${gained}`);
-      if (gained) pty = sizes.get(id) ?? pty;
+      if (gained) touch(id);
       return true;
     },
   });
-  return { viewer, frames, pty: () => pty };
+  /** An attach: the core answers with the pty's size once it has applied this viewer's. */
+  const attach = (id: string, size: GridSize, resumed: boolean): { stream: SizedStream; size: GridSize } => {
+    viewers.set(id, { size, activeAt: resumed ? -1 : (clock += 1) });
+    apply();
+    return { stream: viewer(id), size: pty ?? size };
+  };
+  const detach = (id: string): void => {
+    viewers.delete(id);
+    apply();
+  };
+  return { viewer, attach, detach, frames, pty: () => pty };
 }
 
 test("two desks of different sizes settle on the one used last, one frame per action and none resent (#2672 review)", () => {
@@ -219,4 +241,73 @@ test("a phone that starts typing keeps its size against a desk that stays focuse
   expect(host.pty()).toEqual({ cols: 40, rows: 30 });
   // The desk keeps its focus and sends nothing more, so the typing phone keeps the size until the desk is used again.
   expect(host.frames.filter((frame) => frame.startsWith("desk"))).toEqual(["desk resize 120x30", "desk focus true"]);
+});
+
+/**
+ * A desk pane reattached after a blip, not in use. It asked for the grid it had as the attach went (39x20), and the
+ * layout settled one column wider (40x20) while the attach was in flight (#2390).
+ */
+function backgroundReattach(host: ReturnType<typeof core>) {
+  const pane = new HostSize(false);
+  const box = { cols: 39, rows: 20 };
+  const view = grid(box);
+  const asked = pane.asks(view);
+  const answer = host.attach("pane", asked, true);
+  Object.assign(box, { cols: 40 });
+  fitGrid(view);
+  pane.attached(answer.stream, view, { asked, size: answer.size, reattach: "background" });
+  return { pane, stream: answer.stream, view };
+}
+
+const paneFrames = (host: ReturnType<typeof core>): string[] => host.frames.filter((frame) => frame.startsWith("pane"));
+
+test("a pane reattached in the background leaves the size to another device in use, and its focus applies its grid (#2390)", () => {
+  const host = core();
+  const desk = host.viewer("desk");
+  const deskSize = new HostSize(false);
+  deskSize.resize(desk, 44, 15);
+  deskSize.focus(desk, true);
+  const { pane, stream } = backgroundReattach(host);
+  // The fit that landed during the attach would make the pane the active viewer: it waits for the pane's focus.
+  expect(host.pty()).toEqual({ cols: 44, rows: 15 });
+  expect(paneFrames(host)).toEqual([]);
+  pane.focus(stream, true);
+  expect(paneFrames(host)).toEqual(["pane resize 40x20", "pane focus true"]);
+  expect(host.pty()).toEqual({ cols: 40, rows: 20 });
+});
+
+test("a pane reattached in the background with nobody else on the terminal leads, and a fit during the attach goes at once (#2390)", () => {
+  const host = core();
+  backgroundReattach(host);
+  expect(paneFrames(host)).toEqual(["pane resize 40x20"]);
+  expect(host.pty()).toEqual({ cols: 40, rows: 20 });
+});
+
+test("a pane in the background leads once the device in use leaves, and gives the core the size it held (#2390)", () => {
+  const host = core();
+  const desk = host.viewer("desk");
+  new HostSize(false).resize(desk, 44, 15);
+  const { pane, stream, view } = backgroundReattach(host);
+  host.detach("desk");
+  // The core gives the pane the size it asked for; the grid it settled on meanwhile follows.
+  expect(host.pty()).toEqual({ cols: 39, rows: 20 });
+  pane.ptySized(stream, view, { cols: 39, rows: 20 });
+  expect(paneFrames(host)).toEqual(["pane resize 40x20"]);
+  expect(host.pty()).toEqual({ cols: 40, rows: 20 });
+});
+
+test("the pane in use takes the size back at its reattach: its focus, then the fit that landed during the attach", () => {
+  const host = core();
+  const desk = host.viewer("desk");
+  new HostSize(false).resize(desk, 44, 15);
+  const pane = new HostSize(false);
+  const box = { cols: 39, rows: 20 };
+  const view = grid(box);
+  const asked = pane.asks(view);
+  const answer = host.attach("pane", asked, true);
+  Object.assign(box, { cols: 40 });
+  fitGrid(view);
+  pane.attached(answer.stream, view, { asked, size: answer.size, reattach: "in use" });
+  expect(paneFrames(host)).toEqual(["pane focus true", "pane resize 40x20"]);
+  expect(host.pty()).toEqual({ cols: 40, rows: 20 });
 });

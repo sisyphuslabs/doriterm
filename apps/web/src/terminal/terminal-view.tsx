@@ -160,7 +160,7 @@ export function TerminalView(props: TerminalViewProps) {
     if (wt !== null && softKeyboard) quietKeyboard(wt.element);
   }, [wt, softKeyboard]);
   useSizeReclaim(softKeyboard, wt, stream, hostSize);
-  usePtySize(connection, address, wt, hostSize, pacer);
+  usePtySize(connection, address, wt, stream, hostSize, pacer);
   useBehaviors(wt, stream, options, onUnsafePaste, pasteFiles);
   useTerminalFont(wt, config);
   // The real predictor reads every input and write of this view (#1595); a spec's stand-in replaces it when installed.

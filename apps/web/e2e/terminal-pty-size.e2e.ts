@@ -1,8 +1,9 @@
 import type { Locator, Page } from "@playwright/test";
 import { coreSize, gridSize } from "./core-size.ts";
 import { expect, openNewTerminal, openNewTerminalBehindLatency, test } from "./fixtures.ts";
-import { routeHcSocket } from "./hc-socket.ts";
+import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { endOwnTerminals } from "./own-terminals.ts";
+import { secondDevice } from "./second-device.ts";
 
 endOwnTerminals();
 
@@ -97,24 +98,28 @@ test("a terminal resized while the link is down has its grid's pty size after th
   await expect.poll(() => coreSize(address), { timeout: 10_000 }).toBe(await gridSize(terminal));
 });
 
-test("an unfocused split pane keeps its pty size through a reattach until it is focused, then takes its grid's", async ({
-  page,
-}) => {
-  const link = await routeHcSocket(page);
-  await page.goto("/");
+/** Opens a terminal and splits it: the new pane takes focus, and the first one is left unfocused at its split size. */
+async function splitWithUnfocusedPane(page: Page): Promise<{ readonly focused: Locator; readonly unfocused: Locator }> {
   await openNewTerminal(page);
   const focused = page.locator('[data-focused="true"] [data-terminal]');
   const single = await gridSize(focused);
-  // Split right focuses the new pane, so the first one is the unfocused pane.
   await page.getByRole("button", { name: "Split right" }).click();
   const unfocused = page.locator('[data-focused="false"] [data-terminal]:visible');
   await expect(unfocused).toHaveCount(1);
   const address = (await unfocused.getAttribute("data-terminal")) ?? "";
-  // The pane starts at the single-pane width; read its size once the split has laid it out and the core has it.
+  // The pane starts at the single-pane width; it is ready once the split has laid it out and the core has that size.
   await expect.poll(() => gridSize(unfocused)).not.toBe(single);
   await expect.poll(async () => coreSize(address) === (await gridSize(unfocused)), { timeout: 15_000 }).toBe(true);
-  const before = coreSize(address);
+  return { focused, unfocused };
+}
 
+/**
+ * The link drops, the window is resized while it is down, and the page reconnects: each pane attaches again with
+ * `resumed: true` and the grid it has now. Resolves once the focused pane's size is the core's: its FOCUS has made it the
+ * active viewer, so the page's reattach has been answered.
+ */
+async function blipWithResize(page: Page, link: HcSocket, focused: Locator, unfocused: Locator): Promise<void> {
+  const before = await gridSize(unfocused);
   const opened = link.opened();
   await link.drop(true);
   const reconnecting = page.getByRole("status").filter({ hasText: "Reconnecting" });
@@ -124,12 +129,50 @@ test("an unfocused split pane keeps its pty size through a reattach until it is 
   link.restore();
   await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(opened);
   await expect(reconnecting).toBeHidden({ timeout: 15_000 });
-
-  // resumed: true defers a background viewer's size, so another device in use keeps its own; the pane in use applies.
   const focusedAddress = (await focused.getAttribute("data-terminal")) ?? "";
   await expect.poll(() => coreSize(focusedAddress), { timeout: 10_000 }).toBe(await gridSize(focused));
-  expect(coreSize(address)).toBe(before);
-  // Focusing the pane (no key pressed) makes it the active viewer, and its size applies.
-  await unfocused.getByRole("textbox").focus();
+}
+
+// A reattach after a blip says `resumed: true`: the core gives that viewer the pty only while no other viewer is more
+// recently active (herdr-core viewers.rs `apply_size`), so another device in use keeps its size (0870d841, #75). With
+// nobody else on the terminal, the pane the page draws is the only viewer, and its own grid sizes the pty (#2390).
+test("an unfocused split pane resized while the link was down has its grid's pty size after the reattach, with nothing focused or typed", async ({
+  page,
+}) => {
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  const { focused, unfocused } = await splitWithUnfocusedPane(page);
+  const address = (await unfocused.getAttribute("data-terminal")) ?? "";
+  await blipWithResize(page, link, focused, unfocused);
   await expect.poll(() => coreSize(address), { timeout: 10_000 }).toBe(await gridSize(unfocused));
+  await expect(unfocused).toHaveAttribute("data-terminal", address);
+});
+
+test("an unfocused split pane another device is using keeps that device's pty size through a reattach until it is focused, then takes its grid's", async ({
+  page,
+  browser,
+}) => {
+  const link = await routeHcSocket(page);
+  await page.goto("/");
+  const { focused, unfocused } = await splitWithUnfocusedPane(page);
+  const address = (await unfocused.getAttribute("data-terminal")) ?? "";
+  // Another desk, a different window size, shows the same layout; focusing the pane there makes it the active viewer.
+  const other = await secondDevice(browser, { width: 1200, height: 480 });
+  try {
+    await other.goto("/");
+    const there = other.locator(`[data-terminal="${address}"]`);
+    await expect(there).toBeVisible({ timeout: 20_000 });
+    await there.getByRole("textbox").focus();
+    const theirs = await gridSize(there);
+    await expect.poll(() => coreSize(address), { timeout: 10_000 }).toBe(theirs);
+
+    await blipWithResize(page, link, focused, unfocused);
+    expect(await gridSize(unfocused)).not.toBe(theirs);
+    expect(coreSize(address)).toBe(theirs);
+    // Focusing the pane here (no key pressed) makes this page its active viewer, and its size applies.
+    await unfocused.getByRole("textbox").focus();
+    await expect.poll(() => coreSize(address), { timeout: 10_000 }).toBe(await gridSize(unfocused));
+  } finally {
+    await other.context().close();
+  }
 });
