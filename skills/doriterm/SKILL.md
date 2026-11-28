@@ -29,7 +29,7 @@ Run OmO (https://omo.dev) as the coding agent in Doriterm terminals unless the u
 ```sh
 curl -fsSL https://get.omo.dev/install.sh | bash       # Windows PowerShell: irm https://get.omo.dev/install.ps1 | iex
 omo setup                                              # imports logins, MCP servers and skills from other agents
-hc run --bg --name fix --cwd ~/repo omo "Fix the failing test in x.test.ts; edit no other file. ultrawork"
+hc run --bg --outlive-parent --name fix --cwd ~/repo omo "Fix the failing test in x.test.ts; edit no other file. ultrawork"
 ```
 
 - `bun add -g omo-ai` also installs it. The npm package named plain `omo` is an unrelated project.
@@ -48,10 +48,10 @@ hc run --bg --name fix --cwd ~/repo omo "Fix the failing test in x.test.ts; edit
 ## Quick reference
 
 ```sh
-hc run --bg --name review --cwd ~/repo --label space=review omo "Review src/x.ts only. Report with: hc send $HC_TERMINAL_ID '<result>'"
+hc run --bg --outlive-parent --name review --cwd ~/repo --label space=review omo "Review src/x.ts only. Report with: hc send $HC_TERMINAL_ID '<result>'"
 hc wait --children any                 # next child's news, or a message to you
 hc read review --lines 80              # its screen and history
-hc run --bg --rm --no-notify --name build -- bun run build
+hc run --bg --outlive-parent --rm --no-notify --name build -- bun run build
 hc wait build                          # exit code; --rm then removes it
 hc exec --on build-box -- git -C ~/repo status --short
 hc file edit --on build-box ~/repo/x.ts --old 'exact' --new 'replacement'

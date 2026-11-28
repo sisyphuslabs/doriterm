@@ -153,7 +153,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
     const found = findTerminal(layout.tabs, address);
     return found !== null && !found.tab.transient;
   });
-  const { dropEnded, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane, inDocument);
+  const { dropEnded, dropClosed, closing: closingSessions, kept } = useDropOnce(terminals, layout.dropPane, inDocument);
   useAdoptLoose(connection, layouts, fed.loaded ? terminals : null, failed);
   const narrow = useWidthTier() === "compact";
   const ids = useMemo(() => machineIds(views), [views]);
@@ -292,6 +292,8 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
     // An End of this session drops its pane only once it has removed the terminal (see afterEnd), and a program that
     // ended in its first seconds keeps its pane for the just-born grace, so its failure shows (afterGrace).
     if (!closesTab(end)) return;
+    // The person closed the view that said it ended: its pane goes now, whatever an earlier drop met (#2986).
+    if (end === "closed") return dropClosed(address);
     const created = terminals.find((terminal) => terminal.address === address)?.created_ms;
     afterGrace(created, () => afterEnd(address, () => dropEnded(address)));
   };
@@ -542,7 +544,7 @@ function WorkspaceScreen({ connection }: WorkspaceProps) {
                 // A tab's only pane closes as its tab (closeTab), so its drop is that tab's close going ahead.
                 const found = findTerminal(layout.tabs, address);
                 if (found !== null && found.tab.panes.length === 1) closed(found.tab.key);
-                dropEnded(address);
+                dropClosed(address);
               }}
               onKept={kept}
             />

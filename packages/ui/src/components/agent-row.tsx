@@ -1,4 +1,4 @@
-import { Pin } from "lucide-react";
+import { Link2Off, Pin } from "lucide-react";
 import { useRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 import { AgentMark } from "./agent-mark.tsx";
@@ -69,7 +69,12 @@ export interface Agent {
   readonly descendants?: number;
   /** The most urgent of the agent and its live sub-agents, a sub-agent's done read as idle. */
   readonly urgency?: AgentStatus;
+  /** The agent that started it ended or went away: it runs on with no owner until someone closes it. */
+  readonly ownerless?: boolean;
 }
+
+/** What the ownerless mark says, as its label and its tooltip. */
+export const OWNERLESS_LABEL = "Ownerless: the agent that started it has ended";
 
 /** The todo progress in words, for the label and the tooltip. */
 export const todoLabel = (todo: { readonly done: number; readonly total: number }): string =>
@@ -128,6 +133,7 @@ export function AgentRow({
       shownAge,
       brandKind,
       todo,
+      agent.ownerless === true ? "ownerless" : "",
       drawn,
       disclosure ? "1" : "0",
       cells.join(""),
@@ -138,6 +144,7 @@ export function AgentRow({
       agent.name,
       STATUS_LABEL[agent.status],
       ...(agent.todo === undefined ? [] : [todoLabel(agent.todo)]),
+      ...(agent.ownerless === true ? ["ownerless"] : []),
     ].join(", ");
     return (
       <button
@@ -248,6 +255,11 @@ export function AgentRow({
           {todo}
         </span>
       )}
+      {agent.ownerless === true ? (
+        <span title={OWNERLESS_LABEL} data-row-meta data-ownerless className="flex shrink-0">
+          <Link2Off role="img" aria-label={OWNERLESS_LABEL} className="size-3.5 text-muted-foreground" />
+        </span>
+      ) : null}
       {agent.status === "blocked" && !compactBlocked ? <StatusChip status="blocked" glyph={false} /> : null}
       {agent.pinned === true ? (
         // The same 14 px as the row's Unpin action that takes its place on hover, so the pin never jumps in size (#1562).

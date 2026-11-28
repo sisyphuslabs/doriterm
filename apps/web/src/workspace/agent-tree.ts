@@ -27,6 +27,11 @@ export interface TreeRow {
   readonly descendants: number;
   /** The most urgent of this row and its live descendants; its own status for a leaf. */
   readonly urgency: AgentStatus;
+  /**
+   * hc names a parent for it that is no longer a live terminal: its parent ended or went away, so it is released, a
+   * top-level row of its own, never nested again under the stale `parent` hc keeps (#2990).
+   */
+  readonly ownerless: boolean;
 }
 
 /**
@@ -100,6 +105,11 @@ export function agentTree(
   apart: (terminal: Session) => boolean = () => false,
 ): readonly TreeRow[] {
   const live = terminals.filter((terminal) => terminal.state === "live");
+  const liveAddresses = new Set(live.map((terminal) => terminal.address));
+  const isOwnerless = (terminal: Session): boolean => {
+    const parent = parentAddress(terminal);
+    return parent !== null && !liveAddresses.has(parent);
+  };
   const parents = parentsOf(live);
   const children = new Map<string, Session[]>();
   for (const terminal of live) {
@@ -145,6 +155,7 @@ export function agentTree(
     guides: guides[index] ?? [],
     descendants: descendants[index] ?? 0,
     urgency: urgency[index] ?? "unknown",
+    ownerless: isOwnerless(row.terminal),
   }));
 }
 
