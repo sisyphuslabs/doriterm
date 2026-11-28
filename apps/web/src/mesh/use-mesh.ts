@@ -1,5 +1,5 @@
 import type { HcConnection } from "@doriface/client";
-import { MESH_APPROVAL_DOC, MESH_STATUS_DOC } from "@doriface/protocol";
+import { MESH_APPROVAL_DOC, MESH_STATUS_DOC, SOLO_JOINS_DOC } from "@doriface/protocol";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Roster } from "../roster/roster.ts";
 import { useRoster } from "../roster/use-roster.ts";
@@ -13,7 +13,7 @@ export interface Mesh {
   readonly answer: (request: JoinRequest, verdict: Verdict) => Promise<void>;
 }
 
-const MESH_DOCS: ReadonlySet<string> = new Set([MESH_STATUS_DOC, MESH_APPROVAL_DOC]);
+const MESH_DOCS: ReadonlySet<string> = new Set([MESH_STATUS_DOC, MESH_APPROVAL_DOC, SOLO_JOINS_DOC]);
 
 /** The mesh documents through the connection, and machine.list through the one reader the roster keeps for the core. */
 export const meshCallsOf = (connection: HcConnection, roster: Roster): MeshCalls => ({

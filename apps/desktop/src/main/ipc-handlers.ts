@@ -19,6 +19,7 @@ import {
   type McpRequest,
   type PairedDevicesAnswer,
   type PairOfferAnswer,
+  type PairOfferRequest,
   type RevokeDeviceAnswer,
   type UpdateReady,
 } from "../shared/bridge.ts";
@@ -49,7 +50,7 @@ export interface IpcDeps extends PasteInviteDeps {
   readonly origin: string;
   readonly startLocalHost: () => Promise<LocalHostEndpoint>;
   /** This computer's pairing offer: `open` replaces a pending one, `state` reads what stands. */
-  readonly pairOffer: (request: "open" | "state") => Promise<PairOfferAnswer>;
+  readonly pairOffer: (request: PairOfferRequest) => Promise<PairOfferAnswer>;
   /** Every device this computer has stored, and revoking one of them from here. */
   readonly pairedDevices: () => Promise<PairedDevicesAnswer>;
   readonly revokeDevice: (id: string) => Promise<RevokeDeviceAnswer>;
@@ -186,7 +187,7 @@ export function ipcHandlers(deps: IpcDeps): IpcHandlers {
     },
     async pairOffer(event, candidate) {
       assertAppFrame(event, deps.origin);
-      if (candidate !== "open" && candidate !== "state") return null;
+      if (candidate !== "open" && candidate !== "open-agent" && candidate !== "state") return null;
       try {
         return await deps.pairOffer(candidate);
       } catch (error) {

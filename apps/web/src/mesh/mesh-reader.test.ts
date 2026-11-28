@@ -1,6 +1,13 @@
 import { meshStatus } from "@doriface/host";
 import { meshFixture } from "@doriface/host/testing";
-import { type JsonValue, type MachineView, MESH_APPROVAL_DOC, MESH_STATUS_DOC } from "@doriface/protocol";
+import {
+  type JsonValue,
+  type MachineView,
+  MESH_APPROVAL_DOC,
+  MESH_STATUS_DOC,
+  SOLO_JOINS_DOC,
+  SOLO_JOINS_VERSION,
+} from "@doriface/protocol";
 import { describe, expect, test } from "bun:test";
 import { type JoinRequest, type MeshCalls, type MeshRead, MeshReader, type ReadBound } from "./mesh-reader.ts";
 
@@ -263,5 +270,36 @@ describe("MeshReader", () => {
     reply([]);
     await read;
     expect(reads).toEqual([]);
+  });
+
+  test("a host in no mesh shows the joins it publishes alone, such as an agent's, and answers them on its core (#2939)", async () => {
+    const { calls, nextRequest, docs } = heldCore();
+    const agent = { ...ownJoin, kind: "agent" as const, name: "claude" };
+    docs.set(key(MESH_STATUS_DOC), { value: null, version: 2 });
+    docs.set(key(SOLO_JOINS_DOC), {
+      value: { v: SOLO_JOINS_VERSION, self: status.self, pending: [agent] },
+      version: 1,
+    });
+    const reader = new MeshReader(calls);
+    const { reads } = shownBy(reader);
+    const read = reader.refresh();
+    (await nextRequest())([]);
+    await read;
+    expect(reads.at(-1)).toEqual({ phase: "none", requests: [{ join: agent, machine: null, answered: undefined }] });
+    const denied = reader.answer({ join: agent, machine: null, answered: undefined }, "deny");
+    (await nextRequest())([]);
+    await denied;
+    expect((await calls.doc(MESH_APPROVAL_DOC)).value).toEqual({ deny: agent.nonce });
+  });
+
+  test("a host in no mesh with no joins document shows no join", async () => {
+    const { calls, nextRequest, docs } = heldCore();
+    docs.set(key(MESH_STATUS_DOC), { value: null, version: 2 });
+    const reader = new MeshReader(calls);
+    const { reads } = shownBy(reader);
+    const read = reader.refresh();
+    (await nextRequest())([]);
+    await read;
+    expect(reads.at(-1)).toEqual({ phase: "none", requests: [] });
   });
 });

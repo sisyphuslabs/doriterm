@@ -103,6 +103,7 @@ describe("pairing URL", () => {
       webOrigin: "https://app.doriterm.com",
       relayUrl: "wss://relay-doriface.omo.dev",
       mesh: false,
+      agent: false,
     });
   });
 
@@ -111,6 +112,13 @@ describe("pairing URL", () => {
     expect(fragment(meshUrl).get("m")).toBe("1");
     expect(parsePairingUrl(meshUrl).mesh).toBe(true);
     expect(fragment(url).has("m")).toBe(false);
+  });
+
+  test("an agent offer's link carries a=1 and parses back as one; a device link does not (#2939)", () => {
+    const agentUrl = buildPairingUrl({ ...link, agent: true });
+    expect(fragment(agentUrl).get("a")).toBe("1");
+    expect(parsePairingUrl(agentUrl).agent).toBe(true);
+    expect(parsePairingUrl(url).agent).toBe(false);
   });
 
   test("carries the link secret as 43 base64url characters and never the typed code", () => {
@@ -167,6 +175,7 @@ describe("pairing deep link", () => {
       ...link,
       relayUrl: "wss://relay-doriface.omo.dev",
       mesh: false,
+      agent: false,
     });
   });
 

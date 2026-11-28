@@ -1,9 +1,11 @@
 import { HcConnection } from "@doriface/client";
 import {
+  agentPairingCode,
   CloseCode,
   closeCodeOf,
   fingerprintOf,
   type KeyPair,
+  PAIRING_TTL_MS,
   type PairingSecret,
   rawStaticKey,
   type SecureLink,
@@ -134,7 +136,8 @@ async function resolveHost(target: ConnectTarget, options: DialOptions): Promise
   if (target.kind === "link") {
     const { hostId, noiseStaticPub, linkSecret } = target.link;
     const host = { hostId, hostKey: noiseStaticPub, relayUrl: options.relayUrl ?? target.link.relayUrl };
-    return pair(known, host, { mode: "link", linkSecret, name: options.deviceName }, options);
+    const agent = target.link.agent === true;
+    return pair(known, host, { mode: "link", linkSecret, name: options.deviceName }, options, undefined, agent);
   }
   const record = await lookupPairSlot({ relayUrl, code: target.code });
   if (record === undefined) throw new Error("no host is pairing with this code on the relay: it may have expired");
@@ -209,6 +212,36 @@ const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
   a.byteLength === b.byteLength && a.every((byte, index) => byte === b[index]);
 
 /**
+ * Waits for the host's answer to a confirmed pairing: its `hello`, sent once it stored this device. An agent's pairing
+ * waits for an owner's approval (#2939), so it first says which code to compare and waits as long as the offer lives, not
+ * the 10 s a hello otherwise gets; the host refuses it once the offer ends, and that refusal reads as one.
+ */
+export async function awaitPairingAnswer(
+  secure: SecureLink,
+  agent: boolean,
+  log: (line: string) => void,
+): Promise<void> {
+  if (agent) {
+    log(
+      `Waiting for the owner to approve this agent in Doriterm. Compare this code there: ${agentPairingCode(secure.handshakeHash)}`,
+    );
+  }
+  const bound = agent ? { handshakeTimeoutMs: PAIRING_TTL_MS } : {};
+  const opened = await HcConnection.open(secure, bound).catch((error: unknown) => {
+    if (agent && error instanceof Error && closeCodeOf(error) === CloseCode.UnknownDevice) {
+      throw new Error(
+        "the owner denied this agent, or no one approved it before the invite ended: ask for a new invite",
+        {
+          cause: error,
+        },
+      );
+    }
+    throw error;
+  });
+  opened.close();
+}
+
+/**
  * Runs the pairing session and saves the host only after it answered `hello`, which it does once it stored this
  * device, so the IK session that follows is admitted.
  */
@@ -218,6 +251,7 @@ async function pair(
   pairing: PairingSecret,
   options: DialOptions,
   pairSlot?: string,
+  agent = false,
 ): Promise<KnownHost> {
   const checked = known.get(host.hostId);
   confirmReplacement(checked, host, options);
@@ -232,7 +266,7 @@ async function pair(
   const secure = await secureLink(link, initiator(host, options.device, pairing)).catch((error: unknown) => {
     throw refusal(host.hostId, error);
   });
-  (await HcConnection.open(secure)).close();
+  await awaitPairingAnswer(secure, agent, options.log);
   known.replace(host, checked, (saved) => confirmReplacement(saved, host, options));
   options.log(`paired with host ${host.hostId}, fingerprint ${fingerprintOf(host.hostKey)}`);
   options.log(`from now on: doriface-host connect ${host.hostId}`);

@@ -9,7 +9,7 @@ export interface PendingJoin {
   /** The joiner's Noise key, from its card. */
   readonly noisePub: string;
   /** What it joins as: a card with no kind is a machine, which is all a version 1 card could mean. */
-  readonly kind: "machine" | "client";
+  readonly kind: "machine" | "client" | "agent";
   /** Milliseconds since the epoch: the offer's expiry, which the pending join shares. */
   readonly expiresAt: number;
   readonly code: string;

@@ -63,6 +63,7 @@ export function e2eeDeps(
       meshParts.sync.changed();
     },
     ...meshParts,
+    approvals: meshParts.hostMesh.pending,
     rekeyInterval: options.rekeyInterval,
     log: options.log,
   };

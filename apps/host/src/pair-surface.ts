@@ -16,6 +16,8 @@ export interface PairedDeviceView {
 export type PairState =
   | { readonly state: "pending"; readonly offer: PairingOfferView }
   | { readonly state: "paired"; readonly device: PairedDeviceView | null }
+  /** An agent redeemed this surface's agent offer and waits for an owner's approval (#2939); no device is stored yet. */
+  | { readonly state: "approval" }
   | { readonly state: "expired" }
   | { readonly state: "none" };
 
@@ -23,9 +25,11 @@ export interface PairOffersOptions {
   readonly identity: HostIdentity;
   readonly pairing: PairingStore;
   readonly devices: DeviceStore;
-  /** Opens a fresh offer, replacing any pending one (the running host's `pairDevice`). */
-  readonly open: () => Promise<PendingPairing>;
+  /** Opens a fresh offer, replacing any pending one (the running host's `pairDevice`); `agent` asks for approval. */
+  readonly open: (agent: boolean) => Promise<PendingPairing>;
   readonly relayUrl: string;
+  /** Whether an agent's pairing waits for an owner's approval now (the host's pending joins). */
+  readonly agentWaiting?: (() => boolean) | undefined;
   readonly webOrigin?: string | undefined;
   readonly now?: (() => number) | undefined;
 }
@@ -36,15 +40,15 @@ export interface PairOffersOptions {
  */
 export class PairOffers {
   readonly #options: PairOffersOptions;
-  #opened: { readonly expiresAt: number; readonly at: number } | undefined;
+  #opened: { readonly expiresAt: number; readonly at: number; readonly agent: boolean } | undefined;
 
   constructor(options: PairOffersOptions) {
     this.#options = options;
   }
 
-  async open(): Promise<PairState> {
-    const offer = await this.#options.open();
-    this.#opened = { expiresAt: offer.expiresAt, at: this.#now() };
+  async open(agent = false): Promise<PairState> {
+    const offer = await this.#options.open(agent);
+    this.#opened = { expiresAt: offer.expiresAt, at: this.#now(), agent };
     return { state: "pending", offer: this.#view(offer) };
   }
 
@@ -55,7 +59,10 @@ export class PairOffers {
     const opened = this.#opened;
     if (opened === undefined) return { state: "none" };
     if (pending !== undefined || now >= opened.expiresAt) return { state: "expired" };
-    return { state: "paired", device: this.#pairedSince(opened.at) };
+    const device = this.#pairedSince(opened.at);
+    if (!opened.agent || device !== null) return { state: "paired", device };
+    // An agent offer is spent when its handshake confirms; until an owner approves, no device is stored.
+    return this.#options.agentWaiting?.() === true ? { state: "approval" } : { state: "expired" };
   }
 
   #view(offer: PendingPairing): PairingOfferView {

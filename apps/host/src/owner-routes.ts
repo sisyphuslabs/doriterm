@@ -7,7 +7,7 @@ import type { PairingOfferView } from "./pair-offer.ts";
 
 /** The loopback pairing routes' answers; the app renders these, so they stay JSON-serialisable. */
 export interface PairRoute {
-  open(): Promise<PairAnswer>;
+  open(agent: boolean): Promise<PairAnswer>;
   state(): PairAnswer;
 }
 
@@ -17,6 +17,7 @@ export type PairAnswer =
       readonly state: "paired";
       readonly device: { readonly name: string; readonly id: string; readonly pairedAt: string } | null;
     }
+  | { readonly state: "approval" }
   | { readonly state: "expired" }
   | { readonly state: "none" };
 
@@ -40,9 +41,10 @@ export function mountOwnerRoutes(app: Hono, { token, pair, devices, mcpSurface }
   };
   if (pair !== undefined) {
     app.get("/v1/pair", pairGate, (c) => c.json(pair.state()));
+    // `?agent=1` opens an agent offer, whose device waits for an owner's approval before it is paired (#2939).
     app.post("/v1/pair", pairGate, async (c) => {
       try {
-        return c.json(await pair.open());
+        return c.json(await pair.open(c.req.query("agent") === "1"));
       } catch (error) {
         if (error instanceof LocalOnlyError) return c.json({ error: error.message }, 409);
         throw error;

@@ -59,7 +59,7 @@ export function coreWriters({ core, options, e2ee, meshStatus, refreshMeshLines,
   let offers: MeshOfferService | undefined;
   const skill = options.skill === undefined ? undefined : skillHooks(options.skill, () => info?.refresh(), options.log);
   void skill?.refreshOutdated();
-  // A one-line Add a machine (#668): a client asks for a mesh offer through a core document, and the host answers it.
+  // A one-line join command (Connect a device > Computer, #668, #2949): a client asks for a mesh offer through a core document, and the host answers it.
   const meshOffer = async (client: boolean) => {
     if (e2ee === undefined) throw new Error("this host keeps no state, so it cannot open a mesh offer");
     const offer = await e2ee.hostMesh.pair(!client);
@@ -112,6 +112,7 @@ export function coreWriters({ core, options, e2ee, meshStatus, refreshMeshLines,
             undefined,
             undefined,
             refreshMeshLines,
+            e2ee.soloJoins,
           );
     if (e2ee === undefined) return;
     const pending = e2ee.hostMesh.pending;

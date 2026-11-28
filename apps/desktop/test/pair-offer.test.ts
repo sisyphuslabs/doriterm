@@ -45,6 +45,33 @@ function hostAnswers(answer: () => Response): Stub {
   return stub;
 }
 
+describe("asking this computer's host for an agent offer (#2939)", () => {
+  test("open-agent posts to the pair route with agent=1, and an open posts without it", async () => {
+    const asked: [string, string, string][] = [];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        const url = new URL(request.url);
+        asked.push([request.method, url.pathname, url.search]);
+        return Response.json({ state: "pending", offer: OFFER });
+      },
+    });
+    stubs.push({ server, seen: [] });
+    await requestPairOffer(endpoint(server.port ?? 0), "open-agent");
+    await requestPairOffer(endpoint(server.port ?? 0), "open");
+    expect(asked).toEqual([
+      ["POST", "/v1/pair", "?agent=1"],
+      ["POST", "/v1/pair", ""],
+    ]);
+  });
+
+  test("an agent waiting for an owner's approval reads as approval, nothing more", () => {
+    expect(pairOfferAnswer({ state: "approval" })).toEqual({ state: "approval" });
+    expect(pairOfferAnswer({ state: "approval", device: { name: "x" } })).toEqual({ state: "approval" });
+  });
+});
+
 describe("asking this computer's host for its pairing offer", () => {
   test("the websocket endpoint names the plain-HTTP pair route", () => {
     expect(pairEndpointUrl({ url: "ws://127.0.0.1:52011/v1/hc", token })).toBe("http://127.0.0.1:52011/v1/pair");

@@ -61,7 +61,7 @@ async function dropIfExpired(connection: HcConnection, now: number): Promise<voi
 }
 
 /**
- * Answers a client's one-line Add a machine (#668): a `{request}` in the `doriface-mesh-offer` document opens one
+ * Answers a client's one-line join command (Connect a device > Computer, #668, #2949): a `{request}` in the `doriface-mesh-offer` document opens one
  * single-use mesh offer that admits without asking, written back beside the request; the link is dropped from the
  * document once the offer expires, so it does not outlive its use there. A request already answered is left alone, so
  * the host's own write (a doc event too) opens nothing. Anyone who can write this core's documents already reaches its

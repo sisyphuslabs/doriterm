@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { admitPairing } from "../e2ee/accept.ts";
+import { admitPairing } from "../e2ee/admit.ts";
 import { DeviceStore } from "./devices.ts";
 import { type ClaimRefusal, type PairingClaim, PairingStore } from "./pairing.ts";
 

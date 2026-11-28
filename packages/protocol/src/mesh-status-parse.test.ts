@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseMeshStatus } from "./mesh-status-parse.ts";
+import { parseMeshStatus, parseSoloJoins } from "./mesh-status-parse.ts";
 import { parseMeshOfferDoc } from "./mesh-status.ts";
 
 test("a browser invite request preserves the requirement to ask", () => {
@@ -272,4 +272,19 @@ describe("parseMeshStatus", () => {
     expect(read).toBeDefined();
     expect(JSON.stringify(read)).not.toContain(key);
   });
+});
+
+test("a solo host's joins document is read forward compatibly, and refused in another version (#2939)", () => {
+  const fixtureJoin = status.pending[0];
+  if (fixtureJoin === undefined) throw new Error("the status fixture has a pending join");
+  const join = { ...fixtureJoin, kind: "agent" as const, code: "123 456", joinerConfirmed: true };
+  const doc = {
+    v: 1,
+    self: status.self,
+    pending: [join, { ...join, nonce: "bmV3ZXIta2luZA", kind: "robot" }],
+    extra: 1,
+  };
+  expect(parseSoloJoins(doc)).toEqual({ v: 1, self: status.self, pending: [join] });
+  expect(parseSoloJoins({ ...doc, v: 2 })).toBeUndefined();
+  expect(parseSoloJoins(null)).toBeUndefined();
 });
