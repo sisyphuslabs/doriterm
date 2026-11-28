@@ -219,7 +219,7 @@ export function MenuItem({ icon, keys, destructive = false, children, ...props }
     >
       {icon}
       <span className="min-w-0 flex-1">{children}</span>
-      {keys === undefined ? null : <Kbd keys={keys} />}
+      {keys === undefined ? null : <Kbd keys={keys} variant="plain" />}
     </BaseMenu.Item>
   );
 }

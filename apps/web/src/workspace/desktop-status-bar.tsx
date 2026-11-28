@@ -106,10 +106,12 @@ export function DesktopStatusBar(props: DesktopStatusBarProps) {
           variant="ghost"
           size="sm"
           onClick={onPalette}
-          className="h-5 gap-1.5 px-1 text-xs text-muted-foreground"
+          className="h-5 gap-1.5 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
         >
-          {paletteKeys === undefined ? null : <Kbd keys={paletteKeys} />}
-          Commands
+          <span>Commands</span>
+          {paletteKeys === undefined ? null : (
+            <Kbd keys={paletteKeys} variant="plain" className="text-muted-foreground/65" />
+          )}
         </Button>
       }
     />

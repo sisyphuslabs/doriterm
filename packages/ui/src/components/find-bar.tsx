@@ -1,8 +1,7 @@
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { useId, type KeyboardEvent, type Ref } from "react";
 import { cn } from "../lib/cn.ts";
 import { IconButton } from "./icon-button.tsx";
-import { fieldLabelClass } from "./input.tsx";
 
 export interface FindBarProps {
   readonly query: string;
@@ -58,18 +57,19 @@ export function FindBar({
       role="search"
       data-slot="find-bar"
       className={cn(
-        "flex items-center gap-1 rounded-md border border-border bg-popover py-1 pr-1 pl-2 text-popover-foreground shadow-overlay",
+        "flex items-center gap-1 rounded-lg border border-border bg-popover py-1 pr-1 pl-2.5 text-popover-foreground shadow-overlay",
         className,
       )}
     >
-      <label htmlFor={id} className={cn("shrink-0", fieldLabelClass)}>
-        Find<span className="sr-only"> in terminal</span>
+      <label htmlFor={id} className="sr-only">
+        Find in terminal
       </label>
+      <Search aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       <input
         ref={inputRef}
         id={id}
         type="search"
-        placeholder="e.g. error"
+        placeholder="Find in terminal…"
         spellCheck={false}
         autoComplete="off"
         value={query}

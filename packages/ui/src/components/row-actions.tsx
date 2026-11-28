@@ -26,7 +26,7 @@ export interface RowWithActionsProps {
 const SHOWN =
   "group-hover/row:visible group-focus-within/row:visible group-has-[[data-popup-open]]/row:visible group-data-popup-open/row:visible";
 const MASKED =
-  "[&:is(:hover,:focus-within,:has([data-popup-open]),[data-popup-open])_[data-row-meta]]:invisible data-popup-open:outline-2 data-popup-open:outline-solid data-popup-open:-outline-offset-2 data-popup-open:outline-ring";
+  "[&:is(:hover,:focus-within,:has([data-popup-open]),[data-popup-open])_[data-row-meta]]:invisible data-popup-open:bg-hover";
 /**
  * Held on a coarse pointer: the actions are drawn (24 px apart, should a row show more than one, so their centred 44 px
  * hit areas do not meet), and the row's own button gives them the width they take: the agent row shows only its "..."

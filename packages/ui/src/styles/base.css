@@ -40,6 +40,22 @@
     caret-color: var(--ring);
   }
 
+  /* Native WebKit/Chromium search cancel buttons clash with our themed IconButton clear controls. */
+  input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* Prevent accidental web-like text highlight / tap flash on desktop UI chrome. */
+  button,
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  summary {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
   /*
    * iOS zooms the page whenever a field it focuses has a font-size under 16px, and it keeps that zoom (#1380). The
    * terminal's keyboard sink is such a field once the text size is under 12pt: @wterm/dom creates it with
@@ -160,4 +176,13 @@
   50% {
     opacity: 0.65;
   }
+}
+
+/*
+ * Match native macOS desktop behavior: suppress Chromium's automatic `:focus-visible` outlines on pointer clicks,
+ * shortcuts, and programmatic focus restoration (e.g. Command Palette, menus, tabs), and show crisp focus rings only
+ * during intentional `Tab` keyboard navigation (`html[data-keyboard-nav]`).
+ */
+:root:not([data-keyboard-nav]) *:focus-visible {
+  outline: none !important;
 }

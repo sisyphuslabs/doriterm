@@ -24,7 +24,7 @@ const stepButton = cn(
 export function NumberStepper({ label, className, ...props }: NumberStepperProps) {
   return (
     <NumberField.Root {...props} className={cn("inline-flex", className)}>
-      <NumberField.Group className="inline-flex items-center overflow-hidden rounded-md border border-input bg-raised data-disabled:border-border">
+      <NumberField.Group className="inline-flex items-center overflow-hidden rounded-md border border-input bg-raised transition-colors duration-(--duration-color) focus-within:border-ring/75 data-disabled:border-border">
         <NumberField.Decrement aria-label={`Decrease ${label}`} className={stepButton}>
           <Minus />
         </NumberField.Decrement>

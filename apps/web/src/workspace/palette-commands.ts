@@ -14,6 +14,7 @@ const AGENT = "agent:";
 /** The palette leads with the agent that needs you, as the sidebar sections do. */
 const URGENCY: Readonly<Record<AgentStatus, number>> = { blocked: 0, done: 1, working: 2, idle: 3, unknown: 4 };
 const HOST = "host:";
+const SETTINGS = "settings:";
 /** The palette's General group: the app's own help and settings, after the hosts. */
 const GENERAL: ReadonlySet<string> = new Set(["app.help", "app.settings"]);
 
@@ -32,7 +33,7 @@ export interface PaletteSource {
 export type PaletteChoice =
   | { readonly kind: "agent"; readonly address: string }
   | { readonly kind: "action"; readonly id: string }
-  | { readonly kind: "settings" };
+  | { readonly kind: "settings"; readonly hash?: string };
 
 function command(source: PaletteSource, { id, unavailable }: ShellAction, group: string): Command {
   const label = ACTION_BY_ID.get(id)?.label ?? id;
@@ -75,6 +76,7 @@ export function spaceNameOf(spaces: readonly ListedSpace[]): (address: string) =
 /** What running a palette row does. */
 export function choiceOf(id: string): PaletteChoice {
   if (id.startsWith(AGENT)) return { kind: "agent", address: id.slice(AGENT.length) };
+  if (id.startsWith(SETTINGS)) return { kind: "settings", hash: id.slice(SETTINGS.length) };
   if (id.startsWith(HOST)) return { kind: "settings" };
   return { kind: "action", id };
 }

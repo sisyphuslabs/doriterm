@@ -36,7 +36,7 @@ export function Tooltip({ label, keys, side = "bottom", children, className, def
             )}
           >
             {label}
-            {keys === undefined ? null : <Kbd keys={keys} />}
+            {keys === undefined ? null : <Kbd keys={keys} variant="plain" />}
           </BaseTooltip.Popup>
         </BaseTooltip.Positioner>
       </BaseTooltip.Portal>

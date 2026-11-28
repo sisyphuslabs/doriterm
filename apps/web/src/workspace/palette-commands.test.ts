@@ -113,6 +113,7 @@ describe("paletteCommands", () => {
   test("each row kind parses to its choice", () => {
     expect(choiceOf("agent:box/t1")).toEqual({ kind: "agent", address: "box/t1" });
     expect(choiceOf("host:studio")).toEqual({ kind: "settings" });
+    expect(choiceOf("settings:appearance")).toEqual({ kind: "settings", hash: "appearance" });
     expect(choiceOf("app.settings")).toEqual({ kind: "action", id: "app.settings" });
   });
 });

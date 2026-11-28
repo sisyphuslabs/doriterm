@@ -31,6 +31,7 @@ import { isNativeShell, paintAppBars } from "./native/shell.ts";
 import { captureNotice, listenForAppNotices, listenForDesktopNotices, listenForNotices } from "./push/notice-open.ts";
 import { followConnection } from "./push/push-settings.ts";
 import { runAction, setActionFallback, useKeymapDispatcher } from "./keys/dispatcher.ts";
+import { startKeyboardNav } from "./keys/keyboard-nav.ts";
 import { reportMenuKeys } from "./keys/menu-keys.ts";
 import { router } from "./router.tsx";
 import { guardedSessionStorage } from "./storage/guarded.ts";
@@ -44,6 +45,7 @@ import { followRoster } from "./mesh/roster-refresh.ts";
 // First: a browser below the baseline is told to update before the app starts or connects (#556).
 checkBaseline();
 startAppearance();
+startKeyboardNav();
 captureInstallPrompt();
 startEdgeProbe(location.search);
 // The desktop shell serves the app from its own app: scheme; an offline cache there only reloads the window,

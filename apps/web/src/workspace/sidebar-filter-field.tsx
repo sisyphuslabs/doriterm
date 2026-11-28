@@ -1,5 +1,5 @@
-import { cn, fieldLabelClass, IconButton, Input } from "@doriface/ui";
-import { ListFilter, Search } from "lucide-react";
+import { IconButton, Input } from "@doriface/ui";
+import { ListFilter, Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { useActionKeys } from "../keys/use-action-keys.ts";
 import { terminalInput } from "./focus-targets.ts";
@@ -57,8 +57,8 @@ export function SidebarFilterField() {
   }, [open, asks]);
   if (!open) return null;
   return (
-    <div className="mx-2 mb-2 flex shrink-0 flex-col gap-1">
-      <label htmlFor={id} className={cn("px-0.5", fieldLabelClass)}>
+    <div className="mx-2 mb-2 flex shrink-0 flex-col">
+      <label htmlFor={id} className="sr-only">
         Filter sidebar
       </label>
       <div className="relative">
@@ -70,7 +70,7 @@ export function SidebarFilterField() {
           ref={field}
           id={id}
           type="search"
-          placeholder="Filter machines, spaces, agents"
+          placeholder="Filter spaces & agents…"
           value={query}
           onChange={(event) => sidebarFilter.type(event.target.value)}
           onKeyDown={(event) => {
@@ -84,8 +84,23 @@ export function SidebarFilterField() {
             sidebarFilter.close();
             terminalInput()?.focus();
           }}
-          className="h-8 pl-8 text-sm"
+          className={
+            query !== ""
+              ? "h-8 border-border bg-raised/50 pr-7 pl-8 text-sm focus-visible:bg-surface"
+              : "h-8 border-border bg-raised/50 pl-8 text-sm focus-visible:bg-surface"
+          }
         />
+        {query === "" ? null : (
+          <IconButton
+            label="Clear filter"
+            icon={<X />}
+            onClick={() => {
+              sidebarFilter.type("");
+              field.current?.focus();
+            }}
+            className="absolute top-1/2 right-1 size-6 -translate-y-1/2 [&_svg:not([data-slot=spinner])]:size-3"
+          />
+        )}
       </div>
     </div>
   );
@@ -101,6 +116,7 @@ export function FilterButton() {
   return (
     <IconButton
       label="Filter sidebar"
+      pressed={open}
       {...(keys === undefined ? {} : { keys })}
       icon={<ListFilter />}
       onClick={() => (open ? sidebarFilter.close() : sidebarFilter.ask())}
