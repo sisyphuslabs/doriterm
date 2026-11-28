@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fitGrid, fitOwnBox, type GridSize, HostSize, type SizedStream, type ViewGrid } from "./host-size.ts";
+import { fitGrid, type GridSize, HostSize, type SizedStream, type ViewGrid } from "./host-size.ts";
 
 function recorder(): SizedStream & { readonly frames: string[] } {
   const frames: string[] = [];
@@ -100,7 +100,7 @@ test("a watching view draws at the pty's size, follows it, and its first input f
   size.ptySized(view, { cols: 100, rows: 30 });
   expect(view.resizes).toEqual(["48x43", "123x36", "100x30"]);
   // A reattach asks for its own box, then draws at the size the core answers with.
-  fitOwnBox(view);
+  size.asks(view);
   size.ptySized(view, { cols: 100, rows: 30 });
   expect(view.resizes.slice(3)).toEqual(["48x43", "100x30"]);
   expect(stream.frames).toEqual([]);
@@ -111,6 +111,56 @@ test("a watching view draws at the pty's size, follows it, and its first input f
   // In use, the view's grid is its own: the pty's size the core reports no longer moves it.
   size.ptySized(view, { cols: 123, rows: 36 });
   expect(view.resizes.at(-1)).toBe("48x43");
+});
+
+test("a watching view the core gave its own size keeps fitting its box, and each new size reaches the host (#2987)", () => {
+  const size = new HostSize(true);
+  const stream = recorder();
+  const box = { cols: 44, rows: 29 };
+  const view = grid(box);
+  expect(size.asks(view)).toEqual({ cols: 44, rows: 29 });
+  size.ptySized(view, { cols: 44, rows: 29 });
+  expect(view.autoResize).toBe(true);
+  // The web font arrives: wterm refits the box and reports the grid's new size.
+  Object.assign(box, { cols: 38, rows: 31 });
+  fitGrid(view);
+  size.resize(stream, view.cols, view.rows);
+  // The core's size event for the attach's size comes after the resize went: the view still leads.
+  size.ptySized(view, { cols: 44, rows: 29 });
+  size.ptySized(view, { cols: 38, rows: 31 });
+  expect(view.resizes).toEqual(["44x29", "38x31"]);
+  expect(stream.frames).toEqual(["resize 38x31"]);
+  // Shown again with a box changed meanwhile: the fit's size goes, and nothing is sent for an unchanged one.
+  Object.assign(box, { cols: 35, rows: 25 });
+  size.shown(stream, view);
+  size.resize(stream, view.cols, view.rows);
+  size.shown(stream, view);
+  expect(stream.frames).toEqual(["resize 38x31", "resize 35x25"]);
+  expect(size.attachDeferred()).toBe(true);
+});
+
+test("a watching view a desk took the pty from draws at the desk's size, and leads again once the pty is its own", () => {
+  const size = new HostSize(true);
+  const stream = recorder();
+  const box = { cols: 38, rows: 31 };
+  const view = grid(box);
+  size.asks(view);
+  size.ptySized(view, { cols: 38, rows: 31 });
+  size.ptySized(view, { cols: 120, rows: 30 });
+  expect(view.autoResize).toBe(false);
+  // Rotated while the desk leads: the grid stays at the desk's size, and nothing is sent, shown again or not (D1).
+  Object.assign(box, { cols: 84, rows: 14 });
+  fitGrid(view);
+  size.resize(stream, 84, 14);
+  size.shown(stream, view);
+  expect(view.resizes.at(-1)).toBe("120x30");
+  expect(stream.frames).toEqual([]);
+  // The desk leaves: the core gives the pty the size this view last gave it, and the view fits its box again.
+  size.ptySized(view, { cols: 38, rows: 31 });
+  expect(view.autoResize).toBe(true);
+  expect(view.resizes.at(-1)).toBe("84x14");
+  size.resize(stream, 84, 14);
+  expect(stream.frames).toEqual(["resize 84x14"]);
 });
 
 /**

@@ -26,7 +26,7 @@ export function fitGrid(view: ViewGrid): void {
  * other viewer is more recently active (viewers.rs `apply_size`), so a phone alone on a terminal sizes it, and one
  * watching a desk's draws at the desk's size again once the answer and the core's size events say so.
  */
-export function fitOwnBox(view: ViewGrid): void {
+function fitOwnBox(view: ViewGrid): void {
   view.autoResize = true;
   view.fit();
 }
@@ -41,6 +41,11 @@ export function fitOwnBox(view: ViewGrid): void {
  * goes back up by the program's own row count leaves the wrapped pieces behind (#2819's copies, #2974). Its first
  * input fits the grid to its box again and sends that size and focus ahead of the input, and from then on it sizes the
  * host as any view does.
+ *
+ * A watching view the core gave its own size (no other viewer is on the terminal, or none more recently active) leads the
+ * pty already: it keeps fitting its box and sends each new size, so a box that settles after the attach (the web font
+ * arriving, a phone's viewport settling, a rotation, a return from the background) sizes the grid and the pty with no
+ * input (#2987). It knows it leads when the pty's size is one it gave the core.
  */
 export class HostSize {
   #watching: boolean;
@@ -49,6 +54,10 @@ export class HostSize {
   #held: GridSize | null = null;
   #holding = false;
   #sent: GridSize | null = null;
+  /** While watching: the sizes this view gave the core (its attach, then its resizes), the core's latest one first. */
+  #given: GridSize[] = [];
+  /** While watching: the pty's size is one this view gave the core, so its own sizes reach the host. */
+  #leads = false;
 
   constructor(deferred: boolean) {
     this.#watching = deferred;
@@ -59,9 +68,32 @@ export class HostSize {
     return this.#watching;
   }
 
+  /** An attach is sent: it asks for the view's own box, which the core gives it unless another viewer leads (D1). */
+  asks(view: ViewGrid): GridSize {
+    fitOwnBox(view);
+    const asked = { cols: view.cols, rows: view.rows };
+    this.#given = [asked];
+    this.#leads = false;
+    return asked;
+  }
+
+  #sizesHost(): boolean {
+    return !this.#watching || this.#leads;
+  }
+
   resize(stream: SizedStream | null, cols: number, rows: number): void {
     if (this.#holding) this.#held = { cols, rows };
-    else if (!this.#watching) this.#send(stream, { cols, rows });
+    else if (this.#sizesHost()) this.#send(stream, { cols, rows });
+  }
+
+  /**
+   * The page is shown again (another app, the phone unlocked, a page restored from the back-forward cache): the grid
+   * fits the box it has now, as any change of the box does, and a view in use gives the program its size again (#2819).
+   * A watching view takes nothing back; it sends only a size its fit changed, and only while it leads.
+   */
+  shown(stream: SizedStream | null, view: ViewGrid): void {
+    fitGrid(view);
+    if (!this.#watching) this.resize(stream, view.cols, view.rows);
   }
 
   /** A pinch is moving: the grid refits to each step here, and the host hears none of it (redesign section 7). */
@@ -74,12 +106,14 @@ export class HostSize {
     this.#holding = false;
     const held = this.#held;
     this.#held = null;
-    if (held === null || this.#watching) return;
+    if (held === null || !this.#sizesHost()) return;
     if (held.cols !== this.#sent?.cols || held.rows !== this.#sent.rows) this.#send(stream, held);
   }
 
   #send(stream: SizedStream | null, grid: GridSize): void {
-    if (stream?.resize(grid.cols, grid.rows) === true) this.#sent = grid;
+    if (stream?.resize(grid.cols, grid.rows) !== true) return;
+    this.#sent = grid;
+    if (this.#watching) this.#given.push(grid);
   }
 
   focus(stream: SizedStream | null, gained: boolean): void {
@@ -87,9 +121,22 @@ export class HostSize {
     if (!this.#watching || !gained) stream?.focus(gained);
   }
 
-  /** The pty's size as the core has it (the attach's answer, then each core RESIZE): a watching view draws at it. */
+  /**
+   * The pty's size as the core has it (the attach's answer, then each core RESIZE). A watching view that gave the core
+   * this size leads: its grid follows its own box. Any other size is another viewer's, which a watching view draws at.
+   */
   ptySized(view: ViewGrid, size: GridSize): void {
     if (!this.#watching) return;
+    const mine = this.#given.findIndex((given) => given.cols === size.cols && given.rows === size.rows);
+    this.#leads = mine >= 0;
+    if (this.#leads) {
+      // Sizes sent before this one are behind the core now.
+      this.#given = this.#given.slice(mine);
+      fitOwnBox(view);
+      return;
+    }
+    // The core keeps the last size this view gave it, which it applies again once this view leads.
+    this.#given = this.#given.slice(-1);
     view.autoResize = false;
     if (view.cols !== size.cols || view.rows !== size.rows) view.resize(size.cols, size.rows);
   }
