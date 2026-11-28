@@ -13,8 +13,8 @@ export interface MeshToolDeps {
   readonly status: () => Promise<MeshStatus | undefined>;
   readonly pending: () => readonly PendingJoin[];
   readonly devices: () => readonly DeviceView[];
-  /** Opens a fresh offer, replacing any pending one: for a device, or for a machine that joins the mesh. */
-  readonly invite: (mesh: boolean) => Promise<PairingOfferView>;
+  /** Opens a fresh mesh offer for a machine, replacing any pending one; its join waits for an answer. */
+  readonly invite: () => Promise<PairingOfferView>;
   readonly decide: (nonce: string, approve: boolean, code?: string) => boolean;
   readonly revokeDevice: (id: string) => Promise<readonly DeviceView[]>;
   readonly revoke: (request: RevokeRequest) => Promise<RevokeReply | null>;
@@ -34,6 +34,11 @@ export interface MeshTool {
 export class MeshToolRefused extends Error {}
 
 const NO_MESH = "this host is in no mesh";
+/** Only the owner's own devices let a new agent or device in (#2993): an MCP session may be such an agent itself. */
+export const OWNER_ONLY_AGENT =
+  "an AI agent's first connection is answered by the owner on their own device (the approval card or Settings > Machines), not over MCP";
+export const OWNER_ONLY_DEVICE =
+  "a phone, browser or agent is invited from this computer's own app (Connect a device) or doriface-host pair, not over MCP";
 const object = (properties: JsonObject, required: readonly string[] = []): JsonObject => ({
   type: "object",
   properties,
@@ -89,21 +94,23 @@ export const MESH_TOOLS: readonly MeshTool[] = [
   {
     name: "mesh_invite",
     description:
-      "Open an invite: for a phone or browser to pair with this machine (kind device), or for another machine to " +
-      "join the mesh (kind machine). Answers a link and a code to hand to the person; it replaces any open invite. " +
-      "A machine's join then waits in mesh_status for mesh_join_answer.",
-    inputSchema: object({ kind: { type: "string", enum: ["device", "machine"] } }, ["kind"]),
+      "Open an invite for another machine to join the mesh (kind machine). Answers a link and a code to hand to " +
+      "the person; it replaces any open invite. The machine's join then waits in mesh_status for mesh_join_answer. " +
+      "A phone, browser or agent is invited from this computer's own app, not here.",
+    inputSchema: object({ kind: { type: "string", enum: ["machine"] } }, ["kind"]),
     run: (args, deps) => {
       const kind = text(args, "kind");
-      if (kind !== "device" && kind !== "machine") throw new MeshToolRefused("kind must be device or machine");
-      return deps.invite(kind === "machine");
+      if (kind === "device") throw new MeshToolRefused(OWNER_ONLY_DEVICE);
+      if (kind !== "machine") throw new MeshToolRefused("kind must be machine");
+      return deps.invite();
     },
   },
   {
     name: "mesh_join_answer",
     description:
-      "Approve or deny a join waiting in mesh_status. Approving needs code: the six digits, which the person must " +
-      "have compared with what the joining machine shows. Never approve on your own reading of the digits.",
+      "Approve or deny a machine's or browser's join waiting in mesh_status. Approving needs code: the six digits, " +
+      "which the person must have compared with what the joining machine shows. Never approve on your own reading of " +
+      "the digits. An AI agent's join is answered only on the owner's own device.",
     inputSchema: object(
       {
         join: { type: "string", description: "The join's nonce from mesh_status." },
@@ -115,8 +122,12 @@ export const MESH_TOOLS: readonly MeshTool[] = [
     run: async (args, deps) => {
       const approve = args["approve"];
       if (typeof approve !== "boolean") throw new MeshToolRefused("approve must be true or false");
+      const nonce = text(args, "join");
+      if (deps.pending().some((join) => join.nonce === nonce && join.kind === "agent")) {
+        throw new MeshToolRefused(OWNER_ONLY_AGENT);
+      }
       const code = approve ? text(args, "code") : undefined;
-      return { decided: deps.decide(text(args, "join"), approve, code) };
+      return { decided: deps.decide(nonce, approve, code) };
     },
   },
   {

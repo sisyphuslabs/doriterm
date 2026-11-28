@@ -247,4 +247,12 @@ describe("the running host's mesh offers", () => {
     await host.pairDevice();
     expect(await asked).toBe("expired");
   });
+
+  test("a device offer ends a mesh pair --auto window, which belonged to the mesh offer it replaces (#2993)", async () => {
+    const host = hostMesh().create();
+    await host.pair(true);
+    expect(host.pending.isAuto()).toBe(true);
+    await host.pairDevice(true);
+    expect(host.pending.isAuto()).toBe(false);
+  });
 });

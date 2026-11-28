@@ -72,6 +72,15 @@ describe("an agent offer's pairing waits for an owner (#2939)", () => {
     expect(host.deps.devices.list()).toEqual([]);
   });
 
+  test("a host that cannot ask an owner refuses an agent and stores nothing (#2993)", async () => {
+    const host = pairingHost({ agentOffer: true });
+    const { approvals: _approvals, ...deps } = host.deps;
+    const run = runSession({ ...host, deps }, { kind: "lan" }, linkOf(host, "claude"));
+    expect(await run.host).toBeUndefined();
+    expect(host.deps.devices.list()).toEqual([]);
+    expect(host.logs.some((line) => line.includes("this host cannot ask an owner to approve an agent"))).toBe(true);
+  });
+
   test("a device offer still pairs at once, with no request", async () => {
     const host = pairingHost();
     const run = runSession(host, { kind: "lan" }, linkOf(host, "phone"));

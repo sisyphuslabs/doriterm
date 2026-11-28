@@ -25,10 +25,7 @@ export function meshToolDeps({ e2ee, devices, status, relayUrl }: MeshToolParts)
     },
     pending: () => hostMesh.pending.list(),
     devices: () => devices.list(),
-    invite: async (mesh) => {
-      const offer = await (mesh ? hostMesh.pair(false) : hostMesh.pairDevice());
-      return pairingOfferView({ identity, offer, relayUrl });
-    },
+    invite: async () => pairingOfferView({ identity, offer: await hostMesh.pair(false), relayUrl }),
     decide: (nonce, approve, code) => hostMesh.pending.decide(nonce, approve, code),
     revokeDevice: (id) => devices.revoke(id),
     revoke: (request) => meshCommands.revoke(request),

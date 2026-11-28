@@ -1,5 +1,12 @@
 import { CloseCode } from "@doriface/crypto";
-import { type EventsSubscribeParams, HcRpcError, type HcMethod } from "@doriface/protocol";
+import {
+  type EventsSubscribeParams,
+  HcRpcError,
+  type HcMethod,
+  isJsonObject,
+  MESH_APPROVAL_DOC,
+  MESH_OFFER_DOC,
+} from "@doriface/protocol";
 import type { PushLink } from "../push/push-stream.ts";
 import type { MeshToolDeps } from "./mesh-tools.ts";
 import { ended, type HcFeed, realEvery, serveListen, serveStream, terminalUri, type Every } from "./subscriptions.ts";
@@ -34,6 +41,17 @@ export interface McpServeDeps {
 }
 
 /** One LF-delimited JSON-RPC message at a time; tool calls run concurrently and each reply is one whole line. */
+/**
+ * The documents through which a device answers a join or opens a mesh offer that admits without asking (#2993). The host
+ * cannot tell who wrote a document, so an MCP session, which may be an agent itself, never writes them: only the
+ * owner's own devices approve a new member or open such an offer.
+ */
+const OWNER_DOCUMENTS: ReadonlySet<unknown> = new Set([MESH_APPROVAL_DOC, MESH_OFFER_DOC]);
+const OWNERS_DOCUMENT =
+  "the owner's approval and invite documents are written only by the owner's own devices, not over MCP";
+const ownersDocument = (method: HcMethod, args: unknown): boolean =>
+  method === "doc.set" && isJsonObject(args) && OWNER_DOCUMENTS.has(args["name"]);
+
 export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
   let pending: Uint8Array | undefined;
   let length = 0;
@@ -76,6 +94,10 @@ export function serveMcpLines(link: PushLink, deps: McpServeDeps): void {
     return hc;
   };
   const run = async (line: Extract<McpLine, { kind: "call" }>): Promise<void> => {
+    if (ownersDocument(line.tool.method, line.args)) {
+      send({ jsonrpc: "2.0", id: line.id, result: toolResult({ kind: "refused", message: OWNERS_DOCUMENT }, true) });
+      return;
+    }
     const abort = new AbortController();
     calls.set(line.id, abort);
     try {

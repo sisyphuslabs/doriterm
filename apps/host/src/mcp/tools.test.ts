@@ -1,4 +1,4 @@
-import { HcRpcError, MCP_EXCLUDED_METHODS, MCP_TOOLS } from "@doriface/protocol";
+import { HcRpcError, MCP_EXCLUDED_METHODS, MCP_TOOLS, MESH_APPROVAL_DOC, MESH_OFFER_DOC } from "@doriface/protocol";
 import { expect, test } from "bun:test";
 import type { PushLink } from "../push/push-stream.ts";
 import { MESH_TOOLS } from "./mesh-tools.ts";
@@ -180,6 +180,32 @@ test("doriterm_call runs the named tool as a direct call would, and refuses what
     { jsonrpc: "2.0", id: 31, error: { code: -32602, message: "Unknown tool: undefined" } },
   ]);
   expect(r.calls).toHaveLength(1);
+});
+
+test("an MCP session never writes the documents that answer a join or open an offer admitting without asking (#2993)", async () => {
+  const r = rig();
+  const answered = r.reply();
+  r.call(1, "doriterm_call", {
+    tool: "doc_set",
+    arguments: { name: MESH_APPROVAL_DOC, value: { approve: "n", code: "123 456" }, version: 0 },
+  });
+  await answered;
+  const offered = r.reply();
+  r.call(2, "doriterm_call", {
+    tool: "doc_set",
+    arguments: { name: MESH_OFFER_DOC, value: { request: "r" }, version: 0 },
+  });
+  await offered;
+  expect(r.calls).toEqual([]);
+  for (const id of [1, 2]) {
+    expect(r.replies.find((reply) => (reply as { id?: number }).id === id)).toMatchObject({
+      result: { isError: true, structuredContent: { kind: "refused" } },
+    });
+  }
+  const reached = r.coreCall();
+  r.call(3, "doriterm_call", { tool: "doc_set", arguments: { name: "notes", value: 1, version: 0 } });
+  await reached;
+  expect(r.calls[0]).toMatchObject({ method: "doc.set", params: { name: "notes" } });
 });
 
 test("the full list is the generated table, 25 of herdr-core's methods and none of the seven left out, then the mesh tools", () => {

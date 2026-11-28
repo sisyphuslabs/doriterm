@@ -170,6 +170,8 @@ export class HostMesh {
   pairDevice(agent = false): Promise<PendingPairing> {
     this.#refuseLocalOnly();
     this.pending.expireAll();
+    // The device offer replaces the mesh offer, and an --auto window ends with the offer it was opened for (#2993).
+    this.pending.setAuto(0);
     this.resumes.clear();
     return this.#options.slots.open(false, agent);
   }
