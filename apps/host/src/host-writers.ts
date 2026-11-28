@@ -112,6 +112,7 @@ export function coreWriters({ core, options, e2ee, meshStatus, refreshMeshLines,
             undefined,
             undefined,
             refreshMeshLines,
+            e2ee.soloJoins,
           );
     if (e2ee === undefined) return;
     const pending = e2ee.hostMesh.pending;

@@ -27,6 +27,12 @@ describe("an agent offer's pairing waits for an owner (#2939)", () => {
     expect(join.code).toBe(agentPairingCode(client.handshakeHash));
   });
 
+  test("a waiting agent has no session, so it reads none of this host's documents, the joins one included", async () => {
+    const { run } = await agentAsks();
+    const settled = await Promise.race([run.host.then(() => "session"), Promise.resolve("waiting")]);
+    expect(settled).toBe("waiting");
+  });
+
   test("an approval stores the device and lets the session go on", async () => {
     const { host, run, join } = await agentAsks();
     expect(host.approvals.decide(join.nonce, true, join.code)).toBe(true);

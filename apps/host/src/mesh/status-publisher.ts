@@ -1,6 +1,6 @@
-import type { MeshStatus } from "@doriface/protocol";
+import type { MeshStatus, SoloJoins } from "@doriface/protocol";
 import { type HcTarget, type KillableLink, openOnCore, spawnHcLink } from "./hc-machines.ts";
-import { docStoreOf, publishMeshStatus } from "./status-doc.ts";
+import { docStoreOf, publishMeshStatus, publishSoloJoins } from "./status-doc.ts";
 
 /**
  * The panel in Settings reads the document every 10 s (`MACHINE_REFRESH_MS`), so a tick at that cadence keeps what a
@@ -34,6 +34,8 @@ export function publishMeshStatusOnCore(
   tickMs: number = TICK_MS,
   /** Runs before each publish: the host reads herdr's machine list again, so the document names lines as herdr does. */
   refresh: () => Promise<void> = () => Promise.resolve(),
+  /** The joins waiting on this host while it is in no mesh (#2939), written beside the status in the same tick. */
+  joins: () => SoloJoins | undefined = () => undefined,
 ): MeshStatusPublisher {
   let stopped = false;
   let child: KillableLink | undefined;
@@ -60,7 +62,9 @@ export function publishMeshStatusOnCore(
         const connection = await openOnCore(opened, core);
         try {
           await refresh();
-          await publishMeshStatus(docStoreOf(connection), current, self);
+          const store = docStoreOf(connection);
+          await publishMeshStatus(store, current, self);
+          await publishSoloJoins(store, joins, self);
           lastError = undefined;
         } finally {
           connection.close();

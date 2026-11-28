@@ -61,6 +61,12 @@ export function approvalConsequence(kind: "machine" | "client" | "agent", name: 
   return undefined;
 }
 
+/** Joins whose offer is still open, which wait for the owner, and the ones whose offer ended. */
+export function joinGroups(requests: readonly JoinRequest[], now: number): Pick<MeshGroups, "pending" | "expired"> {
+  const open = (request: JoinRequest): boolean => pendingAnswer(request.join, now, undefined) !== "expired";
+  return { pending: requests.filter(open), expired: requests.filter((request) => !open(request)) };
+}
+
 /**
  * The panel's groups, most urgent first: joins waiting for this device (on whichever machine holds them), members an
  * undecidable revoke removed, then the members by whether their line is up, then how many keys were revoked. A member a
@@ -69,10 +75,8 @@ export function approvalConsequence(kind: "machine" | "client" | "agent", name: 
  */
 export function meshGroups(status: MeshStatus, requests: readonly JoinRequest[], now: number): MeshGroups {
   const removed = new Set(status.removed.flatMap((group) => group.members.map((entry) => entry.hostId)));
-  const open = (request: JoinRequest): boolean => pendingAnswer(request.join, now, undefined) !== "expired";
   return {
-    pending: requests.filter(open),
-    expired: requests.filter((request) => !open(request)),
+    ...joinGroups(requests, now),
     removed: status.removed,
     online: status.members.filter(isOnline),
     offline: status.members.filter((member) => !isOnline(member)),

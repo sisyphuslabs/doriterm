@@ -12,7 +12,7 @@ import { HostMesh } from "./host-mesh.ts";
 import { HostSync } from "./host-sync.ts";
 import type { HcTarget } from "./hc-machines.ts";
 import { meshProgram } from "./program.ts";
-import { storedMeshStatus } from "./status-store.ts";
+import { storedMeshStatus, storedSoloJoins } from "./status-store.ts";
 import { syncHooks } from "./sync-hooks.ts";
 
 export interface MeshDepsOptions {
@@ -86,6 +86,7 @@ export function meshDeps(options: MeshDepsOptions) {
     meshPresence: (secure: SecureLink) => sync.presence(secure),
     meshCommands: new MeshCommands({ store: mesh, stateDir, identity, closeRevoked, hooks, log }),
     meshStatus: () => storedMeshStatus(mesh, identity, hooks),
+    soloJoins: () => storedSoloJoins(mesh, identity, hooks),
     refreshMeshLines: () => hooks.refreshLines(),
   };
 }

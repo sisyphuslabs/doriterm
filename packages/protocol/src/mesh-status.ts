@@ -49,6 +49,15 @@ export function parseMeshOfferDoc(value: unknown): MeshOfferDoc | undefined {
 export const MESH_STATUS_VERSION = 1;
 
 /**
+ * The document a host in no mesh writes the joins waiting on it to (#2939): an AI agent's first connection waits for
+ * approval on a single computer too. It says nothing about a mesh, and a host in a mesh leaves it null, since its
+ * `doriface-mesh` document carries its joins.
+ */
+export const SOLO_JOINS_DOC = "doriface-joins";
+
+export const SOLO_JOINS_VERSION = 1;
+
+/**
  * A member's herdr line as this host's machine.list and the reconciler see it (design section 8.1); `self` is this
  * host, `absent` is not added (yet). `hc_missing` and `incompatible` are herdr's refusals to add or dial it.
  */
@@ -225,4 +234,11 @@ export type MeshStatus = {
   readonly notices: readonly MeshNotice[];
   readonly pending: readonly MeshPendingJoin[];
   readonly budget: MeshBudget;
+};
+
+export type SoloJoins = {
+  readonly v: typeof SOLO_JOINS_VERSION;
+  /** This host. */
+  readonly self: string;
+  readonly pending: readonly MeshPendingJoin[];
 };

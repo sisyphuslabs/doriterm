@@ -4,12 +4,15 @@ import {
   MESH_STATUS_VERSION,
   type MeshMemberStatus,
   type MeshNotice,
+  type MeshPendingJoin,
   type MeshRemovedStatus,
   type MeshRevokedStatus,
   type MeshStatus,
   type MeshStuckReason,
+  SOLO_JOINS_VERSION,
+  type SoloJoins,
 } from "@doriface/protocol";
-import type { MeshSources } from "./status-sources.ts";
+import type { MeshSources, PendingJoinFact } from "./status-sources.ts";
 
 /** How long a new-member notice shows, and how long a member may be unreachable before status offers a revoke. */
 export const NOTICE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -157,6 +160,28 @@ function stuckOf(sources: MeshSources, names: Names, now: Date): MeshStuckReason
   return reasons;
 }
 
+/** The joins waiting on this host as its documents publish them. */
+function pendingJoinsOf(pending: readonly PendingJoinFact[]): MeshPendingJoin[] {
+  return pending.map((join) => ({
+    nonce: join.nonce,
+    name: join.name,
+    hostId: join.hostId,
+    fingerprint: fingerprintOfKey(join.noisePub),
+    expiresAt: join.expiresAt.toISOString(),
+    kind: join.kind,
+    ...(join.code === undefined ? {} : { code: join.code }),
+    ...(join.joinerConfirmed === undefined ? {} : { joinerConfirmed: join.joinerConfirmed }),
+  }));
+}
+
+/**
+ * What a host in no mesh publishes (#2939): only the joins waiting on it, such as an AI agent's first connection, so its
+ * owner can answer them; undefined when none waits, which clears the document.
+ */
+export function soloJoins(self: string, pending: readonly PendingJoinFact[]): SoloJoins | undefined {
+  return pending.length === 0 ? undefined : { v: SOLO_JOINS_VERSION, self, pending: pendingJoinsOf(pending) };
+}
+
 /** The status of the mesh on this host (design section 8.6): what `mesh status --json` prints and the document holds. */
 export function meshStatus(sources: MeshSources, now: Date): MeshStatus {
   const names = namesOf(sources);
@@ -173,16 +198,7 @@ export function meshStatus(sources: MeshSources, now: Date): MeshStatus {
     revoked: revokedOf(sources, names),
     removed: removedOf(sources, names),
     notices: noticesOf(sources, names, now),
-    pending: sources.pending.map((join) => ({
-      nonce: join.nonce,
-      name: join.name,
-      hostId: join.hostId,
-      fingerprint: fingerprintOfKey(join.noisePub),
-      expiresAt: join.expiresAt.toISOString(),
-      kind: join.kind,
-      ...(join.code === undefined ? {} : { code: join.code }),
-      ...(join.joinerConfirmed === undefined ? {} : { joinerConfirmed: join.joinerConfirmed }),
-    })),
+    pending: pendingJoinsOf(sources.pending),
     budget: {
       waiting: budget.waiting,
       halvedUntil:

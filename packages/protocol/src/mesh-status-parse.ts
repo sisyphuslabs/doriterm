@@ -30,6 +30,8 @@ import {
   type MeshRevokedStatus,
   type MeshStatus,
   type MeshStuckReason,
+  SOLO_JOINS_VERSION,
+  type SoloJoins,
 } from "./mesh-status.ts";
 
 type StuckKind = Exclude<MeshStuckReason["kind"], "unknown">;
@@ -240,4 +242,15 @@ function isConsistent(status: MeshStatus): boolean {
 export function parseMeshStatus(value: unknown): MeshStatus | undefined {
   const status = readMeshStatus(value);
   return status !== undefined && isConsistent(status) ? status : undefined;
+}
+
+const readSoloJoins = objectOf<SoloJoins>({
+  v: when((value): value is typeof SOLO_JOINS_VERSION => value === SOLO_JOINS_VERSION),
+  self: readId,
+  pending: readPendingList,
+});
+
+/** The joins in a `doriface-joins` document, read as forward compatibly as the status's own; undefined otherwise. */
+export function parseSoloJoins(value: unknown): SoloJoins | undefined {
+  return readSoloJoins(value);
 }

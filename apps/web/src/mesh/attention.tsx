@@ -66,6 +66,13 @@ export const refusalText = (
     ? `${holder} refused that answer: ${answered.outcome.reason}`
     : undefined;
 
+/** What a join asks to be, as the row's title names it. */
+const JOIN_KINDS: Readonly<Record<MeshPendingJoin["kind"], string>> = {
+  client: "browser",
+  machine: "machine",
+  agent: "AI agent",
+};
+
 export function PendingRow({ join, holder, now, answered, onAnswer }: PendingRowProps) {
   const { busy, failure, send } = useJoinAnswer(onAnswer);
   const left = Date.parse(join.expiresAt) - now;
@@ -76,7 +83,7 @@ export function PendingRow({ join, holder, now, answered, onAnswer }: PendingRow
   if (state === "expired") return <ExpiredJoinRow join={join} holder={holder} now={now} />;
   return (
     <SettingRow
-      title={`Approve "${join.name}" (${join.kind === "client" ? "browser" : "machine"})?`}
+      title={`Approve "${join.name}" (${JOIN_KINDS[join.kind]})?`}
       description={
         <>
           <span className="block">{`through ${holder}, offer open for ${formatAge(0, left)} more`}</span>

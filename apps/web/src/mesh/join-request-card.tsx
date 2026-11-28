@@ -162,7 +162,7 @@ export function JoinRequestCard({ connection }: { readonly connection: HcConnect
   // The workspace stays mounted under Settings, whose Machines section lists the same joins: the card is the workspace's.
   const onWorkspace = useRouterState({ select: (state) => state.location.pathname }) === "/";
   const waiting =
-    read.phase === "ready"
+    read.phase === "ready" || read.phase === "none"
       ? read.requests.filter(
           (request) => !later.has(request.join.nonce) && pendingAnswer(request.join, now, undefined) !== "expired",
         )
@@ -176,7 +176,7 @@ export function JoinRequestCard({ connection }: { readonly connection: HcConnect
     </p>
   );
   if (!onWorkspace) return null;
-  if (read.phase !== "ready" || first === undefined) return live;
+  if (first === undefined) return live;
   return (
     <>
       {live}
@@ -191,7 +191,7 @@ export function JoinRequestCard({ connection }: { readonly connection: HcConnect
         <Card
           key={first.join.nonce}
           request={first}
-          holder={holderOf(first, read.status)}
+          holder={read.phase === "ready" ? holderOf(first, read.status) : connection.hello.core.name}
           now={now}
           more={waiting.length - 1}
           compact={compact}
