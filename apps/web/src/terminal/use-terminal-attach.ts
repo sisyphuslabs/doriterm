@@ -25,7 +25,7 @@ import {
   unsentReason,
 } from "./terminal-settle.ts";
 import { useReopenWhenMoved } from "./use-reopen-when-moved.ts";
-import { fitOwnBox, type HostSize } from "./host-size.ts";
+import type { HostSize } from "./host-size.ts";
 
 const encoder = new TextEncoder();
 
@@ -208,8 +208,7 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
     // wterm starts every grid at 80x24 and fits it later; the pty starts at the size the view renders. Every attach asks
     // for the view's own box, a watching one's included: the core gives it the pty only when no viewer is more recently
     // active, and the answer says which size the view draws at (D1, host-size.ts).
-    fitOwnBox(ready);
-    const { cols, rows } = ready;
+    const { cols, rows } = hostSize.asks(ready);
     noteViewSize(cols, rows);
     const display = readDisplay(ready.element);
     // A reattach after a reconnect says so: the core applies its size only once this viewer is active again.
