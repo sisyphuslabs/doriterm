@@ -47,6 +47,19 @@ test("auto never approves a client and no pending join can lack its code", async
   expect(await asked).toBe("denied");
 });
 
+test("an --auto window approves a machine's join and never an agent's (#2993)", async () => {
+  const pending = new PendingJoins();
+  pending.setAuto(Date.now() + 60_000);
+  const machine = pending.ask(join("machine"));
+  const agent = pending.ask({ ...join("agent"), kind: "agent", joinerConfirmed: true });
+  pending.confirm("machine");
+  pending.confirm("agent");
+  expect(await machine).toBe("approved");
+  expect(pending.list().map((waiting) => waiting.nonce)).toEqual(["agent"]);
+  pending.decide("agent", false);
+  expect(await agent).toBe("denied");
+});
+
 test.each(["approve", "confirm"] as const)("a late %s cannot beat an expired join's timer", async (last) => {
   const pending = new PendingJoins();
   const card = join("late");

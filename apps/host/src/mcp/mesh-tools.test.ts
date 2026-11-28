@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { RevokeRequest } from "../mesh/commands.ts";
 import type { PushLink } from "../push/push-stream.ts";
-import { MESH_TOOLS, type MeshToolDeps } from "./mesh-tools.ts";
+import { MESH_TOOLS, type MeshToolDeps, OWNER_ONLY_AGENT, OWNER_ONLY_DEVICE } from "./mesh-tools.ts";
 import { serveMcpLines } from "./serve.ts";
 
 const META = { "io.modelcontextprotocol/protocolVersion": "2026-07-28" };
@@ -39,8 +39,8 @@ function session(over: Partial<MeshToolDeps> = {}, withMesh = true) {
     status: async () => undefined,
     pending: () => [JOIN],
     devices: () => [{ name: "phone", id: "d1", pairedAt: "2026-11-24T00:00:00Z" }],
-    invite: async (machine) => {
-      acts.push({ invite: machine });
+    invite: async () => {
+      acts.push({ invite: "machine" });
       throw new Error("the relay holds no slot");
     },
     decide: (nonce, approve, code) => {
@@ -110,6 +110,26 @@ test("a join is approved only with its digits: without them nothing reaches the 
   ]);
 });
 
+test("an AI agent's join is never answered over MCP, either way: only the owner's own device settles it (#2993)", async () => {
+  const s = session({ pending: () => [JOIN, { ...JOIN, nonce: "a1", name: "claude", kind: "agent" }] });
+  const refused = { isError: true, content: { kind: "refused", message: OWNER_ONLY_AGENT } };
+  expect(await s.call("mesh_join_answer", { join: "a1", approve: true, code: "123456" })).toEqual(refused);
+  expect(await s.call("mesh_join_answer", { join: "a1", approve: false })).toEqual(refused);
+  expect(s.acts).toEqual([]);
+  expect(await s.call("mesh_join_answer", { join: "n1", approve: true, code: "123456" })).toMatchObject({
+    isError: false,
+  });
+});
+
+test("an MCP session cannot open a device invite, which would admit without the owner (#2993)", async () => {
+  const s = session();
+  expect(await s.call("mesh_invite", { kind: "device" })).toEqual({
+    isError: true,
+    content: { kind: "refused", message: OWNER_ONLY_DEVICE },
+  });
+  expect(s.acts).toEqual([]);
+});
+
 test("the host's own refusal of a join answer comes back in its words as a tool error", async () => {
   const s = session({
     decide: () => {
@@ -152,7 +172,7 @@ test("an invite that cannot open, a host in no mesh and a host without state eac
     content: { kind: "refused", message: "the relay holds no slot" },
   });
   expect(await s.call("mesh_invite", { kind: "everyone" })).toMatchObject({ isError: true });
-  expect(s.acts).toEqual([{ invite: true }]);
+  expect(s.acts).toEqual([{ invite: "machine" }]);
   expect(await s.call("mesh_rename", { member: "laptop", name: "desk" })).toEqual({
     isError: true,
     content: { kind: "refused", message: "this host is in no mesh" },

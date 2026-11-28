@@ -69,6 +69,13 @@ describe("pairing consumption", () => {
     expect(claim.complete()).toBe(false);
   });
 
+  test("a mesh offer is never an agent offer, whatever the caller asked (#2993)", () => {
+    const pairing = new PairingStore(dir);
+    expect(pairing.offer(Date.now(), true, true).agent).toBe(false);
+    expect(pairing.read()?.agent).toBe(false);
+    expect(pairing.offer(Date.now(), false, true).agent).toBe(true);
+  });
+
   test("withdrawing leaves a device offer open", () => {
     const pairing = new PairingStore(dir);
     const offer = pairing.offer();
