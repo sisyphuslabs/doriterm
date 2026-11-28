@@ -115,8 +115,9 @@ async function splitWithUnfocusedPane(page: Page): Promise<{ readonly focused: L
 
 /**
  * The link drops, the window is resized while it is down, and the page reconnects: each pane attaches again with
- * `resumed: true` and the grid it has now. Resolves once the focused pane's size is the core's: its FOCUS has made it the
- * active viewer, so the page's reattach has been answered.
+ * `resumed: true` and the grid it has then. The window is resized once more while those attaches are in flight, as a
+ * layout that settles during the attach does (#2390). Resolves once the focused pane's size is the core's: its FOCUS has
+ * made it the active viewer, so the page's reattach has been answered.
  */
 async function blipWithResize(page: Page, link: HcSocket, focused: Locator, unfocused: Locator): Promise<void> {
   const before = await gridSize(unfocused);
@@ -126,8 +127,17 @@ async function blipWithResize(page: Page, link: HcSocket, focused: Locator, unfo
   await expect(reconnecting).toBeVisible();
   await page.setViewportSize({ width: 900, height: 600 });
   await expect.poll(() => gridSize(unfocused)).not.toBe(before);
+  const reattaches = (): number => link.sent().join("").split('"resumed":true').length - 1;
+  const sentBefore = reattaches();
+  const release = link.hold("terminal.attach");
   link.restore();
   await expect.poll(link.opened, { timeout: 15_000 }).toBeGreaterThan(opened);
+  // Both panes' reattaches have gone out and wait at the route; the grid each asked for changes before the answers.
+  await expect.poll(reattaches, { timeout: 15_000 }).toBe(sentBefore + 2);
+  const asked = await gridSize(unfocused);
+  await page.setViewportSize({ width: 960, height: 600 });
+  await expect.poll(() => gridSize(unfocused)).not.toBe(asked);
+  release();
   await expect(reconnecting).toBeHidden({ timeout: 15_000 });
   const focusedAddress = (await focused.getAttribute("data-terminal")) ?? "";
   await expect.poll(() => coreSize(focusedAddress), { timeout: 10_000 }).toBe(await gridSize(focused));
