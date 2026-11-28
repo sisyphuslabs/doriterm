@@ -254,7 +254,7 @@ export function TerminalView(props: TerminalViewProps) {
       <Ended
         closeLabel={closeLabel}
         className={className}
-        onClose={() => attachment.onEndNow.current?.(address, "finished")}
+        onClose={() => attachment.onEndNow.current?.(address, "closed")}
       />
     );
   }

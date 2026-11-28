@@ -4,6 +4,7 @@ import { expect, test, terminalCount } from "./fixtures.ts";
 import { routeHcSocket } from "./hc-socket.ts";
 import { fractionOf, paneOf, renameTab, savedTab, seedLayout, type Fraction, type SeedTab } from "./layout-doc.ts";
 import { hcOn } from "./machine-switch.ts";
+import { notSavedNotices } from "./not-saved.ts";
 import { chordFor, focusChord } from "./platform-keys.ts";
 
 test.use({ serviceWorkers: "block" });
@@ -310,29 +311,6 @@ test("the last pane of the tab in view ending while its layout write is refused 
   await expect(kept).toHaveAttribute("data-focused", "true");
   expect(savedTab("tb-solo")).toBe(saved);
 });
-
-/**
- * How many "The layout was not saved" notices the page has shown from now on, closed ones included: a notice closes
- * itself after five seconds, which a loaded runner can outlast between the refusal and a spec's last check (#1328).
- */
-async function notSavedNotices(page: Page): Promise<() => Promise<number>> {
-  await page.evaluate(() => {
-    let shown = 0;
-    Reflect.set(window, "__notSavedNotices", () => shown);
-    new MutationObserver((records) => {
-      for (const node of records.flatMap((record) => [...record.addedNodes]))
-        if (node instanceof Element)
-          shown += [node, ...node.querySelectorAll("*")].filter(
-            (element) => element.childElementCount === 0 && element.textContent === "The layout was not saved",
-          ).length;
-    }).observe(document.body, { subtree: true, childList: true });
-  });
-  return () =>
-    page.evaluate(() => {
-      const read: unknown = Reflect.get(window, "__notSavedNotices");
-      return typeof read === "function" ? Number(read()) : Number.NaN;
-    });
-}
 
 test("closing the tab in view while its layout write is refused keeps that tab in view, and says so once", async ({
   page,
