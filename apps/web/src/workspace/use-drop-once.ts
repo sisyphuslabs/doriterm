@@ -72,6 +72,12 @@ export class DropOnce {
 export interface DropsOnce {
   /** `drop`, called at most once per ended session however many signals report its end (see DropOnce). */
   readonly dropEnded: (address: string) => void;
+  /**
+   * The person closed this session's pane: `drop` is called every time, so a pane an earlier drop left (its write
+   * refused) goes now, or says the refusal again, instead of the close doing nothing (#2986). Later reports of its end are
+   * that same drop.
+   */
+  readonly dropClosed: (address: string) => void;
   /** Records these sessions as dropped by a close that writes their panes' removal itself (a whole tab). */
   readonly closing: (addresses: readonly string[]) => void;
   /** A close's End failed and this session keeps running: its later end drops its pane again (DropOnce.kept). */
@@ -99,6 +105,13 @@ export function useDropOnce(
   const closing = useCallback((addresses: readonly string[]): void => {
     for (const address of addresses) once.current.take(address);
   }, []);
+  const dropClosed = useCallback(
+    (address: string): void => {
+      closing([address]);
+      drop(address);
+    },
+    [closing, drop],
+  );
   const kept = useCallback((address: string): void => once.current.kept(address), []);
-  return useMemo(() => ({ dropEnded, closing, kept }), [dropEnded, closing, kept]);
+  return useMemo(() => ({ dropEnded, dropClosed, closing, kept }), [dropEnded, dropClosed, closing, kept]);
 }

@@ -3,9 +3,10 @@ import type { Page } from "@playwright/test";
 import { startKeptShell, startShell } from "./agents.ts";
 import { removeTerminal, stateOn } from "./ended-terminal.ts";
 import { expect, test } from "./fixtures.ts";
-import { routeHcSocket } from "./hc-socket.ts";
+import { type HcSocket, routeHcSocket } from "./hc-socket.ts";
 import { paneOf, savedTab, seedLayout } from "./layout-doc.ts";
 import { hcOn, STATE_BOUND_MS } from "./machine-switch.ts";
+import { notSavedNotices } from "./not-saved.ts";
 import { shortcut } from "./platform-keys.ts";
 
 // A tab mirrors its terminal (Q, 2026-11-15): once the core says its program is over, for whatever reason, the tab goes
@@ -56,8 +57,11 @@ test("a tab whose program was lost with its holder while the page never showed i
   await expect(page.getByRole("heading", { name: "This session ended" })).toHaveCount(0);
 });
 
-/** Two tabs of one space, `solo` in view; its program exits while every layout write is refused, so its pane stays. */
-async function endedWhileRefused(page: Page): Promise<void> {
+/**
+ * Two tabs of one space, `solo` in view; its program exits while every layout write is refused, so its pane stays and
+ * says it ended. Writes stay refused until the spec lets them through.
+ */
+async function endedWhileRefused(page: Page): Promise<HcSocket> {
   const socket = await routeHcSocket(page);
   const other = shell(startShell, "ended-other");
   const solo = shell(startShell, "ended-solo");
@@ -74,19 +78,34 @@ async function endedWhileRefused(page: Page): Promise<void> {
   await expect(page.getByText("The layout was not saved")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible();
   expect(savedTab("tb-solo")).not.toBeNull();
-  socket.staleWrites(false);
+  return socket;
 }
 
+const closeEnded = (page: Page) => page.getByRole("button", { name: "Close tab", exact: true }).click();
+
 test("Close tab on a pane whose session ended removes its tab", async ({ page }) => {
-  await endedWhileRefused(page);
-  await page.getByRole("button", { name: "Close tab", exact: true }).click();
+  const socket = await endedWhileRefused(page);
+  socket.staleWrites(false);
+  await closeEnded(page);
   await expect.poll(() => savedTab("tb-solo"), { timeout: 15_000 }).toBeNull();
   await expect(tab(page, /solo/)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "This session ended" })).toHaveCount(0);
 });
 
-test("the Close tab key on a tab whose session ended removes it", async ({ page }) => {
+test("Close tab on an ended pane while writes are still refused tries the drop again and says the layout was not saved", async ({
+  page,
+}) => {
   await endedWhileRefused(page);
+  const said = await notSavedNotices(page);
+  await closeEnded(page);
+  await expect.poll(said, { timeout: 15_000 }).toBe(1);
+  await expect(page.getByRole("heading", { name: "This session ended" })).toBeVisible();
+  expect(savedTab("tb-solo")).not.toBeNull();
+});
+
+test("the Close tab key on a tab whose session ended removes it", async ({ page }) => {
+  const socket = await endedWhileRefused(page);
+  socket.staleWrites(false);
   await page.keyboard.press(await shortcut(page, "tab.close"));
   await expect.poll(() => savedTab("tb-solo"), { timeout: 15_000 }).toBeNull();
   await expect(tab(page, /solo/)).toHaveCount(0);
