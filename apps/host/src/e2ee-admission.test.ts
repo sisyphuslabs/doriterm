@@ -30,6 +30,8 @@ const device = generateX25519();
 const other = generateX25519();
 let session: HcSession;
 let host: Host;
+// The runner can time out without unwinding the test's await. Report before host.stop() changes the socket state.
+let coldProbe: { phase: string; closeCode?: number } | undefined;
 
 const url = (): string => {
   const e2ee = host.e2ee;
@@ -39,16 +41,28 @@ const url = (): string => {
 const identity = () => loadHostIdentity(stateDir);
 
 /** A raw socket to the host's /v1/e2ee: what a replayer has. Resolves with every message it got and its close code. */
-async function raw(first: Uint8Array): Promise<{ readonly messages: Uint8Array[]; readonly closed: Promise<number> }> {
+async function raw(
+  first: Uint8Array,
+  probe?: NonNullable<typeof coldProbe>,
+): Promise<{ readonly messages: Uint8Array[]; readonly closed: Promise<number> }> {
+  if (probe) probe.phase = "opening socket";
   const socket = new WebSocket(url());
   socket.binaryType = "arraybuffer";
   const messages: Uint8Array[] = [];
-  const closed = new Promise<number>((resolve) => socket.addEventListener("close", (event) => resolve(event.code)));
+  const closed = new Promise<number>((resolve) =>
+    socket.addEventListener("close", (event) => {
+      if (probe) probe.closeCode = event.code;
+      resolve(event.code);
+    }),
+  );
   socket.addEventListener("message", (event: MessageEvent<unknown>) => {
     if (event.data instanceof ArrayBuffer) messages.push(new Uint8Array(event.data));
+    if (probe) probe.phase = "received message; awaiting close";
   });
   await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve(), { once: true }));
+  if (probe) probe.phase = "socket open; sending";
   socket.send(first);
+  if (probe) probe.phase = "sent; awaiting message";
   return { messages, closed };
 }
 
@@ -119,6 +133,10 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  if (coldProbe) {
+    console.error(`[admission #2838] phase=${coldProbe.phase}; close=${coldProbe.closeCode ?? "not observed"}`);
+    coldProbe = undefined;
+  }
   await host.stop();
   await session.dispose();
   rmSync(stateDir, { recursive: true, force: true });
@@ -126,9 +144,11 @@ afterEach(async () => {
 
 describe("early-hello admission (#1271)", () => {
   test("on a cold host a captured message 1 gets message 2 only: nothing is started for it, and it closes 4408", async () => {
-    const replay = await raw(await captureMessage1());
+    const probe = (coldProbe = { phase: "capturing first message" });
+    const replay = await raw(await captureMessage1(), probe);
     expect(await replay.closed).toBe(CloseCode.IdleTimeout);
     expect(replay.messages).toHaveLength(1);
+    coldProbe = undefined;
   });
 
   test("a real client is admitted, its hello answered once, and its RPC carried", async () => {
