@@ -70,8 +70,9 @@ herdr-core only through a manifest signed with the release key (#2945). `core-mi
 
 1. It downloads herdr's `core/<version>/manifest.json` and every archive it names (each must sit under that release's
    own directory).
-2. It checks the macOS archives' `Herdr Core.app` and `herdr-core` against herdr's codesign requirement. Nothing
-   downloaded is ever run.
+2. It checks the macOS archives' `herdr-core` against herdr's codesign requirement, and their `Herdr Core.app` too in
+   releases that ship one (herdr bundles the core since 0.1.22; 0.1.17 ships the bare binary only). Nothing downloaded
+   is ever run.
 3. It checks every archive against herdr's sha256.
 4. It uploads them to `core/v<version>/`, created once.
 5. It writes and signs `core/v<version>/manifest.json`, whose URLs name the origin.
@@ -81,7 +82,8 @@ The origin serves `/core/latest.json` (byte for byte the manifest `core/latest` 
 
 An older version can be mirrored for pinned installs (`HC_VERSION`) and leaves `core/latest` alone. A new herdr-core
 reaches hosts only after this run; raising the host's herdr-core floor is mirror first, then the pull request. Mirror to
-`staging` first and read `https://staging.get.doriterm.com/core/latest.json` back before `production`.
+`staging` first and read `https://staging.get.doriterm.com/core/latest.json` back before `production`; a `production`
+run refuses a version whose `https://staging.get.doriterm.com/core/<version>/manifest.json` is not served.
 
 ## Staged rollout
 

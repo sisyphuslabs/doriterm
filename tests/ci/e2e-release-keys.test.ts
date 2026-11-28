@@ -20,3 +20,17 @@ test("only CI's desktop e2e packaging builds with the e2e release keys; no other
     ["Package (electron-builder --dir)", "bun run pack", "1"],
   ]);
 });
+
+test("release.yml checks the built main bundle for the e2e key before packaging it", () => {
+  const release = Bun.YAML.parse(readFileSync(join(WORKFLOWS, "release.yml"), "utf8")) as Workflow;
+  const steps = release.jobs["desktop"]?.steps ?? [];
+  const built = steps.findIndex((step) => step.run?.includes("bun run build"));
+  const guard = steps.findIndex(
+    (step) => step.run?.includes("check-release-keys.ts") && step.run.includes("dist/app/main.js"),
+  );
+  const packaged = steps.findIndex((step) => step.name?.startsWith("Package"));
+  expect(built).toBeGreaterThanOrEqual(0);
+  expect(packaged).toBeGreaterThan(built);
+  expect(guard).toBeGreaterThan(built);
+  expect(guard).toBeLessThan(packaged);
+});
