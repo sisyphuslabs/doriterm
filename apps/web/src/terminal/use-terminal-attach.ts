@@ -4,6 +4,7 @@ import type { WTerm } from "@wterm/react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { terminalConfigStore } from "../ghostty/config-store.ts";
 import { rendererOptions } from "../ghostty/render-options.ts";
+import { rosterFor } from "../roster/roster.ts";
 import { CursorResets } from "./cursor-reset.ts";
 import { readDisplay } from "./display.ts";
 import { reattachClear, useRepaintingCore } from "./reattach-clear.ts";
@@ -252,13 +253,16 @@ export function useTerminalAttach(sources: AttachSources): Attachment {
           return undefined;
         }
         stream.current = attached;
-        // A watching view draws at the pty's grid (D1): the size the answer carries, before its first paint; later
-        // changes come from the core's size events (usePtySize). A reattach says whether this view is the one in use.
+        // A watching view draws at the pty's grid (D1), before its first paint; later changes come from the core's size
+        // events (usePtySize). The roster holds the newest size this page has heard: hc writes the size events an attach
+        // causes ahead of its answer, and one heard since, as another viewer leaving, is newer than the answer (#2390).
+        // A reattach says whether this view is the one in use.
+        const heard = rosterFor(connection).live.get(address);
         const inUse = isFocused.current && document.hasFocus() && ready.element.contains(document.activeElement);
         const reattach = attachedBefore.current ? (inUse ? "in use" : "background") : null;
         hostSize.attached(attached, ready, {
           asked: { cols: askedCols, rows: askedRows },
-          size: attached.size,
+          size: heard === undefined ? attached.size : { cols: heard.cols, rows: heard.rows },
           reattach,
         });
         // Reattached after a reconnect: the core repaints the screen, and the history above it stays as the view holds it
