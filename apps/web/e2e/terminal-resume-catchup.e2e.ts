@@ -2,7 +2,7 @@ import type { Locator, Page, WebSocketRoute } from "@playwright/test";
 import { endAgent } from "./agents.ts";
 import { E2E_HOST_PORT } from "./config.ts";
 import { expect, openNewTerminal, test } from "./fixtures.ts";
-import { routeHcSocket } from "./hc-socket.ts";
+import { loseConnection, routeHcSocket } from "./hc-socket.ts";
 import { openPhoneTerminal, PHONE } from "./phone-key-bar.ts";
 import { hiddenDocumentFrames, hide, sampledFrames, startLastLineSampler, transitions } from "./resume-probe.ts";
 
@@ -111,7 +111,7 @@ function sampleFromLoad(address: string): void {
  * Later messages pass as they come.
  */
 async function routeReplayInOneGo(page: Page, whole: string): Promise<{ opened: () => number; drop: () => void }> {
-  const live = new Set<WebSocketRoute>();
+  const live = new Map<WebSocketRoute, WebSocketRoute>();
   let connections = 0;
   await page.routeWebSocket(`ws://127.0.0.1:${E2E_HOST_PORT}/v1/hc`, (socket) => {
     const host = socket.connectToServer();
@@ -147,13 +147,13 @@ async function routeReplayInOneGo(page: Page, whole: string): Promise<{ opened: 
       for (const held of waiting) socket.send(held);
       waiting = null;
     });
-    live.add(socket);
+    live.set(socket, host);
     socket.onClose(() => live.delete(socket));
   });
   return {
     opened: () => connections,
     drop: () => {
-      for (const socket of live) void socket.close({ code: 1011, reason: "relay blip" });
+      for (const [socket, host] of live) void loseConnection(socket, host);
       live.clear();
     },
   };

@@ -72,6 +72,18 @@ export interface HcSocket {
   readonly staleWrites: (on: boolean) => void;
 }
 
+/**
+ * Ends a routed connection as a lost network does, on both sides: the host sees its socket close, closes that
+ * connection's `hc connect`, and the core lets go of the viewers it carried. Playwright closes the host's end from inside
+ * the page, with the browser's own WebSocket, which accepts no close code below 3000 but 1000: given 1011 it threw, the
+ * host's end stayed open, and the core kept the dropped viewers as the most recently active ones (#2390). The page's end
+ * gets the relay's code, as a page sees it.
+ */
+export async function loseConnection(page: WebSocketRoute, host: WebSocketRoute): Promise<void> {
+  await host.close({ code: 1000, reason: "relay blip" });
+  await page.close({ code: 1011, reason: "relay blip" });
+}
+
 /** hc's wire frame header: channel (u32), kind (u8), payload length (u32), little-endian. */
 const HEADER_BYTES = 9;
 
@@ -113,7 +125,8 @@ export async function routeHcSocket(
   page: Page,
   observe?: { readonly sent?: (frame: string) => void; readonly received?: (frame: string) => void },
 ): Promise<HcSocket> {
-  const live = new Set<WebSocketRoute>();
+  /** Each open connection: the page's end, and the end the route opened to the host. */
+  const live = new Map<WebSocketRoute, WebSocketRoute>();
   const sent: string[] = [];
   let down = false;
   let opened = 0;
@@ -214,7 +227,7 @@ export async function routeHcSocket(
       }
       pass();
     });
-    live.add(socket);
+    live.set(socket, host);
     opened += 1;
   });
   return {
@@ -225,9 +238,9 @@ export async function routeHcSocket(
     throttle: (bytesPerSecond) => void (rate = bytesPerSecond),
     drop: async (stayDown) => {
       down = stayDown;
-      const closing = [...live].map((socket) => socket.close({ code: 1011, reason: "relay blip" }));
+      const ends = [...live];
       live.clear();
-      await Promise.all(closing);
+      await Promise.all(ends.map(([socket, host]) => loseConnection(socket, host)));
     },
     restore: () => {
       down = false;
@@ -243,7 +256,7 @@ export async function routeHcSocket(
       };
     },
     sendFromHost: (frame) => {
-      for (const socket of live) socket.send(frame);
+      for (const socket of live.keys()) socket.send(frame);
     },
     staleWrites: (on) => void (stale = on),
     hold: (...methods) => {
