@@ -11,7 +11,7 @@ import {
   terminalBlock,
 } from "@doriface/protocol/layout";
 import { loadView, rememberSeen, saveView, tabKey, type Seen, type View } from "../layout/view.ts";
-import { type PaneAt, splitWrite, transientSplitWrite, viewInstead, written } from "./pane-writes.ts";
+import { type PaneAt, splitWrite, stillInView, transientSplitWrite, viewInstead, written } from "./pane-writes.ts";
 import {
   buildTabs,
   landingPane,
@@ -339,7 +339,7 @@ export function useLayout(
         setFresh(pane);
         // The terminal starts asynchronously: a start that answers after the person picked another tab still places
         // its pane here, but their pick stays in view (#1539).
-        return show(asked, pane, tab.key === activeNow.current?.key);
+        return show(asked, pane, stillInView(tab, activeNow.current));
       }
       // Whether the edit last found the pane gone; a write that failed instead was already reported by `edit`.
       let gone = false;
@@ -367,7 +367,7 @@ export function useLayout(
       setFresh(pane);
       // The terminal starts asynchronously: a start that answers after the person picked another tab still places
       // its pane in this tab, but their pick stays in view (#1539).
-      return show(tab.key, pane, tab.key === activeNow.current?.key);
+      return show(tab.key, pane, stillInView(tab, activeNow.current));
     },
     [active, addTab, focused, goInstead, keepHere, layoutOf, show, tabs, told],
   );

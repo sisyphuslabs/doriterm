@@ -2,7 +2,16 @@ import type { JsonObject } from "@doriface/protocol";
 import { docSpaces, panesOf, tabsOf, terminalBlock } from "@doriface/protocol/layout";
 import { describe, expect, test } from "bun:test";
 import { NO_VIEW } from "../layout/view.ts";
-import { apartWrite, newTabWrite, splitWrite, terminalRow, transientSplitWrite, viewInstead } from "./pane-writes.ts";
+import type { LayoutTab } from "./layout-model.ts";
+import {
+  apartWrite,
+  newTabWrite,
+  splitWrite,
+  stillInView,
+  terminalRow,
+  transientSplitWrite,
+  viewInstead,
+} from "./pane-writes.ts";
 
 /** A layout document of one space whose tabs are rows of terminal panes (local addresses). */
 const docOf = (tabs: readonly (readonly string[])[]): JsonObject => ({
@@ -131,6 +140,37 @@ describe("viewInstead (#2146)", () => {
     const view = { ...NO_VIEW, active: "tab-c", focused: { "tab-a": "p-new" } };
     expect(viewInstead(view, asked, at, "p-a")).toEqual({ ...view, focused: { "tab-a": "p-a" } });
     expect(viewInstead(view, asked, at, null)).toBe(view);
+  });
+});
+
+/** A tab showing `addresses`, one pane each. */
+const tab = (key: string, addresses: readonly string[], transient = false): LayoutTab => ({
+  key,
+  id: key,
+  space: "spc",
+  spaceKey: "spc",
+  machine: null,
+  name: "",
+  root: terminalRow(key, "p", addresses[0] ?? ""),
+  pinned: false,
+  panes: addresses.map((address, index) => ({ id: `p${index}`, address, mod: null })),
+  readOnly: null,
+  transient,
+});
+
+describe("stillInView (#2891)", () => {
+  test("the tab a split was asked from is still in view while it is the one selected", () => {
+    expect(stillInView(tab("tb1", ["t1"]), tab("tb1", ["t1"]))).toBe(true);
+  });
+
+  test("a tab of no document saved meanwhile is still the one in view: its document tab shows the same terminal", () => {
+    expect(stillInView(tab("transient", ["t1"], true), tab("tb1", ["t1"]))).toBe(true);
+  });
+
+  test("another tab picked meanwhile is not, saved or not (#1539)", () => {
+    expect(stillInView(tab("transient", ["t1"], true), tab("tb2", ["t2"]))).toBe(false);
+    expect(stillInView(tab("tb1", ["t1"]), tab("tb2", ["t1"]))).toBe(false);
+    expect(stillInView(tab("tb1", ["t1"]), null)).toBe(false);
   });
 });
 
