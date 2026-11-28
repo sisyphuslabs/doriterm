@@ -63,6 +63,7 @@ function member(sources: MeshSources, names: Names, key: string, now: Date): Mes
   return {
     hostId,
     ...(lastSessionAt === undefined ? {} : { lastSessionAt }),
+    kind: sources.clients?.has(key) === true ? "client" : "machine",
     name,
     localName: local.localNames.get(key) ?? name,
     fingerprint: fingerprintOfKey(noise),

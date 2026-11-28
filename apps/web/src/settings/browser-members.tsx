@@ -18,7 +18,8 @@ export function BrowserMemberList({
   observations,
   now,
 }: {
-  readonly clients: readonly Pick<CardBody, "hostId" | "name" | "signPub">[];
+  /** `signPub` marks this browser's own entry; the owner's mesh panel lists clients from status, which has none. */
+  readonly clients: readonly (Pick<CardBody, "hostId" | "name"> & { readonly signPub?: string })[];
   readonly self: string | undefined;
   readonly observer: string | undefined;
   readonly observations: readonly Pick<MeshMemberStatus, "hostId" | "lastSessionAt">[] | undefined;
@@ -36,8 +37,8 @@ export function BrowserMemberList({
             : `Last session on ${observer}: ${time}`;
         return (
           <SettingRow
-            key={client.signPub}
-            title={`${client.name}${client.signPub === self ? " (this browser)" : ""}`}
+            key={client.hostId}
+            title={`${client.name}${client.signPub !== undefined && client.signPub === self ? " (this browser)" : ""}`}
             description={
               <>
                 <span className="block">{report}</span>

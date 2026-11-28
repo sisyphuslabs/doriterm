@@ -127,6 +127,11 @@ export type MeshMemberStatus = {
   readonly hostId: string;
   /** Last recorded admitted client session here; writes may be throttled. Absent for machines or no saved observation. */
   readonly lastSessionAt?: number;
+  /**
+   * What it joined as: a machine (dialed over a mesh line) or a client (a browser or phone, never dialed). Absent from
+   * hosts that predate it (#2939), where a reader takes it for a machine.
+   */
+  readonly kind?: "machine" | "client";
   /** The mesh name in the view; null only from an older host's over-cap member (see `overCap`). */
   readonly name: string | null;
   /** The name this host's core gives the machine, which differs after a name fallback; null as for `name`. */

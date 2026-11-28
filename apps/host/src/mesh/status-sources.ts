@@ -87,6 +87,8 @@ export interface WitnessFacts {
 
 export interface MeshSources {
   readonly clientLastSessionAt?: ReadonlyMap<string, number>;
+  /** The members admitted as clients (a browser or phone): status says so, so a reader never lists one as a machine. */
+  readonly clients?: ReadonlySet<string>;
   readonly view: ViewFacts;
   /**
    * The revoke record behind every key in `view.revoked`. Not part of View: PR 2 exports it beside View from the

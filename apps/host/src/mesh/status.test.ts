@@ -17,6 +17,15 @@ test("pending status publishes the same code and confirmation state as the host 
   expect(meshStatus(sources, NOW).pending[0]).toMatchObject({ code: "123 456", joinerConfirmed: true });
 });
 const memberNamed = (name: string) => status.members.find((member) => member.name === name);
+
+test("says which members joined as clients, so a reader never lists a browser or phone as a machine (#2939)", () => {
+  const tablet = [...fixture.sources.view.name].find(([, name]) => name === "tablet")?.[0];
+  if (tablet === undefined) throw new Error("the fixture has a tablet");
+  const members = meshStatus({ ...fixture.sources, clients: new Set([tablet]) }, NOW).members;
+  expect(members.map((member) => [member.name, member.kind])).toEqual(
+    status.members.map((member) => [member.name, member.name === "tablet" ? "client" : "machine"]),
+  );
+});
 const withLocal = (local: Partial<LocalFacts>): MeshSources => ({
   ...fixture.sources,
   local: { ...fixture.sources.local, ...local },

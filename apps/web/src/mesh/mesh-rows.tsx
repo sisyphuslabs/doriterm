@@ -92,6 +92,20 @@ export interface MemberRowProps {
   readonly now: number;
 }
 
+/**
+ * Where a revoke of this member could be decided, kept behind a disclosure: it matters only when a key is lost, and in
+ * a small mesh it is true of every new member, so in the open it reads as an alarm on each device that just joined.
+ */
+function RevokeCaveat({ name, ask }: { readonly name: string; readonly ask: string | null }) {
+  return (
+    <details className="mt-1">
+      <summary>If its key is lost</summary>
+      {`A revoke of ${name} written here could not be decided`}
+      {ask === null ? "; re-found the mesh." : `; revoke it from ${ask}.`}
+    </details>
+  );
+}
+
 export function MemberRow({ member, nameOf, now }: MemberRowProps) {
   const Icon = member.line === "self" ? Monitor : Server;
   const undecidable = member.line !== "self" && member.witnessPool.length === 0;
@@ -121,12 +135,7 @@ export function MemberRow({ member, nameOf, now }: MemberRowProps) {
               .join("")}
           </span>
           <Key fingerprint={member.fingerprint} hostId={member.hostId} />
-          {undecidable ? (
-            <span className="mt-1 block">
-              {`A revoke of ${name} written here could not be decided`}
-              {ask === null ? "; if its key is compromised, re-found the mesh." : `; revoke it from ${nameOf(ask)}.`}
-            </span>
-          ) : null}
+          {undecidable ? <RevokeCaveat name={name} ask={ask === null ? null : nameOf(ask)} /> : null}
           {member.replacedMachine === null ? null : (
             <span className="mt-1 block">{`R${replacedMachineText(member.replacedMachine).slice(1)}.`}</span>
           )}

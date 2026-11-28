@@ -155,6 +155,20 @@ describe("parseMeshStatus", () => {
     expect(parseMeshStatus({ ...listed, members: [{ ...self, line: "connected" }, member] })).toBeUndefined();
   });
 
+  test("reads what a member joined as; a kind a newer host adds reads as none, a kind that is no string refuses (#2939)", () => {
+    expect(parseMeshStatus(memberAt(1, { kind: "client" }))?.members[1]?.kind).toBe("client");
+    expect(parseMeshStatus(memberAt(1, { kind: "machine" }))?.members[1]?.kind).toBe("machine");
+    const added = parseMeshStatus(memberAt(1, { kind: "robot" }))?.members[1];
+    expect(added === undefined ? "refused" : "kind" in added).toBe(false);
+    expect(parseMeshStatus(memberAt(1, { kind: 7 }))).toBeUndefined();
+    const { kind: _kind, ...older } = status.members[1] ?? {};
+    const kindless = parseMeshStatus({
+      ...status,
+      members: status.members.map((entry, at) => (at === 1 ? older : entry)),
+    });
+    expect(kindless?.members[1] === undefined ? "refused" : "kind" in kindless.members[1]).toBe(false);
+  });
+
   test.each(["name", "localName", "fingerprint"])("refuses a member within the cap without its %s", (key) => {
     expect(parseMeshStatus(memberAt(1, { [key]: null }))).toBeUndefined();
   });

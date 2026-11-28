@@ -34,14 +34,19 @@ export interface MeshGroups {
   /** Joins whose offer ended; they need nothing and come last. */
   readonly expired: readonly JoinRequest[];
   readonly removed: readonly MeshRemovedStatus[];
+  /** Machines whose line is up, and those whose line is not; a client is never one of them (#2939). */
   readonly online: readonly MeshMemberStatus[];
   readonly offline: readonly MeshMemberStatus[];
+  /** Browsers and phones: never dialed, so they have no line to be up or down. */
+  readonly clients: readonly MeshMemberStatus[];
   /**
    * Revoked keys are counted, never listed: a removed machine is gone for the person, on every device at once. The
    * signed revoke stays, and `doriface-host mesh status --json` still lists every one.
    */
   readonly revokedCount: number;
 }
+
+export const isClient = (member: MeshMemberStatus): boolean => member.kind === "client";
 
 export const isOnline = (member: MeshMemberStatus): boolean =>
   !member.overCap && (member.line === "self" || member.line === "connected");
@@ -75,11 +80,13 @@ export function joinGroups(requests: readonly JoinRequest[], now: number): Pick<
  */
 export function meshGroups(status: MeshStatus, requests: readonly JoinRequest[], now: number): MeshGroups {
   const removed = new Set(status.removed.flatMap((group) => group.members.map((entry) => entry.hostId)));
+  const machines = status.members.filter((member) => !isClient(member));
   return {
     ...joinGroups(requests, now),
     removed: status.removed,
-    online: status.members.filter(isOnline),
-    offline: status.members.filter((member) => !isOnline(member)),
+    online: machines.filter(isOnline),
+    offline: machines.filter((member) => !isOnline(member)),
+    clients: status.members.filter(isClient),
     revokedCount: status.revoked.filter((entry) => !removed.has(entry.hostId)).length,
   };
 }

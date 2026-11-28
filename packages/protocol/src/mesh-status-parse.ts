@@ -96,7 +96,7 @@ const readReplaced = objectOf<MeshReplacedMachine>({
   name: readName,
   kind: oneOfOrUnknown("ssh", "connect", "command"),
 });
-const readMemberBase = objectOf<Omit<MeshMemberStatus, "lastSessionAt">>({
+const readMemberBase = objectOf<Omit<MeshMemberStatus, "lastSessionAt" | "kind">>({
   hostId: readId,
   name: nullable(readName),
   localName: nullable(readName),
@@ -122,7 +122,14 @@ const readMember: Reader<MeshMemberStatus> = (value) => {
   const supplied = value["lastSessionAt"];
   const lastSessionAt = supplied === undefined ? undefined : readCount(supplied);
   if (supplied !== undefined && lastSessionAt === undefined) return undefined;
-  return { ...base, ...(lastSessionAt === undefined ? {} : { lastSessionAt }) };
+  // A kind a newer host adds reads as no kind (a machine), as other closed sets read an added value (#1139).
+  const kind = value["kind"];
+  if (kind !== undefined && typeof kind !== "string") return undefined;
+  return {
+    ...base,
+    ...(lastSessionAt === undefined ? {} : { lastSessionAt }),
+    ...(kind === "machine" || kind === "client" ? { kind } : {}),
+  };
 };
 const readRevoked = objectOf<MeshRevokedStatus>({
   hostId: readId,
